@@ -35,3 +35,16 @@ if (import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectStorageEmulator(storage, '127.0.0.1', 9199);
   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
 }
+
+/**
+ * URL for an HTTP-style Cloud Function (the v2 onRequest variety) — used
+ * for endpoints that accept binary bodies (audio upload) or stream
+ * responses (audio playback). Callable functions go through the SDK's
+ * `httpsCallable` instead.
+ */
+export function functionsHttpUrl(name: string): string {
+  if (import.meta.env.VITE_USE_EMULATORS === 'true') {
+    return `http://127.0.0.1:5001/${String(import.meta.env.VITE_FIREBASE_PROJECT_ID)}/us-central1/${name}`;
+  }
+  return `https://us-central1-${String(import.meta.env.VITE_FIREBASE_PROJECT_ID)}.cloudfunctions.net/${name}`;
+}
