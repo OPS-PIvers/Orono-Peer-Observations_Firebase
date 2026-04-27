@@ -1,8 +1,16 @@
 name: Deploy — production
 
+# Manual trigger only. Push-to-main runs CI; merging to main does NOT auto-deploy.
+# To deploy: GitHub → Actions tab → "Deploy — production" → Run workflow.
+# This is our manual gate (GitHub Free plan doesn't support required-reviewers
+# environment protections on private repos).
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DEPLOY" to confirm production deploy'
+        required: true
+        default: ''
 
 permissions:
   contents: read
@@ -21,10 +29,15 @@ jobs:
   deploy:
     name: Hosting + Functions + Firestore + Storage (prod)
     runs-on: ubuntu-latest
-    # `prod` GitHub Environment must be configured with a manual approval
-    # protection rule. This is the safety gate before anything hits live data.
     environment: prod
+    if: ${{ github.event.inputs.confirm == 'DEPLOY' }}
     steps:
+      - name: Refuse if confirmation token is wrong
+        if: ${{ github.event.inputs.confirm != 'DEPLOY' }}
+        run: |
+          echo "Confirmation token did not match. Aborting."
+          exit 1
+
       - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v4
