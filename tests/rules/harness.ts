@@ -21,27 +21,38 @@ export async function setupTestEnv(): Promise<RulesTestEnvironment> {
   });
 }
 
-/** Common token-claim shapes used in tests. */
+/** Common token-claim shapes used in tests.
+ *
+ *  `email_verified: true` is set so `request.auth.token.email` is readable
+ *  in the Firestore rules — the emulator otherwise treats the email as
+ *  unverified and surfaces it as an empty string.
+ */
+const verified = { email_verified: true } as const;
+
 export const claims = {
-  outsider: { email: 'someone@gmail.com' },
+  outsider: { email: 'someone@gmail.com', ...verified },
   teacher: (email = 'teacher@orono.k12.mn.us') => ({
     email,
     role: 'Teacher',
     hasSpecialAccess: false,
+    ...verified,
   }),
   peerEval: (email = 'pe@orono.k12.mn.us') => ({
     email,
     role: 'Peer Evaluator',
     hasSpecialAccess: true,
+    ...verified,
   }),
   admin: (email = 'admin@orono.k12.mn.us') => ({
     email,
     role: 'Administrator',
     hasSpecialAccess: true,
+    ...verified,
   }),
   fullAccess: (email = 'fullaccess@orono.k12.mn.us') => ({
     email,
     role: 'Full Access',
     hasSpecialAccess: true,
+    ...verified,
   }),
 } as const;

@@ -51,7 +51,9 @@ service cloud.firestore {
     }
 
     function unchanged(field) {
-      return resource.data[field] == request.resource.data[field];
+      // Use .get(field, null) so this works even when the field is absent
+      // on either side of the update (e.g., finalizedAt on a Draft).
+      return resource.data.get(field, null) == request.resource.data.get(field, null);
     }
 
     function isCreating() {
