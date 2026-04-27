@@ -7,6 +7,8 @@ import { AdminLayout } from '@/admin/AdminLayout';
 import { AdminPlaceholder } from '@/admin/AdminPlaceholder';
 import { BrandingPage } from '@/admin/branding/BrandingPage';
 import { RolesPage } from '@/admin/roles/RolesPage';
+import { RubricEditorPage } from '@/admin/rubrics/RubricEditorPage';
+import { RubricsListPage } from '@/admin/rubrics/RubricsListPage';
 import { SettingsPage } from '@/admin/settings/SettingsPage';
 import { StaffPage } from '@/admin/staff/StaffPage';
 import { WorkProductPage } from '@/admin/work-product/WorkProductPage';
@@ -79,10 +81,8 @@ export function App() {
           <Route index element={<Navigate to="staff" replace />} />
           <Route path="staff" element={<StaffPage />} />
           <Route path="roles" element={<RolesPage />} />
-          <Route
-            path="rubrics"
-            element={<AdminPlaceholder title="Rubrics" phase="Phase 3 (rubric editor commit)" />}
-          />
+          <Route path="rubrics" element={<RubricsListPage />} />
+          <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
           <Route
             path="role-year-mappings"
             element={
