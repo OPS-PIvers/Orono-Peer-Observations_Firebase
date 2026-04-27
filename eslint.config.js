@@ -113,6 +113,13 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true },
       ],
+      // React event handlers idiomatically use `onClick={() => setX(v)}`
+      // shorthand; setX returns void but the expression is clear.
+      '@typescript-eslint/no-confusing-void-expression': 'off',
+      // Subscription/form-sync hooks legitimately reset state in effects
+      // when their inputs change; the React docs' "lift state up" advice
+      // doesn't always apply (e.g., Firestore subscription paths).
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
 

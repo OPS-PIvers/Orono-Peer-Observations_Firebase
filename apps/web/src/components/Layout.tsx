@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { isAdminRole } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
@@ -28,6 +29,14 @@ export function Layout({ children }: { children: ReactNode }) {
 
           {user ? (
             <div className="flex items-center gap-3">
+              {isAdminRole(claims.role) ? (
+                <Link
+                  to="/admin"
+                  className="text-primary-foreground hover:bg-ops-blue-light rounded-md px-3 py-1.5 text-sm font-medium"
+                >
+                  Admin
+                </Link>
+              ) : null}
               <div className="hidden text-sm sm:block">
                 <div>{user.displayName ?? user.email}</div>
                 {claims.role ? (
