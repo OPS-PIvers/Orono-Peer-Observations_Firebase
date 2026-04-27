@@ -74,6 +74,9 @@ export default tseslint.config(
       // Disabled because shadcn/ui patterns (variants alongside components,
       // hooks colocated with providers) trip it without real benefit.
       'react-refresh/only-export-components': 'off',
+      // React Compiler-aware rule. We're not using the compiler yet; manual
+      // memoization is the correct pattern, not something to flag.
+      'react-hooks/preserve-manual-memoization': 'off',
       'react/prop-types': 'off',
     },
     settings: { react: { version: 'detect' } },
