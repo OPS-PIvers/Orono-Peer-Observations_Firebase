@@ -9,3 +9,4 @@
 export * from './constants.js';
 export * from './roles.js';
 export * from './brand.js';
+export * from './schema/index.js';
