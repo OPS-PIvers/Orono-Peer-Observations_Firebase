@@ -48,8 +48,13 @@ const GAS_TAB_NAMES = {
   observationData: 'Observation_Data',
 } as const;
 
+/** Tabs that exist in the GAS spreadsheet but are NOT role rubrics — used
+ *  to exclude them from auto-discovery as role tabs. The legacy
+ *  WorkProductAnswers sheet is the most common false positive. */
+const NON_ROLE_TABS = new Set<string>([...Object.values(GAS_TAB_NAMES), 'WorkProductAnswers']);
+
 interface CliArgs {
-  target: ImportTarget;
+  target: ImportTarget | 'dry-run';
   confirm: boolean;
   forceOverwrite: boolean;
   skipObservations: boolean;
@@ -57,8 +62,10 @@ interface CliArgs {
 
 function parseArgs(argv: string[]): CliArgs {
   const target = argv.find((a) => a.startsWith('--target='))?.split('=')[1];
-  if (target !== 'emulator' && target !== 'prod') {
-    throw new Error('Usage: --target=emulator|prod [--confirm] [--force-overwrite]');
+  if (target !== 'emulator' && target !== 'prod' && target !== 'dry-run') {
+    throw new Error(
+      'Usage: --target=emulator|prod|dry-run [--confirm] [--force-overwrite] [--skip-observations]',
+    );
   }
   return {
     target,
@@ -74,8 +81,8 @@ function requireEnv(name: string): string {
   return v;
 }
 
-async function ensureProdSafe(db: Firestore, args: CliArgs) {
-  if (args.target !== 'prod') return;
+async function ensureProdSafe(db: Firestore | null, args: CliArgs) {
+  if (args.target !== 'prod' || !db) return;
   if (!args.confirm) {
     throw new Error(
       'Refusing to run against prod without --confirm. This is a destructive operation.',
@@ -106,7 +113,7 @@ async function run(args: CliArgs): Promise<ImportSummary> {
     process.env['IMPORT_SECURITY_ADMIN_EMAIL'] ?? 'paul.ivers@orono.k12.mn.us';
 
   console.log(`[import] target=${args.target}, sheet=${sheetId}`);
-  const db = initFirestore(args.target);
+  const db: Firestore | null = args.target === 'dry-run' ? null : initFirestore(args.target);
   await ensureProdSafe(db, args);
 
   const summary: ImportSummary = {
@@ -119,12 +126,18 @@ async function run(args: CliArgs): Promise<ImportSummary> {
     warnings: [],
   };
 
+  // Helpers: in dry-run mode we don't have a Firestore — the writers
+  // become no-ops so we can still validate that reading + parsing works.
+  async function setDocAt(path: string, data: Record<string, unknown>): Promise<void> {
+    if (!db) return;
+    await db.doc(path).set(data);
+  }
+
   // 1. Discover tabs to identify role-rubric sheets (everything that isn't
   //    Staff/Settings/WorkProduct/Observation_Data is presumed a rubric tab).
   console.log('[import] Listing tabs…');
   const tabs = await listTabs(sheetId);
-  const standardTabs = new Set<string>(Object.values(GAS_TAB_NAMES));
-  const roleTabs = tabs.filter((t) => !standardTabs.has(t));
+  const roleTabs = tabs.filter((t) => !NON_ROLE_TABS.has(t));
   console.log(`[import] Found ${String(roleTabs.length)} potential role tabs:`, roleTabs);
 
   // 2. Roles + rubrics — derive roles from role-tab names, parse each rubric.
@@ -133,27 +146,25 @@ async function run(args: CliArgs): Promise<ImportSummary> {
     const role = roleFromName(tabName);
     roleNameToId.set(tabName, role.roleId);
     console.log(`[import] Role: ${tabName} → ${role.roleId}`);
-    await db
-      .collection(COLLECTIONS.roles)
-      .doc(role.roleId)
-      .set({
-        ...role,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+    await setDocAt(`${COLLECTIONS.roles}/${role.roleId}`, {
+      ...role,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     summary.roles += 1;
 
     const rows = await readSheetValues(sheetId, tabName);
     const result = parseRubric({ rubricId: role.roleId, displayName: tabName, rows });
     summary.warnings.push(...result.warnings);
-    await db
-      .collection(COLLECTIONS.rubrics)
-      .doc(role.roleId)
-      .set({
-        ...result.rubric,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+    console.log(
+      `[import]   parsed ${String(result.rubric.domains.length)} domain(s), ` +
+        `${String(result.rubric.domains.reduce((sum, d) => sum + d.components.length, 0))} component(s)`,
+    );
+    await setDocAt(`${COLLECTIONS.rubrics}/${role.roleId}`, {
+      ...result.rubric,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     summary.rubrics += 1;
   }
 
@@ -163,14 +174,11 @@ async function run(args: CliArgs): Promise<ImportSummary> {
   const staffParsed = parseStaff(staffRows);
   summary.warnings.push(...staffParsed.warnings);
   for (const s of staffParsed.staff) {
-    await db
-      .collection(COLLECTIONS.staff)
-      .doc(s.email)
-      .set({
-        ...s,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+    await setDocAt(`${COLLECTIONS.staff}/${s.email}`, {
+      ...s,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     summary.staff += 1;
   }
   console.log(`[import] Staff: ${String(summary.staff)} rows imported`);
@@ -182,10 +190,10 @@ async function run(args: CliArgs): Promise<ImportSummary> {
   summary.warnings.push(...settingsParsed.warnings);
   for (const m of settingsParsed.mappings) {
     const docId = `${m.roleId}_${String(m.year)}`;
-    await db
-      .collection(COLLECTIONS.roleYearMappings)
-      .doc(docId)
-      .set({ ...m, updatedAt: FieldValue.serverTimestamp() });
+    await setDocAt(`${COLLECTIONS.roleYearMappings}/${docId}`, {
+      ...m,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     summary.roleYearMappings += 1;
   }
   console.log(`[import] Role/year mappings: ${String(summary.roleYearMappings)}`);
@@ -197,14 +205,11 @@ async function run(args: CliArgs): Promise<ImportSummary> {
     const wpqParsed = parseWorkProductQuestions(wpqRows);
     summary.warnings.push(...wpqParsed.warnings);
     for (const q of wpqParsed.questions) {
-      await db
-        .collection(COLLECTIONS.workProductQuestions)
-        .doc(q.questionId)
-        .set({
-          ...q,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      await setDocAt(`${COLLECTIONS.workProductQuestions}/${q.questionId}`, {
+        ...q,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
       summary.workProductQuestions += 1;
     }
   } else {
@@ -224,18 +229,24 @@ async function run(args: CliArgs): Promise<ImportSummary> {
 
   // 7. Defaults: email template + app settings
   console.log('[import] Seeding defaults…');
-  await db
-    .collection(COLLECTIONS.emailTemplates)
-    .doc(DEFAULT_FINALIZED_OBSERVATION_TEMPLATE.templateId)
-    .set({
+  await setDocAt(
+    `${COLLECTIONS.emailTemplates}/${DEFAULT_FINALIZED_OBSERVATION_TEMPLATE.templateId}`,
+    {
       ...DEFAULT_FINALIZED_OBSERVATION_TEMPLATE,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    });
-  await db.doc(APP_SETTINGS_PATH).set({
+    },
+  );
+  await setDocAt(APP_SETTINGS_PATH, {
     ...defaultAppSettings(securityAdminEmail),
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  if (args.target === 'dry-run') {
+    console.log(
+      '\n[import] DRY RUN — no writes were performed. The counts above show what *would* be written to Firestore.',
+    );
+  }
 
   return summary;
 }
@@ -248,7 +259,7 @@ async function run(args: CliArgs): Promise<ImportSummary> {
  * historical reference).
  */
 async function importFinalizedObservations(
-  db: Firestore,
+  db: Firestore | null,
   rows: string[][],
   summary: ImportSummary,
 ): Promise<number> {
@@ -297,36 +308,39 @@ async function importFinalizedObservations(
     const yearRaw = observedYearCol >= 0 ? Number((row[observedYearCol] ?? '1').trim()) : 1;
     const year = yearRaw >= 1 && yearRaw <= 6 ? yearRaw : 1;
 
-    await db
-      .collection(COLLECTIONS.observations)
-      .doc(observationId)
-      .set({
-        observationId,
-        observerEmail: (row[observerEmailCol] ?? '').trim().toLowerCase(),
-        observedEmail: (row[observedEmailCol] ?? '').trim().toLowerCase(),
-        observedName: observedNameCol >= 0 ? (row[observedNameCol] ?? '').trim() : '',
-        observedRole: observedRoleCol >= 0 ? (row[observedRoleCol] ?? '').trim() : 'Teacher',
-        observedYear: year,
-        observedBuildings: [],
-        status: OBSERVATION_STATUS.finalized,
-        type: 'Standard',
-        observationName: observationNameCol >= 0 ? (row[observationNameCol] ?? '').trim() : '',
-        observationData: {},
-        componentNotes: {},
-        evidenceLinks: {},
-        componentTags: [],
-        workProductAnswers: [],
-        audioDriveFileIds: [],
-        transcripts: {},
-        driveFolderId: driveFolderIdCol >= 0 ? (row[driveFolderIdCol] ?? '').trim() || null : null,
-        pdfDriveFileId:
-          pdfDriveFileIdCol >= 0 ? (row[pdfDriveFileIdCol] ?? '').trim() || null : null,
-        observationDate: parseDateOrNow(row[createdAtCol] ?? ''),
-        createdAt: parseDateOrNow(row[createdAtCol] ?? ''),
-        lastModifiedAt: parseDateOrNow(row[finalizedAtCol] ?? ''),
-        finalizedAt: parseDateOrNow(row[finalizedAtCol] ?? ''),
-        _legacyImport: true,
-      });
+    if (db) {
+      await db
+        .collection(COLLECTIONS.observations)
+        .doc(observationId)
+        .set({
+          observationId,
+          observerEmail: (row[observerEmailCol] ?? '').trim().toLowerCase(),
+          observedEmail: (row[observedEmailCol] ?? '').trim().toLowerCase(),
+          observedName: observedNameCol >= 0 ? (row[observedNameCol] ?? '').trim() : '',
+          observedRole: observedRoleCol >= 0 ? (row[observedRoleCol] ?? '').trim() : 'Teacher',
+          observedYear: year,
+          observedBuildings: [],
+          status: OBSERVATION_STATUS.finalized,
+          type: 'Standard',
+          observationName: observationNameCol >= 0 ? (row[observationNameCol] ?? '').trim() : '',
+          observationData: {},
+          componentNotes: {},
+          evidenceLinks: {},
+          componentTags: [],
+          workProductAnswers: [],
+          audioDriveFileIds: [],
+          transcripts: {},
+          driveFolderId:
+            driveFolderIdCol >= 0 ? (row[driveFolderIdCol] ?? '').trim() || null : null,
+          pdfDriveFileId:
+            pdfDriveFileIdCol >= 0 ? (row[pdfDriveFileIdCol] ?? '').trim() || null : null,
+          observationDate: parseDateOrNow(row[createdAtCol] ?? ''),
+          createdAt: parseDateOrNow(row[createdAtCol] ?? ''),
+          lastModifiedAt: parseDateOrNow(row[finalizedAtCol] ?? ''),
+          finalizedAt: parseDateOrNow(row[finalizedAtCol] ?? ''),
+          _legacyImport: true,
+        });
+    }
     count += 1;
   }
   return count;
