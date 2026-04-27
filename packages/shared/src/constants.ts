@@ -14,7 +14,7 @@ export const COLLECTIONS = {
   staff: 'staff',
   roles: 'roles',
   rubrics: 'rubrics',
-  settings: 'settings',
+  roleYearMappings: 'roleYearMappings',
   observations: 'observations',
   workProductQuestions: 'workProductQuestions',
   emailTemplates: 'emailTemplates',
