@@ -13,7 +13,9 @@ import { RubricsListPage } from '@/admin/rubrics/RubricsListPage';
 import { SettingsPage } from '@/admin/settings/SettingsPage';
 import { StaffPage } from '@/admin/staff/StaffPage';
 import { WorkProductPage } from '@/admin/work-product/WorkProductPage';
-import { Dashboard } from '@/routes/Dashboard';
+import { NewObservationPage } from '@/observations/NewObservationPage';
+import { ObservationEditorPage } from '@/observations/ObservationEditorPage';
+import { ObservationsListPage } from '@/observations/ObservationsListPage';
 import { MyRubric } from '@/routes/MyRubric';
 import { NotFound } from '@/routes/NotFound';
 import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
@@ -42,7 +44,37 @@ export function App() {
           element={
             <RequireAuth requireSpecialAccess>
               <Layout>
-                <Dashboard />
+                <ObservationsListPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/observations"
+          element={
+            <RequireAuth requireSpecialAccess>
+              <Layout>
+                <ObservationsListPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/observations/new"
+          element={
+            <RequireAuth requireSpecialAccess>
+              <Layout>
+                <NewObservationPage />
+              </Layout>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/observations/:observationId"
+          element={
+            <RequireAuth>
+              <Layout>
+                <ObservationEditorPage />
               </Layout>
             </RequireAuth>
           }
@@ -90,9 +122,6 @@ export function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="audit-log" element={<AuditLogPage />} />
         </Route>
-
-        {/* Phase 4 mounts these — placeholders for now */}
-        <Route path="/observations/*" element={<Navigate to="/dashboard" replace />} />
 
         <Route path="*" element={<NotFound />} />
       </Routes>
