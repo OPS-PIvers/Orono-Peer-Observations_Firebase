@@ -19,6 +19,10 @@
   "dependencies": {
     "@hono/node-server": "^1.18.0",
     "@ops/shared": "workspace:*",
+    "@tiptap/core": "^3.22.4",
+    "@tiptap/extension-link": "^3.22.4",
+    "@tiptap/html": "^3.22.4",
+    "@tiptap/starter-kit": "^3.22.4",
     "firebase-admin": "^13.6.0",
     "hono": "^4.11.4",
     "puppeteer": "^24.30.0"

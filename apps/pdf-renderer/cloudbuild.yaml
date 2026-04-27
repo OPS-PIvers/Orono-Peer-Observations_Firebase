@@ -1,0 +1,42 @@
+# Cloud Build config for the pdf-renderer Cloud Run service.
+#
+# Why a separate config: the Dockerfile lives at apps/pdf-renderer/Dockerfile
+# but its build context is the project root (it needs to copy the
+# pnpm-workspace.yaml, packages/shared, etc. so workspace deps resolve).
+# `gcloud run deploy --source` doesn't support choosing a non-root
+# Dockerfile, so we use Cloud Build directly and then tag/deploy.
+#
+# Usage:
+#   gcloud builds submit --config apps/pdf-renderer/cloudbuild.yaml .
+#   gcloud run deploy pdf-renderer \
+#     --image us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-renderer:latest \
+#     --region us-central1 --no-allow-unauthenticated --memory 1Gi \
+#     --cpu 1 --concurrency 4 --timeout 120 --set-env-vars NODE_ENV=production
+
+substitutions:
+  # Override at submit time with --substitutions=_TAG=<sha-or-version>.
+  _TAG: manual
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:${_TAG}'
+      - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:latest'
+      - '--file=apps/pdf-renderer/Dockerfile'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:${_TAG}'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:latest'
+
+images:
+  - 'us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:${_TAG}'
+  - 'us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/pdf-renderer:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
