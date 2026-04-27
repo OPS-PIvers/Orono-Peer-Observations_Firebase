@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -223,12 +223,11 @@ describe('observations: delete', () => {
 
   it('PE cannot delete', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
-    await assertFails(updateDoc(doc(db, 'observations/obs1'), { _deleted: true }));
+    await assertFails(deleteDoc(doc(db, 'observations/obs1')));
   });
 
   it('admin can delete', async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
-    const { deleteDoc } = await import('firebase/firestore');
     await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
   });
 });

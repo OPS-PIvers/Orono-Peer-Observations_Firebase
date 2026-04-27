@@ -88,15 +88,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // --- /settings/roleYearMappings/{id} -------------------------------------
-    match /settings/roleYearMappings/{mappingId} {
+    // --- /roleYearMappings/{mappingId} ---------------------------------------
+    // Doc id convention: `${roleId}_${year}` (e.g. "teacher_1").
+    match /roleYearMappings/{mappingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
-    }
-
-    // Catch-all for /settings/{anything} we add later — admin-only by default.
-    match /settings/{document=**} {
-      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 

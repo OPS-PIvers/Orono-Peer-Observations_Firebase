@@ -58,20 +58,20 @@ describe('/roles, /rubrics — read by all signed-in domain users; write admin-o
 
 describe('/settings/roleYearMappings — read by all domain, write admin-only', () => {
   it('teacher can read role/year mappings (needed to render their own rubric)', async () => {
-    await seed('settings/roleYearMappings/teacher_1', { assignedComponentIds: ['1a', '1b'] });
+    await seed('roleYearMappings/teacher_1', { assignedComponentIds: ['1a', '1b'] });
     const db = testEnv.authenticatedContext('a', claims.teacher()).firestore();
-    await assertSucceeds(getDoc(doc(db, 'settings/roleYearMappings/teacher_1')));
+    await assertSucceeds(getDoc(doc(db, 'roleYearMappings/teacher_1')));
   });
 
   it('teacher cannot write', async () => {
     const db = testEnv.authenticatedContext('a', claims.teacher()).firestore();
-    await assertFails(setDoc(doc(db, 'settings/roleYearMappings/teacher_1'), {}));
+    await assertFails(setDoc(doc(db, 'roleYearMappings/teacher_1'), {}));
   });
 
   it('admin can write', async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
     await assertSucceeds(
-      setDoc(doc(db, 'settings/roleYearMappings/teacher_2'), { assignedComponentIds: ['2a'] }),
+      setDoc(doc(db, 'roleYearMappings/teacher_2'), { assignedComponentIds: ['2a'] }),
     );
   });
 });

@@ -183,7 +183,8 @@ async function run(args: CliArgs): Promise<ImportSummary> {
   for (const m of settingsParsed.mappings) {
     const docId = `${m.roleId}_${String(m.year)}`;
     await db
-      .doc(`settings/roleYearMappings/${docId}`)
+      .collection(COLLECTIONS.roleYearMappings)
+      .doc(docId)
       .set({ ...m, updatedAt: FieldValue.serverTimestamp() });
     summary.roleYearMappings += 1;
   }
