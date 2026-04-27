@@ -16,6 +16,7 @@ env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.30.2'
   FIREBASE_PROJECT: peer-evaluator-rubric
+  NODE_OPTIONS: '--max-old-space-size=4096'
 
 jobs:
   deploy-preview:

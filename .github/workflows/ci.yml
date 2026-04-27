@@ -16,6 +16,8 @@ concurrency:
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.30.2'
+  # Bumped from default 2GB so tsc + vitest don't OOM as the codebase grows.
+  NODE_OPTIONS: '--max-old-space-size=4096'
 
 jobs:
   validate:
