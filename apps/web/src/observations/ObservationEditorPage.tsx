@@ -14,6 +14,7 @@ import {
   type Rubric,
   type RubricComponent,
   type RubricDomain,
+  type TiptapDoc,
   roleYearMappingDocId,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -22,8 +23,10 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
+import { ScriptEditor } from './ScriptEditor';
+import { AudioRecorder } from './AudioRecorder';
 
 const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
   developing: 'Developing',
@@ -35,6 +38,14 @@ const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
 type ComponentEntries = Record<string, ObservationComponentEntry>;
+type ComponentNotes = Record<string, TiptapDoc>;
+interface EditorDraft {
+  observationData: ComponentEntries;
+  componentNotes: ComponentNotes;
+  scriptDoc: TiptapDoc | undefined;
+}
+
+type EditorView = 'components' | 'script';
 
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
@@ -83,18 +94,34 @@ export function ObservationEditorPage() {
     return out;
   }, [rubric, mapping]);
 
-  // Local draft of observationData; flushed to Firestore on debounce.
-  const [draft, setDraft] = useState<ComponentEntries>({});
+  // Local draft of observationData + componentNotes; flushed to Firestore
+  // on debounce. Both fields share the same autosave cycle so we don't
+  // have two timers racing against each other.
+  const [draft, setDraft] = useState<EditorDraft>({
+    observationData: {},
+    componentNotes: {},
+    scriptDoc: undefined,
+  });
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+  const [view, setView] = useState<EditorView>('components');
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
-  const draftRef = useRef<ComponentEntries>({});
+  const draftRef = useRef<EditorDraft>({
+    observationData: {},
+    componentNotes: {},
+    scriptDoc: undefined,
+  });
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (observation) {
-      setDraft(observation.observationData);
-      draftRef.current = observation.observationData;
+      const next: EditorDraft = {
+        observationData: observation.observationData,
+        componentNotes: observation.componentNotes,
+        scriptDoc: observation.scriptDoc,
+      };
+      setDraft(next);
+      draftRef.current = next;
     }
   }, [observation]);
 
@@ -113,7 +140,9 @@ export function ObservationEditorPage() {
       await setDoc(
         doc(db, `${COLLECTIONS.observations}/${observation.id}`),
         {
-          observationData: draftRef.current,
+          observationData: draftRef.current.observationData,
+          componentNotes: draftRef.current.componentNotes,
+          scriptDoc: draftRef.current.scriptDoc ?? null,
           lastModifiedAt: serverTimestamp(),
         },
         { merge: true },
@@ -164,14 +193,18 @@ export function ObservationEditorPage() {
       </div>
     );
 
-  function update(componentId: string, patch: Partial<ObservationComponentEntry>) {
+  function updateEntry(componentId: string, patch: Partial<ObservationComponentEntry>) {
     if (!canEdit) return;
-    const existing: ObservationComponentEntry = draftRef.current[componentId] ?? {
+    const existing: ObservationComponentEntry = draftRef.current.observationData[componentId] ?? {
       proficiency: null,
       selectedLookForIds: [],
       scratchNotes: '',
     };
-    const next = { ...draftRef.current, [componentId]: { ...existing, ...patch } };
+    const nextEntries: ComponentEntries = {
+      ...draftRef.current.observationData,
+      [componentId]: { ...existing, ...patch },
+    };
+    const next: EditorDraft = { ...draftRef.current, observationData: nextEntries };
     draftRef.current = next;
     setDraft(next);
     scheduleSave();
@@ -179,7 +212,7 @@ export function ObservationEditorPage() {
 
   function toggleLookFor(componentId: string, lookForId: string) {
     if (!canEdit) return;
-    const existing: ObservationComponentEntry = draftRef.current[componentId] ?? {
+    const existing: ObservationComponentEntry = draftRef.current.observationData[componentId] ?? {
       proficiency: null,
       selectedLookForIds: [],
       scratchNotes: '',
@@ -187,7 +220,27 @@ export function ObservationEditorPage() {
     const set = new Set(existing.selectedLookForIds);
     if (set.has(lookForId)) set.delete(lookForId);
     else set.add(lookForId);
-    update(componentId, { selectedLookForIds: Array.from(set) });
+    updateEntry(componentId, { selectedLookForIds: Array.from(set) });
+  }
+
+  function setNotesDoc(componentId: string, document: TiptapDoc) {
+    if (!canEdit) return;
+    const nextNotes: ComponentNotes = {
+      ...draftRef.current.componentNotes,
+      [componentId]: document,
+    };
+    const next: EditorDraft = { ...draftRef.current, componentNotes: nextNotes };
+    draftRef.current = next;
+    setDraft(next);
+    scheduleSave();
+  }
+
+  function setScriptDoc(document: TiptapDoc) {
+    if (!canEdit) return;
+    const next: EditorDraft = { ...draftRef.current, scriptDoc: document };
+    draftRef.current = next;
+    setDraft(next);
+    scheduleSave();
   }
 
   const selected = activeComponents.find((ac) => ac.component.id === selectedComponentId);
@@ -230,40 +283,128 @@ export function ObservationEditorPage() {
           admin to verify the role and rubric setup.
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
-          <ComponentNav
-            activeComponents={activeComponents}
-            selectedComponentId={selectedComponentId}
-            onSelect={setSelectedComponentId}
-            entries={draft}
-          />
+        <>
+          <ViewTabs view={view} onChange={setView} />
+          {view === 'components' ? (
+            <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
+              <ComponentNav
+                activeComponents={activeComponents}
+                selectedComponentId={selectedComponentId}
+                onSelect={setSelectedComponentId}
+                entries={draft.observationData}
+              />
 
-          {selected ? (
-            <ComponentEditor
-              key={selected.component.id}
-              domain={selected.domain}
-              component={selected.component}
-              entry={
-                draft[selected.component.id] ?? {
-                  proficiency: null,
-                  selectedLookForIds: [],
-                  scratchNotes: '',
-                }
-              }
-              readOnly={!canEdit}
-              onProficiency={(p) => update(selected.component.id, { proficiency: p })}
-              onToggleLookFor={(id) => toggleLookFor(selected.component.id, id)}
-              onNotes={(notes) => update(selected.component.id, { scratchNotes: notes })}
-            />
-          ) : (
-            <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
-              {activeComponents.length === 0
-                ? 'No components are assigned for this role/year combination. Ask an admin to update the role/year mappings.'
-                : 'Select a component on the left to start filling it in.'}
+              {selected ? (
+                <ComponentEditor
+                  key={selected.component.id}
+                  domain={selected.domain}
+                  component={selected.component}
+                  entry={
+                    draft.observationData[selected.component.id] ?? {
+                      proficiency: null,
+                      selectedLookForIds: [],
+                      scratchNotes: '',
+                    }
+                  }
+                  notesDoc={draft.componentNotes[selected.component.id]}
+                  readOnly={!canEdit}
+                  onProficiency={(p) => updateEntry(selected.component.id, { proficiency: p })}
+                  onToggleLookFor={(id) => toggleLookFor(selected.component.id, id)}
+                  onNotesDoc={(d) => setNotesDoc(selected.component.id, d)}
+                />
+              ) : (
+                <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+                  {activeComponents.length === 0
+                    ? 'No components are assigned for this role/year combination. Ask an admin to update the role/year mappings.'
+                    : 'Select a component on the left to start filling it in.'}
+                </div>
+              )}
             </div>
+          ) : (
+            <ScriptPanel
+              observationId={observation.id}
+              scriptDoc={draft.scriptDoc}
+              readOnly={!canEdit}
+              onChange={setScriptDoc}
+              activeComponents={activeComponents}
+              audioFileIds={observation.audioDriveFileIds}
+              transcripts={observation.transcripts}
+            />
           )}
-        </div>
+        </>
       )}
+    </div>
+  );
+}
+
+function ViewTabs({ view, onChange }: { view: EditorView; onChange: (v: EditorView) => void }) {
+  return (
+    <div className="border-border mb-4 flex border-b">
+      {(['components', 'script'] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={cn(
+            '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+            view === v
+              ? 'border-primary text-primary'
+              : 'text-muted-foreground hover:text-foreground border-transparent',
+          )}
+          aria-current={view === v ? 'page' : undefined}
+        >
+          {v === 'components' ? 'Components' : 'Script & audio'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface ScriptPanelProps {
+  observationId: string;
+  scriptDoc: TiptapDoc | undefined;
+  readOnly: boolean;
+  onChange: (document: TiptapDoc) => void;
+  activeComponents: { domain: RubricDomain; component: RubricComponent }[];
+  audioFileIds: string[];
+  transcripts: Record<string, string>;
+}
+
+function ScriptPanel({
+  observationId,
+  scriptDoc,
+  readOnly,
+  onChange,
+  activeComponents,
+  audioFileIds,
+  transcripts,
+}: ScriptPanelProps) {
+  return (
+    <div className="space-y-4">
+      <section className="border-border bg-background space-y-4 rounded-lg border p-6">
+        <header>
+          <h2 className="font-heading text-xl font-semibold">Script</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Live note-taking during the observation. Place your cursor in a paragraph or select a
+            quote, then click the <strong>Tag</strong> button to link it to a rubric component.
+            Tagged spans show a tinted background.
+          </p>
+        </header>
+        <ScriptEditor
+          value={scriptDoc}
+          onChange={onChange}
+          readOnly={readOnly}
+          availableComponents={activeComponents}
+          placeholder="Start typing what you see and hear during the observation…"
+          minHeight="22rem"
+        />
+      </section>
+      <AudioRecorder
+        observationId={observationId}
+        audioFileIds={audioFileIds}
+        transcripts={transcripts}
+        readOnly={readOnly}
+      />
     </div>
   );
 }
@@ -373,20 +514,22 @@ interface ComponentEditorProps {
   domain: RubricDomain;
   component: RubricComponent;
   entry: ObservationComponentEntry;
+  notesDoc: TiptapDoc | undefined;
   readOnly: boolean;
   onProficiency: (level: ProficiencyLevel | null) => void;
   onToggleLookFor: (lookForId: string) => void;
-  onNotes: (notes: string) => void;
+  onNotesDoc: (document: TiptapDoc) => void;
 }
 
 function ComponentEditor({
   domain,
   component,
   entry,
+  notesDoc,
   readOnly,
   onProficiency,
   onToggleLookFor,
-  onNotes,
+  onNotesDoc,
 }: ComponentEditorProps) {
   return (
     <section className="border-border bg-background space-y-6 rounded-lg border p-6">
@@ -480,14 +623,14 @@ function ComponentEditor({
       ) : null}
 
       <div className="grid gap-2">
-        <Label htmlFor={`notes-${component.id}`}>Notes</Label>
-        <Textarea
-          id={`notes-${component.id}`}
-          value={entry.scratchNotes}
-          onChange={(e) => onNotes(e.target.value)}
-          rows={6}
-          disabled={readOnly}
-          placeholder="Quick scratch notes for this component. Rich-text per-component notes ship in Phase 5."
+        <Label>Notes</Label>
+        <TiptapEditor
+          value={notesDoc}
+          onChange={onNotesDoc}
+          readOnly={readOnly}
+          placeholder="Capture observations, evidence, and feedback for this component."
+          variant="full"
+          minHeight="9rem"
         />
       </div>
     </section>
