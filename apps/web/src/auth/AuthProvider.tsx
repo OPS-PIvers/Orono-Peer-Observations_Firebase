@@ -1,12 +1,26 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   onAuthStateChanged,
   onIdTokenChanged,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
-import { isAdminRole, isSpecialRole } from '@ops/shared';
-import { auth } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { ALLOWED_EMAIL_DOMAIN, isAdminRole, isSpecialRole } from '@ops/shared';
+import { auth, functions } from '@/lib/firebase';
+
+const syncMyClaimsFn = httpsCallable<
+  Record<string, never>,
+  { role: string | null; hasSpecialAccess: boolean }
+>(functions, 'syncMyClaims');
 
 export interface AuthClaims {
   role: string | null;
@@ -30,23 +44,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [claims, setClaims] = useState<AuthClaims>(defaultClaims);
   const [status, setStatus] = useState<AuthState['status']>('loading');
+  /** UID we've already synced claims for this session, to avoid spamming
+   *  the callable on every token refresh. */
+  const syncedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (next) => {
+      // Defense-in-depth domain check: the GoogleAuthProvider's `hd` param
+      // restricts the account chooser, but a determined user could still
+      // sign in with a non-Orono account. If that happens, kick them out
+      // immediately. Firestore rules also enforce the domain.
+      if (next && !isAllowedEmail(next.email)) {
+        void firebaseSignOut(auth);
+        return;
+      }
       setUser(next);
       if (!next) {
         setClaims(defaultClaims);
         setStatus('signed-out');
+        syncedUidRef.current = null;
       }
     });
     const unsubToken = onIdTokenChanged(auth, (next) => {
       if (!next) return;
-      void next.getIdTokenResult().then((result) => {
+      if (!isAllowedEmail(next.email)) {
+        void firebaseSignOut(auth);
+        return;
+      }
+      void next.getIdTokenResult().then(async (result) => {
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
         setClaims({ role, hasSpecialAccess });
         setStatus('signed-in');
+
+        // First time we see this UID this session, ask the server to
+        // re-derive claims from the staff doc. The callable is idempotent;
+        // skipping when the UID is already synced keeps token refreshes
+        // cheap.
+        if (syncedUidRef.current === next.uid) return;
+        syncedUidRef.current = next.uid;
+        try {
+          await syncMyClaimsFn({});
+          await next.getIdToken(true); // pull a fresh token with new claims
+        } catch (err) {
+          // Soft failure: the user can still navigate, but rules-protected
+          // operations will reflect their stale (or absent) claims. The
+          // user can hit Sign-Out / Sign-In to retry.
+          console.warn('syncMyClaims failed', err);
+        }
       });
     });
     return () => {
@@ -89,4 +135,9 @@ export function useIsAdmin(): boolean {
 export function useHasSpecialAccess(): boolean {
   const { claims } = useAuth();
   return claims.hasSpecialAccess;
+}
+
+function isAllowedEmail(email: string | null): boolean {
+  if (!email) return false;
+  return email.toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
 }
