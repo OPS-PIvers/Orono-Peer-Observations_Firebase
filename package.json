@@ -26,6 +26,7 @@
     "validate": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "deploy:dev": "firebase hosting:channel:deploy dev-paul --expires 30d",
     "deploy:prod": "firebase deploy --only hosting,functions,firestore,storage",
+    "import:dry-run": "tsx scripts/import/import.ts --target=dry-run",
     "import:emulator": "tsx scripts/import/import.ts --target=emulator",
     "import:prod": "tsx scripts/import/import.ts --target=prod",
     "prepare": "husky"

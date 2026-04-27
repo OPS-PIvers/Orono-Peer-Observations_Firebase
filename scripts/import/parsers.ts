@@ -2,7 +2,6 @@ import {
   isStaffYear,
   type Role,
   type Rubric,
-  type RubricComponent,
   type RubricDomain,
   type Staff,
   type StaffYear,
@@ -50,6 +49,30 @@ export interface ParseStaffResult {
   warnings: string[];
 }
 
+/** Email accounts that exist in the Staff sheet but aren't real staff
+ *  (system mailboxes, automation accounts). These get filtered entirely. */
+const STAFF_EMAIL_BLOCKLIST = new Set<string>(['notifications@orono.k12.mn.us']);
+
+/** Map the Staff sheet's text year values to numeric StaffYear (1-6).
+ *  The legacy GAS app stores years as text — "Year 1", "Year 2", "Year 3",
+ *  "P1", "P2", "P3" — but our schema uses 1-6 (with 4-6 as P1-P3).
+ *  Empty / unrecognized values mean "not in an active eval cycle" and the
+ *  staff member is deactivated.
+ */
+function parseStaffYear(value: string): { year: StaffYear; recognized: boolean } {
+  const v = value.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (v === 'year 1' || v === '1') return { year: 1, recognized: true };
+  if (v === 'year 2' || v === '2') return { year: 2, recognized: true };
+  if (v === 'year 3' || v === '3') return { year: 3, recognized: true };
+  if (v === 'p1' || v === '4') return { year: 4, recognized: true };
+  if (v === 'p2' || v === '5') return { year: 5, recognized: true };
+  if (v === 'p3' || v === '6') return { year: 6, recognized: true };
+  // Last-ditch numeric coerce (handles weird formatted values).
+  const n = Number(v);
+  if (isStaffYear(n)) return { year: n, recognized: true };
+  return { year: 1, recognized: false };
+}
+
 export function parseStaff(rows: string[][]): ParseStaffResult {
   const staff: ParseStaffResult['staff'] = [];
   const warnings: string[] = [];
@@ -69,12 +92,20 @@ export function parseStaff(rows: string[][]): ParseStaffResult {
       warnings.push(`Row ${i + 1}: missing/invalid email — skipped (name="${name}")`);
       continue;
     }
-
-    const yearNum = Number(yearStr);
-    if (!isStaffYear(yearNum)) {
-      warnings.push(`Row ${i + 1} (${emailRaw}): year "${yearStr}" not 1-6 — defaulting to 1`);
+    if (STAFF_EMAIL_BLOCKLIST.has(emailRaw)) {
+      warnings.push(`Row ${i + 1} (${emailRaw}): system account — skipped`);
+      continue;
     }
-    const year: StaffYear = isStaffYear(yearNum) ? yearNum : 1;
+
+    const { year, recognized } = parseStaffYear(yearStr);
+    // Staff with missing/unrecognized year are imported as inactive; admins
+    // can reactivate via the Staff admin page after assigning a real year.
+    const isActive = recognized && yearStr !== '';
+    if (!recognized && yearStr !== '') {
+      warnings.push(
+        `Row ${i + 1} (${emailRaw}): year "${yearStr}" unrecognized — imported inactive`,
+      );
+    }
 
     const buildings = buildingRaw
       .split(',')
@@ -93,7 +124,7 @@ export function parseStaff(rows: string[][]): ParseStaffResult {
       year,
       buildings,
       summativeYear,
-      isActive: true,
+      isActive,
     });
   }
 
@@ -253,65 +284,87 @@ export interface ParseRubricResult {
   warnings: string[];
 }
 
-const COMPONENT_ID_PATTERN = /^([1-9])([a-z]):?$/;
+/** Match a row whose col[0] starts a new component, e.g.
+ *    "1a: Applying Knowledge of Content and Pedagogy"
+ *  Trailing whitespace / tabs are common in the legacy sheet so we
+ *  tolerate them. */
+const COMPONENT_ROW_PATTERN = /^([1-9])([a-z])\s*:\s*(.+?)\s*$/;
+
+/** Match "Domain 1: Planning and Preparation" — used to pick up the
+ *  authoritative domain name from the sheet rather than relying on the
+ *  hardcoded DEFAULT_DOMAIN_NAMES. */
+const DOMAIN_ROW_PATTERN = /^Domain\s+(\d+)\s*:\s*(.+?)\s*$/i;
 
 export function parseRubric(input: ParseRubricInput): ParseRubricResult {
   const { rubricId, displayName, rows } = input;
-  const domainNames = { ...DEFAULT_DOMAIN_NAMES, ...(input.domainNames ?? {}) };
+  const fallbackDomainNames = { ...DEFAULT_DOMAIN_NAMES, ...(input.domainNames ?? {}) };
   const warnings: string[] = [];
   const domainsMap = new Map<string, RubricDomain>();
 
-  // Skim through rows looking for component header rows. Anything that
-  // matches "1a:", "2c:", etc. in column A starts a new component.
+  // Track the most recently seen domain header so each component slots
+  // into the right domain. The actual sheet structure is:
+  //   Row N:    "Domain 1: ..."             (domain header)
+  //   Row N+1:  "" | "Developing" | "Basic" | ... (column headers)
+  //   Row N+2:  "1a: Title" | descriptor | descriptor | descriptor | descriptor | "Rating"
+  //   Row N+3:  "" | "Best Practices Aligned with ..." (sub-header, skip)
+  //   Row N+4:  "" | "<best practices content>"
+  //   Row N+5:  "1b: Title" ...
+  //   ...
+  let currentDomainId: string | null = null;
+  let currentDomainName: string | null = null;
+
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
     if (!row) continue;
-    const aCell = (row[0] ?? '').trim().toLowerCase();
-    const match = COMPONENT_ID_PATTERN.exec(aCell);
-    if (!match) continue;
+    const aCell = (row[0] ?? '').trim();
 
-    const compId = `${match[1] ?? ''}${match[2] ?? ''}`;
-    const domainNum = match[1] ?? '1';
-    const title = (row[1] ?? '').trim() || compId;
+    const domainMatch = DOMAIN_ROW_PATTERN.exec(aCell);
+    if (domainMatch) {
+      currentDomainId = domainMatch[1] ?? null;
+      currentDomainName = (domainMatch[2] ?? '').trim();
+      continue;
+    }
 
-    // Next 5 rows: developing / basic / proficient / distinguished / best practices.
-    const desc = (offset: number): string => {
-      const r = rows[i + offset];
-      if (!r) return '';
-      return r
-        .filter((c): c is string => typeof c === 'string')
-        .map((c) => c.trim())
-        .filter(Boolean)
-        .join('\n');
-    };
+    const compMatch = COMPONENT_ROW_PATTERN.exec(aCell);
+    if (!compMatch) continue;
 
-    const component: RubricComponent = {
-      id: compId,
-      title: title.slice(0, 200),
-      proficiencyLevels: {
-        developing: desc(1),
-        basic: desc(2),
-        proficient: desc(3),
-        distinguished: desc(4),
-      },
-      bestPractices: desc(5),
-      lookFors: [], // can be enriched later from a separate look-fors sheet
-    };
+    const compId = `${compMatch[1] ?? ''}${compMatch[2] ?? ''}`;
+    const compTitle = (compMatch[3] ?? '').trim();
+    const domainDigit = compMatch[1] ?? '1';
 
-    let domain = domainsMap.get(domainNum);
+    // Best Practices content is 2 rows below the component row, in col[1]
+    // (col[0] is empty, col[1] holds the multi-line content with embedded
+    // newlines preserved by the Sheets API).
+    const bpRow = rows[i + 2];
+    const bestPractices = (bpRow?.[1] ?? '').trim();
+
+    const domainKey = currentDomainId ?? domainDigit;
+    let domain = domainsMap.get(domainKey);
     if (!domain) {
       domain = {
-        id: domainNum,
-        name: domainNames[domainNum] ?? `Domain ${domainNum}`,
+        id: domainKey,
+        name: currentDomainName ?? fallbackDomainNames[domainDigit] ?? `Domain ${domainDigit}`,
         components: [],
       };
-      domainsMap.set(domainNum, domain);
+      domainsMap.set(domainKey, domain);
     }
-    domain.components.push(component);
+
+    domain.components.push({
+      id: compId,
+      title: compTitle.slice(0, 200),
+      proficiencyLevels: {
+        developing: (row[1] ?? '').trim(),
+        basic: (row[2] ?? '').trim(),
+        proficient: (row[3] ?? '').trim(),
+        distinguished: (row[4] ?? '').trim(),
+      },
+      bestPractices,
+      lookFors: [], // not present in the GAS rubric sheets — admins add via UI
+    });
   }
 
   const domains: RubricDomain[] = Array.from(domainsMap.values()).sort((a, b) =>
-    a.id.localeCompare(b.id),
+    a.id.localeCompare(b.id, undefined, { numeric: true }),
   );
 
   if (domains.length === 0) {
