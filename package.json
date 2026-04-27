@@ -26,6 +26,8 @@
     "validate": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "deploy:dev": "firebase hosting:channel:deploy dev-paul --expires 30d",
     "deploy:prod": "firebase deploy --only hosting,functions,firestore,storage",
+    "build:functions:deploy": "pnpm --filter @ops/functions build && cd apps/functions/lib && npm install --omit=dev --no-package-lock --silent",
+    "deploy:functions": "pnpm build:functions:deploy && firebase deploy --only functions",
     "import:dry-run": "tsx scripts/import/import.ts --target=dry-run",
     "import:emulator": "tsx scripts/import/import.ts --target=emulator",
     "import:prod": "tsx scripts/import/import.ts --target=prod",
