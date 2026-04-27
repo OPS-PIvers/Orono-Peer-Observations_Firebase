@@ -18,3 +18,4 @@ export { uploadAudio } from './audio/uploadAudio.js';
 export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
+export { finalizeObservation } from './observations/finalizeObservation.js';

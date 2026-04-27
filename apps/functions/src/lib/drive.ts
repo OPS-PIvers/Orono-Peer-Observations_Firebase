@@ -85,3 +85,68 @@ export async function downloadFile(fileId: string): Promise<Buffer> {
   );
   return Buffer.from(result.data as ArrayBuffer);
 }
+
+/**
+ * Grant a role (`reader` or `writer`) on a Drive folder/file to a specific
+ * user, idempotently (looks up existing permissions first to avoid
+ * duplicate grants on re-finalize).
+ */
+export async function shareWithUser(args: {
+  fileId: string;
+  email: string;
+  role: 'reader' | 'writer';
+  /** Optional message for the email Google sends to the recipient. */
+  emailMessage?: string;
+  /** When false, suppresses the auto-notification email. */
+  sendNotificationEmail?: boolean;
+}): Promise<void> {
+  const drive = getDriveClient();
+  const existing = await drive.permissions.list({
+    fileId: args.fileId,
+    fields: 'permissions(id,emailAddress,role)',
+  });
+  const lower = args.email.toLowerCase();
+  const match = existing.data.permissions?.find(
+    (p) => p.emailAddress?.toLowerCase() === lower,
+  );
+  if (match && match.role === args.role) return;
+  if (match?.id) {
+    await drive.permissions.update({
+      fileId: args.fileId,
+      permissionId: match.id,
+      requestBody: { role: args.role },
+    });
+    return;
+  }
+  if (args.emailMessage !== undefined) {
+    await drive.permissions.create({
+      fileId: args.fileId,
+      sendNotificationEmail: args.sendNotificationEmail ?? false,
+      emailMessage: args.emailMessage,
+      requestBody: { type: 'user', role: args.role, emailAddress: args.email },
+    });
+  } else {
+    await drive.permissions.create({
+      fileId: args.fileId,
+      sendNotificationEmail: args.sendNotificationEmail ?? false,
+      requestBody: { type: 'user', role: args.role, emailAddress: args.email },
+    });
+  }
+}
+
+export interface DriveLink {
+  webViewLink: string;
+  webContentLink: string | null;
+}
+
+export async function getDriveLinks(fileId: string): Promise<DriveLink> {
+  const drive = getDriveClient();
+  const meta = await drive.files.get({
+    fileId,
+    fields: 'webViewLink, webContentLink',
+  });
+  return {
+    webViewLink: meta.data.webViewLink ?? `https://drive.google.com/file/d/${fileId}/view`,
+    webContentLink: meta.data.webContentLink ?? null,
+  };
+}

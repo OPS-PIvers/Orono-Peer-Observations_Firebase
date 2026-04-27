@@ -25,11 +25,15 @@ COPY packages/shared ./packages/shared
 COPY apps/pdf-renderer ./apps/pdf-renderer
 COPY tsconfig.base.json ./
 
-RUN pnpm --filter @ops/pdf-renderer build
+# packages/shared exposes ./dist as its `exports`; we must compile it
+# before tsup tries to resolve `@ops/shared` from pdf-renderer.
+RUN pnpm --filter @ops/shared build \
+    && pnpm --filter @ops/pdf-renderer build
 
 # Produce a self-contained deploy directory (prod deps only, workspace deps
-# resolved into node_modules).
-RUN pnpm deploy --filter @ops/pdf-renderer --prod /deploy
+# resolved into node_modules). pnpm v10 requires --legacy unless the
+# workspace has `inject-workspace-packages=true` configured.
+RUN pnpm deploy --filter @ops/pdf-renderer --prod --legacy /deploy
 
 # ----- Runtime ---------------------------------------------------------------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime

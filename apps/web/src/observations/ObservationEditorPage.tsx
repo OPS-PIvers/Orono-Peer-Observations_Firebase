@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ExternalLink, Loader2 } from 'lucide-react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -20,13 +21,32 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import { ScriptEditor } from './ScriptEditor';
 import { AudioRecorder } from './AudioRecorder';
+
+interface FinalizeResponse {
+  pdfDriveFileId: string;
+  driveFolderId: string;
+  pdfWebViewLink: string;
+}
+
+const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeResponse>(
+  functions,
+  'finalizeObservation',
+);
 
 const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
   developing: 'Developing',
@@ -112,6 +132,11 @@ export function ObservationEditorPage() {
     scriptDoc: undefined,
   });
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
 
   useEffect(() => {
     if (observation) {
@@ -243,6 +268,27 @@ export function ObservationEditorPage() {
     scheduleSave();
   }
 
+  async function handleFinalize() {
+    if (!observation) return;
+    setFinalizing(true);
+    setFinalizeError(null);
+    try {
+      // Flush any in-flight edits first so the server sees current state.
+      if (flushTimer.current) {
+        clearTimeout(flushTimer.current);
+        flushTimer.current = null;
+      }
+      await flush();
+      const result = await finalizeObservationFn({ observationId: observation.id });
+      setJustFinalized(result.data);
+      setFinalizeOpen(false);
+    } catch (err) {
+      setFinalizeError(err instanceof Error ? err.message : 'Finalize failed');
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
   const selected = activeComponents.find((ac) => ac.component.id === selectedComponentId);
 
   return (
@@ -263,8 +309,29 @@ export function ObservationEditorPage() {
         <div className="flex items-center gap-3">
           <SaveStatusIndicator state={savingState} error={saveError} />
           <StatusBadge status={observation.status} />
+          {canEdit && observation.status === OBSERVATION_STATUS.draft ? (
+            <Button onClick={() => setFinalizeOpen(true)} size="sm">
+              <CheckCircle2 className="h-4 w-4" />
+              Finalize
+            </Button>
+          ) : null}
         </div>
       </header>
+
+      {justFinalized ? (
+        <FinalizedBanner result={justFinalized} observedEmail={observation.observedEmail} />
+      ) : null}
+
+      <FinalizeDialog
+        open={finalizeOpen}
+        onOpenChange={(open) => {
+          if (!finalizing) setFinalizeOpen(open);
+        }}
+        observation={observation}
+        finalizing={finalizing}
+        error={finalizeError}
+        onConfirm={() => void handleFinalize()}
+      />
 
       {!canEdit && !isReadOnly ? (
         <div className="bg-accent text-accent-foreground border-primary mb-4 rounded-md border-l-4 px-3 py-2 text-sm">
@@ -405,6 +472,116 @@ function ScriptPanel({
         transcripts={transcripts}
         readOnly={readOnly}
       />
+    </div>
+  );
+}
+
+function FinalizeDialog({
+  open,
+  onOpenChange,
+  observation,
+  finalizing,
+  error,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  observation: Observation;
+  finalizing: boolean;
+  error: string | null;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Finalize observation</DialogTitle>
+          <DialogDescription>
+            This will lock the observation, generate a PDF, and share the Drive folder with{' '}
+            <strong>{observation.observedEmail}</strong> as Reader. After finalizing, no further
+            edits are possible.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="text-muted-foreground space-y-1 px-1 py-2 text-sm">
+          <li>· Observed: {observation.observedName}</li>
+          <li>· Type: {observation.type}</li>
+          <li>
+            · Audio recordings:{' '}
+            {observation.audioDriveFileIds.length === 0
+              ? 'none'
+              : `${String(observation.audioDriveFileIds.length)} (will remain in the Drive folder)`}
+          </li>
+        </ul>
+        {error ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            {error}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={finalizing}
+            type="button"
+          >
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={finalizing}>
+            {finalizing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Finalizing…
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                Finalize
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FinalizedBanner({
+  result,
+  observedEmail,
+}: {
+  result: FinalizeResponse;
+  observedEmail: string;
+}) {
+  return (
+    <div className="border-primary bg-accent text-accent-foreground mb-4 rounded-md border-l-4 px-4 py-3">
+      <div className="flex items-start gap-3">
+        <CheckCircle2 className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />
+        <div className="space-y-1 text-sm">
+          <p className="font-medium">Observation finalized.</p>
+          <p>
+            The Drive folder has been shared with <strong>{observedEmail}</strong> as Reader.
+            They&apos;ll see the observation when they sign in.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-1 text-xs">
+            <a
+              href={result.pdfWebViewLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary inline-flex items-center gap-1 underline hover:no-underline"
+            >
+              Open PDF <ExternalLink className="h-3 w-3" />
+            </a>
+            <a
+              href={`https://drive.google.com/drive/folders/${result.driveFolderId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary inline-flex items-center gap-1 underline hover:no-underline"
+            >
+              Open Drive folder <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
