@@ -5,7 +5,11 @@ import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
 import { AdminLayout } from '@/admin/AdminLayout';
 import { AdminPlaceholder } from '@/admin/AdminPlaceholder';
+import { BrandingPage } from '@/admin/branding/BrandingPage';
+import { RolesPage } from '@/admin/roles/RolesPage';
+import { SettingsPage } from '@/admin/settings/SettingsPage';
 import { StaffPage } from '@/admin/staff/StaffPage';
+import { WorkProductPage } from '@/admin/work-product/WorkProductPage';
 import { Dashboard } from '@/routes/Dashboard';
 import { MyRubric } from '@/routes/MyRubric';
 import { NotFound } from '@/routes/NotFound';
@@ -74,37 +78,23 @@ export function App() {
         >
           <Route index element={<Navigate to="staff" replace />} />
           <Route path="staff" element={<StaffPage />} />
-          <Route
-            path="roles"
-            element={<AdminPlaceholder title="Roles" phase="Phase 3 (next commit)" />}
-          />
+          <Route path="roles" element={<RolesPage />} />
           <Route
             path="rubrics"
-            element={<AdminPlaceholder title="Rubrics" phase="Phase 3 (next commit)" />}
+            element={<AdminPlaceholder title="Rubrics" phase="Phase 3 (rubric editor commit)" />}
           />
           <Route
             path="role-year-mappings"
             element={
-              <AdminPlaceholder title="Role / Year Mappings" phase="Phase 3 (next commit)" />
+              <AdminPlaceholder title="Role / Year Mappings" phase="Phase 3 (matrix UI commit)" />
             }
           />
-          <Route
-            path="work-product"
-            element={
-              <AdminPlaceholder title="Work Product Questions" phase="Phase 3 (next commit)" />
-            }
-          />
-          <Route
-            path="branding"
-            element={<AdminPlaceholder title="Branding" phase="Phase 3 (next commit)" />}
-          />
-          <Route
-            path="settings"
-            element={<AdminPlaceholder title="App Settings" phase="Phase 3 (next commit)" />}
-          />
+          <Route path="work-product" element={<WorkProductPage />} />
+          <Route path="branding" element={<BrandingPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route
             path="audit-log"
-            element={<AdminPlaceholder title="Audit Log" phase="Phase 3 (next commit)" />}
+            element={<AdminPlaceholder title="Audit Log" phase="Phase 3 (audit viewer commit)" />}
           />
         </Route>
 
