@@ -4,9 +4,10 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
 import { AdminLayout } from '@/admin/AdminLayout';
-import { AdminPlaceholder } from '@/admin/AdminPlaceholder';
+import { AuditLogPage } from '@/admin/audit-log/AuditLogPage';
 import { BrandingPage } from '@/admin/branding/BrandingPage';
 import { RolesPage } from '@/admin/roles/RolesPage';
+import { RoleYearMappingsPage } from '@/admin/role-year-mappings/RoleYearMappingsPage';
 import { RubricEditorPage } from '@/admin/rubrics/RubricEditorPage';
 import { RubricsListPage } from '@/admin/rubrics/RubricsListPage';
 import { SettingsPage } from '@/admin/settings/SettingsPage';
@@ -83,19 +84,11 @@ export function App() {
           <Route path="roles" element={<RolesPage />} />
           <Route path="rubrics" element={<RubricsListPage />} />
           <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
-          <Route
-            path="role-year-mappings"
-            element={
-              <AdminPlaceholder title="Role / Year Mappings" phase="Phase 3 (matrix UI commit)" />
-            }
-          />
+          <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />
           <Route path="work-product" element={<WorkProductPage />} />
           <Route path="branding" element={<BrandingPage />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route
-            path="audit-log"
-            element={<AdminPlaceholder title="Audit Log" phase="Phase 3 (audit viewer commit)" />}
-          />
+          <Route path="audit-log" element={<AuditLogPage />} />
         </Route>
 
         {/* Phase 4 mounts these — placeholders for now */}
