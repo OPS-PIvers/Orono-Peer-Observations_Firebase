@@ -1,0 +1,101 @@
+@import 'tailwindcss';
+
+/*
+ * Orono Peer Observations — Theme Tokens
+ *
+ * Source of truth: DESIGN.md at repo root (OPS Tech brand identity).
+ * Mode 1 (district-facing): blue dominates, red accents, Lexend + Roboto.
+ * shadcn/ui semantic tokens are mapped here so all generated components
+ * inherit the OPS brand without per-component overrides.
+ */
+
+@theme {
+  /* OPS Tech brand colors — verbatim from DESIGN.md ----------------------- */
+  --color-ops-blue-dark: #1d2a5d;
+  --color-ops-blue: #2d3f89;
+  --color-ops-blue-light: #4356a0;
+  --color-ops-blue-lighter: #eaecf5;
+
+  --color-ops-red-dark: #7a1718;
+  --color-ops-red: #ad2122;
+  --color-ops-red-light: #c13435;
+  --color-ops-red-lighter: #e5c7c7;
+
+  --color-ops-gray-darkest: #1a1a1a;
+  --color-ops-gray-dark: #333333;
+  --color-ops-gray: #666666;
+  --color-ops-gray-light: #999999;
+  --color-ops-gray-lighter: #cccccc;
+  --color-ops-gray-lightest: #f3f3f3;
+
+  /* Typography ------------------------------------------------------------ */
+  --font-heading: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+
+  /* shadcn/ui semantic mapping (light theme — default) -------------------- */
+  --color-background: #ffffff;
+  --color-foreground: var(--color-ops-gray-dark);
+
+  --color-card: #ffffff;
+  --color-card-foreground: var(--color-ops-gray-dark);
+
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-ops-gray-dark);
+
+  --color-primary: var(--color-ops-blue);
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: var(--color-ops-gray-lightest);
+  --color-secondary-foreground: var(--color-ops-gray-dark);
+
+  --color-muted: var(--color-ops-gray-lightest);
+  --color-muted-foreground: var(--color-ops-gray);
+
+  --color-accent: var(--color-ops-blue-lighter);
+  --color-accent-foreground: var(--color-ops-blue-dark);
+
+  --color-destructive: var(--color-ops-red);
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: var(--color-ops-gray-lighter);
+  --color-input: var(--color-ops-gray-lighter);
+  --color-ring: var(--color-ops-blue);
+
+  /* Border radius — slightly tighter than shadcn default for a more
+     "official document" feel that suits district tooling. */
+  --radius: 0.375rem;
+}
+
+/* Base typography ---------------------------------------------------------- */
+@layer base {
+  body {
+    font-family: var(--font-body);
+    color: var(--color-ops-gray-dark);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+  }
+
+  h1 {
+    color: var(--color-ops-blue-dark);
+  }
+  h2 {
+    color: var(--color-ops-red-light);
+  }
+
+  /* Tap targets for tablet — never below 44x44 for buttons/links inside
+     interactive surfaces. Tailwind's `min-h`/`min-w` utilities cover this
+     in components; this base style ensures custom controls don't slip. */
+  button,
+  [role='button'],
+  a {
+    touch-action: manipulation;
+  }
+}

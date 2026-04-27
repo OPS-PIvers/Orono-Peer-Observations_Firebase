@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+lib/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+*.local
+
+# Emulator data (we keep ./fixtures/seed but not ephemeral runtime exports)
+.emulator-data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Cloud Run
+apps/pdf-renderer/.gcloudignore
+
+# Service-account keys — NEVER commit
+*-credentials.json
+*service-account*.json
+secrets/
+
+# Vite
+*.local

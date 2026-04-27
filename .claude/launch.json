@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Web (Vite)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@ops/web", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "Firebase Emulator Suite",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:emulators"],
+      "port": 4000
+    }
+  ]
+}

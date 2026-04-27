@@ -1,0 +1,64 @@
+{
+  "name": "orono-peer-observations",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Orono Public Schools Peer Evaluator Observations app — Firebase + React + TypeScript migration of the Apps Script prototype.",
+  "packageManager": "pnpm@10.30.2",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @ops/web dev",
+    "dev:emulators": "firebase emulators:start --import=./fixtures/seed --export-on-exit=./fixtures/seed",
+    "build": "pnpm -r build",
+    "build:web": "pnpm --filter @ops/web build",
+    "build:functions": "pnpm --filter @ops/functions build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md,yml,yaml}\"",
+    "test": "pnpm -r test",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\"",
+    "test:e2e": "pnpm --filter @ops/web test:e2e",
+    "validate": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
+    "deploy:dev": "firebase hosting:channel:deploy dev-paul --expires 30d",
+    "deploy:prod": "firebase deploy --only hosting,functions,firestore,storage",
+    "import:emulator": "tsx scripts/import/import.ts --target=emulator",
+    "import:prod": "tsx scripts/import/import.ts --target=prod",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "@types/node": "^22.10.10",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "firebase-tools": "^15.8.0",
+    "globals": "^17.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^4.0.18"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx,json,css,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

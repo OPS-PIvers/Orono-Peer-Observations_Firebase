@@ -1,0 +1,70 @@
+name: Deploy — production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.30.2'
+  FIREBASE_PROJECT: peer-evaluator-rubric
+
+jobs:
+  deploy:
+    name: Hosting + Functions + Firestore + Storage (prod)
+    runs-on: ubuntu-latest
+    # `prod` GitHub Environment must be configured with a manual approval
+    # protection rule. This is the safety gate before anything hits live data.
+    environment: prod
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @ops/shared build
+
+      - name: Build web (with prod env)
+        run: pnpm --filter @ops/web build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ env.FIREBASE_PROJECT }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_USE_EMULATORS: 'false'
+
+      - name: Build functions
+        run: pnpm --filter @ops/functions build
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Auth to Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy hosting + functions + firestore rules + storage rules
+        run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only hosting,functions,firestore,storage --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}

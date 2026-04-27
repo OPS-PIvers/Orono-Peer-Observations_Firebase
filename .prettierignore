@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+lib/
+coverage/
+playwright-report/
+test-results/
+.firebase/
+fixtures/
+pnpm-lock.yaml
+*.tsbuildinfo

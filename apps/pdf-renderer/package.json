@@ -1,0 +1,32 @@
+{
+  "name": "@ops/pdf-renderer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "dev": "tsx watch src/index.ts",
+    "start": "node lib/index.js",
+    "typecheck": "tsc --noEmit",
+    "docker:build": "docker build -t pdf-renderer:dev .",
+    "docker:run": "docker run --rm -p 8080:8080 pdf-renderer:dev"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.18.0",
+    "@ops/shared": "workspace:*",
+    "firebase-admin": "^13.6.0",
+    "hono": "^4.11.4",
+    "puppeteer": "^24.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.10",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

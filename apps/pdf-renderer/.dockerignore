@@ -1,0 +1,15 @@
+**/node_modules
+**/lib
+**/dist
+**/.env*
+**/coverage
+**/playwright-report
+**/test-results
+.git
+.github
+.firebase
+fixtures
+PeerEvaluatorForm
+.claude
+docs
+README.md

@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// =============================================================================
+// Orono Peer Observations — Firestore Security Rules
+// =============================================================================
+// Skeleton for Phase 1. Detailed access matrix is built out in Phase 2 when the
+// data model lands. The general shape:
+//
+//   - Auth required for everything; domain restriction enforced at sign-in
+//     (Functions beforeCreate hook), but rules verify token claims defensively.
+//   - Roles live in Firebase Auth custom claims: { role, hasSpecialAccess }.
+//   - Admins (role == "Administrator" || "Full Access") can read/write nearly
+//     everything except finalized observations (immutable).
+//   - Peer Evaluators write their own draft observations; finalize transitions
+//     immutability.
+//   - Staff read their own staff record + their own finalized observations.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helpers -------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isFromOronoDomain() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$');
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function hasSpecialAccess() {
+      return request.auth.token.hasSpecialAccess == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (role() == 'Administrator' || role() == 'Full Access');
+    }
+
+    function isPeerEvaluator() {
+      return isSignedIn() && role() == 'Peer Evaluator';
+    }
+
+    // --- Default deny --------------------------------------------------------
+    // Phase 1 default-deny; specific collections opened in Phase 2.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Phase 1 placeholders so the app shell can read its own settings -----
+    // App settings + staff doc lookup needed for client to determine role/redirect.
+    // Staff record is read-only to the staff member themselves; full collection
+    // is admin-only. Detailed rules are tightened in Phase 2.
+
+    match /staff/{email} {
+      allow read: if isFromOronoDomain()
+        && (request.auth.token.email == email || isAdmin() || hasSpecialAccess());
+      allow write: if isAdmin();
+    }
+
+    match /appSettings/{settingId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+  }
+}
