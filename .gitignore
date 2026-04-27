@@ -5,7 +5,9 @@ node_modules/
 # Build output
 dist/
 build/
-lib/
+apps/functions/lib/
+apps/pdf-renderer/lib/
+packages/shared/dist/
 *.tsbuildinfo
 
 # Environment
