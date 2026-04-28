@@ -1,12 +1,39 @@
 import { useState } from 'react';
 import { GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
+import { Navigate } from 'react-router-dom';
 import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
 import { auth } from '@/lib/firebase';
+import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
 export function SignInScreen() {
+  const { status } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  // If the user already has a session (e.g., they just came back from
+  // signInWithRedirect), bounce them off /sign-in. RoleAwareRedirect at
+  // "/" picks the right landing page based on claims. Without this
+  // guard, the post-redirect URL stays /sign-in and the user re-clicks
+  // Continue with Google → loop.
+  if (status === 'signed-in') {
+    return <Navigate to="/" replace />;
+  }
+  // Don't render the sign-in form while AuthProvider is still resolving
+  // a possible session (initial mount, or a redirect-result still being
+  // processed) — otherwise the user can click Continue again before the
+  // redirect-back has finished, kicking off another OAuth round-trip.
+  if (status === 'loading') {
+    return (
+      <main
+        className="bg-ops-gray-lightest flex min-h-svh items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="text-muted-foreground text-sm">Signing in…</div>
+      </main>
+    );
+  }
 
   async function signIn() {
     setError(null);
