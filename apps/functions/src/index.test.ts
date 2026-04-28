@@ -14,5 +14,7 @@ describe('functions index', () => {
     expect(typeof mod.requestTranscription).not.toBe('undefined');
     expect(typeof mod.onTranscriptionJobCreated).not.toBe('undefined');
     expect(typeof mod.finalizeObservation).not.toBe('undefined');
+    expect(typeof mod.onObservationWritten).not.toBe('undefined');
+    expect(typeof mod.pruneAuditLog).not.toBe('undefined');
   });
 });
