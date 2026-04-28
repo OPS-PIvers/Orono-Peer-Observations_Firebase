@@ -10,6 +10,14 @@ import { NotFound } from '@/routes/NotFound';
 import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
 import { Unauthorized } from '@/routes/Unauthorized';
 
+// Dev-only sign-in helper. Lazy-loaded so production bundles tree-shake
+// the entire DevSignIn module + route registration. Only available when
+// `import.meta.env.MODE === 'development'` (Vite's dev server).
+const DevSignIn =
+  import.meta.env.MODE === 'development'
+    ? lazy(() => import('@/auth/DevSignIn').then((m) => ({ default: m.DevSignIn })))
+    : null;
+
 // Code-split heavy routes. Admin pages and the observation editor pull
 // in Tiptap, the audio recorder, and the rubric editor surface — all
 // pages a typical user opens at most a few times per session, well
@@ -66,6 +74,7 @@ export function App() {
         <Routes>
           {/* Public */}
           <Route path="/sign-in" element={<SignInScreen />} />
+          {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
 
           {/* Authenticated routes wrapped in Layout */}
           <Route

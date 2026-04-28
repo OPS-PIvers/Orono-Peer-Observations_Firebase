@@ -36,6 +36,20 @@ if (import.meta.env.VITE_USE_EMULATORS === 'true') {
   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
 }
 
+// Dev-only diagnostic hooks. Lets us reach the live SDK instances from
+// the browser console (or a Playwright/Chrome MCP `evaluate`) without
+// shipping anything to prod — Vite tree-shakes the entire `if` body away
+// in production builds.
+if (import.meta.env.MODE === 'development') {
+  void Promise.all([
+    import('firebase/firestore'),
+    import('firebase/auth'),
+  ]).then(([fs, au]) => {
+    const w = globalThis as unknown as { __OPS__?: unknown };
+    w.__OPS__ = { auth, db, functions, firestore: fs, authSdk: au };
+  });
+}
+
 /**
  * URL for an HTTP-style Cloud Function (the v2 onRequest variety) — used
  * for endpoints that accept binary bodies (audio upload) or stream

@@ -8,10 +8,16 @@
       "port": 5173
     },
     {
-      "name": "Firebase Emulator Suite",
+      "name": "Dev Auth Server",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:emulators"],
-      "port": 4000
+      "runtimeArgs": ["dev:auth-server"],
+      "port": 8787
+    },
+    {
+      "name": "PDF Renderer (local)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@ops/pdf-renderer", "dev"],
+      "port": 8080
     }
   ]
 }

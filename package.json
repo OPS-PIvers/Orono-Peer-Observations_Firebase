@@ -11,6 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @ops/web dev",
+    "dev:auth-server": "node scripts/dev-auth-server.mjs",
     "dev:emulators": "firebase emulators:start --import=./fixtures/seed --export-on-exit=./fixtures/seed",
     "build": "pnpm -r build",
     "build:web": "pnpm --filter @ops/web build",
