@@ -14,33 +14,9 @@ import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
  * (firebase emulators:start). This is the primary local dev loop.
  */
 
-// `authDomain` controls where signInWithRedirect sends the user. When the
-// app and the auth handler live on different origins (the default
-// `<project>.firebaseapp.com` is cross-origin from any `*.web.app`
-// preview channel), modern browsers' storage partitioning blocks the
-// post-redirect SDK from reading the auth result the handler wrote —
-// users land back at /sign-in and click "Continue with Google" forever.
-//
-// Firebase Hosting serves the reserved `__/auth/*` namespace on every
-// Hosting alias attached to the project, so we can just match
-// `authDomain` to whatever Hosting domain the app is currently running
-// on (preview channel, prod, etc). Same-origin → no third-party storage
-// in the loop. Falls back to the env var for `localhost` and any other
-// non-Hosting origin (where popup/emulator flows aren't bound by the
-// same restrictions).
-function resolveAuthDomain(): string {
-  const envValue = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined;
-  if (typeof window === 'undefined') return envValue ?? '';
-  const host = window.location.hostname;
-  if (host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) {
-    return host;
-  }
-  return envValue ?? '';
-}
-
 const config: FirebaseOptions = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: resolveAuthDomain(),
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
