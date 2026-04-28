@@ -15,7 +15,6 @@
     }
   ],
   "hosting": {
-    "predeploy": ["pnpm --filter @ops/web run build"],
     "public": "apps/web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
