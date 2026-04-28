@@ -64,6 +64,14 @@ export const onObservationWritten = onDocumentWritten(
     document: 'observations/{observationId}',
     region: 'us-central1',
     memory: '256MiB',
+    // Serialize: each invocation does 2 Sheet reads + 1 write, and the
+    // free Sheets API quota is 60 read + 60 write per minute. Allowing
+    // 20 parallel instances during a bulk import (or any burst) trips
+    // the quota, drops rows, and surfaces as 429s in the function logs.
+    // One instance at a time keeps everything orderly; the trigger work
+    // is fast enough that serialization isn't a UX concern.
+    maxInstances: 1,
+    concurrency: 1,
   },
   async (event) => {
     const sheetId = MASTER_LOG_SHEET_ID.value();
