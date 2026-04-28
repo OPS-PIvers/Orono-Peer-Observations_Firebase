@@ -59,7 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       setUser(next);
-      if (!next) {
+      if (next) {
+        // Hold the UI in 'loading' until onIdTokenChanged finishes the
+        // claim-sync round-trip below. Without this, RequireAuth sees a
+        // 'signed-out' status during the React batch between sign-in and
+        // the first token callback, and bounces the user to /sign-in
+        // mid-redirect.
+        setStatus((prev) => (prev === 'signed-out' ? 'loading' : prev));
+      } else {
         setClaims(defaultClaims);
         setStatus('signed-out');
         syncedUidRef.current = null;
@@ -71,29 +78,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void firebaseSignOut(auth);
         return;
       }
-      void next.getIdTokenResult().then(async (result) => {
+      void (async () => {
+        // First sign-in this session: synchronously sync claims and
+        // refresh the token before flipping status to 'signed-in'.
+        // Without this gate, RequireAuth-protected routes mount Firestore
+        // listeners with a no-claims token; rules deny; the listener
+        // captures the error and never auto-recovers.
+        const isFirstSignIn = syncedUidRef.current !== next.uid;
+        if (isFirstSignIn) {
+          syncedUidRef.current = next.uid;
+          try {
+            await syncMyClaimsFn({});
+            await next.getIdToken(true);
+          } catch (err) {
+            console.warn('syncMyClaims failed', err);
+          }
+        }
+
+        const result = await next.getIdTokenResult();
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
         setClaims({ role, hasSpecialAccess });
         setStatus('signed-in');
-
-        // First time we see this UID this session, ask the server to
-        // re-derive claims from the staff doc. The callable is idempotent;
-        // skipping when the UID is already synced keeps token refreshes
-        // cheap.
-        if (syncedUidRef.current === next.uid) return;
-        syncedUidRef.current = next.uid;
-        try {
-          await syncMyClaimsFn({});
-          await next.getIdToken(true); // pull a fresh token with new claims
-        } catch (err) {
-          // Soft failure: the user can still navigate, but rules-protected
-          // operations will reflect their stale (or absent) claims. The
-          // user can hit Sign-Out / Sign-In to retry.
-          console.warn('syncMyClaims failed', err);
-        }
-      });
+      })();
     });
     return () => {
       unsubAuth();

@@ -19,6 +19,16 @@ export function useFirestoreDoc<T = DocumentData>(docPath: string): UseFirestore
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    // Empty path is the "no doc yet" sentinel callers use when the doc
+    // ID depends on data still loading (e.g. role/year mapping resolves
+    // after the observation arrives). Treat as loading; don't try to
+    // subscribe — `doc(db, '')` throws.
+    if (!docPath) {
+      setLoading(true);
+      setError(null);
+      setData(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     const unsubscribe = onSnapshot(
