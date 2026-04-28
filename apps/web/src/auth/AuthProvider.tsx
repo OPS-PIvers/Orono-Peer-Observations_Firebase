@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  getRedirectResult,
   onAuthStateChanged,
   onIdTokenChanged,
   signOut as firebaseSignOut,
@@ -49,6 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const syncedUidRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Surface any pending redirect-based sign-in (Google OAuth via
+    // signInWithRedirect bounces back here on the next page load). We
+    // don't need to do anything with the result — onAuthStateChanged
+    // and onIdTokenChanged below pick up the new user automatically.
+    // Errors are logged for diagnostics but never throw.
+    void getRedirectResult(auth).catch((err: unknown) => {
+      console.warn('redirect sign-in failed', err);
+    });
+
     const unsubAuth = onAuthStateChanged(auth, (next) => {
       // Defense-in-depth domain check: the GoogleAuthProvider's `hd` param
       // restricts the account chooser, but a determined user could still

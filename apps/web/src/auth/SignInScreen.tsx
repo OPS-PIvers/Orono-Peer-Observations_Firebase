@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithRedirect } from 'firebase/auth';
 import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -14,13 +14,20 @@ export function SignInScreen() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
-      await signInWithPopup(auth, provider);
+      // Redirect (not popup): Chrome's default Cross-Origin-Opener-Policy
+      // breaks Firebase's `signInWithPopup` polling. The popup completes
+      // sign-in but the parent never picks up the result. The full-page
+      // redirect avoids the issue entirely. AuthProvider calls
+      // getRedirectResult on mount to surface the post-redirect user.
+      await signInWithRedirect(auth, provider);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign-in failed. Please try again.';
       setError(message);
-    } finally {
       setPending(false);
     }
+    // Note: on success, signInWithRedirect navigates away — we never
+    // reach the finally clause to reset pending. The page reloads from
+    // Google and AuthProvider takes over.
   }
 
   return (
