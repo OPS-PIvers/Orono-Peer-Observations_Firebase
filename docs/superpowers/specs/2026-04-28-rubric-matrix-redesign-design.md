@@ -122,7 +122,7 @@ Click an observation card → `/observations/:id`. The PE editor in read-only mo
 
 An Orono rubric is 4 domains × ~5 components = ~20 components, each with 4 descriptors + ~5 look-fors + (in edit mode) a Tiptap editor. ~20 Tiptap instances rendered eagerly is the only concern.
 
-**Mitigation:** lazy-mount per-component Tiptap *only when the notes strip is expanded*. Collapsible strip already gates the mount. First open is a one-time ~50ms Tiptap init; subsequent toggles only show/hide.
+**Mitigation:** lazy-mount per-component Tiptap _only when the notes strip is expanded_. Collapsible strip already gates the mount. First open is a one-time ~50ms Tiptap init; subsequent toggles only show/hide.
 
 The descriptor matrix itself is plain text in CSS Grid — no virtualization needed at 20 rows.
 
