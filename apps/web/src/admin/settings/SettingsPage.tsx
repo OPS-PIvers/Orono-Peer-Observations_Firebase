@@ -20,10 +20,10 @@ export function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  // Hydrate once; later snapshots would clobber in-progress edits. Issue #3.
-  // Pass the doc id (not the full path) so useHydratedDraft's source-id
-  // guard matches data.id (which useFirestoreDoc fills with snap.id).
-  useHydratedDraft(APP_SETTINGS_DOC_ID, data, setForm);
+  // Hydrate once; later snapshots would clobber in-progress edits.
+  // Key off the loaded doc's own id rather than a constant so the
+  // hook's source-id guard always matches. Issue #3.
+  useHydratedDraft(data?.id ?? null, data, setForm);
 
   if (loading && !data) return <p className="text-muted-foreground">Loading settings…</p>;
 

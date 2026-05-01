@@ -44,8 +44,10 @@ export function RubricEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  // Hydrate once; later snapshots would clobber in-progress edits. Issue #3.
-  useHydratedDraft(rubricId ?? null, data, (src) => {
+  // Hydrate once; later snapshots would clobber in-progress edits. Key
+  // off the loaded doc's own id so a route change can't briefly hydrate
+  // with the previous rubric. Issue #3.
+  useHydratedDraft(data?.id ?? null, data, (src) => {
     setDraft(src);
     const firstComponent = src.domains[0]?.components[0]?.id;
     setSelectedComponentId((current) => current ?? firstComponent ?? null);
