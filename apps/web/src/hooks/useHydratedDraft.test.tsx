@@ -135,6 +135,57 @@ describe('useHydratedDraft', () => {
     expect(input).toHaveValue('hello world!');
   });
 
+  it('refuses to hydrate when source.id does not match id (navigation race)', () => {
+    // Repro of the gemini-code-assist review on PR #5: when the route
+    // changes from doc-A to doc-B, useFirestoreDoc keeps returning A's
+    // data for one render before its own effect resubscribes. Without
+    // the source-id guard the new page would permanently hydrate with
+    // the old doc's content.
+    const hydrate = vi.fn<(src: Doc) => void>();
+    const docA: Doc = { id: 'doc-A', text: 'a-text' };
+    const docB: Doc = { id: 'doc-B', text: 'b-text' };
+
+    const { rerender } = renderHook(
+      ({ id, source }: { id: string; source: Doc }) => useHydratedDraft(id, source, hydrate),
+      { initialProps: { id: 'doc-A', source: docA } },
+    );
+
+    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(hydrate).toHaveBeenLastCalledWith(docA);
+
+    // URL has navigated to doc-B but useFirestoreDoc still has docA in
+    // its state for one render. Must NOT hydrate.
+    rerender({ id: 'doc-B', source: docA });
+    expect(hydrate).toHaveBeenCalledTimes(1);
+
+    // Real doc-B data finally arrives. Now hydrate should run.
+    rerender({ id: 'doc-B', source: docB });
+    expect(hydrate).toHaveBeenCalledTimes(2);
+    expect(hydrate).toHaveBeenLastCalledWith(docB);
+  });
+
+  it('hydrates id-less sources without the source-id guard tripping', () => {
+    // Branding/settings sub-objects (e.g. `data?.branding`) don't carry
+    // an id field. The guard must skip in that case.
+    const hydrate = vi.fn<(src: { appName: string }) => void>();
+    const { rerender } = renderHook(
+      ({ id, source }: { id: string; source: { appName: string } | null }) =>
+        useHydratedDraft(id, source, hydrate),
+      {
+        initialProps: {
+          id: 'global',
+          source: null as { appName: string } | null,
+        },
+      },
+    );
+
+    expect(hydrate).not.toHaveBeenCalled();
+
+    rerender({ id: 'global', source: { appName: 'OPS' } });
+    expect(hydrate).toHaveBeenCalledTimes(1);
+    expect(hydrate).toHaveBeenLastCalledWith({ appName: 'OPS' });
+  });
+
   it('runs the latest hydrate closure when the id changes', () => {
     const first = vi.fn<(src: Doc) => void>();
     const second = vi.fn<(src: Doc) => void>();
