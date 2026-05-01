@@ -5,7 +5,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
 import { ObservationsListPage } from '@/observations/ObservationsListPage';
-import { MyRubric } from '@/routes/MyRubric';
+import { MyRubricPage } from '@/routes/MyRubricPage';
 import { NotFound } from '@/routes/NotFound';
 import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
 import { Unauthorized } from '@/routes/Unauthorized';
@@ -132,7 +132,7 @@ export function App() {
             element={
               <RequireAuth>
                 <Layout>
-                  <MyRubric />
+                  <MyRubricPage />
                 </Layout>
               </RequireAuth>
             }
