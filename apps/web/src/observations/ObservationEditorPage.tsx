@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,17 +143,19 @@ export function ObservationEditorPage() {
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
 
-  useEffect(() => {
-    if (observation) {
-      const next: EditorDraft = {
-        observationData: observation.observationData,
-        componentNotes: observation.componentNotes,
-        scriptDoc: observation.scriptDoc,
-      };
-      setDraft(next);
-      draftRef.current = next;
-    }
-  }, [observation]);
+  // Hydrate the local draft exactly once per observation. Subsequent
+  // snapshots (including the user's own write coming back) must not touch
+  // local state, or they'd overwrite keystrokes typed during the autosave
+  // round-trip. See issue #3.
+  useHydratedDraft(observationId ?? null, observation, (src) => {
+    const next: EditorDraft = {
+      observationData: src.observationData,
+      componentNotes: src.componentNotes,
+      scriptDoc: src.scriptDoc,
+    };
+    setDraft(next);
+    draftRef.current = next;
+  });
 
   const flush = useCallback(async () => {
     if (!observation) return;

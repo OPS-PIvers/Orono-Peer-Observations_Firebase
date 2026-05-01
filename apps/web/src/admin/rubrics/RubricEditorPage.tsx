@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Plus, Trash2, X } from 'lucide-react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -11,6 +11,7 @@ import {
   type RubricDomain,
 } from '@ops/shared';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,15 +44,13 @@ export function RubricEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => {
-    if (data) {
-      setDraft(data);
-      // Auto-select first component if nothing's selected yet
-      const firstComponent = data.domains[0]?.components[0]?.id;
-      setSelectedComponentId((current) => current ?? firstComponent ?? null);
-      setDirty(false);
-    }
-  }, [data]);
+  // Hydrate once; later snapshots would clobber in-progress edits. Issue #3.
+  useHydratedDraft(rubricId ?? null, data, (src) => {
+    setDraft(src);
+    const firstComponent = src.domains[0]?.components[0]?.id;
+    setSelectedComponentId((current) => current ?? firstComponent ?? null);
+    setDirty(false);
+  });
 
   if (!rubricId) {
     return (
