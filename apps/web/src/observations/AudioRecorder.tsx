@@ -21,9 +21,12 @@ export interface AudioRecorderProps {
   transcripts: Record<string, string>;
   readOnly?: boolean;
   onUploaded?: (audioFileId: string) => void;
+  /** Notifies the parent when recording phase changes — used by the
+   *  toolbar to render a red-dot indicator while recording is in flight. */
+  onPhaseChange?: (phase: Phase) => void;
 }
 
-type Phase = 'idle' | 'recording' | 'uploading' | 'error';
+export type Phase = 'idle' | 'recording' | 'uploading' | 'error';
 
 /**
  * In-browser audio recorder backed by MediaRecorder. Records as webm/opus
@@ -42,8 +45,12 @@ export function AudioRecorder({
   transcripts,
   readOnly = false,
   onUploaded,
+  onPhaseChange,
 }: AudioRecorderProps) {
   const [phase, setPhase] = useState<Phase>('idle');
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   /** fileIds with a transcription request in flight (local optimistic). */
