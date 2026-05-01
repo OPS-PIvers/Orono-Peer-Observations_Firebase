@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, FileText, Loader2 } from 'lucide-react';
-import { limit, orderBy, where } from 'firebase/firestore';
+import { Timestamp, limit, orderBy, where } from 'firebase/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, type Observation } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
@@ -110,13 +110,7 @@ export function RecentObservationsStrip({ observedEmail }: RecentObservationsStr
 }
 
 function ObservationCard({ obs }: { obs: Observation & { id: string } }) {
-  const finalizedDate = obs.finalizedAt
-    ? new Date(obs.finalizedAt).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : '—';
+  const finalizedDate = formatFinalizedDate(obs.finalizedAt);
   const heading = obs.observationName || `${obs.type} observation`;
   const pdfHref = obs.pdfDriveFileId
     ? `https://drive.google.com/file/d/${obs.pdfDriveFileId}/view`
@@ -146,4 +140,18 @@ function ObservationCard({ obs }: { obs: Observation & { id: string } }) {
       ) : null}
     </article>
   );
+}
+
+function formatFinalizedDate(value: Observation['finalizedAt']): string {
+  if (value === null) return '—';
+  // Firestore returns timestamp fields as the SDK Timestamp class even
+  // though our Zod schema models them as Date — `new Date(timestamp)`
+  // would yield "Invalid Date". Mirrors the pattern in AuditLogPage.
+  const date = value instanceof Timestamp ? value.toDate() : value;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }

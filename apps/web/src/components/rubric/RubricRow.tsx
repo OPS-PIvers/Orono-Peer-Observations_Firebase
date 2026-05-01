@@ -287,17 +287,15 @@ function BestPracticesPopover({ text }: { text: string }) {
  * returns false so the notes strip doesn't auto-expand for fresh drafts.
  */
 function hasTiptapContent(doc: TiptapDoc | undefined): boolean {
-  if (!doc?.content) return false;
-  return doc.content.some((node) => {
-    if (typeof node !== 'object' || node === null) return false;
-    const inner = (node as { content?: unknown }).content;
-    if (!Array.isArray(inner)) return false;
-    return inner.some((child) => {
-      if (typeof child !== 'object' || child === null) return false;
-      const c = child as { type?: unknown; text?: unknown };
-      return c.type === 'text' && typeof c.text === 'string' && c.text.trim() !== '';
-    });
-  });
+  return walkForText(doc);
+}
+
+function walkForText(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false;
+  const n = node as { type?: unknown; text?: unknown; content?: unknown };
+  if (n.type === 'text' && typeof n.text === 'string' && n.text.trim() !== '') return true;
+  if (Array.isArray(n.content)) return n.content.some(walkForText);
+  return false;
 }
 
 function useSessionStorageBoolean(

@@ -84,8 +84,13 @@ export function RubricGrid({ rubric, mode, storageScope, className }: RubricGrid
       {visibleDomains.map(({ domain, components }) => (
         <DomainSection key={domain.id} domain={domain}>
           {components.map((component) => (
+            // Include storageScope in the key so navigating between
+            // observations (each with a unique edit-{id} scope) remounts
+            // the row and re-reads its sessionStorage-backed expand state
+            // — otherwise prior look-fors/notes toggles bleed across
+            // observations.
             <RubricRow
-              key={component.id}
+              key={`${storageScope}:${component.id}`}
               domain={domain}
               component={component}
               mode={mode}
