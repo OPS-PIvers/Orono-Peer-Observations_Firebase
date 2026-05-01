@@ -18,14 +18,12 @@ export interface GlobalToolsBarProps {
 
 /**
  * Sticky top toolbar for the observation editor. Hosts:
+ *   - <DomainNav> jump pills (when a rubric is loaded)
  *   - the audio recorder in a popover (always-mounted so closing the
  *     popover doesn't kill an in-flight `MediaRecorder`)
  *   - save status text
  *   - draft/finalized status badge
  *   - Finalize button (drafts only)
- *
- * Domain navigation lives in the rubric grid section's sticky header
- * for now; <DomainNav> with scroll-spy lands in Step 4.
  */
 export function GlobalToolsBar({
   observation,

@@ -40,6 +40,15 @@ export function useFirestoreCollection<T = DocumentData>(
   const constraintsKey = constraints.map((c) => c.type).join('|');
 
   useEffect(() => {
+    // Empty path is the "don't subscribe yet" sentinel — used by callers
+    // that want to mount this hook conditionally without violating the
+    // rules of hooks. Mirrors `useFirestoreDoc`'s behavior.
+    if (!collectionPath) {
+      setLoading(false);
+      setError(null);
+      setData(null);
+      return;
+    }
     setLoading(true);
     setError(null);
 

@@ -74,6 +74,23 @@ export function MyRubricPage() {
     [mapping],
   );
 
+  // When the user picks "Assigned only", filter the rubric here so that
+  // <DomainNav> and <RubricGrid> render the same set of domains. Without
+  // this, the nav would render pills for domains the grid hides — clicking
+  // them would scroll nowhere and the IntersectionObserver scroll-spy
+  // would never activate them.
+  const displayedRubric = useMemo<Rubric | null>(() => {
+    if (!rubric) return null;
+    if (assignmentMode === 'full') return rubric;
+    const filteredDomains = rubric.domains
+      .map((d) => ({
+        ...d,
+        components: d.components.filter((c) => assignedComponentIds.has(c.id)),
+      }))
+      .filter((d) => d.components.length > 0);
+    return { ...rubric, domains: filteredDomains };
+  }, [rubric, assignmentMode, assignedComponentIds]);
+
   if (!user) {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;
   }
@@ -102,21 +119,26 @@ export function MyRubricPage() {
 
       <RecentObservationsStrip observedEmail={lowerEmail} />
 
-      {rubric ? (
+      {displayedRubric && displayedRubric.domains.length > 0 ? (
         <>
           <div className="bg-background border-border sticky top-0 z-10 -mx-4 border-b px-4 py-2">
-            <DomainNav rubric={rubric} />
+            <DomainNav rubric={displayedRubric} />
           </div>
           <RubricGrid
-            rubric={rubric}
+            rubric={displayedRubric}
             mode={{
               kind: 'view',
               assignedComponentIds,
-              showAssignedOnly: assignmentMode === 'assigned',
+              showAssignedOnly: false,
             }}
-            storageScope={`view-${rubric.rubricId}`}
+            storageScope={`view-${displayedRubric.rubricId}`}
           />
         </>
+      ) : rubric && assignmentMode === 'assigned' ? (
+        <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+          No components are assigned for your role/year combination. Switch to{' '}
+          <strong>Full Rubric</strong> to view the complete rubric.
+        </div>
       ) : staff && roles && rubrics ? (
         <div className="border-primary bg-accent text-accent-foreground rounded-md border-l-4 px-4 py-3 text-sm">
           No rubric is set up for the role <strong>{staff.role}</strong>. Ask an admin to verify the

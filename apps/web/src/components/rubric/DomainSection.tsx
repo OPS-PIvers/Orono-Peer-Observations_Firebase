@@ -32,19 +32,21 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
       {/* Horizontal scroll for narrow viewports — sticky first column inside
           preserves context as the descriptor cells slide horizontally. */}
       <div className="overflow-x-auto">
-        <div className="min-w-[920px]">
-          <div
-            className="bg-muted text-muted-foreground sticky top-0 z-10 grid grid-cols-[220px_repeat(4,minmax(0,1fr))] border-b text-xs font-semibold tracking-wide uppercase"
-            role="row"
-          >
-            <div className="bg-muted px-3 py-2" role="columnheader">
-              Component
-            </div>
-            {(['developing', 'basic', 'proficient', 'distinguished'] as const).map((level) => (
-              <div key={level} className="border-border border-l px-3 py-2" role="columnheader">
-                {PROFICIENCY_LABELS[level]}
+        <div className="min-w-[920px]" role="grid" aria-labelledby={`domain-title-${domain.id}`}>
+          <div role="rowgroup">
+            <div
+              className="bg-muted text-muted-foreground sticky top-0 z-10 grid grid-cols-[220px_repeat(4,minmax(0,1fr))] border-b text-xs font-semibold tracking-wide uppercase"
+              role="row"
+            >
+              <div className="bg-muted px-3 py-2" role="columnheader">
+                Component
               </div>
-            ))}
+              {(['developing', 'basic', 'proficient', 'distinguished'] as const).map((level) => (
+                <div key={level} className="border-border border-l px-3 py-2" role="columnheader">
+                  {PROFICIENCY_LABELS[level]}
+                </div>
+              ))}
+            </div>
           </div>
           <div role="rowgroup">{children}</div>
         </div>
