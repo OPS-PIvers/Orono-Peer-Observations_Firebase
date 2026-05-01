@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, OPS_BRAND, type AppSettings } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,13 +21,12 @@ export function BrandingPage() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (data?.branding) {
-      setAppName(data.branding.appName);
-      setPrimaryColor(data.branding.primaryColor);
-      setLogoDriveFileId(data.branding.logoDriveFileId ?? '');
-    }
-  }, [data]);
+  // Hydrate once; later snapshots would clobber in-progress edits. Issue #3.
+  useHydratedDraft(SETTINGS_PATH, data?.branding ?? null, (branding) => {
+    setAppName(branding.appName);
+    setPrimaryColor(branding.primaryColor);
+    setLogoDriveFileId(branding.logoDriveFileId ?? '');
+  });
 
   if (loading && !data) return <p className="text-muted-foreground">Loading branding…</p>;
 

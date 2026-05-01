@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,11 +20,10 @@ export function SettingsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (data) {
-      setForm(data);
-    }
-  }, [data]);
+  // Hydrate once; later snapshots would clobber in-progress edits.
+  // Key off the loaded doc's own id rather than a constant so the
+  // hook's source-id guard always matches. Issue #3.
+  useHydratedDraft(data?.id ?? null, data, setForm);
 
   if (loading && !data) return <p className="text-muted-foreground">Loading settings…</p>;
 
