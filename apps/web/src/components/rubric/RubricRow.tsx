@@ -12,7 +12,7 @@ import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import type { RubricGridMode } from './RubricGrid';
 
-const EMPTY_ENTRY: ObservationComponentEntry = {
+export const EMPTY_ENTRY: ObservationComponentEntry = {
   proficiency: null,
   selectedLookForIds: [],
   scratchNotes: '',
@@ -188,7 +188,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
         {component.lookFors.length > 0 && lookForsExpanded ? (
           <div
             id={`lookfors-${storageScope}-${component.id}`}
-            className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+            className="mt-2 grid grid-cols-1 gap-1.5 bg-ops-blue-lighter/40 p-3 sm:grid-cols-2"
           >
             {component.lookFors.map((lf) => {
               const checked = mode.kind === 'edit' && entry.selectedLookForIds.includes(lf.id);
