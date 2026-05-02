@@ -1,0 +1,396 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  BookOpen,
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Eye,
+  FileText,
+  LogOut,
+  Menu,
+  Settings,
+  User,
+  Users,
+  X,
+} from 'lucide-react';
+import { SPECIAL_ROLES } from '@ops/shared';
+import { useAuth } from '@/auth/AuthProvider';
+import { cn } from '@/lib/utils';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface NavSubItem {
+  label: string;
+  href: string;
+}
+
+interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  href?: string;
+  action?: () => void;
+  locked?: boolean;
+  children?: NavSubItem[];
+}
+
+interface NavConfig {
+  main: NavItem[];
+  meta: NavItem[];
+}
+
+// ─── useSidebar hook ─────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'ops:sidebar:expanded';
+
+export function useSidebar() {
+  const [pcExpanded, setPcExpanded] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const togglePc = useCallback(() => {
+    setPcExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY, String(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  }, []);
+
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  return { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile };
+}
+
+// ─── Nav item builder ────────────────────────────────────────────────────────
+
+const OBS_CHILDREN: NavSubItem[] = [
+  { label: 'Active drafts', href: '/observations?status=draft' },
+  { label: 'Finalized', href: '/observations?status=finalized' },
+  { label: 'All observations', href: '/observations' },
+];
+
+function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
+  const metaItems: NavItem[] = [
+    { icon: User, label: 'Profile', href: '/my-rubric' },
+    { icon: LogOut, label: 'Sign out', action: onSignOut },
+  ];
+
+  if (role === SPECIAL_ROLES.fullAccess) {
+    return {
+      main: [
+        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: Users, label: 'Staff', href: '/observations/new' },
+        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+        { icon: Settings, label: 'Admin Console', href: '/admin' },
+      ],
+      meta: metaItems,
+    };
+  }
+
+  if (role === SPECIAL_ROLES.administrator) {
+    return {
+      main: [
+        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: Building2, label: 'My Staff', href: '/observations' },
+        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      ],
+      meta: metaItems,
+    };
+  }
+
+  if (role === SPECIAL_ROLES.peerEvaluator) {
+    return {
+      main: [
+        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: Users, label: 'Staff', href: '/observations/new' },
+        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      ],
+      meta: metaItems,
+    };
+  }
+
+  // Staff (no special access)
+  return {
+    main: [
+      { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+      {
+        icon: ClipboardList,
+        label: 'Observations',
+        children: [{ label: 'View finalized observations', href: '/my-rubric' }],
+      },
+      { icon: FileText, label: 'Work Product', locked: true },
+      { icon: Eye, label: 'Instructional Round', locked: true },
+    ],
+    meta: metaItems,
+  };
+}
+
+function isActivePath(href: string, pathname: string): boolean {
+  const hrefPath = href.split('?')[0] ?? href;
+  if (hrefPath === '/') return pathname === '/';
+  return pathname === hrefPath || pathname.startsWith(hrefPath + '/');
+}
+
+// ─── AppSidebar component ────────────────────────────────────────────────────
+
+interface AppSidebarProps {
+  pcExpanded: boolean;
+  onTogglePc: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
+}
+
+export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }: AppSidebarProps) {
+  const { user, claims, signOut } = useAuth();
+  const location = useLocation();
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+
+  const onCloseMobileRef = useRef(onCloseMobile);
+  useLayoutEffect(() => {
+    onCloseMobileRef.current = onCloseMobile;
+  });
+
+  useEffect(() => {
+    onCloseMobileRef.current();
+  }, [location.pathname]);
+
+  const handleSignOut = useCallback(() => void signOut(), [signOut]);
+  const navConfig = buildNavItems(claims.role, handleSignOut);
+  const showLabels = pcExpanded || mobileOpen;
+
+  function toggleSection(label: string) {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }
+
+  function isSectionVisible(item: NavItem): boolean {
+    return (
+      openSections.has(item.label) ||
+      (item.children?.some((c) => isActivePath(c.href, location.pathname)) ?? false)
+    );
+  }
+
+  return (
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 xl:hidden"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <nav
+        className={cn(
+          'bg-ops-blue-dark fixed inset-y-0 left-0 z-50 flex flex-col text-white',
+          'w-60 transition-all duration-200',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0',
+          pcExpanded ? 'xl:w-60' : 'xl:w-14',
+        )}
+        aria-label="Main navigation"
+      >
+        {/* Header */}
+        <div className="flex h-[52px] shrink-0 items-center border-b border-white/10 px-2">
+          <button
+            type="button"
+            onClick={onTogglePc}
+            className="hidden h-8 w-8 items-center justify-center rounded-md text-white hover:bg-white/10 xl:inline-flex"
+            aria-label={pcExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onCloseMobile}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white hover:bg-white/10 xl:hidden"
+            aria-label="Close navigation"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {showLabels && (
+            <>
+              <img
+                src="/brand/torch-icon.png"
+                alt=""
+                className="ml-2 h-8 w-8 shrink-0 object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <span className="font-heading ml-2 truncate text-sm font-semibold text-white">
+                Peer Observations
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* User identity strip */}
+        {showLabels && user && (
+          <div className="shrink-0 border-b border-white/10 px-3 py-2.5">
+            <div className="truncate text-sm font-medium text-white">
+              {user.displayName ?? user.email}
+            </div>
+            {claims.role ? (
+              <div className="text-ops-blue-lighter truncate text-xs">{claims.role}</div>
+            ) : null}
+          </div>
+        )}
+
+        {/* Main nav */}
+        <div className="flex-1 overflow-y-auto py-2">
+          <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+            {navConfig.main.map((item) => (
+              <li key={item.label}>
+                <NavEntry
+                  item={item}
+                  showLabels={showLabels}
+                  location={location}
+                  sectionOpen={isSectionVisible(item)}
+                  onToggleSection={toggleSection}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Footer meta items */}
+        <div className="shrink-0 border-t border-white/10 py-2">
+          <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+            {navConfig.meta.map((item) => (
+              <li key={item.label}>
+                <NavEntry
+                  item={item}
+                  showLabels={showLabels}
+                  location={location}
+                  sectionOpen={false}
+                  onToggleSection={toggleSection}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+// ─── NavEntry ────────────────────────────────────────────────────────────────
+
+interface NavEntryProps {
+  item: NavItem;
+  showLabels: boolean;
+  location: ReturnType<typeof useLocation>;
+  sectionOpen: boolean;
+  onToggleSection: (label: string) => void;
+}
+
+function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: NavEntryProps) {
+  const isActive = item.href ? isActivePath(item.href, location.pathname) : false;
+
+  const baseItemCls = cn(
+    'flex w-full items-center rounded-md py-2 text-sm transition-colors',
+    'text-white/70 hover:bg-white/10 hover:text-white',
+    showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+  );
+
+  if (item.locked) {
+    return (
+      <div
+        className={cn(
+          'flex items-center rounded-md py-2 text-sm',
+          'pointer-events-none cursor-not-allowed text-white/30',
+          showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+        )}
+        title={item.label}
+      >
+        <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+        {showLabels && (
+          <span>
+            {item.label} <span className="text-[11px]">(not started)</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (item.children) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => onToggleSection(item.label)}
+          aria-expanded={sectionOpen}
+          className={cn(baseItemCls, sectionOpen && 'text-white')}
+        >
+          <item.icon className="h-5 w-5 shrink-0" />
+          {showLabels && (
+            <>
+              <span className="flex-1 text-left">{item.label}</span>
+              {sectionOpen ? (
+                <ChevronDown className="h-4 w-4 shrink-0" />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              )}
+            </>
+          )}
+        </button>
+        {showLabels && sectionOpen && (
+          <ul className="mt-0.5 ml-7 border-l border-white/10">
+            {item.children.map((child) => {
+              const childActive = isActivePath(child.href, location.pathname);
+              return (
+                <li key={child.href}>
+                  <Link
+                    to={child.href}
+                    className={cn(
+                      'block rounded-md py-1.5 pr-2 pl-3 text-sm transition-colors',
+                      'text-white/70 hover:bg-white/10 hover:text-white',
+                      childActive && 'bg-white/15 text-white',
+                    )}
+                  >
+                    {child.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  if (item.action) {
+    return (
+      <button type="button" onClick={item.action} className={baseItemCls}>
+        <item.icon className="h-5 w-5 shrink-0" />
+        {showLabels && <span>{item.label}</span>}
+      </button>
+    );
+  }
+
+  if (!item.href) return null;
+
+  return (
+    <Link to={item.href} className={cn(baseItemCls, isActive && 'bg-white/15 text-white')}>
+      <item.icon className="h-5 w-5 shrink-0" />
+      {showLabels && <span>{item.label}</span>}
+    </Link>
+  );
+}
