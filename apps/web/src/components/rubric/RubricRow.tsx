@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, NotebookPen } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import {
   PROFICIENCY_LEVELS,
   type ObservationComponentEntry,
@@ -9,7 +9,6 @@ import {
   type TiptapDoc,
 } from '@ops/shared';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
-import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { RubricGridMode } from './RubricGrid';
 
@@ -30,15 +29,11 @@ export interface RubricRowProps {
  * One rubric component rendered as a matrix row plus collapsible
  * look-fors and (in edit mode) notes strips below it.
  *
- * In `view` mode the descriptor cells are read-only text; an assignment
- * chip distinguishes assigned components from full-rubric ones.
- *
- * In `edit` mode the descriptor cells are clickable. Selecting a cell
- * fires `onProficiency`; clicking the same cell again clears it. The
- * Tiptap notes editor lazy-mounts only when the strip is expanded — the
- * hidden cost otherwise compounds across ~20 rows on a typical rubric.
+ * In `view` mode the descriptor cells are read-only; an assignment chip
+ * distinguishes assigned components. In `edit` mode cells are clickable
+ * and a notes editor lazy-mounts only when the strip is expanded.
  */
-export function RubricRow({ domain, component, mode, storageScope }: RubricRowProps) {
+export function RubricRow({ domain: _domain, component, mode, storageScope }: RubricRowProps) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
   const readOnly = mode.kind !== 'edit' || mode.readOnly;
@@ -46,9 +41,6 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
   const lookForsKey = `rubric-lookfors:${storageScope}:${component.id}`;
   const [lookForsExpanded, setLookForsExpanded] = useSessionStorageBoolean(lookForsKey, false);
 
-  // Notes strip auto-expands once when the component already has content
-  // (e.g. opening a finalized observation, or hydrating from Firestore on
-  // a draft). After the user collapses it manually, we honor that.
   const notesHasContent = useMemo(() => hasTiptapContent(notesDoc), [notesDoc]);
   const [notesExpanded, setNotesExpanded] = useState(notesHasContent);
   const notesAutoExpandedRef = useRef(false);
@@ -78,33 +70,52 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
   }
 
   return (
-    <div className="border-border border-b last:border-b-0">
+    <div
+      className={cn(
+        'border-border border-b last:border-b-0',
+        mode.kind === 'view' && isAssigned && 'border-l-4 border-l-green-500',
+        mode.kind === 'view' && !isAssigned && 'border-l-4 border-l-transparent',
+      )}
+    >
+      {/* Grid row */}
       <div
         className="grid grid-cols-[220px_repeat(4,minmax(0,1fr))] items-stretch"
         role="row"
         data-component-row={component.id}
       >
-        {/* Component title cell */}
-        <div className="bg-background flex flex-col gap-1 px-3 py-3">
-          <div className="flex items-center gap-2">
-            {mode.kind === 'view' ? (
-              <span
-                aria-label={isAssigned ? 'Assigned' : 'Not assigned'}
-                title={isAssigned ? 'Assigned to your role/year' : 'Not part of your assignment'}
-                className={cn(
-                  'inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
-                  isAssigned
-                    ? 'bg-ops-blue text-white'
-                    : 'border-ops-gray-lighter text-ops-gray-light border bg-white',
-                )}
-              >
-                {isAssigned ? '✓' : '○'}
+        {/* Component label cell */}
+        <div
+          role="rowheader"
+          aria-label={component.title}
+          className="flex flex-col justify-between gap-2 bg-ops-blue-dark px-3 py-3"
+        >
+          <div>
+            <div className="flex items-center gap-2">
+              {mode.kind === 'view' ? (
+                <span
+                  aria-label={isAssigned ? 'Assigned' : 'Not assigned'}
+                  title={isAssigned ? 'Assigned to your role/year' : 'Not part of your assignment'}
+                  className={cn(
+                    'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold',
+                    isAssigned
+                      ? 'bg-green-400 text-white'
+                      : 'border border-white/20 bg-white/10 text-white/40',
+                  )}
+                >
+                  {isAssigned ? '✓' : '○'}
+                </span>
+              ) : null}
+              <span className="font-mono text-[11px] font-semibold text-white/50">
+                {component.id}
               </span>
-            ) : null}
-            <span className="text-muted-foreground font-mono text-xs">{component.id}</span>
+            </div>
+            <p className="mt-1 text-sm font-semibold leading-snug text-white">{component.title}</p>
           </div>
-          <p className="text-foreground text-sm leading-snug font-medium">{component.title}</p>
-          <span className="text-muted-foreground text-[11px]">Domain {domain.id}</span>
+
+          {/* "Assigned" text label (view mode, assigned only) */}
+          {mode.kind === 'view' && isAssigned && (
+            <span className="text-[10px] font-medium uppercase text-green-400">Assigned</span>
+          )}
         </div>
 
         {/* Four descriptor cells */}
@@ -125,8 +136,8 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
         })}
       </div>
 
-      {/* Look-fors + notes strips */}
-      <div className="bg-muted/30 border-border border-t px-3 py-2">
+      {/* Look-fors + notes control strip */}
+      <div className="border-border border-t bg-ops-blue-dark/5 px-3 py-2">
         <div className="flex flex-wrap items-center gap-3">
           {component.lookFors.length > 0 ? (
             <button
@@ -134,14 +145,24 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
               onClick={() => setLookForsExpanded((v) => !v)}
               aria-expanded={lookForsExpanded}
               aria-controls={`lookfors-${storageScope}-${component.id}`}
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs font-medium"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                lookForsExpanded
+                  ? 'bg-ops-blue text-white'
+                  : 'bg-ops-blue/10 text-ops-blue hover:bg-ops-blue/20',
+              )}
             >
               <ChevronRight
                 className={cn('h-3.5 w-3.5 transition-transform', lookForsExpanded && 'rotate-90')}
               />
               Look-fors ({component.lookFors.length})
               {mode.kind === 'edit' && entry.selectedLookForIds.length > 0 ? (
-                <span className="bg-ops-blue rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                <span
+                  className={cn(
+                    'inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold',
+                    lookForsExpanded ? 'bg-white/20 text-white' : 'bg-ops-blue text-white',
+                  )}
+                >
                   {entry.selectedLookForIds.length}
                 </span>
               ) : null}
@@ -154,9 +175,8 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
               onClick={() => setNotesExpanded((v) => !v)}
               aria-expanded={notesExpanded}
               aria-controls={`notes-${storageScope}-${component.id}`}
-              className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs font-medium"
+              className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-ops-gray-light hover:text-ops-gray-dark"
             >
-              <NotebookPen className="h-3.5 w-3.5" />
               {notesExpanded ? 'Hide notes' : notesHasContent ? 'View notes' : 'Add notes'}
             </button>
           ) : null}
@@ -164,29 +184,46 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
           {component.bestPractices ? <BestPracticesPopover text={component.bestPractices} /> : null}
         </div>
 
+        {/* Look-fors panel */}
         {component.lookFors.length > 0 && lookForsExpanded ? (
-          <ul id={`lookfors-${storageScope}-${component.id}`} className="mt-2 space-y-1 pl-5">
-            {component.lookFors.map((lf) => (
-              <li key={lf.id}>
-                <label className="flex items-start gap-2 text-sm">
+          <div
+            id={`lookfors-${storageScope}-${component.id}`}
+            className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+          >
+            {component.lookFors.map((lf) => {
+              const checked = mode.kind === 'edit' && entry.selectedLookForIds.includes(lf.id);
+              return (
+                <label
+                  key={lf.id}
+                  className={cn(
+                    'flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm transition-colors',
+                    checked
+                      ? 'border-ops-blue bg-ops-blue/5 text-ops-blue-dark'
+                      : 'border-gray-200 text-gray-700 hover:border-ops-blue/40 hover:bg-ops-blue/5',
+                    readOnly && 'cursor-default',
+                  )}
+                >
                   <input
                     type="checkbox"
-                    checked={mode.kind === 'edit' && entry.selectedLookForIds.includes(lf.id)}
+                    checked={checked}
                     disabled={readOnly}
                     onChange={() => handleToggleLookFor(lf.id)}
-                    className="mt-0.5 h-4 w-4"
+                    className="mt-0.5 h-4 w-4 accent-ops-blue"
                     aria-label={lf.text}
                   />
                   <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
                 </label>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
         ) : null}
 
+        {/* Notes panel */}
         {mode.kind === 'edit' && notesExpanded ? (
-          <div id={`notes-${storageScope}-${component.id}`} className="mt-2 space-y-1">
-            <Label className="text-muted-foreground text-xs">Notes for {component.id}</Label>
+          <div
+            id={`notes-${storageScope}-${component.id}`}
+            className="mt-2 border-l-4 border-l-ops-blue bg-gray-50 px-4 py-3"
+          >
             <TiptapEditor
               value={notesDoc}
               onChange={handleNotesChange}
@@ -202,6 +239,8 @@ export function RubricRow({ domain, component, mode, storageScope }: RubricRowPr
   );
 }
 
+// ─── DescriptorCell ───────────────────────────────────────────────────────────
+
 function DescriptorCell({
   level,
   text,
@@ -215,14 +254,7 @@ function DescriptorCell({
   interactive: boolean;
   onClick: () => void;
 }) {
-  const baseClass = 'border-border border-l px-3 py-3 text-sm leading-snug';
-  const selectedClass = 'bg-ops-blue text-white';
-  const unselectedClass = 'bg-background text-foreground';
-  const hoverClass = interactive
-    ? 'cursor-pointer hover:bg-ops-blue-lighter hover:text-ops-blue-dark transition-colors'
-    : '';
-  const selectedInteractiveClass =
-    interactive && selected ? 'hover:bg-ops-blue hover:text-white' : '';
+  const baseClass = 'relative border-l border-gray-100 px-3 py-3 text-sm leading-snug';
 
   if (interactive) {
     return (
@@ -235,13 +267,18 @@ function DescriptorCell({
         onClick={onClick}
         className={cn(
           baseClass,
-          'text-left',
-          selected ? selectedClass : unselectedClass,
-          hoverClass,
-          selectedInteractiveClass,
-          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+          'text-left transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ops-blue',
+          selected
+            ? 'bg-ops-blue text-white shadow-inner'
+            : 'bg-white text-gray-700 hover:bg-ops-blue-lighter hover:text-ops-blue-dark',
         )}
       >
+        {selected && (
+          <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/25 text-[10px] text-white">
+            ✓
+          </span>
+        )}
         <CellBody text={text} />
       </button>
     );
@@ -253,7 +290,10 @@ function DescriptorCell({
       data-proficiency={level}
       aria-selected={selected}
       aria-label={`${level} — ${text || 'no descriptor'}`}
-      className={cn(baseClass, selected ? selectedClass : unselectedClass)}
+      className={cn(
+        baseClass,
+        selected ? 'bg-ops-blue/10 font-medium text-ops-blue-dark' : 'bg-white text-gray-700',
+      )}
     >
       <CellBody text={text} />
     </div>
@@ -270,22 +310,19 @@ function CellBody({ text }: { text: string }) {
 function BestPracticesPopover({ text }: { text: string }) {
   return (
     <details className="group relative">
-      <summary className="text-muted-foreground hover:text-foreground inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-ops-gray-light hover:text-ops-gray-dark">
         <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
         Best practices
       </summary>
-      <p className="text-muted-foreground bg-background border-border mt-2 rounded-md border p-3 text-sm whitespace-pre-line">
+      <p className="border-border bg-background mt-2 rounded-md border p-3 text-sm text-gray-700 whitespace-pre-line">
         {text}
       </p>
     </details>
   );
 }
 
-/**
- * Returns true iff the Tiptap doc has at least one non-empty text node.
- * The default empty state `{type:'doc',content:[{type:'paragraph'}]}`
- * returns false so the notes strip doesn't auto-expand for fresh drafts.
- */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hasTiptapContent(doc: TiptapDoc | undefined): boolean {
   return walkForText(doc);
 }

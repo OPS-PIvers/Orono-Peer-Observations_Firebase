@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* Tailwind safelist — dynamic domain accent classes used in DomainSection.tsx */
+/* border-l-ops-blue border-l-ops-red border-l-ops-blue-light border-l-ops-red-light */
+
 /*
  * Orono Peer Observations — Theme Tokens
  *
