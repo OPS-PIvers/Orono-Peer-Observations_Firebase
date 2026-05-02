@@ -33,7 +33,7 @@ export interface RubricRowProps {
  * distinguishes assigned components. In `edit` mode cells are clickable
  * and a notes editor lazy-mounts only when the strip is expanded.
  */
-export function RubricRow({ domain: _domain, component, mode, storageScope }: RubricRowProps) {
+export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
   const readOnly = mode.kind !== 'edit' || mode.readOnly;
@@ -87,7 +87,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
         <div
           role="rowheader"
           aria-label={component.title}
-          className="flex flex-col justify-between gap-2 bg-ops-blue-dark px-3 py-3"
+          className="bg-ops-blue-dark flex flex-col justify-between gap-2 px-3 py-3"
         >
           <div>
             <div className="flex items-center gap-2">
@@ -109,12 +109,12 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
                 {component.id}
               </span>
             </div>
-            <p className="mt-1 text-sm font-semibold leading-snug text-white">{component.title}</p>
+            <p className="mt-1 text-sm leading-snug font-semibold text-white">{component.title}</p>
           </div>
 
           {/* "Assigned" text label (view mode, assigned only) */}
           {mode.kind === 'view' && isAssigned && (
-            <span className="text-[10px] font-medium uppercase text-green-400">Assigned</span>
+            <span className="text-[10px] font-medium text-green-400 uppercase">Assigned</span>
           )}
         </div>
 
@@ -137,7 +137,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
       </div>
 
       {/* Look-fors + notes control strip */}
-      <div className="border-border border-t bg-ops-blue-dark/5 px-3 py-2">
+      <div className="border-border bg-ops-blue-dark/5 border-t px-3 py-2">
         <div className="flex flex-wrap items-center gap-3">
           {component.lookFors.length > 0 ? (
             <button
@@ -175,7 +175,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
               onClick={() => setNotesExpanded((v) => !v)}
               aria-expanded={notesExpanded}
               aria-controls={`notes-${storageScope}-${component.id}`}
-              className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-ops-gray-light hover:text-ops-gray-dark"
+              className="text-ops-gray-light hover:text-ops-gray-dark ml-auto inline-flex items-center gap-1 text-xs font-medium"
             >
               {notesExpanded ? 'Hide notes' : notesHasContent ? 'View notes' : 'Add notes'}
             </button>
@@ -188,7 +188,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
         {component.lookFors.length > 0 && lookForsExpanded ? (
           <div
             id={`lookfors-${storageScope}-${component.id}`}
-            className="mt-2 grid grid-cols-1 gap-1.5 bg-ops-blue-lighter/40 p-3 sm:grid-cols-2"
+            className="bg-ops-blue-lighter/40 mt-2 grid grid-cols-1 gap-1.5 p-3 sm:grid-cols-2"
           >
             {component.lookFors.map((lf) => {
               const checked = mode.kind === 'edit' && entry.selectedLookForIds.includes(lf.id);
@@ -199,7 +199,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
                     'flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm transition-colors',
                     checked
                       ? 'border-ops-blue bg-ops-blue/5 text-ops-blue-dark'
-                      : 'border-gray-200 text-gray-700 hover:border-ops-blue/40 hover:bg-ops-blue/5',
+                      : 'hover:border-ops-blue/40 hover:bg-ops-blue/5 border-gray-200 text-gray-700',
                     readOnly && 'cursor-default',
                   )}
                 >
@@ -208,7 +208,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
                     checked={checked}
                     disabled={readOnly}
                     onChange={() => handleToggleLookFor(lf.id)}
-                    className="mt-0.5 h-4 w-4 accent-ops-blue"
+                    className="accent-ops-blue mt-0.5 h-4 w-4"
                     aria-label={lf.text}
                   />
                   <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
@@ -222,7 +222,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
         {mode.kind === 'edit' && notesExpanded ? (
           <div
             id={`notes-${storageScope}-${component.id}`}
-            className="mt-2 border-l-4 border-l-ops-blue bg-gray-50 px-4 py-3"
+            className="border-l-ops-blue mt-2 border-l-4 bg-gray-50 px-4 py-3"
           >
             <TiptapEditor
               value={notesDoc}
@@ -268,14 +268,14 @@ function DescriptorCell({
         className={cn(
           baseClass,
           'text-left transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ops-blue',
+          'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
           selected
             ? 'bg-ops-blue text-white shadow-inner'
-            : 'bg-white text-gray-700 hover:bg-ops-blue-lighter hover:text-ops-blue-dark',
+            : 'hover:bg-ops-blue-lighter hover:text-ops-blue-dark bg-white text-gray-700',
         )}
       >
         {selected && (
-          <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/25 text-[10px] text-white">
+          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/25 text-[10px] text-white">
             ✓
           </span>
         )}
@@ -292,7 +292,7 @@ function DescriptorCell({
       aria-label={`${level} — ${text || 'no descriptor'}`}
       className={cn(
         baseClass,
-        selected ? 'bg-ops-blue/10 font-medium text-ops-blue-dark' : 'bg-white text-gray-700',
+        selected ? 'bg-ops-blue/10 text-ops-blue-dark font-medium' : 'bg-white text-gray-700',
       )}
     >
       <CellBody text={text} />
@@ -310,11 +310,11 @@ function CellBody({ text }: { text: string }) {
 function BestPracticesPopover({ text }: { text: string }) {
   return (
     <details className="group relative">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-ops-gray-light hover:text-ops-gray-dark">
+      <summary className="text-ops-gray-light hover:text-ops-gray-dark inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium">
         <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
         Best practices
       </summary>
-      <p className="border-border bg-background mt-2 rounded-md border p-3 text-sm text-gray-700 whitespace-pre-line">
+      <p className="border-border bg-background mt-2 rounded-md border p-3 text-sm whitespace-pre-line text-gray-700">
         {text}
       </p>
     </details>

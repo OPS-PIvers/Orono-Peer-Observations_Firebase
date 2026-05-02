@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BookOpen,
@@ -157,7 +157,9 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   const onCloseMobileRef = useRef(onCloseMobile);
-  onCloseMobileRef.current = onCloseMobile;
+  useLayoutEffect(() => {
+    onCloseMobileRef.current = onCloseMobile;
+  });
 
   useEffect(() => {
     onCloseMobileRef.current();
@@ -197,7 +199,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
       {/* Sidebar */}
       <nav
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col bg-ops-blue-dark text-white',
+          'bg-ops-blue-dark fixed inset-y-0 left-0 z-50 flex flex-col text-white',
           'w-60 transition-all duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0',
           pcExpanded ? 'xl:w-60' : 'xl:w-14',
@@ -246,14 +248,14 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
               {user.displayName ?? user.email}
             </div>
             {claims.role ? (
-              <div className="truncate text-xs text-ops-blue-lighter">{claims.role}</div>
+              <div className="text-ops-blue-lighter truncate text-xs">{claims.role}</div>
             ) : null}
           </div>
         )}
 
         {/* Main nav */}
         <div className="flex-1 overflow-y-auto py-2">
-          <ul role="list" className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+          <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
             {navConfig.main.map((item) => (
               <li key={item.label}>
                 <NavEntry
@@ -270,7 +272,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
 
         {/* Footer meta items */}
         <div className="shrink-0 border-t border-white/10 py-2">
-          <ul role="list" className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+          <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
             {navConfig.meta.map((item) => (
               <li key={item.label}>
                 <NavEntry
@@ -350,7 +352,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
           )}
         </button>
         {showLabels && sectionOpen && (
-          <ul role="list" className="ml-7 mt-0.5 border-l border-white/10">
+          <ul className="mt-0.5 ml-7 border-l border-white/10">
             {item.children.map((child) => {
               const childActive = isActivePath(child.href, location.pathname);
               return (
@@ -358,7 +360,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
                   <Link
                     to={child.href}
                     className={cn(
-                      'block rounded-md py-1.5 pl-3 pr-2 text-sm transition-colors',
+                      'block rounded-md py-1.5 pr-2 pl-3 text-sm transition-colors',
                       'text-white/70 hover:bg-white/10 hover:text-white',
                       childActive && 'bg-white/15 text-white',
                     )}

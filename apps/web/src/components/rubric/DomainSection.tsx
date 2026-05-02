@@ -38,10 +38,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           top-[52px] matches MobileTopBar height so the bar sticks just below it
           on mobile; xl:top-0 takes over once the top bar is hidden. */}
       <div
-        className={cn(
-          'sticky top-[52px] z-10 border-l-4 bg-ops-blue-dark xl:top-0',
-          accentClass,
-        )}
+        className={cn('bg-ops-blue-dark sticky top-[52px] z-10 border-l-4 xl:top-0', accentClass)}
       >
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
@@ -61,13 +58,10 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
       <div className="overflow-x-auto" role="grid" aria-labelledby={headingId}>
         {/* Column header rowgroup */}
         <div role="rowgroup">
-          <div
-            role="row"
-            className={cn('grid bg-ops-blue', RUBRIC_GRID_MIN_W, RUBRIC_GRID_COLS)}
-          >
+          <div role="row" className={cn('bg-ops-blue grid', RUBRIC_GRID_MIN_W, RUBRIC_GRID_COLS)}>
             <div
               role="columnheader"
-              className="border-r border-white/20 px-3 py-2 font-heading text-[11px] font-semibold tracking-widest uppercase text-white/80"
+              className="font-heading border-r border-white/20 px-3 py-2 text-[11px] font-semibold tracking-widest text-white/80 uppercase"
             >
               Component
             </div>

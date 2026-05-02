@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 function MobileTopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   return (
-    <div className="flex h-[52px] shrink-0 items-center gap-3 bg-ops-blue-dark px-4 xl:hidden">
+    <div className="bg-ops-blue-dark flex h-[52px] shrink-0 items-center gap-3 px-4 xl:hidden">
       <button
         type="button"
         onClick={onOpenSidebar}
@@ -30,7 +30,7 @@ function MobileTopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 export function Layout({ children }: { children: ReactNode }) {
   const { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile } = useSidebar();
   return (
-    <div className="flex h-svh overflow-hidden bg-ops-gray-lightest">
+    <div className="bg-ops-gray-lightest flex h-svh overflow-hidden">
       <AppSidebar
         pcExpanded={pcExpanded}
         onTogglePc={togglePc}
