@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { RubricDomain } from '@ops/shared';
+import { PROFICIENCY_LEVELS, type RubricDomain } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { PROFICIENCY_LABELS } from './RubricGrid';
+import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS, RUBRIC_GRID_MIN_W } from './RubricGrid';
 
 /* Tailwind safelist — dynamic domain accent classes used in DomainSection.tsx */
 /* border-l-ops-blue border-l-ops-red border-l-ops-blue-light border-l-ops-red-light */
@@ -34,7 +34,9 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
       aria-labelledby={headingId}
       className="overflow-hidden rounded-lg border border-gray-200 shadow-sm"
     >
-      {/* Sticky domain title bar — OPS Blue Dark with left accent stripe */}
+      {/* Sticky domain title bar — OPS Blue Dark with left accent stripe.
+          top-[52px] matches MobileTopBar height so the bar sticks just below it
+          on mobile; xl:top-0 takes over once the top bar is hidden. */}
       <div
         className={cn(
           'sticky top-[52px] z-10 border-l-4 bg-ops-blue-dark xl:top-0',
@@ -61,7 +63,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         <div role="rowgroup">
           <div
             role="row"
-            className="grid min-w-[880px] grid-cols-[220px_repeat(4,minmax(0,1fr))] bg-ops-blue"
+            className={cn('grid bg-ops-blue', RUBRIC_GRID_MIN_W, RUBRIC_GRID_COLS)}
           >
             <div
               role="columnheader"
@@ -69,7 +71,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
             >
               Component
             </div>
-            {(['developing', 'basic', 'proficient', 'distinguished'] as const).map((level) => (
+            {PROFICIENCY_LEVELS.map((level) => (
               <div
                 key={level}
                 role="columnheader"
@@ -88,7 +90,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
 
         {/* Data rowgroup */}
-        <div role="rowgroup" className="min-w-[880px] divide-y divide-gray-100 bg-white">
+        <div role="rowgroup" className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white')}>
           {children}
         </div>
       </div>

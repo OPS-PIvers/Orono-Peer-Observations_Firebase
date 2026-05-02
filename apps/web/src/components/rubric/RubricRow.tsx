@@ -10,7 +10,7 @@ import {
 } from '@ops/shared';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
-import type { RubricGridMode } from './RubricGrid';
+import { RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
 
 export const EMPTY_ENTRY: ObservationComponentEntry = {
   proficiency: null,
@@ -79,7 +79,7 @@ export function RubricRow({ domain: _domain, component, mode, storageScope }: Ru
     >
       {/* Grid row */}
       <div
-        className="grid grid-cols-[220px_repeat(4,minmax(0,1fr))] items-stretch"
+        className={cn('grid items-stretch', RUBRIC_GRID_COLS)}
         role="row"
         data-component-row={component.id}
       >

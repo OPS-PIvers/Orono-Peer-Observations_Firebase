@@ -19,6 +19,11 @@ export const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
   distinguished: 'Distinguished',
 };
 
+/** Shared Tailwind grid layout for the rubric matrix — component col + 4 descriptor cols. */
+export const RUBRIC_GRID_COLS = 'grid-cols-[220px_repeat(4,minmax(0,1fr))]';
+/** Min-width that keeps all 5 rubric columns legible before horizontal scroll kicks in. */
+export const RUBRIC_GRID_MIN_W = 'min-w-[880px]';
+
 export type RubricGridMode =
   | {
       kind: 'view';

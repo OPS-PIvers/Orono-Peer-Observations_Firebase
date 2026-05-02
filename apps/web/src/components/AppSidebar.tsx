@@ -316,9 +316,9 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
           'pointer-events-none cursor-not-allowed text-white/30',
           showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
         )}
-        aria-disabled="true"
+        title={item.label}
       >
-        <item.icon className="h-5 w-5 shrink-0" />
+        <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
         {showLabels && (
           <span>
             {item.label} <span className="text-[11px]">(not started)</span>
@@ -383,8 +383,10 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
     );
   }
 
+  if (!item.href) return null;
+
   return (
-    <Link to={item.href!} className={cn(baseItemCls, isActive && 'bg-white/15 text-white')}>
+    <Link to={item.href} className={cn(baseItemCls, isActive && 'bg-white/15 text-white')}>
       <item.icon className="h-5 w-5 shrink-0" />
       {showLabels && <span>{item.label}</span>}
     </Link>
