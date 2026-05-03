@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, orderBy } from 'firebase/firestore';
+import { Check } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useDocument } from '@/hooks/useDocument';
@@ -172,9 +173,9 @@ export function MyStaffPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     {s.summativeYear ? (
-                      <span className="text-green-600 font-semibold">✓</span>
+                      <Check className="mx-auto h-4 w-4 text-green-600" aria-label="High cycle" />
                     ) : (
-                      <span className="text-ops-gray-lighter">—</span>
+                      <span className="text-ops-gray-lighter" aria-hidden="true">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">

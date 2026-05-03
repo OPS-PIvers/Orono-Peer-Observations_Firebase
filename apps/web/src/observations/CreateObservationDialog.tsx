@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   COLLECTIONS,
@@ -39,6 +39,16 @@ export function CreateObservationDialog({
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset form whenever the dialog opens so stale values don't linger
+  // if the same component instance is reused across multiple opens.
+  useEffect(() => {
+    if (open) {
+      setType(OBSERVATION_TYPES.standard);
+      setName('');
+      setError(null);
+    }
+  }, [open]);
 
   async function create() {
     const observerEmail = user?.email;

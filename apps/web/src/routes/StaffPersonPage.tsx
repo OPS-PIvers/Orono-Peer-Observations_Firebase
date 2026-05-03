@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ClipboardList } from 'lucide-react';
-import { orderBy, where } from 'firebase/firestore';
-import { doc } from 'firebase/firestore';
+import { doc, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -68,10 +67,13 @@ export function StaffPersonPage() {
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
 
   const obsConstraints = useMemo(
-    () => [
-      where('observedEmail', '==', email ?? ''),
-      orderBy('lastModifiedAt', 'desc'),
-    ],
+    () =>
+      email
+        ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')]
+        : [],
+    // The hook keys on constraint types only; email is captured in closure.
+    // Normal navigation always remounts this page from a different route,
+    // so stale email values don't occur in practice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [email],
   );
