@@ -34,16 +34,11 @@ export function MyStaffPage() {
   const buildingScoped = useMemo(() => {
     if (!allStaff) return [];
     if (missingBuildings) return [];
-    return allStaff.filter(
-      (s) => s.isActive && s.buildings.some((b) => adminBuildings.includes(b)),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allStaff, adminBuildings.join(','), missingBuildings]);
+    const buildings = adminDoc?.buildings ?? [];
+    return allStaff.filter((s) => s.isActive && s.buildings.some((b) => buildings.includes(b)));
+  }, [allStaff, adminDoc, missingBuildings]);
 
-  const probationary = useMemo(
-    () => buildingScoped.filter((s) => s.year >= 4),
-    [buildingScoped],
-  );
+  const probationary = useMemo(() => buildingScoped.filter((s) => s.year >= 4), [buildingScoped]);
   const highCycle = useMemo(
     () => buildingScoped.filter((s) => s.summativeYear && s.year < 4),
     [buildingScoped],
@@ -119,7 +114,7 @@ export function MyStaffPage() {
               {['Name', 'Role', 'Year', 'Buildings', 'High Cycle', 'Actions'].map((h) => (
                 <th
                   key={h}
-                  className="font-heading px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide"
+                  className="font-heading px-4 py-2.5 text-left text-[11px] font-semibold tracking-wide uppercase"
                 >
                   {h}
                 </th>
@@ -143,10 +138,13 @@ export function MyStaffPage() {
               filtered.map((s, i) => (
                 <tr
                   key={s.id}
-                  className={`transition-colors hover:bg-ops-blue-lighter/40 ${i % 2 === 0 ? 'bg-white' : 'bg-ops-gray-lightest'}`}
+                  className={`hover:bg-ops-blue-lighter/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-ops-gray-lightest'}`}
                 >
                   <td className="px-4 py-3">
-                    <Link to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`} className="text-ops-blue font-medium hover:underline">
+                    <Link
+                      to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`}
+                      className="text-ops-blue font-medium hover:underline"
+                    >
                       {s.name}
                     </Link>
                   </td>
@@ -163,9 +161,15 @@ export function MyStaffPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     {s.summativeYear ? (
-                      <Check role="img" className="mx-auto h-4 w-4 text-green-600" aria-label="High cycle" />
+                      <Check
+                        role="img"
+                        className="mx-auto h-4 w-4 text-green-600"
+                        aria-label="High cycle"
+                      />
                     ) : (
-                      <span className="text-ops-gray-lighter" aria-hidden="true">—</span>
+                      <span className="text-ops-gray-lighter" aria-hidden="true">
+                        —
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3">

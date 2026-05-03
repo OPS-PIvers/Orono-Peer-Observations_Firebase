@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { type DocumentReference, onSnapshot } from 'firebase/firestore';
 
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function useDocument<T>(ref: DocumentReference | null): {
   data: (T & { id: string }) | null;
   loading: boolean;
