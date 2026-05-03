@@ -90,7 +90,7 @@ function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
     return {
       main: [
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
-        { icon: Users, label: 'Staff', href: '/observations/new' },
+        { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
@@ -102,7 +102,7 @@ function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
     return {
       main: [
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
-        { icon: Building2, label: 'My Staff', href: '/observations' },
+        { icon: Building2, label: 'My Staff', href: '/my-staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
       ],
       meta: metaItems,
@@ -113,7 +113,7 @@ function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
     return {
       main: [
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
-        { icon: Users, label: 'Staff', href: '/observations/new' },
+        { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
       ],
       meta: metaItems,

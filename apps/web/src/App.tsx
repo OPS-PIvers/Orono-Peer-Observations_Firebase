@@ -62,6 +62,15 @@ const ObservationEditorPage = lazy(() =>
     default: m.ObservationEditorPage,
   })),
 );
+const StaffDirectoryPage = lazy(() =>
+  import('@/routes/StaffDirectoryPage').then((m) => ({ default: m.StaffDirectoryPage })),
+);
+const StaffPersonPage = lazy(() =>
+  import('@/routes/StaffPersonPage').then((m) => ({ default: m.StaffPersonPage })),
+);
+const MyStaffPage = lazy(() =>
+  import('@/routes/MyStaffPage').then((m) => ({ default: m.MyStaffPage })),
+);
 
 function RouteFallback() {
   return <p className="text-muted-foreground py-12 text-center text-sm">Loading…</p>;
@@ -123,6 +132,39 @@ export function App() {
               <RequireAuth>
                 <Layout>
                   <ObservationEditorPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Staff directory — PE and Full Access */}
+          <Route
+            path="/staff"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <StaffDirectoryPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Per-person observation hub */}
+          <Route
+            path="/staff/:email"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <StaffPersonPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Admin building-scoped staff list */}
+          <Route
+            path="/my-staff"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <MyStaffPage />
                 </Layout>
               </RequireAuth>
             }

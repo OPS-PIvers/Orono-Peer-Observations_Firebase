@@ -1,16 +1,23 @@
 import { Navigate } from 'react-router-dom';
+import { SPECIAL_ROLES } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 
 /**
  * Mounted at "/" — sends users to the right landing page based on role.
- * Special-access roles (Administrator, Peer Evaluator, Full Access) → Dashboard.
- * Everyone else → MyRubric.
+ * Administrator → /my-staff (building-scoped working list).
+ * Peer Evaluator + Full Access → /staff (district-wide directory).
+ * Everyone else → /my-rubric.
  */
 export function RoleAwareRedirect() {
   const { claims } = useAuth();
-  return claims.hasSpecialAccess ? (
-    <Navigate to="/dashboard" replace />
-  ) : (
-    <Navigate to="/my-rubric" replace />
-  );
+
+  if (!claims.hasSpecialAccess) {
+    return <Navigate to="/my-rubric" replace />;
+  }
+
+  if (claims.role === SPECIAL_ROLES.administrator) {
+    return <Navigate to="/my-staff" replace />;
+  }
+
+  return <Navigate to="/staff" replace />;
 }
