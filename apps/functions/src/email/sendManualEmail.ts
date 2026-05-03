@@ -1,7 +1,13 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, isSpecialRole, type EmailTemplate } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  isAdminRole,
+  isSpecialRole,
+  type EmailTemplate,
+} from '@ops/shared';
 import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -31,6 +37,9 @@ export const sendManualEmail = onCall(
     if (!templateId || !toEmail) {
       throw new HttpsError('invalid-argument', 'templateId and toEmail are required');
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+      throw new HttpsError('invalid-argument', 'toEmail is not a valid email address');
+    }
 
     const db = getFirestore();
     const templateSnap = await db.collection(COLLECTIONS.emailTemplates).doc(templateId).get();
@@ -42,7 +51,7 @@ export const sendManualEmail = onCall(
       throw new HttpsError('invalid-argument', 'Only manual templates can be sent this way');
     }
 
-    const appSnap = await db.doc(`${COLLECTIONS.appSettings}/global`).get();
+    const appSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
     const appName =
       (appSnap.data()?.['branding']?.['appName'] as string | undefined) ??
       'Orono Peer Observations';

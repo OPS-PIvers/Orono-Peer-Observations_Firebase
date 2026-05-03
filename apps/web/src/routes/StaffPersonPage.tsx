@@ -164,6 +164,8 @@ export function StaffPersonPage() {
           staffName: staffMember.name,
           staffEmail: email,
           staffRole: staffMember.role,
+          observerName: (user?.email ?? '').split('@')[0],
+          observerEmail: user?.email ?? '',
         },
       });
       setSendSuccess(true);
@@ -351,9 +353,13 @@ export function StaffPersonPage() {
       {sendDialogOpen && selectedTemplate ? (
         <Dialog
           open={sendDialogOpen}
-          onOpenChange={() => {
-            setSendDialogOpen(false);
-            setSendError(null);
+          onOpenChange={(open) => {
+            if (!open) {
+              if (sendSuccessTimerRef.current) clearTimeout(sendSuccessTimerRef.current);
+              setSendDialogOpen(false);
+              setSendError(null);
+              setSelectedTemplate(null);
+            }
           }}
         >
           <DialogContent>
@@ -371,8 +377,10 @@ export function StaffPersonPage() {
               <Button
                 variant="outline"
                 onClick={() => {
+                  if (sendSuccessTimerRef.current) clearTimeout(sendSuccessTimerRef.current);
                   setSendDialogOpen(false);
                   setSendError(null);
+                  setSelectedTemplate(null);
                 }}
               >
                 Cancel

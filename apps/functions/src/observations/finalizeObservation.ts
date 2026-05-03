@@ -99,6 +99,14 @@ export const finalizeObservation = onCall(
     const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
     const activeComponentIds = mapping?.assignedComponentIds ?? [];
 
+    const parentFolderId = PARENT_FOLDER_ID.value();
+    if (!parentFolderId) {
+      throw new HttpsError(
+        'failed-precondition',
+        'DRIVE_PARENT_FOLDER_ID is not configured. Set it in Firebase env params before finalizing.',
+      );
+    }
+
     let pdfBuffer: Buffer;
     try {
       pdfBuffer = await renderObservationPdf({
@@ -118,7 +126,7 @@ export const finalizeObservation = onCall(
       folderId = await ensureObservationFolder({
         observationId: obs.id,
         observedName: obs.observedName,
-        parentFolderId: PARENT_FOLDER_ID.value(),
+        parentFolderId: parentFolderId,
         existingFolderId: obs.driveFolderId,
       });
       const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
