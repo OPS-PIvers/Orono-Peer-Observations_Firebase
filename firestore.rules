@@ -96,9 +96,10 @@ service cloud.firestore {
     }
 
     // --- /workProductQuestions ----------------------------------------------
-    // Only PEs and admins ever see the question bank.
+    // Staff need to read questions (for WorkProductAnswerForm / InstructionalRoundAnswerForm).
+    // Writes are admin-only.
     match /workProductQuestions/{id} {
-      allow read: if hasSpecialAccess();
+      allow read: if isFromOronoDomain();
       allow write: if isAdmin();
     }
 
@@ -136,11 +137,11 @@ service cloud.firestore {
     match /observations/{observationId} {
       allow get: if (
         isCurrentUserEmail(resource.data.observerEmail)
-        || (isCurrentUserEmail(resource.data.observedEmail)
-            && resource.data.status == 'Finalized')
+        || isCurrentUserEmail(resource.data.observedEmail)
         || hasSpecialAccess()
       );
-      allow list: if hasSpecialAccess();
+      allow list: if hasSpecialAccess()
+        || isCurrentUserEmail(resource.data.observedEmail);
 
       allow create: if hasSpecialAccess()
         && request.resource.data.observerEmail == request.auth.token.email
@@ -155,9 +156,20 @@ service cloud.firestore {
           && unchanged('observedEmail')
           && unchanged('createdAt')
           && unchanged('finalizedAt')
+        )
+        || (
+          isCurrentUserEmail(resource.data.observedEmail)
+          && resource.data.status == 'Draft'
+          && resource.data.type == 'Work Product'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['workProductAnswers', 'lastModifiedAt'])
         );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (
+          isCurrentUserEmail(resource.data.observerEmail)
+          && resource.data.status == 'Draft'
+        );
     }
 
     // --- /auditLog -----------------------------------------------------------

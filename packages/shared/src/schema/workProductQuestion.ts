@@ -13,6 +13,9 @@ export const workProductQuestion = z.object({
   /** Display order. Lower = earlier in the form. */
   order: z.number().int().nonnegative(),
   isActive: z.boolean().default(true),
+  /** Which observation type this question belongs to. Defaults to 'work-product'
+   *  so existing docs without this field parse correctly. */
+  type: z.enum(['work-product', 'instructional-round']).default('work-product'),
   createdAt: isoDate,
   updatedAt: isoDate,
 });

@@ -19,5 +19,6 @@ export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
+export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';

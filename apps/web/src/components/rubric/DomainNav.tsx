@@ -80,8 +80,8 @@ export function DomainNav({ rubric, className, pulseOnClick = false }: DomainNav
             className={cn(
               'rounded-full px-3 py-1 text-xs font-medium transition-colors',
               active
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                ? 'bg-ops-blue text-white'
+                : 'text-ops-blue-dark hover:bg-ops-blue-lighter',
             )}
           >
             <span className="opacity-80">D{d.id}</span>

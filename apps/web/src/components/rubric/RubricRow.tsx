@@ -1,16 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Paperclip } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
 import {
   PROFICIENCY_LEVELS,
+  type DriveFileRef,
   type ObservationComponentEntry,
   type ProficiencyLevel,
   type RubricComponent,
   type RubricDomain,
   type TiptapDoc,
 } from '@ops/shared';
+import { functions } from '@/lib/firebase';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import { RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
+
+const uploadEvidenceFn = httpsCallable<
+  {
+    observationId: string;
+    componentId: string;
+    fileName: string;
+    mimeType: string;
+    base64Data: string;
+  },
+  { driveFileId: string; name: string }
+>(functions, 'uploadEvidenceFile');
 
 export const EMPTY_ENTRY: ObservationComponentEntry = {
   proficiency: null,
@@ -50,6 +64,44 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
       setNotesExpanded(true);
     }
   }, [notesHasContent]);
+
+  // Evidence strip state (edit mode only)
+  const evidenceFiles: DriveFileRef[] =
+    mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
+  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || mode.kind !== 'edit') return;
+    // Reset so the same file can be selected again
+    e.target.value = '';
+
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('File exceeds 20 MB limit');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const base64Data = await fileToBase64(file);
+      await uploadEvidenceFn({
+        observationId: mode.observationId,
+        componentId: component.id,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64Data,
+      });
+      // Firestore listener in ObservationEditorPage will update evidenceLinks automatically
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const isAssigned = mode.kind === 'view' ? mode.assignedComponentIds.has(component.id) : true;
 
@@ -235,6 +287,92 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
           </div>
         ) : null}
       </div>
+
+      {/* Evidence strip (edit mode only) */}
+      {mode.kind === 'edit' ? (
+        <div className="border-border border-t">
+          {/* Evidence strip header */}
+          <button
+            type="button"
+            onClick={() => setEvidenceExpanded((v) => !v)}
+            className={cn(
+              'flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors',
+              evidenceExpanded
+                ? 'bg-ops-blue-lighter/40 text-ops-gray-dark'
+                : 'bg-gray-50 text-ops-gray hover:bg-ops-blue-lighter/40 text-ops-gray-dark',
+            )}
+          >
+            <Paperclip className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-medium">
+              Evidence{evidenceFiles.length > 0 ? ` (${String(evidenceFiles.length)})` : ''}
+            </span>
+            {!readOnly ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="bg-ops-blue ml-auto rounded px-2 py-0.5 text-white hover:bg-ops-blue-dark"
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : '+ Add'}
+              </button>
+            ) : null}
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="*/*"
+            className="hidden"
+            onChange={(e) => void handleFileSelect(e)}
+          />
+
+          {evidenceExpanded ? (
+            <div className="bg-gray-50 px-4 py-3">
+              {uploadError ? (
+                <p className="text-ops-red mb-2 text-xs">{uploadError}</p>
+              ) : null}
+              {uploading ? (
+                <div className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-500">
+                  <span className="animate-pulse">Uploading…</span>
+                </div>
+              ) : null}
+              {evidenceFiles.length === 0 && !uploading ? (
+                <p className="text-xs text-gray-400 italic">No evidence attached yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {evidenceFiles.map((ref) => (
+                    <EvidenceChip key={ref.driveFileId} fileRef={ref} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── EvidenceChip ─────────────────────────────────────────────────────────────
+
+function EvidenceChip({ fileRef }: { fileRef: DriveFileRef }) {
+  const truncated =
+    fileRef.name.length > 20 ? fileRef.name.slice(0, 17) + '…' : fileRef.name;
+  return (
+    <div className="group flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs hover:border-ops-blue">
+      <span className="text-gray-700">{truncated}</span>
+      <a
+        href={`https://drive.google.com/file/d/${fileRef.driveFileId}/view`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-ops-blue hover:underline"
+        title={`Open ${fileRef.name} in Drive`}
+      >
+        View ↗
+      </a>
     </div>
   );
 }
@@ -363,4 +501,18 @@ function useSessionStorageBoolean(
   };
 
   return [value, update];
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the data URL prefix ("data:...;base64,")
+      const base64 = result.split(',')[1] ?? '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 }

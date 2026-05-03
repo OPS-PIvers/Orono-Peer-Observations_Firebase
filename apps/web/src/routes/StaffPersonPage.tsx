@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ClipboardList } from 'lucide-react';
-import { doc, orderBy, where } from 'firebase/firestore';
+import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -75,6 +75,12 @@ export function StaffPersonPage() {
 
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+
+  async function handleDelete(id: string) {
+    await deleteDoc(doc(db, COLLECTIONS.observations, id));
+    setConfirmingDeleteId(null);
+  }
 
   const allObs = observations ?? [];
   const draftObs = allObs.filter((o) => o.status === OBSERVATION_STATUS.draft);
@@ -181,7 +187,14 @@ export function StaffPersonPage() {
       ) : (
         <div className="space-y-3">
           {visibleObs.map((o) => (
-            <ObservationCard key={o.id} observation={o} />
+            <ObservationCard
+              key={o.id}
+              observation={o}
+              confirmingDelete={confirmingDeleteId === o.id}
+              onRequestDelete={() => setConfirmingDeleteId(o.id)}
+              onCancelDelete={() => setConfirmingDeleteId(null)}
+              onConfirmDelete={() => void handleDelete(o.id)}
+            />
           ))}
         </div>
       )}
@@ -199,7 +212,19 @@ export function StaffPersonPage() {
   );
 }
 
-function ObservationCard({ observation: o }: { observation: Observation & { id: string } }) {
+function ObservationCard({
+  observation: o,
+  confirmingDelete,
+  onRequestDelete,
+  onCancelDelete,
+  onConfirmDelete,
+}: {
+  observation: Observation & { id: string };
+  confirmingDelete: boolean;
+  onRequestDelete: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+}) {
   const accentColor =
     o.status === OBSERVATION_STATUS.draft ? 'border-l-ops-blue' : 'border-l-green-500';
 
@@ -228,11 +253,37 @@ function ObservationCard({ observation: o }: { observation: Observation & { id: 
           By: {o.observerEmail} · Last modified: {formatRelative(o.lastModifiedAt)}
         </p>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {o.status === OBSERVATION_STATUS.draft ? (
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/observations/${o.id}`}>Continue editing</Link>
-            </Button>
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/observations/${o.id}`}>Continue editing</Link>
+              </Button>
+              {confirmingDelete ? (
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span>Delete this draft?</span>
+                  <button
+                    onClick={onConfirmDelete}
+                    className="text-ops-red font-semibold"
+                    type="button"
+                  >
+                    Yes, delete
+                  </button>
+                  <button onClick={onCancelDelete} type="button">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-ops-red hover:text-ops-red hover:bg-red-50"
+                  onClick={onRequestDelete}
+                >
+                  Delete draft
+                </Button>
+              )}
+            </>
           ) : (
             <>
               <Button variant="ghost" size="sm" asChild>
