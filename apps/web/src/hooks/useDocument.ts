@@ -12,6 +12,8 @@ export function useDocument<T>(ref: DocumentReference | null): {
 
   useEffect(() => {
     if (!ref) {
+      setData(null);
+      setError(null);
       setLoading(false);
       return;
     }

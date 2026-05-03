@@ -84,7 +84,8 @@ class RouteErrorBoundary extends Component<
     super(props);
     this.state = { hasError: false };
   }
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(error: unknown) {
+    console.error('[RouteErrorBoundary] Failed to load route:', error);
     return { hasError: true };
   }
   override render() {

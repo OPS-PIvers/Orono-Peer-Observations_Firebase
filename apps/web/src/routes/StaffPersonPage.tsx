@@ -15,25 +15,19 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { CreateObservationDialog } from '@/observations/CreateObservationDialog';
+import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 type ObsTab = 'all' | ObservationStatus;
-
-function yearLabel(year: number): string {
-  return year < 4 ? `Y${String(year)}` : `P${String(year - 3)}`;
-}
-
-function yearBadgeClass(year: number): string {
-  return year < 4
-    ? 'bg-gray-100 text-gray-700 border border-gray-200'
-    : 'bg-ops-red-lighter text-ops-red-dark border border-ops-red-lighter';
-}
 
 function formatRelative(value: Observation['lastModifiedAt']): string {
   const raw = value as unknown;
   const date =
     raw instanceof Date
       ? raw
-      : typeof raw === 'object' && raw !== null && 'toDate' in raw
+      : typeof raw === 'object' &&
+          raw !== null &&
+          'toDate' in raw &&
+          typeof (raw as { toDate: unknown }).toDate === 'function'
         ? (raw as { toDate: () => Date }).toDate()
         : null;
   if (!date) return '—';
@@ -259,6 +253,7 @@ function ObservationCard({ observation: o }: { observation: Observation & { id: 
                     href={`https://drive.google.com/file/d/${o.pdfDriveFileId}/view`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label="View PDF (opens in new tab)"
                   >
                     View PDF
                   </a>

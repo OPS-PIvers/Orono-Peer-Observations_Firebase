@@ -8,18 +8,9 @@ import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 type StaffTab = 'all' | 'probationary' | 'highCycle';
-
-function yearLabel(year: number): string {
-  return year < 4 ? `Y${String(year)}` : `P${String(year - 3)}`;
-}
-
-function yearBadgeClass(year: number): string {
-  return year < 4
-    ? 'bg-gray-100 text-gray-700 border border-gray-200'
-    : 'bg-ops-red-lighter text-ops-red-dark border border-ops-red-lighter';
-}
 
 const ALL_STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 
@@ -173,7 +164,7 @@ export function MyStaffPage() {
                   </td>
                   <td className="px-4 py-3 text-center">
                     {s.summativeYear ? (
-                      <Check className="mx-auto h-4 w-4 text-green-600" aria-label="High cycle" />
+                      <Check role="img" className="mx-auto h-4 w-4 text-green-600" aria-label="High cycle" />
                     ) : (
                       <span className="text-ops-gray-lighter" aria-hidden="true">—</span>
                     )}

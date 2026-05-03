@@ -61,7 +61,7 @@ export function CreateObservationDialog({
     try {
       const ref = await addDoc(collection(db, COLLECTIONS.observations), {
         observerEmail: observerEmail.toLowerCase(),
-        observedEmail: staff.email,
+        observedEmail: staff.email.toLowerCase(),
         observedName: staff.name,
         observedRole: staff.role,
         observedYear: staff.year,
@@ -133,7 +133,11 @@ export function CreateObservationDialog({
           </div>
 
           {error ? (
-            <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            <div
+              role="alert"
+              aria-live="polite"
+              className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
               {error}
             </div>
           ) : null}

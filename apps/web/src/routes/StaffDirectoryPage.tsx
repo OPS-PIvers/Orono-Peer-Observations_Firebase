@@ -4,16 +4,7 @@ import { Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-
-function yearLabel(year: number): string {
-  return year < 4 ? `Y${String(year)}` : `P${String(year - 3)}`;
-}
-
-function yearBadgeClass(year: number): string {
-  return year < 4
-    ? 'bg-gray-100 text-gray-700 border border-gray-200'
-    : 'bg-ops-red-lighter text-ops-red-dark border border-ops-red-lighter';
-}
+import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 
@@ -65,7 +56,7 @@ export function StaffDirectoryPage() {
           </p>
         </div>
         <div className="relative w-full max-w-xs">
-          <Search className="text-ops-gray-lighter absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <Search aria-hidden="true" className="text-ops-gray-lighter absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <input
             type="text"
             value={search}
@@ -116,21 +107,32 @@ export function StaffDirectoryPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <Users className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No staff match your search</p>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-ops-blue text-sm underline hover:no-underline"
-          >
-            Clear filters
-          </button>
+          {(search || roleFilter || showInactive) ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-ops-blue text-sm underline hover:no-underline"
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {filtered.map((s) => (
             <div
               key={s.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`View observations for ${s.name}`}
               onClick={() => void navigate(`/staff/${s.email}`)}
-              className="hover:border-ops-blue cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md active:scale-[0.99]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void navigate(`/staff/${s.email}`);
+                }
+              }}
+              className="hover:border-ops-blue focus:ring-ops-blue cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md focus:ring-2 focus:ring-offset-2 focus:outline-none active:scale-[0.99]"
             >
               <div className="mb-1 flex items-start justify-between gap-2">
                 <p className="font-heading text-ops-blue-dark text-sm font-semibold leading-tight">
