@@ -11,8 +11,9 @@ rules_version = '2';
 //
 // Custom claims set by the auth flow:
 //   request.auth.token.email                — verified email
-//   request.auth.token.role                 — staff role (string)
+//   request.auth.token.role                 — professional staff role (string)
 //   request.auth.token.hasSpecialAccess     — true for Admin / Peer Eval / Full Access
+//   request.auth.token.isAdmin              — true for Administrator/Full Access roles or hasAdminAccess flag
 //
 // Per the migration plan: in v1 admins can edit everything that's currently
 // sheet-editable plus a handful of code-locked items. Cloud Functions use
@@ -43,7 +44,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isFromOronoDomain() && (role() == 'Administrator' || role() == 'Full Access');
+      return isFromOronoDomain() && request.auth.token.isAdmin == true;
     }
 
     function isCurrentUserEmail(email) {

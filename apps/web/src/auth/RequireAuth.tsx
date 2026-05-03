@@ -33,7 +33,7 @@ export function RequireAuth({
     return <Navigate to="/sign-in" replace state={{ from: location }} />;
   }
 
-  if (requireAdmin && claims.role !== 'Administrator' && claims.role !== 'Full Access') {
+  if (requireAdmin && !claims.isAdmin) {
     return <Navigate to="/unauthorized" replace />;
   }
 

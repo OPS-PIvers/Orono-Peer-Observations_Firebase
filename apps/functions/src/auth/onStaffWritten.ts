@@ -2,7 +2,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { isSpecialRole } from '@ops/shared';
+import { isAdminRole, isSpecialRole } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -27,9 +27,13 @@ export const onStaffWritten = onDocumentWritten(
   { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
   async (event) => {
     const email = event.params.email;
-    const after = event.data?.after.data() as { role?: string } | undefined;
+    const after = event.data?.after.data() as
+      | { role?: string; hasAdminAccess?: boolean }
+      | undefined;
     const role = after?.role ?? null;
-    const hasSpecialAccess = isSpecialRole(role);
+    const hasAdminAccess = after?.hasAdminAccess ?? false;
+    const isAdmin = isAdminRole(role) || hasAdminAccess;
+    const hasSpecialAccess = isSpecialRole(role) || isAdmin;
 
     let user;
     try {
@@ -45,7 +49,7 @@ export const onStaffWritten = onDocumentWritten(
       throw err;
     }
 
-    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess });
-    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess });
+    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
+    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
   },
 );

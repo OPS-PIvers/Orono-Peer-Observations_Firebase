@@ -86,19 +86,20 @@ const OBS_CHILDREN: NavSubItem[] = [
 interface NavFlags {
   hasWorkProduct: boolean;
   hasInstructionalRound: boolean;
+  isAdmin: boolean;
 }
 
 function buildNavItems(
   role: string | null,
   onSignOut: () => void,
-  flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false },
+  flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, isAdmin: false },
 ): NavConfig {
   const metaItems: NavItem[] = [
     { icon: User, label: 'Profile', href: '/my-rubric' },
     { icon: LogOut, label: 'Sign out', action: onSignOut },
   ];
 
-  if (role === SPECIAL_ROLES.fullAccess) {
+  if (flags.isAdmin) {
     return {
       main: [
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
@@ -190,6 +191,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   const navConfig = buildNavItems(claims.role, handleSignOut, {
     hasWorkProduct,
     hasInstructionalRound,
+    isAdmin: claims.isAdmin,
   });
   const showLabels = pcExpanded || mobileOpen;
 
@@ -279,7 +281,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
 
         {/* Main nav */}
         <div className="flex-1 overflow-y-auto py-2">
-          {showLabels && claims.role === SPECIAL_ROLES.fullAccess ? <FullAccessModeToggle /> : null}
+          {showLabels && claims.isAdmin ? <FullAccessModeToggle /> : null}
           <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
             {navConfig.main.map((item) => (
               <li key={item.label}>
