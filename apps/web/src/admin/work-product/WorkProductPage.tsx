@@ -7,6 +7,14 @@ import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+const QUESTION_TYPES = ['work-product', 'instructional-round'] as const;
+type QuestionType = (typeof QUESTION_TYPES)[number];
+
+const TYPE_LABELS: Record<QuestionType, string> = {
+  'work-product': 'Work Product',
+  'instructional-round': 'Instructional Round',
+};
+
 export function WorkProductPage() {
   const {
     data: questions,
@@ -14,6 +22,7 @@ export function WorkProductPage() {
     error,
   } = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
   const [draft, setDraft] = useState('');
+  const [newType, setNewType] = useState<QuestionType>('work-product');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -33,6 +42,7 @@ export function WorkProductPage() {
       await setDoc(doc(db, COLLECTIONS.workProductQuestions, questionId), {
         questionId,
         text,
+        type: newType,
         order,
         isActive: true,
         createdAt: serverTimestamp(),
@@ -64,10 +74,11 @@ export function WorkProductPage() {
   return (
     <div>
       <header className="mb-6">
-        <h1 className="text-3xl font-bold">Work Product Questions</h1>
+        <h1 className="text-3xl font-bold">Observation Question Bank</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          The question bank shown to PEs when they create a Work Product observation. Edit text
-          inline; deactivate to hide a question without deleting its history.
+          Questions for Work Product and Instructional Round observations. Edit text inline;
+          deactivate to hide a question without deleting its history. Set the type so each question
+          appears in the correct staff-facing form.
         </p>
       </header>
 
@@ -82,7 +93,7 @@ export function WorkProductPage() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a new work product question…"
+            placeholder="Add a new question…"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -94,6 +105,20 @@ export function WorkProductPage() {
             <Plus />
             Add
           </Button>
+        </div>
+        <div className="mt-2 flex gap-4">
+          {QUESTION_TYPES.map((t) => (
+            <label key={t} className="flex cursor-pointer items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="newType"
+                checked={newType === t}
+                onChange={() => setNewType(t)}
+                className="h-3.5 w-3.5"
+              />
+              {TYPE_LABELS[t]}
+            </label>
+          ))}
         </div>
         {addError ? <p className="text-destructive mt-2 text-sm">{addError}</p> : null}
       </div>
@@ -118,6 +143,20 @@ export function WorkProductPage() {
                 onChange={(e) => void update(q, { text: e.target.value })}
                 className="flex-1"
               />
+              <select
+                value={q.type ?? 'work-product'}
+                onChange={(e) =>
+                  void update(q, { type: e.target.value as QuestionType })
+                }
+                className="rounded-md border border-gray-200 px-2 py-1.5 text-xs"
+                aria-label="Question type"
+              >
+                {QUESTION_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
               <label className="mt-2 flex items-center gap-1 text-xs">
                 <input
                   type="checkbox"

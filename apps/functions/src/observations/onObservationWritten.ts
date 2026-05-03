@@ -4,6 +4,7 @@ import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getSheetsClient } from '../lib/sheets.js';
+import { deleteDriveFolder } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -88,8 +89,8 @@ export const onObservationWritten = onDocumentWritten(
       : null;
 
     if (!afterData) {
-      // Deletion — leave the row in place; admins can scrub manually if
-      // they need to.
+      // Deletion — clean up Drive (Drafts only) and mark the Sheet row.
+      await handleDeletion(sheetId, event.params.observationId, beforeData);
       return;
     }
     if (beforeData && !hasMeaningfulChange(beforeData, afterData)) {
@@ -220,4 +221,68 @@ function driveFolderUrl(folderId: unknown): string {
 function pdfUrl(fileId: unknown): string {
   if (typeof fileId !== 'string' || fileId.length === 0) return '';
   return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+async function handleDeletion(
+  sheetId: string,
+  observationId: string,
+  beforeData: ObsLike | null | undefined,
+): Promise<void> {
+  // 1. Delete the Drive folder for Draft observations only. Finalized
+  //    observations have their folder shared with the observed staff member —
+  //    deleting it would revoke their access to audio, evidence, and the PDF.
+  if (
+    beforeData?.['status'] === 'Draft' &&
+    typeof beforeData['driveFolderId'] === 'string' &&
+    beforeData['driveFolderId']
+  ) {
+    try {
+      await deleteDriveFolder(beforeData['driveFolderId'] as string);
+    } catch (err) {
+      logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
+    }
+  }
+
+  // 2. Mark the Sheet row as [DELETED] so the admin log stays accurate.
+  if (!sheetId) return;
+  try {
+    const sheets = getSheetsClient();
+    const colA = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: 'A:A',
+    });
+    const ids = (colA.data.values ?? []).map((row) => String(row[0] ?? ''));
+    const matchIndex = ids.findIndex((id) => id === observationId);
+    if (matchIndex === -1) return;
+    const rowNumber = matchIndex + 1;
+    // Preserve the observation ID in column A so the row remains identifiable,
+    // clear all other metadata, and stamp status as [DELETED].
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: `A${String(rowNumber)}:N${String(rowNumber)}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [
+          [
+            observationId,
+            asString(beforeData?.['observerEmail']),
+            asString(beforeData?.['observedEmail']),
+            asString(beforeData?.['observedName']),
+            '',
+            '',
+            asString(beforeData?.['type']),
+            '[DELETED]',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+          ],
+        ],
+      },
+    });
+  } catch (err) {
+    logger.error('onObservationWritten: Sheet row cleanup failed', err);
+  }
 }
