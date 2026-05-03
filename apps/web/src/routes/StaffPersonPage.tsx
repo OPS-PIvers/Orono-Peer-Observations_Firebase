@@ -27,7 +27,7 @@ function formatRelative(value: Observation['lastModifiedAt']): string {
       : typeof raw === 'object' &&
           raw !== null &&
           'toDate' in raw &&
-          typeof (raw as { toDate: unknown }).toDate === 'function'
+          typeof raw.toDate === 'function'
         ? (raw as { toDate: () => Date }).toDate()
         : null;
   if (!date) return '—';
@@ -57,21 +57,15 @@ export function StaffPersonPage() {
   const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
 
-  const staffDocRef = useMemo(
-    () => (email ? doc(db, COLLECTIONS.staff, email) : null),
-    [email],
-  );
+  const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
 
   const obsConstraints = useMemo(
-    () =>
-      email
-        ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')]
-        : [],
+    () => (email ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')] : []),
     // The hook keys on constraint types only; email is captured in closure.
     // KeyedStaffPersonPage (App.tsx) remounts this component when email changes,
     // so the subscription always reflects the correct person.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [email],
   );
   const { data: observations } = useFirestoreCollection<Observation>(
@@ -87,11 +81,7 @@ export function StaffPersonPage() {
   const finalizedObs = allObs.filter((o) => o.status === OBSERVATION_STATUS.finalized);
 
   const visibleObs =
-    activeTab === 'all'
-      ? allObs
-      : activeTab === OBSERVATION_STATUS.draft
-        ? draftObs
-        : finalizedObs;
+    activeTab === 'all' ? allObs : activeTab === OBSERVATION_STATUS.draft ? draftObs : finalizedObs;
 
   if (staffLoading) {
     return (
@@ -128,7 +118,7 @@ export function StaffPersonPage() {
   return (
     <div>
       {/* Person header */}
-      <div className="bg-white mb-6 flex flex-wrap items-start justify-between gap-4 rounded-lg border border-gray-200 p-6 shadow-sm">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <div>
           <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">
             {staffMember.name}
@@ -185,9 +175,7 @@ export function StaffPersonPage() {
       {visibleObs.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
-          <p className="text-ops-gray font-medium">
-            No observations yet for {staffMember.name}
-          </p>
+          <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
           <Button onClick={() => setDialogOpen(true)}>Start first observation</Button>
         </div>
       ) : (
@@ -217,7 +205,7 @@ function ObservationCard({ observation: o }: { observation: Observation & { id: 
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border border-gray-200 bg-white pl-4 shadow-sm border-l-[3px] ${accentColor}`}
+      className={`relative overflow-hidden rounded-lg border border-l-[3px] border-gray-200 bg-white pl-4 shadow-sm ${accentColor}`}
     >
       <div className="p-4">
         <div className="mb-1 flex flex-wrap items-start justify-between gap-2">

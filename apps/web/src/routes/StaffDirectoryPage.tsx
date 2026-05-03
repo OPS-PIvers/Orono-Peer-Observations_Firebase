@@ -55,13 +55,16 @@ export function StaffDirectoryPage() {
           </p>
         </div>
         <div className="relative w-full max-w-xs">
-          <Search aria-hidden="true" className="text-ops-gray-lighter absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <Search
+            aria-hidden="true"
+            className="text-ops-gray-lighter absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+          />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or email…"
-            className="border-input bg-background h-10 w-full rounded-md border pl-9 pr-3 text-sm"
+            className="border-input bg-background h-10 w-full rounded-md border pr-3 pl-9 text-sm"
           />
         </div>
       </header>
@@ -106,7 +109,7 @@ export function StaffDirectoryPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <Users className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No staff match your search</p>
-          {(search || roleFilter || showInactive) ? (
+          {search || roleFilter || showInactive ? (
             <button
               type="button"
               onClick={clearFilters}
@@ -125,7 +128,7 @@ export function StaffDirectoryPage() {
               className="hover:border-ops-blue focus:ring-ops-blue block rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md focus:ring-2 focus:ring-offset-2 focus:outline-none active:scale-[0.99]"
             >
               <div className="mb-1 flex items-start justify-between gap-2">
-                <p className="font-heading text-ops-blue-dark text-sm font-semibold leading-tight">
+                <p className="font-heading text-ops-blue-dark text-sm leading-tight font-semibold">
                   {s.name}
                 </p>
                 <span
@@ -142,7 +145,10 @@ export function StaffDirectoryPage() {
               ) : null}
               <div className="flex flex-wrap gap-1">
                 {s.buildings.map((b) => (
-                  <span key={b} className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
+                  <span
+                    key={b}
+                    className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600"
+                  >
                     {b}
                   </span>
                 ))}
