@@ -431,7 +431,8 @@ function TemplateRow({
   substitutePreview,
 }: TemplateRowProps) {
   const triggerType = editForm.triggerType ?? t.triggerType;
-  const relevantVars = TRIGGER_VARIABLES[triggerType] ?? (KNOWN_TEMPLATE_VARIABLES as unknown as TemplateVariable[]);
+  const relevantVars: TemplateVariable[] =
+    TRIGGER_VARIABLES[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
   const isScheduled = triggerType.startsWith('scheduled.');
 
   return (
@@ -440,6 +441,8 @@ function TemplateRow({
       <div className="flex items-center gap-3 px-4 py-3">
         {/* Active toggle */}
         <button
+          role="switch"
+          aria-checked={t.isActive}
           onClick={onToggle}
           className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus:outline-none ${
             t.isActive ? 'bg-green-500' : 'bg-gray-300'

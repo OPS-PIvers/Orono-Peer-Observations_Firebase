@@ -13,6 +13,44 @@ import {
 if (getApps().length === 0) initializeApp();
 
 /**
+ * Return the UTC Date corresponding to midnight Chicago time on the calendar
+ * day that is `offsetDays` from the Chicago calendar date of `utcNow`.
+ * Uses Intl to derive the UTC offset rather than assuming a fixed offset,
+ * so it handles CST (UTC-6) and CDT (UTC-5) automatically.
+ */
+function chicagoMidnight(utcNow: Date, offsetDays: number): { start: Date; end: Date } {
+  // 1. Find today's calendar date in Chicago (en-CA gives YYYY-MM-DD)
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+  }).format(utcNow);
+
+  // 2. Advance by offsetDays (re-format to handle month/year rollover)
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const anchorUTC = new Date(Date.UTC(y, m - 1, d + offsetDays, 12, 0, 0)); // noon UTC on target day
+  const targetStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+  }).format(anchorUTC);
+  const [ty, tm, td] = targetStr.split('-').map(Number);
+
+  // 3. Derive the Chicago UTC offset using noon UTC as an anchor (avoids DST edge cases)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(anchorUTC);
+  const chicagoHour = Number(parts.find((p) => p.type === 'hour')?.value ?? '12');
+  const chicagoMin = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  // Minutes that Chicago is behind UTC (e.g. CDT → 5*60=300, CST → 6*60=360)
+  const behindUTCMins = 12 * 60 - (chicagoHour * 60 + chicagoMin);
+
+  // 4. Chicago midnight = UTC midnight + behindUTCMins
+  const start = new Date(Date.UTC(ty, tm - 1, td, 0, 0, 0) + behindUTCMins * 60_000);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { start, end };
+}
+
+/**
  * Daily scheduled job that sends two types of reminder emails:
  *   1. Pre-observation reminders N days before a Draft observation's date.
  *   2. Incomplete WP/IR reminders N days after creation with no responses.
@@ -36,12 +74,7 @@ export const scheduledEmailReminders = onSchedule(
     const preObsTemplate = await loadActiveTemplate(db, 'scheduled.preObservation');
     if (preObsTemplate) {
       const daysAhead = preObsTemplate.scheduledDays ?? 3;
-      const targetDate = new Date(today);
-      targetDate.setDate(targetDate.getDate() + daysAhead);
-      const targetStart = new Date(targetDate);
-      targetStart.setHours(0, 0, 0, 0);
-      const targetEnd = new Date(targetDate);
-      targetEnd.setHours(23, 59, 59, 999);
+      const { start: targetStart, end: targetEnd } = chicagoMidnight(today, daysAhead);
 
       const snap = await db
         .collection(COLLECTIONS.observations)
@@ -94,8 +127,9 @@ export const scheduledEmailReminders = onSchedule(
     const incompleteTemplate = await loadActiveTemplate(db, 'scheduled.reminderIncomplete');
     if (incompleteTemplate) {
       const daysAfter = incompleteTemplate.scheduledDays ?? 7;
-      const cutoff = new Date(today);
-      cutoff.setDate(cutoff.getDate() - daysAfter);
+      // Use Chicago midnight as the cutoff so observations created on the same
+      // calendar day N days ago are included regardless of time-of-day.
+      const { start: cutoff } = chicagoMidnight(today, -daysAfter);
 
       const wpIrSnap = await db
         .collection(COLLECTIONS.observations)

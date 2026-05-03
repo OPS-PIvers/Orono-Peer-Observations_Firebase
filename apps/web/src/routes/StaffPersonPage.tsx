@@ -109,6 +109,7 @@ export function StaffPersonPage() {
 
   // Email send state
   const emailMenuRef = useRef<HTMLDivElement>(null);
+  const sendSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [emailMenuOpen, setEmailMenuOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<(EmailTemplate & { id: string }) | null>(
     null,
@@ -117,6 +118,13 @@ export function StaffPersonPage() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccess, setSendSuccess] = useState(false);
+
+  // Clear success timer on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => {
+      if (sendSuccessTimerRef.current) clearTimeout(sendSuccessTimerRef.current);
+    };
+  }, []);
 
   // Close email dropdown when clicking outside
   useEffect(() => {
@@ -159,11 +167,10 @@ export function StaffPersonPage() {
         },
       });
       setSendSuccess(true);
-      const timer = setTimeout(() => {
+      sendSuccessTimerRef.current = setTimeout(() => {
         setSendDialogOpen(false);
         setSendSuccess(false);
       }, 1500);
-      return () => clearTimeout(timer);
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Send failed');
     } finally {
