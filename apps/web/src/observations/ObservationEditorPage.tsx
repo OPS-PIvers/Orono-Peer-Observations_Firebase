@@ -178,7 +178,7 @@ export function ObservationEditorPage() {
       postObsDate: src.postObsDate,
       postObsNotes: src.postObsNotes,
       observationName: src.observationName ?? '',
-      observationDate: src.observationDate instanceof Date ? src.observationDate : undefined,
+      observationDate: toJsDate(src.observationDate),
     };
     setDraft(next);
     draftRef.current = next;
@@ -669,4 +669,12 @@ function FinalizedBanner({
       </div>
     </div>
   );
+}
+
+function toJsDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return value;
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  return undefined;
 }

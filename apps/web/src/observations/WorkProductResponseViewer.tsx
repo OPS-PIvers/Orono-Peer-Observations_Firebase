@@ -3,7 +3,11 @@ import { ClipboardList } from 'lucide-react';
 import { COLLECTIONS, type Observation, type WorkProductQuestion } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 
-const WP_QUESTIONS_CONSTRAINTS = [where('isActive', '==', true), orderBy('order', 'asc')];
+const WP_QUESTIONS_CONSTRAINTS = [
+  where('type', '==', 'work-product'),
+  where('isActive', '==', true),
+  orderBy('order', 'asc'),
+];
 
 interface WorkProductResponseViewerProps {
   observation: Observation & { id: string };

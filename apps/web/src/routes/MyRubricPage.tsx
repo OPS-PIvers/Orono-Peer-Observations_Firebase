@@ -133,7 +133,7 @@ export function MyRubricPage() {
       {displayedRubric && displayedRubric.domains.length > 0 ? (
         <>
           <div className="bg-ops-blue-dark border-b border-white/10 sticky top-0 z-10 -mx-4 px-4 py-2">
-            <DomainNav rubric={displayedRubric} />
+            <DomainNav rubric={displayedRubric} variant="dark" />
           </div>
           <RubricGrid
             rubric={displayedRubric}

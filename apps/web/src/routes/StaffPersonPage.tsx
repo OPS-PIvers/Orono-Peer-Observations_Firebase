@@ -76,10 +76,16 @@ export function StaffPersonPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
-    await deleteDoc(doc(db, COLLECTIONS.observations, id));
-    setConfirmingDeleteId(null);
+    setDeleteError(null);
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.observations, id));
+      setConfirmingDeleteId(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete observation');
+    }
   }
 
   const allObs = observations ?? [];
@@ -176,6 +182,12 @@ export function StaffPersonPage() {
           </button>
         ))}
       </div>
+
+      {deleteError ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {deleteError}
+        </div>
+      ) : null}
 
       {/* Observation list */}
       {visibleObs.length === 0 ? (

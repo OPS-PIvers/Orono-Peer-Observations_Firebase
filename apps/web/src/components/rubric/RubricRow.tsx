@@ -292,34 +292,36 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
       {mode.kind === 'edit' ? (
         <div className="border-border border-t">
           {/* Evidence strip header */}
-          <button
-            type="button"
-            onClick={() => setEvidenceExpanded((v) => !v)}
+          <div
             className={cn(
               'flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors',
               evidenceExpanded
                 ? 'bg-ops-blue-lighter/40 text-ops-gray-dark'
-                : 'bg-gray-50 text-ops-gray hover:bg-ops-blue-lighter/40 text-ops-gray-dark',
+                : 'bg-gray-50 text-ops-gray hover:bg-ops-blue-lighter/40',
             )}
           >
-            <Paperclip className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-medium">
-              Evidence{evidenceFiles.length > 0 ? ` (${String(evidenceFiles.length)})` : ''}
-            </span>
+            <button
+              type="button"
+              onClick={() => setEvidenceExpanded((v) => !v)}
+              aria-expanded={evidenceExpanded}
+              className="flex flex-1 items-center gap-2 text-left"
+            >
+              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-medium">
+                Evidence{evidenceFiles.length > 0 ? ` (${String(evidenceFiles.length)})` : ''}
+              </span>
+            </button>
             {!readOnly ? (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
+                onClick={() => fileInputRef.current?.click()}
                 className="bg-ops-blue ml-auto rounded px-2 py-0.5 text-white hover:bg-ops-blue-dark"
                 disabled={uploading}
               >
                 {uploading ? 'Uploading…' : '+ Add'}
               </button>
             ) : null}
-          </button>
+          </div>
 
           <input
             ref={fileInputRef}

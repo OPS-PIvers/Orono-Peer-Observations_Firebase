@@ -83,7 +83,7 @@ export const uploadEvidenceFile = onCall(
       driveFileId: fileId,
       name: fileName,
       mimeType,
-      uploadedAt: new Date().toISOString(),
+      uploadedAt: new Date(),
       uploadedBy: userEmail,
     };
 

@@ -17,7 +17,11 @@ interface WorkProductAnswerFormProps {
   observation: Observation & { id: string };
 }
 
-const WP_QUESTIONS_CONSTRAINTS = [where('isActive', '==', true), orderBy('order', 'asc')];
+const WP_QUESTIONS_CONSTRAINTS = [
+  where('type', '==', 'work-product'),
+  where('isActive', '==', true),
+  orderBy('order', 'asc'),
+];
 
 /**
  * Staff-facing form for answering Work Product observation questions.
