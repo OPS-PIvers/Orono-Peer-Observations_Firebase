@@ -170,7 +170,20 @@ export function NewObservationPage() {
               </TableRow>
             ) : (
               filtered.map((s) => (
-                <TableRow key={s.id} className="cursor-pointer" onClick={() => setSelected(s)}>
+                <TableRow
+                  key={s.id}
+                  className="cursor-pointer"
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Observe ${s.name}`}
+                  onClick={() => setSelected(s)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelected(s);
+                    }
+                  }}
+                >
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{s.email}</TableCell>
                   <TableCell>{s.role}</TableCell>

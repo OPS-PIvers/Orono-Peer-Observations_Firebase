@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -76,10 +76,34 @@ function RouteFallback() {
   return <p className="text-muted-foreground py-12 text-center text-sm">Loading…</p>;
 }
 
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <p className="text-muted-foreground py-12 text-center text-sm">
+          Failed to load page. Try refreshing.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   return (
     <AuthProvider>
-      <Suspense fallback={<RouteFallback />}>
+      <RouteErrorBoundary>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Public */}
           <Route path="/sign-in" element={<SignInScreen />} />
@@ -96,16 +120,8 @@ export function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/dashboard"
-            element={
-              <RequireAuth requireSpecialAccess>
-                <Layout>
-                  <ObservationsListPage />
-                </Layout>
-              </RequireAuth>
-            }
-          />
+          {/* /dashboard kept for bookmarks; new entry point is /observations */}
+          <Route path="/dashboard" element={<Navigate to="/observations" replace />} />
           <Route
             path="/observations"
             element={
@@ -215,7 +231,8 @@ export function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Suspense>
+        </Suspense>
+      </RouteErrorBoundary>
     </AuthProvider>
   );
 }
