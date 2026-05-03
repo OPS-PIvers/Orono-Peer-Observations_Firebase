@@ -93,6 +93,12 @@ export const observation = z.object({
   // Work product answers (only when type === 'Work Product')
   workProductAnswers: z.array(workProductAnswer).default([]),
 
+  // Pre/post observation meeting notes (added Phase 2)
+  preObsDate: isoDate.optional(),
+  preObsNotes: tiptapDoc.optional(),
+  postObsDate: isoDate.optional(),
+  postObsNotes: tiptapDoc.optional(),
+
   // Audio + transcripts
   audioDriveFileIds: z.array(z.string()).default([]),
   transcripts: z.record(z.string(), z.string()).default({}),
@@ -132,6 +138,10 @@ export const observationUpdateInput = observation
     componentTags: true,
     workProductAnswers: true,
     audioDriveFileIds: true,
+    preObsDate: true,
+    preObsNotes: true,
+    postObsDate: true,
+    postObsNotes: true,
   })
   .partial();
 export type ObservationUpdateInput = z.infer<typeof observationUpdateInput>;

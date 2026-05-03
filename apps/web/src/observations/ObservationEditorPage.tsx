@@ -6,6 +6,7 @@ import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
   type Observation,
   type ObservationComponentEntry,
   type Role,
@@ -30,9 +31,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { RubricGrid } from '@/components/rubric';
 import { ScriptEditor } from './ScriptEditor';
 import { GlobalToolsBar } from './GlobalToolsBar';
+import { ScriptDrawer } from './ScriptDrawer';
+import { MeetingNotesSection } from './MeetingNotesSection';
+import { WorkProductResponseViewer } from './WorkProductResponseViewer';
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -53,12 +58,27 @@ interface EditorDraft {
   observationData: ComponentEntries;
   componentNotes: ComponentNotes;
   scriptDoc: TiptapDoc | undefined;
+  preObsDate: Date | undefined;
+  preObsNotes: TiptapDoc | undefined;
+  postObsDate: Date | undefined;
+  postObsNotes: TiptapDoc | undefined;
 }
+
+const emptyDraft: EditorDraft = {
+  observationData: {},
+  componentNotes: {},
+  scriptDoc: undefined,
+  preObsDate: undefined,
+  preObsNotes: undefined,
+  postObsDate: undefined,
+  postObsNotes: undefined,
+};
 
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const sidebarWidth = useSidebarWidth();
 
   const {
     data: observation,
@@ -124,18 +144,10 @@ export function ObservationEditorPage() {
   // Local draft of observationData + componentNotes; flushed to Firestore
   // on debounce. Both fields share the same autosave cycle so we don't
   // have two timers racing against each other.
-  const [draft, setDraft] = useState<EditorDraft>({
-    observationData: {},
-    componentNotes: {},
-    scriptDoc: undefined,
-  });
+  const [draft, setDraft] = useState<EditorDraft>(emptyDraft);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
-  const draftRef = useRef<EditorDraft>({
-    observationData: {},
-    componentNotes: {},
-    scriptDoc: undefined,
-  });
+  const draftRef = useRef<EditorDraft>(emptyDraft);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
@@ -155,6 +167,10 @@ export function ObservationEditorPage() {
       observationData: src.observationData,
       componentNotes: src.componentNotes,
       scriptDoc: src.scriptDoc,
+      preObsDate: src.preObsDate,
+      preObsNotes: src.preObsNotes,
+      postObsDate: src.postObsDate,
+      postObsNotes: src.postObsNotes,
     };
     setDraft(next);
     draftRef.current = next;
@@ -171,6 +187,10 @@ export function ObservationEditorPage() {
           observationData: draftRef.current.observationData,
           componentNotes: draftRef.current.componentNotes,
           scriptDoc: draftRef.current.scriptDoc ?? null,
+          preObsDate: draftRef.current.preObsDate ?? null,
+          preObsNotes: draftRef.current.preObsNotes ?? null,
+          postObsDate: draftRef.current.postObsDate ?? null,
+          postObsNotes: draftRef.current.postObsNotes ?? null,
           lastModifiedAt: serverTimestamp(),
         },
         { merge: true },
@@ -270,6 +290,50 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
+  const setPreObsDate = useCallback(
+    (date: Date | undefined) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, preObsDate: date };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
+  const setPreObsNotes = useCallback(
+    (doc: TiptapDoc) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, preObsNotes: doc };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
+  const setPostObsDate = useCallback(
+    (date: Date | undefined) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, postObsDate: date };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
+  const setPostObsNotes = useCallback(
+    (doc: TiptapDoc) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, postObsNotes: doc };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
   async function handleFinalize() {
     if (!observation) return;
     setFinalizing(true);
@@ -312,9 +376,20 @@ export function ObservationEditorPage() {
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} className="mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (observation.observedEmail) {
+                void navigate(`/staff/${observation.observedEmail}`);
+              } else {
+                void navigate(-1);
+              }
+            }}
+            className="mb-2"
+          >
             <ChevronLeft className="h-4 w-4" />
-            Observations
+            {observation.observedName ? `← Back to ${observation.observedName}` : '← Back'}
           </Button>
           <h1 className="text-3xl font-bold">{observation.observedName}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -351,6 +426,22 @@ export function ObservationEditorPage() {
         </div>
       ) : null}
 
+      <MeetingNotesSection
+        preObsDate={draft.preObsDate}
+        preObsNotes={draft.preObsNotes}
+        postObsDate={draft.postObsDate}
+        postObsNotes={draft.postObsNotes}
+        readOnly={!canEdit}
+        onPreObsDateChange={setPreObsDate}
+        onPreObsNotesChange={setPreObsNotes}
+        onPostObsDateChange={setPostObsDate}
+        onPostObsNotesChange={setPostObsNotes}
+      />
+
+      {observation.type === OBSERVATION_TYPES.workProduct ? (
+        <WorkProductResponseViewer observation={observation} />
+      ) : null}
+
       <GlobalToolsBar
         observation={observation}
         canEdit={canEdit}
@@ -371,43 +462,31 @@ export function ObservationEditorPage() {
           role/year mappings.
         </div>
       ) : (
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
-          <RubricGrid
-            rubric={visibleRubric}
-            mode={{
-              kind: 'edit',
-              entries: draft.observationData,
-              notes: draft.componentNotes,
-              readOnly: !canEdit,
-              onProficiency: (componentId, proficiency) =>
-                updateEntry(componentId, { proficiency }),
-              onToggleLookFor: toggleLookFor,
-              onNotesChange: setNotesDoc,
-            }}
-            storageScope={`edit-${observation.id}`}
-          />
-
-          <aside className="mt-4 lg:sticky lg:top-[88px] lg:mt-0 lg:h-[calc(100vh-104px)] lg:overflow-y-auto">
-            <section className="border-border bg-background flex h-full flex-col gap-3 rounded-lg border p-4">
-              <header>
-                <h2 className="font-heading text-lg font-semibold">Script</h2>
-                <p className="text-muted-foreground mt-0.5 text-xs">
-                  Live note-taking. Place your cursor in a paragraph or select a quote, then click
-                  the <strong>Tag</strong> button to link it to a rubric component.
-                </p>
-              </header>
-              <ScriptEditor
-                value={draft.scriptDoc}
-                onChange={setScriptDoc}
-                readOnly={!canEdit}
-                availableComponents={activeComponents}
-                placeholder="Start typing what you see and hear during the observation…"
-                minHeight="20rem"
-              />
-            </section>
-          </aside>
-        </div>
+        <RubricGrid
+          rubric={visibleRubric}
+          mode={{
+            kind: 'edit',
+            entries: draft.observationData,
+            notes: draft.componentNotes,
+            readOnly: !canEdit,
+            onProficiency: (componentId, proficiency) => updateEntry(componentId, { proficiency }),
+            onToggleLookFor: toggleLookFor,
+            onNotesChange: setNotesDoc,
+          }}
+          storageScope={`edit-${observation.id}`}
+        />
       )}
+
+      <ScriptDrawer sidebarWidth={sidebarWidth}>
+        <ScriptEditor
+          value={draft.scriptDoc}
+          onChange={setScriptDoc}
+          readOnly={!canEdit}
+          availableComponents={activeComponents}
+          placeholder="Start typing what you see and hear during the observation…"
+          minHeight="16rem"
+        />
+      </ScriptDrawer>
     </div>
   );
 }
