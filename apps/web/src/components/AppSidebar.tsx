@@ -400,7 +400,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
 
 // ─── FullAccessModeToggle ─────────────────────────────────────────────────────
 
-const FA_MODE_KEY = 'ops:fullaccess:mode';
+export const FA_MODE_KEY = 'ops:fullaccess:mode';
 
 /**
  * Compact segmented control for Full Access users. Lets them switch between
