@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
@@ -100,10 +100,24 @@ class RouteErrorBoundary extends Component<
   }
 }
 
+// Resets the error boundary on every navigation so users can recover from
+// transient chunk-load failures without a full page reload.
+function KeyedErrorBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <RouteErrorBoundary key={pathname}>{children}</RouteErrorBoundary>;
+}
+
+// Forces StaffPersonPage to remount when :email changes so the Firestore
+// subscription (keyed on constraint types, not values) is always fresh.
+function KeyedStaffPersonPage() {
+  const { email } = useParams<{ email: string }>();
+  return <StaffPersonPage key={email} />;
+}
+
 export function App() {
   return (
     <AuthProvider>
-      <RouteErrorBoundary>
+      <KeyedErrorBoundary>
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Public */}
@@ -121,8 +135,8 @@ export function App() {
               </RequireAuth>
             }
           />
-          {/* /dashboard kept for bookmarks; new entry point is /observations */}
-          <Route path="/dashboard" element={<Navigate to="/observations" replace />} />
+          {/* /dashboard kept for bookmarks; redirects through "/" so RoleAwareRedirect applies */}
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route
             path="/observations"
             element={
@@ -170,7 +184,7 @@ export function App() {
             element={
               <RequireAuth requireSpecialAccess>
                 <Layout>
-                  <StaffPersonPage />
+                  <KeyedStaffPersonPage />
                 </Layout>
               </RequireAuth>
             }
@@ -233,7 +247,7 @@ export function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
-      </RouteErrorBoundary>
+      </KeyedErrorBoundary>
     </AuthProvider>
   );
 }

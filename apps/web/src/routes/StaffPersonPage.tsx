@@ -51,7 +51,10 @@ function typeBadge(type: string): string {
 }
 
 export function StaffPersonPage() {
-  const { email } = useParams<{ email: string }>();
+  const { email: rawEmail } = useParams<{ email: string }>();
+  // Decode and normalise: URLs use encodeURIComponent so "+" and other
+  // special chars are safe, but Firestore doc IDs are stored lowercase.
+  const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
 
   const staffDocRef = useMemo(
@@ -66,8 +69,8 @@ export function StaffPersonPage() {
         ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')]
         : [],
     // The hook keys on constraint types only; email is captured in closure.
-    // Normal navigation always remounts this page from a different route,
-    // so stale email values don't occur in practice.
+    // KeyedStaffPersonPage (App.tsx) remounts this component when email changes,
+    // so the subscription always reflects the correct person.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [email],
   );

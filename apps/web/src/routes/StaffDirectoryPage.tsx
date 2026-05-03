@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { COLLECTIONS, type Staff } from '@ops/shared';
@@ -9,7 +9,6 @@ import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 
 export function StaffDirectoryPage() {
-  const navigate = useNavigate();
   const {
     data: staff,
     loading,
@@ -120,19 +119,10 @@ export function StaffDirectoryPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {filtered.map((s) => (
-            <div
+            <Link
               key={s.id}
-              role="button"
-              tabIndex={0}
-              aria-label={`View observations for ${s.name}`}
-              onClick={() => void navigate(`/staff/${s.email}`)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  void navigate(`/staff/${s.email}`);
-                }
-              }}
-              className="hover:border-ops-blue focus:ring-ops-blue cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md focus:ring-2 focus:ring-offset-2 focus:outline-none active:scale-[0.99]"
+              to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`}
+              className="hover:border-ops-blue focus:ring-ops-blue block rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all hover:shadow-md focus:ring-2 focus:ring-offset-2 focus:outline-none active:scale-[0.99]"
             >
               <div className="mb-1 flex items-start justify-between gap-2">
                 <p className="font-heading text-ops-blue-dark text-sm font-semibold leading-tight">
@@ -157,7 +147,7 @@ export function StaffDirectoryPage() {
                   </span>
                 ))}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

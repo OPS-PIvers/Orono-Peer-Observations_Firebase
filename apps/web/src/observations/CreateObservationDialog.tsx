@@ -9,6 +9,7 @@ import {
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { db } from '@/lib/firebase';
+import { yearLabel } from '@/utils/staffFormatting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -99,7 +100,7 @@ export function CreateObservationDialog({
           <DialogTitle>New observation</DialogTitle>
           <DialogDescription>
             Creating an observation for <strong>{staff.name}</strong> ({staff.role},{' '}
-            {staff.year < 4 ? `Year ${String(staff.year)}` : `P${String(staff.year - 3)}`})
+            {yearLabel(staff.year)})
           </DialogDescription>
         </DialogHeader>
 

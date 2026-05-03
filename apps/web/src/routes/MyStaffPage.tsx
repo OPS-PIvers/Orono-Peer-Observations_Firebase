@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { doc, orderBy } from 'firebase/firestore';
 import { Check } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
@@ -16,7 +16,6 @@ const ALL_STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 
 export function MyStaffPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const adminEmail = user?.email?.toLowerCase() ?? '';
 
   const adminDocRef = useMemo(
@@ -34,7 +33,7 @@ export function MyStaffPage() {
 
   const buildingScoped = useMemo(() => {
     if (!allStaff) return [];
-    if (missingBuildings) return allStaff.filter((s) => s.isActive);
+    if (missingBuildings) return [];
     return allStaff.filter(
       (s) => s.isActive && s.buildings.some((b) => adminBuildings.includes(b)),
     );
@@ -147,7 +146,7 @@ export function MyStaffPage() {
                   className={`transition-colors hover:bg-ops-blue-lighter/40 ${i % 2 === 0 ? 'bg-white' : 'bg-ops-gray-lightest'}`}
                 >
                   <td className="px-4 py-3">
-                    <Link to={`/staff/${s.email}`} className="text-ops-blue font-medium hover:underline">
+                    <Link to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`} className="text-ops-blue font-medium hover:underline">
                       {s.name}
                     </Link>
                   </td>
@@ -170,12 +169,10 @@ export function MyStaffPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void navigate(`/staff/${s.email}`)}
-                    >
-                      View observations
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`}>
+                        View observations
+                      </Link>
                     </Button>
                   </td>
                 </tr>
