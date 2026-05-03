@@ -35,24 +35,28 @@ export const claims = {
     email,
     role: 'Teacher',
     hasSpecialAccess: false,
+    isAdmin: false,
     ...verified,
   }),
   peerEval: (email = 'pe@orono.k12.mn.us') => ({
     email,
     role: 'Peer Evaluator',
     hasSpecialAccess: true,
+    isAdmin: false,
     ...verified,
   }),
   admin: (email = 'admin@orono.k12.mn.us') => ({
     email,
     role: 'Administrator',
     hasSpecialAccess: true,
+    isAdmin: true,
     ...verified,
   }),
   fullAccess: (email = 'fullaccess@orono.k12.mn.us') => ({
     email,
     role: 'Full Access',
     hasSpecialAccess: true,
+    isAdmin: true,
     ...verified,
   }),
 } as const;

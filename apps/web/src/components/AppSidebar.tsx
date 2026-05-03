@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { SPECIAL_ROLES } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -82,13 +83,23 @@ const OBS_CHILDREN: NavSubItem[] = [
   { label: 'All observations', href: '/observations' },
 ];
 
-function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
+interface NavFlags {
+  hasWorkProduct: boolean;
+  hasInstructionalRound: boolean;
+  isAdmin: boolean;
+}
+
+function buildNavItems(
+  role: string | null,
+  onSignOut: () => void,
+  flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, isAdmin: false },
+): NavConfig {
   const metaItems: NavItem[] = [
     { icon: User, label: 'Profile', href: '/my-rubric' },
     { icon: LogOut, label: 'Sign out', action: onSignOut },
   ];
 
-  if (role === SPECIAL_ROLES.fullAccess) {
+  if (flags.isAdmin) {
     return {
       main: [
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
@@ -131,8 +142,16 @@ function buildNavItems(role: string | null, onSignOut: () => void): NavConfig {
         label: 'Observations',
         children: [{ label: 'View finalized observations', href: '/my-rubric' }],
       },
-      { icon: FileText, label: 'Work Product', locked: true },
-      { icon: Eye, label: 'Instructional Round', locked: true },
+      {
+        icon: FileText,
+        label: 'Work Product',
+        ...(flags.hasWorkProduct ? { href: '/my-rubric' } : { locked: true }),
+      },
+      {
+        icon: Eye,
+        label: 'Instructional Round',
+        ...(flags.hasInstructionalRound ? { href: '/my-rubric' } : { locked: true }),
+      },
     ],
     meta: metaItems,
   };
@@ -155,6 +174,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }: AppSidebarProps) {
   const { user, claims, signOut } = useAuth();
+  const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
   const location = useLocation();
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
@@ -168,7 +188,11 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   }, [location.pathname]);
 
   const handleSignOut = useCallback(() => void signOut(), [signOut]);
-  const navConfig = buildNavItems(claims.role, handleSignOut);
+  const navConfig = buildNavItems(claims.role, handleSignOut, {
+    hasWorkProduct,
+    hasInstructionalRound,
+    isAdmin: claims.isAdmin,
+  });
   const showLabels = pcExpanded || mobileOpen;
 
   function toggleSection(label: string) {
@@ -257,7 +281,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
 
         {/* Main nav */}
         <div className="flex-1 overflow-y-auto py-2">
-          {showLabels && claims.role === SPECIAL_ROLES.fullAccess ? <FullAccessModeToggle /> : null}
+          {showLabels && claims.isAdmin ? <FullAccessModeToggle /> : null}
           <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
             {navConfig.main.map((item) => (
               <li key={item.label}>

@@ -11,9 +11,11 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
+import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
 import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
+import { InstructionalRoundAnswerForm } from '@/observations/InstructionalRoundAnswerForm';
 
 const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
 
@@ -94,6 +96,7 @@ export function MyRubricPage() {
   }, [rubric, assignmentMode, assignedComponentIds]);
 
   const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
+  const { observation: irObservation } = useActiveInstructionalRoundObservation(lowerEmail);
 
   if (!user) {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;
@@ -103,8 +106,8 @@ export function MyRubricPage() {
     <section className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">My Rubric</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">My Rubric</h1>
+          <p className="text-ops-gray mt-1 text-sm">
             {staff
               ? `${staff.role} · Year ${String(staff.year)}`
               : staffLoading
@@ -125,10 +128,12 @@ export function MyRubricPage() {
 
       {wpObservation ? <WorkProductAnswerForm observation={wpObservation} /> : null}
 
+      {irObservation ? <InstructionalRoundAnswerForm observation={irObservation} /> : null}
+
       {displayedRubric && displayedRubric.domains.length > 0 ? (
         <>
-          <div className="bg-background border-border sticky top-0 z-10 -mx-4 border-b px-4 py-2">
-            <DomainNav rubric={displayedRubric} />
+          <div className="bg-ops-blue-dark border-b border-white/10 sticky top-0 z-10 -mx-4 px-4 py-2">
+            <DomainNav rubric={displayedRubric} variant="dark" />
           </div>
           <RubricGrid
             rubric={displayedRubric}

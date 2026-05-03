@@ -221,13 +221,71 @@ describe('observations: delete', () => {
     await seedDraftObs('obs1');
   });
 
-  it('PE cannot delete', async () => {
+  it('observer (PE) can delete their own Draft', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('different PE cannot delete another observer\'s Draft', async () => {
+    const db = testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore();
     await assertFails(deleteDoc(doc(db, 'observations/obs1')));
   });
 
   it('admin can delete', async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
     await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
+  });
+});
+
+describe('observations: staff WP/IR draft access', () => {
+  it('observed teacher CAN read a Work Product Draft', async () => {
+    await seedDraftObs('wpObs', { type: 'Work Product' });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/wpObs')));
+  });
+
+  it('observed teacher CAN read an Instructional Round Draft', async () => {
+    await seedDraftObs('irObs', { type: 'Instructional Round' });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/irObs')));
+  });
+
+  it('observed teacher CANNOT read a Standard Draft (existing behavior preserved)', async () => {
+    await seedDraftObs('stdObs', { type: 'Standard' });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, 'observations/stdObs')));
+  });
+
+  it('observed teacher CAN save workProductAnswers on a WP Draft', async () => {
+    await seedDraftObs('wpObs2', { type: 'Work Product', workProductAnswers: [] });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/wpObs2'), {
+        workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CAN save workProductAnswers on an IR Draft', async () => {
+    await seedDraftObs('irObs2', { type: 'Instructional Round', workProductAnswers: [] });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/irObs2'), {
+        workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CANNOT save workProductAnswers on a Standard Draft', async () => {
+    await seedDraftObs('stdObs2', { type: 'Standard', workProductAnswers: [] });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/stdObs2'), {
+        workProductAnswers: [{ questionId: 'q1', answer: 'Hax', updatedAt: new Date() }],
+        lastModifiedAt: new Date(),
+      }),
+    );
   });
 });

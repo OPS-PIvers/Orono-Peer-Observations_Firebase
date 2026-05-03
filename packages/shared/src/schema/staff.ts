@@ -41,6 +41,8 @@ export const staff = z.object({
   buildings: z.array(z.string().trim().min(1).max(80)).default([]),
   summativeYear: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  /** Grants admin-console access independent of professional role. */
+  hasAdminAccess: z.boolean().default(false),
   createdAt: isoDate,
   updatedAt: isoDate,
 });

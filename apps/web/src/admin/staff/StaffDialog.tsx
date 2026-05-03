@@ -37,6 +37,7 @@ interface FormState {
   buildingDraft: string;
   summativeYear: boolean;
   isActive: boolean;
+  hasAdminAccess: boolean;
 }
 
 const empty: FormState = {
@@ -48,6 +49,7 @@ const empty: FormState = {
   buildingDraft: '',
   summativeYear: false,
   isActive: true,
+  hasAdminAccess: false,
 };
 
 export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogProps) {
@@ -66,6 +68,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         buildingDraft: '',
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
+        hasAdminAccess: existing.hasAdminAccess ?? false,
       });
     } else if (mode === 'create') {
       setForm(empty);
@@ -104,6 +107,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           buildings,
           summativeYear: form.summativeYear,
           isActive: form.isActive,
+          hasAdminAccess: form.hasAdminAccess,
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
         },
@@ -253,6 +257,15 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
                 className="h-4 w-4"
               />
               Active
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.hasAdminAccess}
+                onChange={(e) => setForm((f) => ({ ...f, hasAdminAccess: e.target.checked }))}
+                className="h-4 w-4"
+              />
+              Admin access
             </label>
           </div>
 

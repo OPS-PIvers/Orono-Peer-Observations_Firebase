@@ -139,6 +139,28 @@ export interface DriveLink {
   webContentLink: string | null;
 }
 
+/**
+ * Permanently delete a Drive folder and all of its children.
+ * Used when a Draft observation is deleted — the SA owns the folder so
+ * deletion is unconditional. Silently no-ops if the folder is already gone.
+ */
+export async function deleteDriveFolder(folderId: string): Promise<void> {
+  const drive = getDriveClient();
+  // List immediate children so we can delete them before the folder,
+  // ensuring no orphaned files remain accessible from other contexts.
+  const children = await drive.files.list({
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'files(id)',
+    pageSize: 1000,
+  });
+  await Promise.all(
+    (children.data.files ?? []).map((f) =>
+      f.id ? drive.files.delete({ fileId: f.id }).catch(() => undefined) : Promise.resolve(),
+    ),
+  );
+  await drive.files.delete({ fileId: folderId });
+}
+
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {
   const drive = getDriveClient();
   const meta = await drive.files.get({

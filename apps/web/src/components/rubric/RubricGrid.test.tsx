@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event';
 import type { ObservationComponentEntry, Rubric, TiptapDoc } from '@ops/shared';
 import { RubricGrid, type RubricGridMode } from './RubricGrid';
 
+// Mock firebase so RubricRow's httpsCallable import doesn't trigger a real
+// Firebase initialization (which requires valid env vars) during tests.
+vi.mock('@/lib/firebase', () => ({
+  auth: {},
+  db: {},
+  storage: {},
+  functions: {},
+  functionsHttpUrl: vi.fn(),
+}));
+
 function makeRubric(): Rubric {
   return {
     rubricId: 'test-rubric',
@@ -162,6 +172,8 @@ describe('<RubricGrid> edit mode', () => {
       kind: 'edit',
       entries: {},
       notes: {},
+      evidenceLinks: {},
+      observationId: 'test-obs',
       readOnly: false,
       onProficiency: vi.fn(),
       onToggleLookFor: vi.fn(),

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   PROFICIENCY_LEVELS,
+  type DriveFileRef,
   type ObservationComponentEntry,
   type ProficiencyLevel,
   type Rubric,
@@ -34,6 +35,8 @@ export type RubricGridMode =
       kind: 'edit';
       entries: Record<string, ObservationComponentEntry>;
       notes: Record<string, TiptapDoc>;
+      evidenceLinks: Record<string, DriveFileRef[]>;
+      observationId: string;
       readOnly: boolean;
       onProficiency: (componentId: string, level: ProficiencyLevel | null) => void;
       onToggleLookFor: (componentId: string, lookForId: string) => void;

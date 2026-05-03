@@ -1,26 +1,28 @@
 import { orderBy, where } from 'firebase/firestore';
-import { ClipboardList } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { COLLECTIONS, type Observation, type WorkProductQuestion } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 
-const WP_QUESTIONS_CONSTRAINTS = [
-  where('type', '==', 'work-product'),
+const IR_QUESTIONS_CONSTRAINTS = [
   where('isActive', '==', true),
+  where('type', '==', 'instructional-round'),
   orderBy('order', 'asc'),
 ];
 
-interface WorkProductResponseViewerProps {
+interface InstructionalRoundResponseViewerProps {
   observation: Observation & { id: string };
 }
 
 /**
- * PE/observer read-only view of staff Work Product answers.
- * Shown in ObservationEditorPage when observation.type === 'Work Product'.
+ * PE/observer read-only view of staff Instructional Round answers.
+ * Shown in ObservationEditorPage when observation.type === 'Instructional Round'.
  */
-export function WorkProductResponseViewer({ observation }: WorkProductResponseViewerProps) {
+export function InstructionalRoundResponseViewer({
+  observation,
+}: InstructionalRoundResponseViewerProps) {
   const { data: questions } = useFirestoreCollection<WorkProductQuestion>(
     COLLECTIONS.workProductQuestions,
-    WP_QUESTIONS_CONSTRAINTS,
+    IR_QUESTIONS_CONSTRAINTS,
   );
 
   const answerMap = new Map<string, string>();
@@ -34,14 +36,16 @@ export function WorkProductResponseViewer({ observation }: WorkProductResponseVi
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
       {/* Header */}
       <div className="bg-ops-blue-dark flex items-center gap-3 px-5 py-3.5">
-        <ClipboardList className="h-5 w-5 shrink-0 text-white" />
-        <h2 className="font-heading text-sm font-semibold text-white">Staff Responses</h2>
+        <Eye className="h-5 w-5 shrink-0 text-white" />
+        <h2 className="font-heading text-sm font-semibold text-white">
+          Instructional Round Responses
+        </h2>
       </div>
 
       {/* Questions + answers */}
       <div className="space-y-5 px-5 py-4">
         {sorted.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No questions configured.</p>
+          <p className="text-muted-foreground text-sm">No instructional round questions configured.</p>
         ) : (
           sorted.map((q, idx) => {
             const answer = answerMap.get(q.questionId);

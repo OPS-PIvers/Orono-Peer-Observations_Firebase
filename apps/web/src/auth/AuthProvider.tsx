@@ -19,12 +19,14 @@ import { auth, functions } from '@/lib/firebase';
 
 const syncMyClaimsFn = httpsCallable<
   Record<string, never>,
-  { role: string | null; hasSpecialAccess: boolean }
+  { role: string | null; hasSpecialAccess: boolean; isAdmin: boolean }
 >(functions, 'syncMyClaims');
 
 export interface AuthClaims {
   role: string | null;
   hasSpecialAccess: boolean;
+  /** True for Administrator/Full Access roles and any staff with hasAdminAccess flag. */
+  isAdmin: boolean;
 }
 
 export interface AuthState {
@@ -36,7 +38,7 @@ export interface AuthState {
   refreshClaims: () => Promise<void>;
 }
 
-const defaultClaims: AuthClaims = { role: null, hasSpecialAccess: false };
+const defaultClaims: AuthClaims = { role: null, hasSpecialAccess: false, isAdmin: false };
 
 const AuthContext = createContext<AuthState | null>(null);
 
@@ -99,7 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
-        setClaims({ role, hasSpecialAccess });
+        const isAdmin =
+          (result.claims['isAdmin'] as boolean | undefined) ?? isAdminRole(role);
+        setClaims({ role, hasSpecialAccess, isAdmin });
         setStatus('signed-in');
       })();
     });
@@ -137,7 +141,7 @@ export function useAuth(): AuthState {
 /** Convenience helpers for route guards. */
 export function useIsAdmin(): boolean {
   const { claims } = useAuth();
-  return isAdminRole(claims.role);
+  return claims.isAdmin;
 }
 
 export function useHasSpecialAccess(): boolean {

@@ -16,5 +16,6 @@ describe('functions index', () => {
     expect(typeof mod.finalizeObservation).not.toBe('undefined');
     expect(typeof mod.onObservationWritten).not.toBe('undefined');
     expect(typeof mod.pruneAuditLog).not.toBe('undefined');
+    expect(typeof mod.uploadEvidenceFile).not.toBe('undefined');
   });
 });

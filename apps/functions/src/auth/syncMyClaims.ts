@@ -3,7 +3,7 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { ALLOWED_EMAIL_DOMAIN, COLLECTIONS, isSpecialRole } from '@ops/shared';
+import { ALLOWED_EMAIL_DOMAIN, COLLECTIONS, isAdminRole, isSpecialRole } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -35,12 +35,13 @@ export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, 
   }
 
   const staffSnap = await getFirestore().doc(`${COLLECTIONS.staff}/${email}`).get();
-  const role = staffSnap.exists
-    ? ((staffSnap.data()?.['role'] as string | undefined) ?? null)
-    : null;
-  const hasSpecialAccess = isSpecialRole(role);
+  const staffData = staffSnap.exists ? staffSnap.data() : null;
+  const role = (staffData?.['role'] as string | undefined) ?? null;
+  const hasAdminAccess = (staffData?.['hasAdminAccess'] as boolean | undefined) ?? false;
+  const isAdmin = isAdminRole(role) || hasAdminAccess;
+  const hasSpecialAccess = isSpecialRole(role) || isAdmin;
 
-  await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess });
-  logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess });
-  return { role, hasSpecialAccess };
+  await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
+  logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
+  return { role, hasSpecialAccess, isAdmin };
 });

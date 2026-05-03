@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { Menu } from 'lucide-react';
 import { AppSidebar, useSidebar } from '@/components/AppSidebar';
+import { useAuth } from '@/auth/AuthProvider';
 import { cn } from '@/lib/utils';
+import { ActiveObservationTypesProvider } from '@/observations/ActiveObservationTypesContext';
 
 function MobileTopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   return (
@@ -29,7 +31,10 @@ function MobileTopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile } = useSidebar();
-  return (
+  const { user, claims } = useAuth();
+  const lowerEmail = user?.email?.toLowerCase() ?? '';
+
+  const inner = (
     <div className="bg-ops-gray-lightest flex h-svh overflow-hidden">
       <AppSidebar
         pcExpanded={pcExpanded}
@@ -50,4 +55,14 @@ export function Layout({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
+
+  if (!claims.hasSpecialAccess && lowerEmail) {
+    return (
+      <ActiveObservationTypesProvider email={lowerEmail}>
+        {inner}
+      </ActiveObservationTypesProvider>
+    );
+  }
+
+  return inner;
 }

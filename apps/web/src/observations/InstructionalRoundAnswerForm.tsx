@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { orderBy, where } from 'firebase/firestore';
-import { ClipboardList } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import {
   COLLECTIONS,
   type Observation,
@@ -13,25 +13,25 @@ import { db } from '@/lib/firebase';
 
 const SAVE_DEBOUNCE_MS = 500;
 
-interface WorkProductAnswerFormProps {
+interface InstructionalRoundAnswerFormProps {
   observation: Observation & { id: string };
 }
 
-const WP_QUESTIONS_CONSTRAINTS = [
-  where('type', '==', 'work-product'),
+const IR_QUESTIONS_CONSTRAINTS = [
   where('isActive', '==', true),
+  where('type', '==', 'instructional-round'),
   orderBy('order', 'asc'),
 ];
 
 /**
- * Staff-facing form for answering Work Product observation questions.
- * Shown on MyRubricPage when the user has an active WP observation.
+ * Staff-facing form for answering Instructional Round observation questions.
+ * Shown on MyRubricPage when the user has an active IR observation.
  * Answers are debounced and autosaved to Firestore.
  */
-export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProps) {
+export function InstructionalRoundAnswerForm({ observation }: InstructionalRoundAnswerFormProps) {
   const { data: questions } = useFirestoreCollection<WorkProductQuestion>(
     COLLECTIONS.workProductQuestions,
-    WP_QUESTIONS_CONSTRAINTS,
+    IR_QUESTIONS_CONSTRAINTS,
   );
 
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
@@ -70,7 +70,6 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     timerRef.current = setTimeout(flushNow, SAVE_DEBOUNCE_MS);
   }, [flushNow]);
 
-  // Flush any pending save when the component unmounts.
   useEffect(() => {
     return () => {
       if (timerRef.current) {
@@ -91,9 +90,9 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
       {/* Header */}
       <div className="bg-ops-blue-dark flex items-center gap-3 px-5 py-3.5">
-        <ClipboardList className="h-5 w-5 shrink-0 text-white" />
+        <Eye className="h-5 w-5 shrink-0 text-white" />
         <div>
-          <h2 className="font-heading text-sm font-semibold text-white">Work Product</h2>
+          <h2 className="font-heading text-sm font-semibold text-white">Instructional Round</h2>
           <p className="mt-0.5 text-xs text-white/70">
             Respond to each question below. Your answers autosave as you type.
           </p>
@@ -106,7 +105,9 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
       {/* Questions */}
       <div className="space-y-5 px-5 py-4">
         {sorted.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No questions configured yet.</p>
+          <p className="text-muted-foreground text-sm">
+            No instructional round questions configured. Ask your administrator.
+          </p>
         ) : (
           sorted.map((q, idx) => (
             <div key={q.id}>

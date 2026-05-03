@@ -77,8 +77,8 @@ export function ObservationsListPage() {
     <div>
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Observations</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">Observations</h1>
+          <p className="text-ops-gray mt-1 text-sm">
             {observations
               ? `${String(filtered.length)} of ${String(observations.length)} observations`
               : 'Loading…'}
@@ -132,7 +132,7 @@ export function ObservationsListPage() {
 
       <div className="border-border bg-background overflow-hidden rounded-lg border">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-ops-blue text-white">
             <TableRow>
               <TableHead>Observed</TableHead>
               <TableHead>Observer</TableHead>
@@ -195,13 +195,13 @@ export function ObservationsListPage() {
 function StatusBadge({ status }: { status: ObservationStatus }) {
   if (status === OBSERVATION_STATUS.draft) {
     return (
-      <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+      <span className="inline-flex items-center rounded border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
         Draft
       </span>
     );
   }
   return (
-    <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+    <span className="inline-flex items-center rounded border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-800">
       Finalized
     </span>
   );

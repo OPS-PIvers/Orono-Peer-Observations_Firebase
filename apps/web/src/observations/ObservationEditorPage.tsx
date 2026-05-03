@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, ChevronLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -38,6 +39,7 @@ import { GlobalToolsBar } from './GlobalToolsBar';
 import { ScriptDrawer } from './ScriptDrawer';
 import { MeetingNotesSection } from './MeetingNotesSection';
 import { WorkProductResponseViewer } from './WorkProductResponseViewer';
+import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseViewer';
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -62,6 +64,8 @@ interface EditorDraft {
   preObsNotes: TiptapDoc | undefined;
   postObsDate: Date | undefined;
   postObsNotes: TiptapDoc | undefined;
+  observationName: string;
+  observationDate: Date | undefined;
 }
 
 const emptyDraft: EditorDraft = {
@@ -72,6 +76,8 @@ const emptyDraft: EditorDraft = {
   preObsNotes: undefined,
   postObsDate: undefined,
   postObsNotes: undefined,
+  observationName: '',
+  observationDate: undefined,
 };
 
 export function ObservationEditorPage() {
@@ -171,6 +177,8 @@ export function ObservationEditorPage() {
       preObsNotes: src.preObsNotes,
       postObsDate: src.postObsDate,
       postObsNotes: src.postObsNotes,
+      observationName: src.observationName ?? '',
+      observationDate: toJsDate(src.observationDate),
     };
     setDraft(next);
     draftRef.current = next;
@@ -191,6 +199,8 @@ export function ObservationEditorPage() {
           preObsNotes: draftRef.current.preObsNotes ?? null,
           postObsDate: draftRef.current.postObsDate ?? null,
           postObsNotes: draftRef.current.postObsNotes ?? null,
+          observationName: draftRef.current.observationName,
+          observationDate: draftRef.current.observationDate ?? null,
           lastModifiedAt: serverTimestamp(),
         },
         { merge: true },
@@ -334,6 +344,28 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
+  const setObservationName = useCallback(
+    (name: string) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, observationName: name };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
+  const setObservationDate = useCallback(
+    (date: Date | undefined) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, observationDate: date };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
   async function handleFinalize() {
     if (!observation) return;
     setFinalizing(true);
@@ -386,17 +418,49 @@ export function ObservationEditorPage() {
                 void navigate(-1);
               }
             }}
-            className="mb-2"
+            className="text-ops-blue hover:text-ops-blue-dark mb-2"
           >
             <ChevronLeft className="h-4 w-4" />
             {observation.observedName ? `← Back to ${observation.observedName}` : '← Back'}
           </Button>
-          <h1 className="text-3xl font-bold">{observation.observedName}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
-            {observation.type}
-            {observation.observationName ? ` · ${observation.observationName}` : ''}
-          </p>
+          {canEdit ? (
+            <div className="flex flex-col gap-1.5">
+              <h1 className="font-heading text-ops-blue-dark text-2xl font-semibold">
+                {observation.observedName}
+              </h1>
+              <p className="text-ops-gray text-sm">
+                {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
+                {observation.type}
+              </p>
+              <input
+                type="text"
+                value={draft.observationName}
+                onChange={(e) => setObservationName(e.target.value)}
+                placeholder="Add observation name (e.g. Period 3 Algebra)"
+                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 max-w-sm rounded-md border px-3 text-sm outline-none focus:ring-1"
+              />
+              <input
+                type="date"
+                value={toDateInputValue(draft.observationDate)}
+                onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
+                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-40 rounded-md border px-3 text-sm outline-none focus:ring-1"
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <h1 className="font-heading text-ops-blue-dark text-2xl font-semibold">
+                {observation.observedName}
+              </h1>
+              <p className="text-ops-gray text-sm">
+                {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
+                {observation.type}
+                {draft.observationName ? ` · ${draft.observationName}` : ''}
+                {draft.observationDate
+                  ? ` · ${draft.observationDate.toLocaleDateString()}`
+                  : ''}
+              </p>
+            </div>
+          )}
         </div>
       </header>
 
@@ -416,12 +480,12 @@ export function ObservationEditorPage() {
       />
 
       {!canEdit && !isReadOnly ? (
-        <div className="bg-accent text-accent-foreground border-primary rounded-md border-l-4 px-3 py-2 text-sm">
+        <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
           You can view this observation but not edit it (you&apos;re not the observer).
         </div>
       ) : null}
       {isReadOnly ? (
-        <div className="bg-accent text-accent-foreground border-primary rounded-md border-l-4 px-3 py-2 text-sm">
+        <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
           This observation is finalized and read-only.
         </div>
       ) : null}
@@ -440,6 +504,10 @@ export function ObservationEditorPage() {
 
       {observation.type === OBSERVATION_TYPES.workProduct ? (
         <WorkProductResponseViewer observation={observation} />
+      ) : null}
+
+      {observation.type === OBSERVATION_TYPES.instructionalRound ? (
+        <InstructionalRoundResponseViewer observation={observation} />
       ) : null}
 
       <GlobalToolsBar
@@ -468,6 +536,8 @@ export function ObservationEditorPage() {
             kind: 'edit',
             entries: draft.observationData,
             notes: draft.componentNotes,
+            evidenceLinks: observation.evidenceLinks ?? {},
+            observationId: observation.id,
             readOnly: !canEdit,
             onProficiency: (componentId, proficiency) => updateEntry(componentId, { proficiency }),
             onToggleLookFor: toggleLookFor,
@@ -599,4 +669,12 @@ function FinalizedBanner({
       </div>
     </div>
   );
+}
+
+function toJsDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return value;
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  return undefined;
 }

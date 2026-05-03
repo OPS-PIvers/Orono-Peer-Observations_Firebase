@@ -11,6 +11,11 @@ export interface DomainNavProps {
    * jumped-to component row when a tagged span is clicked.
    */
   pulseOnClick?: boolean;
+  /**
+   * 'dark' renders pills for use on a dark (ops-blue-dark) background.
+   * Defaults to 'light' for use on white/background-colored bars.
+   */
+  variant?: 'light' | 'dark';
 }
 
 /**
@@ -24,7 +29,7 @@ export interface DomainNavProps {
  * the top; whichever domain has its header inside that band wins. This
  * matches the behavior teachers/PEs intuit from the original GAS app.
  */
-export function DomainNav({ rubric, className, pulseOnClick = false }: DomainNavProps) {
+export function DomainNav({ rubric, className, pulseOnClick = false, variant = 'light' }: DomainNavProps) {
   const domainIds = useMemo(() => rubric.domains.map((d) => d.id), [rubric]);
   const [activeId, setActiveId] = useState<string | null>(domainIds[0] ?? null);
 
@@ -80,8 +85,10 @@ export function DomainNav({ rubric, className, pulseOnClick = false }: DomainNav
             className={cn(
               'rounded-full px-3 py-1 text-xs font-medium transition-colors',
               active
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                ? 'bg-ops-blue text-white'
+                : variant === 'dark'
+                  ? 'bg-white/10 text-white hover:bg-white/20'
+                  : 'text-ops-blue-dark hover:bg-ops-blue-lighter',
             )}
           >
             <span className="opacity-80">D{d.id}</span>
