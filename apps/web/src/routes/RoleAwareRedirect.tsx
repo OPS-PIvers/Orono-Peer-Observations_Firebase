@@ -4,9 +4,13 @@ import { useAuth } from '@/auth/AuthProvider';
 
 /**
  * Mounted at "/" — sends users to the right landing page based on role.
- * Administrator → /my-staff (building-scoped working list).
- * Peer Evaluator + Full Access → /staff (district-wide directory).
- * Everyone else → /my-rubric.
+ *
+ * Full Access: mode toggle persists in localStorage.
+ *   'staff'  → /my-rubric  (My View)
+ *   'admin'  → /staff      (Admin View, default)
+ * Administrator → /my-staff
+ * Peer Evaluator → /staff
+ * Staff (no special access) → /my-rubric
  */
 export function RoleAwareRedirect() {
   const { claims } = useAuth();
@@ -19,5 +23,16 @@ export function RoleAwareRedirect() {
     return <Navigate to="/my-staff" replace />;
   }
 
+  if (claims.role === SPECIAL_ROLES.fullAccess) {
+    let mode = 'admin';
+    try {
+      mode = localStorage.getItem('ops:fullaccess:mode') ?? 'admin';
+    } catch {
+      // ignore
+    }
+    return <Navigate to={mode === 'staff' ? '/my-rubric' : '/staff'} replace />;
+  }
+
+  // Peer Evaluator
   return <Navigate to="/staff" replace />;
 }

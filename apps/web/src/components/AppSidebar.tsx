@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Building2,
@@ -255,6 +255,7 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
 
         {/* Main nav */}
         <div className="flex-1 overflow-y-auto py-2">
+          {showLabels && claims.role === SPECIAL_ROLES.fullAccess ? <FullAccessModeToggle /> : null}
           <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
             {navConfig.main.map((item) => (
               <li key={item.label}>
@@ -392,5 +393,56 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
       <item.icon className="h-5 w-5 shrink-0" />
       {showLabels && <span>{item.label}</span>}
     </Link>
+  );
+}
+
+// ─── FullAccessModeToggle ─────────────────────────────────────────────────────
+
+const FA_MODE_KEY = 'ops:fullaccess:mode';
+
+/**
+ * Compact segmented control for Full Access users. Lets them switch between
+ * "My View" (staff experience, /my-rubric) and "Admin View" (/staff).
+ * Mode persists in localStorage and is read by RoleAwareRedirect on "/" mount.
+ */
+function FullAccessModeToggle() {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<'staff' | 'admin'>(() => {
+    try {
+      const raw = localStorage.getItem(FA_MODE_KEY);
+      return raw === 'staff' ? 'staff' : 'admin';
+    } catch {
+      return 'admin';
+    }
+  });
+
+  function select(next: 'staff' | 'admin') {
+    try {
+      localStorage.setItem(FA_MODE_KEY, next);
+    } catch {
+      // ignore
+    }
+    setMode(next);
+    void navigate(next === 'staff' ? '/my-rubric' : '/staff');
+  }
+
+  return (
+    <div className="mx-2 my-2 flex overflow-hidden rounded-md bg-white/10 text-xs">
+      {(['staff', 'admin'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => select(m)}
+          className={cn(
+            'flex-1 px-2 py-1.5 text-center transition-colors',
+            mode === m
+              ? 'text-ops-blue-dark bg-white font-semibold'
+              : 'text-white/60 hover:text-white',
+          )}
+        >
+          {m === 'staff' ? 'My View' : 'Admin View'}
+        </button>
+      ))}
+    </div>
   );
 }

@@ -10,8 +10,10 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
 import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
+import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
 
 const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
 
@@ -91,6 +93,8 @@ export function MyRubricPage() {
     return { ...rubric, domains: filteredDomains };
   }, [rubric, assignmentMode, assignedComponentIds]);
 
+  const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
+
   if (!user) {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;
   }
@@ -118,6 +122,8 @@ export function MyRubricPage() {
       ) : null}
 
       <RecentObservationsStrip observedEmail={lowerEmail} />
+
+      {wpObservation ? <WorkProductAnswerForm observation={wpObservation} /> : null}
 
       {displayedRubric && displayedRubric.domains.length > 0 ? (
         <>
