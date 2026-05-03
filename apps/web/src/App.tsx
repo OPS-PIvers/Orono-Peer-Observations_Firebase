@@ -54,6 +54,11 @@ const StaffPage = lazy(() =>
 const WorkProductPage = lazy(() =>
   import('@/admin/work-product/WorkProductPage').then((m) => ({ default: m.WorkProductPage })),
 );
+const EmailTemplatesPage = lazy(() =>
+  import('@/admin/email-templates/EmailTemplatesPage').then((m) => ({
+    default: m.EmailTemplatesPage,
+  })),
+);
 const NewObservationPage = lazy(() =>
   import('@/observations/NewObservationPage').then((m) => ({ default: m.NewObservationPage })),
 );
@@ -236,6 +241,7 @@ export function App() {
               <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
               <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />
               <Route path="work-product" element={<WorkProductPage />} />
+              <Route path="email-templates" element={<EmailTemplatesPage />} />
               <Route path="branding" element={<BrandingPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="audit-log" element={<AuditLogPage />} />

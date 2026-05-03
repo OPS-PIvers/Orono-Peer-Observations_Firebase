@@ -75,6 +75,9 @@ export const appSettings = z.object({
   globalBannerText: z.string().trim().max(280).default(''),
   /** When set, blocks new observation creation in the GAS-cutover window. */
   newObservationsDisabled: z.boolean().default(false),
+  /** URL used in the observation signup request email template. Point to
+   *  a Calendly link, Google Form, or any scheduling URL. */
+  signupLink: z.string().url().nullable().default(null),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });

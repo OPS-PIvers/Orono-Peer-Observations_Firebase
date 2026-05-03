@@ -1,24 +1,45 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ClipboardList } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ClipboardList, Mail } from 'lucide-react';
 import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  type EmailTemplate,
   type Observation,
   type ObservationStatus,
   type Staff,
 } from '@ops/shared';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { CreateObservationDialog } from '@/observations/CreateObservationDialog';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 type ObsTab = 'all' | ObservationStatus;
+
+const sendManualEmailFn = httpsCallable<
+  { templateId: string; toEmail: string; vars: Record<string, string> },
+  { sent: boolean }
+>(functions, 'sendManualEmail');
+
+const MANUAL_TEMPLATE_CONSTRAINTS = [
+  where('triggerType', '==', 'manual'),
+  where('isActive', '==', true),
+  orderBy('name', 'asc'),
+];
 
 function formatRelative(value: Observation['lastModifiedAt']): string {
   const raw = value as unknown;
@@ -76,10 +97,38 @@ export function StaffPersonPage() {
     obsConstraints,
   );
 
+  const { data: manualTemplates } = useFirestoreCollection<EmailTemplate>(
+    COLLECTIONS.emailTemplates,
+    MANUAL_TEMPLATE_CONSTRAINTS,
+  );
+
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Email send state
+  const emailMenuRef = useRef<HTMLDivElement>(null);
+  const [emailMenuOpen, setEmailMenuOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<(EmailTemplate & { id: string }) | null>(
+    null,
+  );
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendSuccess, setSendSuccess] = useState(false);
+
+  // Close email dropdown when clicking outside
+  useEffect(() => {
+    if (!emailMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (emailMenuRef.current && !emailMenuRef.current.contains(e.target as Node)) {
+        setEmailMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [emailMenuOpen]);
 
   async function handleDelete(id: string) {
     setDeleteError(null);
@@ -91,12 +140,45 @@ export function StaffPersonPage() {
     }
   }
 
+  async function handleSendEmail() {
+    if (!selectedTemplate || !staffMember || !email) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await sendManualEmailFn({
+        templateId: selectedTemplate.id,
+        toEmail: email,
+        vars: {
+          observedName: staffMember.name,
+          observedEmail: email,
+          observedRole: staffMember.role,
+          observedYear: String(staffMember.year),
+          staffName: staffMember.name,
+          staffEmail: email,
+          staffRole: staffMember.role,
+        },
+      });
+      setSendSuccess(true);
+      const timer = setTimeout(() => {
+        setSendDialogOpen(false);
+        setSendSuccess(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : 'Send failed');
+    } finally {
+      setSending(false);
+    }
+  }
+
   const allObs = observations ?? [];
   const draftObs = allObs.filter((o) => o.status === OBSERVATION_STATUS.draft);
   const finalizedObs = allObs.filter((o) => o.status === OBSERVATION_STATUS.finalized);
 
   const visibleObs =
     activeTab === 'all' ? allObs : activeTab === OBSERVATION_STATUS.draft ? draftObs : finalizedObs;
+
+  const hasTemplates = manualTemplates && manualTemplates.length > 0;
 
   if (staffLoading) {
     return (
@@ -164,6 +246,39 @@ export function StaffPersonPage() {
               Back to Staff
             </Link>
           </Button>
+
+          {/* Send email dropdown */}
+          <div className="relative" ref={emailMenuRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEmailMenuOpen((o) => !o)}
+              disabled={!hasTemplates}
+              title={hasTemplates ? undefined : 'No active manual templates'}
+            >
+              <Mail className="h-4 w-4" />
+              Send Email
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+            {emailMenuOpen && hasTemplates ? (
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                {manualTemplates.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setEmailMenuOpen(false);
+                      setSelectedTemplate(t);
+                      setSendDialogOpen(true);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           <Button onClick={() => setDialogOpen(true)}>New Observation</Button>
         </div>
       </div>
@@ -223,6 +338,44 @@ export function StaffPersonPage() {
           staff={staffMember}
           onCreated={(id) => void navigate(`/observations/${id}`)}
         />
+      ) : null}
+
+      {/* Send email confirm dialog */}
+      {sendDialogOpen && selectedTemplate ? (
+        <Dialog
+          open={sendDialogOpen}
+          onOpenChange={() => {
+            setSendDialogOpen(false);
+            setSendError(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Send &quot;{selectedTemplate.name}&quot;</DialogTitle>
+              <DialogDescription>
+                This will send an email to <strong>{email}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+            {sendError ? <p className="text-destructive text-sm">{sendError}</p> : null}
+            {sendSuccess ? (
+              <p className="text-sm text-green-700">Email sent successfully.</p>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSendDialogOpen(false);
+                  setSendError(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => void handleSendEmail()} disabled={sending}>
+                {sending ? 'Sending…' : 'Send Email'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );

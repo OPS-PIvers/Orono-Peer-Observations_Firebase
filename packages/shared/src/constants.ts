@@ -21,6 +21,7 @@ export const COLLECTIONS = {
   appSettings: 'appSettings',
   auditLog: 'auditLog',
   transcriptionJobs: 'transcriptionJobs',
+  mail: 'mail',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

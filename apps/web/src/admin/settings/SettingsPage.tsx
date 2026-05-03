@@ -108,13 +108,25 @@ export function SettingsPage() {
 
         <Field
           label="Outbound email address"
-          help="Once email sending is enabled (deferred from v1), notifications send-as this address."
+          help="Notifications send-as this address via the Trigger Email extension."
         >
           <Input
             type="email"
             value={form.outboundEmailAddress ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, outboundEmailAddress: e.target.value }))}
             placeholder="observations@orono.k12.mn.us"
+          />
+        </Field>
+
+        <Field
+          label="Observation signup link"
+          help="URL included in the 'Signup Request' email template — a Calendly link, Google Form, or any scheduling URL."
+        >
+          <Input
+            type="url"
+            value={form.signupLink ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, signupLink: e.target.value || null }))}
+            placeholder="https://calendly.com/..."
           />
         </Field>
 

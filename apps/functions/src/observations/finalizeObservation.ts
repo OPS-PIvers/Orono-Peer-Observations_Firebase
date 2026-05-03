@@ -20,6 +20,7 @@ import {
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
+import { formatDate as formatDateReadable, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -42,11 +43,7 @@ interface FinalizeRequest {
  *      email — Drive's notification-email default is suppressed).
  *   6. Flip status to Finalized, stamp finalizedAt, store pdfDriveFileId.
  *   7. Write an /auditLog entry.
- *
- * Email send is intentionally omitted in v1 (deferred). Observed staff
- * see the finalized observation when they sign in (rules grant them read
- * access on Finalized observations) and can open the PDF directly from
- * the Drive folder we just shared with them.
+ *   8. Send the observation.finalized email template (non-blocking).
  */
 export const finalizeObservation = onCall(
   { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
@@ -124,7 +121,7 @@ export const finalizeObservation = onCall(
         parentFolderId: PARENT_FOLDER_ID.value(),
         existingFolderId: obs.driveFolderId,
       });
-      const filename = `Peer Observation — ${obs.observedName} — ${formatDate(new Date())}.pdf`;
+      const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
       const uploaded = await uploadFileToFolder({
         folderId,
         filename,
@@ -169,10 +166,38 @@ export const finalizeObservation = onCall(
       },
     });
 
+    // Send finalized email (non-blocking — failure doesn't roll back finalization)
+    try {
+      const pdfLink = webViewLink ?? `https://drive.google.com/file/d/${pdfFileId}/view`;
+      const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
+      await sendTemplatedEmail({
+        db,
+        triggerType: 'observation.finalized',
+        to: obs.observedEmail,
+        vars: {
+          observerName: obs.observerEmail.split('@')[0],
+          observerEmail: obs.observerEmail,
+          observedName: obs.observedName,
+          observedEmail: obs.observedEmail,
+          observedRole: obs.observedRole,
+          observedYear: String(obs.observedYear),
+          observationDate: formatDateReadable(obs.observationDate),
+          observationName: obs.observationName || '',
+          observationType: obs.type,
+          pdfDriveLink: pdfLink,
+          driveFolderLink: folderUrl,
+        },
+        mailDocId: `finalized-${observationId}`,
+        auditDetails: { observationId, triggerType: 'observation.finalized' },
+      });
+    } catch (emailErr) {
+      logger.error('finalizeObservation: email send failed (non-fatal)', emailErr);
+    }
+
     return { pdfDriveFileId: pdfFileId, driveFolderId: folderId, pdfWebViewLink: webViewLink };
   },
 );
 
-function formatDate(date: Date): string {
+function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
 }

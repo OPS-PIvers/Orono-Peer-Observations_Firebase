@@ -8,6 +8,7 @@ const ADMIN_NAV = [
   { to: '/admin/rubrics', label: 'Rubrics' },
   { to: '/admin/role-year-mappings', label: 'Role/Year' },
   { to: '/admin/work-product', label: 'Work Product' },
+  { to: '/admin/email-templates', label: 'Email Templates' },
   { to: '/admin/branding', label: 'Branding' },
   { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/audit-log', label: 'Audit Log' },
