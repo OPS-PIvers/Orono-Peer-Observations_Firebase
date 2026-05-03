@@ -76,14 +76,14 @@ describe('/settings/roleYearMappings — read by all domain, write admin-only', 
   });
 });
 
-describe('/workProductQuestions — PE/admin read; admin write', () => {
+describe('/workProductQuestions — all domain users read; admin write', () => {
   beforeEach(async () => {
     await seed('workProductQuestions/q1', { text: 'Sample question', order: 0 });
   });
 
-  it('teacher cannot read', async () => {
+  it('teacher can read (needed for WP/IR answer forms)', async () => {
     const db = testEnv.authenticatedContext('a', claims.teacher()).firestore();
-    await assertFails(getDoc(doc(db, 'workProductQuestions/q1')));
+    await assertSucceeds(getDoc(doc(db, 'workProductQuestions/q1')));
   });
 
   it('peer evaluator can read', async () => {

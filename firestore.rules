@@ -137,11 +137,23 @@ service cloud.firestore {
     match /observations/{observationId} {
       allow get: if (
         isCurrentUserEmail(resource.data.observerEmail)
-        || isCurrentUserEmail(resource.data.observedEmail)
+        || (
+          isCurrentUserEmail(resource.data.observedEmail)
+          && (
+            resource.data.status == 'Finalized'
+            || resource.data.type in ['Work Product', 'Instructional Round']
+          )
+        )
         || hasSpecialAccess()
       );
       allow list: if hasSpecialAccess()
-        || isCurrentUserEmail(resource.data.observedEmail);
+        || (
+          isCurrentUserEmail(resource.data.observedEmail)
+          && (
+            resource.data.status == 'Finalized'
+            || resource.data.type in ['Work Product', 'Instructional Round']
+          )
+        );
 
       allow create: if hasSpecialAccess()
         && request.resource.data.observerEmail == request.auth.token.email
@@ -160,7 +172,7 @@ service cloud.firestore {
         || (
           isCurrentUserEmail(resource.data.observedEmail)
           && resource.data.status == 'Draft'
-          && resource.data.type == 'Work Product'
+          && resource.data.type in ['Work Product', 'Instructional Round']
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['workProductAnswers', 'lastModifiedAt'])
         );

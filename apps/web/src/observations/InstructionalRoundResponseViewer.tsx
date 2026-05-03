@@ -26,7 +26,7 @@ export function InstructionalRoundResponseViewer({
   );
 
   const answerMap = new Map<string, string>();
-  for (const a of observation.workProductAnswers) {
+  for (const a of (observation.workProductAnswers ?? [])) {
     answerMap.set(a.questionId, a.answer);
   }
 

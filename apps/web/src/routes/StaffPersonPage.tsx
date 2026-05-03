@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useAuth } from '@/auth/AuthProvider';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ClipboardList } from 'lucide-react';
 import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
@@ -56,6 +57,8 @@ export function StaffPersonPage() {
   // special chars are safe, but Firestore doc IDs are stored lowercase.
   const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const currentEmail = user?.email?.toLowerCase() ?? '';
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
@@ -202,6 +205,7 @@ export function StaffPersonPage() {
             <ObservationCard
               key={o.id}
               observation={o}
+              canDelete={o.observerEmail === currentEmail}
               confirmingDelete={confirmingDeleteId === o.id}
               onRequestDelete={() => setConfirmingDeleteId(o.id)}
               onCancelDelete={() => setConfirmingDeleteId(null)}
@@ -226,12 +230,14 @@ export function StaffPersonPage() {
 
 function ObservationCard({
   observation: o,
+  canDelete,
   confirmingDelete,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
 }: {
   observation: Observation & { id: string };
+  canDelete: boolean;
   confirmingDelete: boolean;
   onRequestDelete: () => void;
   onCancelDelete: () => void;
@@ -271,29 +277,31 @@ function ObservationCard({
               <Button variant="outline" size="sm" asChild>
                 <Link to={`/observations/${o.id}`}>Continue editing</Link>
               </Button>
-              {confirmingDelete ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span>Delete this draft?</span>
-                  <button
-                    onClick={onConfirmDelete}
-                    className="text-ops-red font-semibold"
-                    type="button"
+              {canDelete && (
+                confirmingDelete ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <span>Delete this draft?</span>
+                    <button
+                      onClick={onConfirmDelete}
+                      className="text-ops-red font-semibold"
+                      type="button"
+                    >
+                      Yes, delete
+                    </button>
+                    <button onClick={onCancelDelete} type="button">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-ops-red hover:text-ops-red hover:bg-red-50"
+                    onClick={onRequestDelete}
                   >
-                    Yes, delete
-                  </button>
-                  <button onClick={onCancelDelete} type="button">
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-ops-red hover:text-ops-red hover:bg-red-50"
-                  onClick={onRequestDelete}
-                >
-                  Delete draft
-                </Button>
+                    Delete draft
+                  </Button>
+                )
               )}
             </>
           ) : (

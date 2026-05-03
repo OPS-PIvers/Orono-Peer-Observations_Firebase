@@ -36,7 +36,7 @@ export function InstructionalRoundAnswerForm({ observation }: InstructionalRound
 
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    for (const a of observation.workProductAnswers) {
+    for (const a of (observation.workProductAnswers ?? [])) {
       map[a.questionId] = a.answer;
     }
     return map;
