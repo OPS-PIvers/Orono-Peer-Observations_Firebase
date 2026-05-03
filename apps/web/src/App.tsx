@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
@@ -62,15 +62,63 @@ const ObservationEditorPage = lazy(() =>
     default: m.ObservationEditorPage,
   })),
 );
+const StaffDirectoryPage = lazy(() =>
+  import('@/routes/StaffDirectoryPage').then((m) => ({ default: m.StaffDirectoryPage })),
+);
+const StaffPersonPage = lazy(() =>
+  import('@/routes/StaffPersonPage').then((m) => ({ default: m.StaffPersonPage })),
+);
+const MyStaffPage = lazy(() =>
+  import('@/routes/MyStaffPage').then((m) => ({ default: m.MyStaffPage })),
+);
 
 function RouteFallback() {
   return <p className="text-muted-foreground py-12 text-center text-sm">Loading…</p>;
 }
 
+class RouteErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    console.error('[RouteErrorBoundary] Failed to load route:', error);
+    return { hasError: true };
+  }
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <p className="text-muted-foreground py-12 text-center text-sm">
+          Failed to load page. Try refreshing.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Resets the error boundary on every navigation so users can recover from
+// transient chunk-load failures without a full page reload.
+function KeyedErrorBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <RouteErrorBoundary key={pathname}>{children}</RouteErrorBoundary>;
+}
+
+// Forces StaffPersonPage to remount when :email changes so the Firestore
+// subscription (keyed on constraint types, not values) is always fresh.
+function KeyedStaffPersonPage() {
+  const { email } = useParams<{ email: string }>();
+  return <StaffPersonPage key={email} />;
+}
+
 export function App() {
   return (
     <AuthProvider>
-      <Suspense fallback={<RouteFallback />}>
+      <KeyedErrorBoundary>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           {/* Public */}
           <Route path="/sign-in" element={<SignInScreen />} />
@@ -87,16 +135,8 @@ export function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/dashboard"
-            element={
-              <RequireAuth requireSpecialAccess>
-                <Layout>
-                  <ObservationsListPage />
-                </Layout>
-              </RequireAuth>
-            }
-          />
+          {/* /dashboard kept for bookmarks; redirects through "/" so RoleAwareRedirect applies */}
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route
             path="/observations"
             element={
@@ -123,6 +163,39 @@ export function App() {
               <RequireAuth>
                 <Layout>
                   <ObservationEditorPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Staff directory — PE and Full Access */}
+          <Route
+            path="/staff"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <StaffDirectoryPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Per-person observation hub */}
+          <Route
+            path="/staff/:email"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <KeyedStaffPersonPage />
+                </Layout>
+              </RequireAuth>
+            }
+          />
+          {/* Admin building-scoped staff list */}
+          <Route
+            path="/my-staff"
+            element={
+              <RequireAuth requireSpecialAccess>
+                <Layout>
+                  <MyStaffPage />
                 </Layout>
               </RequireAuth>
             }
@@ -173,7 +246,8 @@ export function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Suspense>
+        </Suspense>
+      </KeyedErrorBoundary>
     </AuthProvider>
   );
 }
