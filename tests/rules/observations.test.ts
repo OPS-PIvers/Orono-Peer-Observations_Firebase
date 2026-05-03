@@ -226,7 +226,7 @@ describe('observations: delete', () => {
     await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
   });
 
-  it('different PE cannot delete another observer\'s Draft', async () => {
+  it("different PE cannot delete another observer's Draft", async () => {
     const db = testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore();
     await assertFails(deleteDoc(doc(db, 'observations/obs1')));
   });

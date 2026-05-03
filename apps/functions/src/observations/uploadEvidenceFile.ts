@@ -24,8 +24,8 @@ export const uploadEvidenceFile = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId, componentId, fileName, mimeType, base64Data } =
-      (request.data ?? {}) as UploadEvidenceRequest;
+    const { observationId, componentId, fileName, mimeType, base64Data } = (request.data ??
+      {}) as UploadEvidenceRequest;
 
     if (!observationId || !componentId || !fileName || !mimeType || !base64Data) {
       throw new HttpsError('invalid-argument', 'Missing required fields');
@@ -66,7 +66,10 @@ export const uploadEvidenceFile = onCall(
 
     // If we just created the folder, persist it back to Firestore
     if (folderId !== obs.driveFolderId) {
-      await obsRef.update({ driveFolderId: folderId, lastModifiedAt: FieldValue.serverTimestamp() });
+      await obsRef.update({
+        driveFolderId: folderId,
+        lastModifiedAt: FieldValue.serverTimestamp(),
+      });
     }
 
     // Upload file to Drive

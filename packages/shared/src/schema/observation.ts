@@ -84,14 +84,14 @@ export const observation = z.object({
   // Per-component state
   observationData: z.record(componentId, observationComponentEntry).default({}),
   componentNotes: z.record(componentId, tiptapDoc).default({}),
-  evidenceLinks: z.record(componentId, z.array(driveFileRef)).default({}),
+  evidenceLinks: z.record(componentId, z.array(driveFileRef)).optional(),
 
   // Script editor (live note-taking)
   scriptDoc: tiptapDoc.optional(),
   componentTags: z.array(componentTag).default([]),
 
   // Work product answers (only when type === 'Work Product')
-  workProductAnswers: z.array(workProductAnswer).default([]),
+  workProductAnswers: z.array(workProductAnswer).optional(),
 
   // Pre/post observation meeting notes (added Phase 2)
   preObsDate: isoDate.optional(),

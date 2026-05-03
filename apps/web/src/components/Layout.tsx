@@ -58,9 +58,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   if (!claims.hasSpecialAccess && lowerEmail) {
     return (
-      <ActiveObservationTypesProvider email={lowerEmail}>
-        {inner}
-      </ActiveObservationTypesProvider>
+      <ActiveObservationTypesProvider email={lowerEmail}>{inner}</ActiveObservationTypesProvider>
     );
   }
 

@@ -101,8 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
-        const isAdmin =
-          (result.claims['isAdmin'] as boolean | undefined) ?? isAdminRole(role);
+        const isAdmin = (result.claims['isAdmin'] as boolean | undefined) ?? isAdminRole(role);
         setClaims({ role, hasSpecialAccess, isAdmin });
         setStatus('signed-in');
       })();

@@ -297,7 +297,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
               'flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors',
               evidenceExpanded
                 ? 'bg-ops-blue-lighter/40 text-ops-gray-dark'
-                : 'bg-gray-50 text-ops-gray hover:bg-ops-blue-lighter/40',
+                : 'text-ops-gray hover:bg-ops-blue-lighter/40 bg-gray-50',
             )}
           >
             <button
@@ -315,7 +315,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="bg-ops-blue ml-auto rounded px-2 py-0.5 text-white hover:bg-ops-blue-dark"
+                className="bg-ops-blue hover:bg-ops-blue-dark ml-auto rounded px-2 py-0.5 text-white"
                 disabled={uploading}
               >
                 {uploading ? 'Uploading…' : '+ Add'}
@@ -333,9 +333,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
 
           {evidenceExpanded ? (
             <div className="bg-gray-50 px-4 py-3">
-              {uploadError ? (
-                <p className="text-ops-red mb-2 text-xs">{uploadError}</p>
-              ) : null}
+              {uploadError ? <p className="text-ops-red mb-2 text-xs">{uploadError}</p> : null}
               {uploading ? (
                 <div className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-500">
                   <span className="animate-pulse">Uploading…</span>
@@ -361,10 +359,9 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
 // ─── EvidenceChip ─────────────────────────────────────────────────────────────
 
 function EvidenceChip({ fileRef }: { fileRef: DriveFileRef }) {
-  const truncated =
-    fileRef.name.length > 20 ? fileRef.name.slice(0, 17) + '…' : fileRef.name;
+  const truncated = fileRef.name.length > 20 ? fileRef.name.slice(0, 17) + '…' : fileRef.name;
   return (
-    <div className="group flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs hover:border-ops-blue">
+    <div className="group hover:border-ops-blue flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs">
       <span className="text-gray-700">{truncated}</span>
       <a
         href={`https://drive.google.com/file/d/${fileRef.driveFileId}/view`}

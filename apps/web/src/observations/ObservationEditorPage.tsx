@@ -177,7 +177,7 @@ export function ObservationEditorPage() {
       preObsNotes: src.preObsNotes,
       postObsDate: src.postObsDate,
       postObsNotes: src.postObsNotes,
-      observationName: src.observationName ?? '',
+      observationName: src.observationName,
       observationDate: toJsDate(src.observationDate),
     };
     setDraft(next);
@@ -455,9 +455,7 @@ export function ObservationEditorPage() {
                 {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
                 {observation.type}
                 {draft.observationName ? ` · ${draft.observationName}` : ''}
-                {draft.observationDate
-                  ? ` · ${draft.observationDate.toLocaleDateString()}`
-                  : ''}
+                {draft.observationDate ? ` · ${draft.observationDate.toLocaleDateString()}` : ''}
               </p>
             </div>
           )}
@@ -673,8 +671,7 @@ function FinalizedBanner({
 
 function toJsDate(value: unknown): Date | undefined {
   if (value instanceof Date) return value;
-  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate();
-  }
+  const ts = value as { toDate?: () => Date } | null;
+  if (ts != null && typeof ts.toDate === 'function') return ts.toDate();
   return undefined;
 }

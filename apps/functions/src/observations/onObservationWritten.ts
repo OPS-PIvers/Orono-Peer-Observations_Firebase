@@ -237,7 +237,7 @@ async function handleDeletion(
     beforeData['driveFolderId']
   ) {
     try {
-      await deleteDriveFolder(beforeData['driveFolderId'] as string);
+      await deleteDriveFolder(beforeData['driveFolderId']);
     } catch (err) {
       logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
     }

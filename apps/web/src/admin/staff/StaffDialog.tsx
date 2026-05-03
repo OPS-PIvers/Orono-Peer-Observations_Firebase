@@ -68,7 +68,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         buildingDraft: '',
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
-        hasAdminAccess: existing.hasAdminAccess ?? false,
+        hasAdminAccess: existing.hasAdminAccess,
       });
     } else if (mode === 'create') {
       setForm(empty);

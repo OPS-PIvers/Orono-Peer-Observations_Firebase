@@ -144,10 +144,8 @@ export function WorkProductPage() {
                 className="flex-1"
               />
               <select
-                value={q.type ?? 'work-product'}
-                onChange={(e) =>
-                  void update(q, { type: e.target.value as QuestionType })
-                }
+                value={q.type}
+                onChange={(e) => void update(q, { type: e.target.value as QuestionType })}
                 className="rounded-md border border-gray-200 px-2 py-1.5 text-xs"
                 aria-label="Question type"
               >

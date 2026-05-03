@@ -277,8 +277,8 @@ function ObservationCard({
               <Button variant="outline" size="sm" asChild>
                 <Link to={`/observations/${o.id}`}>Continue editing</Link>
               </Button>
-              {canDelete && (
-                confirmingDelete ? (
+              {canDelete &&
+                (confirmingDelete ? (
                   <div className="flex items-center gap-2 text-xs text-gray-600">
                     <span>Delete this draft?</span>
                     <button
@@ -301,8 +301,7 @@ function ObservationCard({
                   >
                     Delete draft
                   </Button>
-                )
-              )}
+                ))}
             </>
           ) : (
             <>

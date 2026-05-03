@@ -36,7 +36,7 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
 
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    for (const a of (observation.workProductAnswers ?? [])) {
+    for (const a of observation.workProductAnswers ?? []) {
       map[a.questionId] = a.answer;
     }
     return map;

@@ -28,11 +28,7 @@ export function ActiveObservationTypesProvider({
     }),
     [wp, ir],
   );
-  return (
-    <ActiveObservationTypesContext value={value}>
-      {children}
-    </ActiveObservationTypesContext>
-  );
+  return <ActiveObservationTypesContext value={value}>{children}</ActiveObservationTypesContext>;
 }
 
 export function useActiveObservationTypes(): ActiveObservationTypes {

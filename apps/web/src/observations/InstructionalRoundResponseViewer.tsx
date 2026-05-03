@@ -26,7 +26,7 @@ export function InstructionalRoundResponseViewer({
   );
 
   const answerMap = new Map<string, string>();
-  for (const a of (observation.workProductAnswers ?? [])) {
+  for (const a of observation.workProductAnswers ?? []) {
     answerMap.set(a.questionId, a.answer);
   }
 
@@ -45,7 +45,9 @@ export function InstructionalRoundResponseViewer({
       {/* Questions + answers */}
       <div className="space-y-5 px-5 py-4">
         {sorted.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No instructional round questions configured.</p>
+          <p className="text-muted-foreground text-sm">
+            No instructional round questions configured.
+          </p>
         ) : (
           sorted.map((q, idx) => {
             const answer = answerMap.get(q.questionId);

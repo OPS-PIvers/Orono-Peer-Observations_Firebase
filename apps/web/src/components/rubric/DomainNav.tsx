@@ -29,7 +29,12 @@ export interface DomainNavProps {
  * the top; whichever domain has its header inside that band wins. This
  * matches the behavior teachers/PEs intuit from the original GAS app.
  */
-export function DomainNav({ rubric, className, pulseOnClick = false, variant = 'light' }: DomainNavProps) {
+export function DomainNav({
+  rubric,
+  className,
+  pulseOnClick = false,
+  variant = 'light',
+}: DomainNavProps) {
   const domainIds = useMemo(() => rubric.domains.map((d) => d.id), [rubric]);
   const [activeId, setActiveId] = useState<string | null>(domainIds[0] ?? null);
 
