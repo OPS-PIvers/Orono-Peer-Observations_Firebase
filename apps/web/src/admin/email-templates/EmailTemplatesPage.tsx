@@ -581,17 +581,17 @@ function TemplateRow({
             />
           </div>
 
-          {/* Preview */}
+          {/* Preview — sandboxed iframe prevents script execution */}
           {editForm.bodyHtml ? (
             <div className="rounded-md border border-border bg-white p-3">
               <p className="text-xs font-medium text-muted-foreground mb-2">
                 Preview (sample data)
               </p>
-              <div
-                className="prose prose-sm max-w-none text-sm"
-                dangerouslySetInnerHTML={{
-                  __html: substitutePreview(editForm.bodyHtml),
-                }}
+              <iframe
+                sandbox=""
+                srcDoc={substitutePreview(editForm.bodyHtml)}
+                className="w-full min-h-[160px] border-0"
+                title="Email preview"
               />
             </div>
           ) : null}
