@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'ops:sidebar:expanded';
+// Fired in the same tab by AppSidebar.togglePc so same-tab consumers can sync.
+// (The native `storage` event only fires in OTHER tabs.)
+export const SIDEBAR_TOGGLE_EVENT = 'ops:sidebar:toggle';
 
 /**
  * Returns the pixel width occupied by the sidebar in the layout flow.
@@ -25,8 +28,15 @@ export function useSidebarWidth(): number {
     function onStorage(e: StorageEvent) {
       if (e.key === STORAGE_KEY) setExpanded(e.newValue !== 'false');
     }
+    function onToggle(e: Event) {
+      setExpanded((e as CustomEvent<{ expanded: boolean }>).detail.expanded);
+    }
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener(SIDEBAR_TOGGLE_EVENT, onToggle);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(SIDEBAR_TOGGLE_EVENT, onToggle);
+    };
   }, []);
 
   useEffect(() => {

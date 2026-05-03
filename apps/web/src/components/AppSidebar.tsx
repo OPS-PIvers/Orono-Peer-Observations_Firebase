@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { SIDEBAR_TOGGLE_EVENT } from '@/hooks/useSidebarWidth';
 import {
   BookOpen,
   Building2,
@@ -62,6 +63,7 @@ export function useSidebar() {
       } catch {
         // ignore storage errors
       }
+      window.dispatchEvent(new CustomEvent(SIDEBAR_TOGGLE_EVENT, { detail: { expanded: next } }));
       return next;
     });
   }, []);

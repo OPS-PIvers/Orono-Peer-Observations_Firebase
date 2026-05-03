@@ -64,6 +64,16 @@ interface EditorDraft {
   postObsNotes: TiptapDoc | undefined;
 }
 
+const emptyDraft: EditorDraft = {
+  observationData: {},
+  componentNotes: {},
+  scriptDoc: undefined,
+  preObsDate: undefined,
+  preObsNotes: undefined,
+  postObsDate: undefined,
+  postObsNotes: undefined,
+};
+
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
@@ -134,15 +144,6 @@ export function ObservationEditorPage() {
   // Local draft of observationData + componentNotes; flushed to Firestore
   // on debounce. Both fields share the same autosave cycle so we don't
   // have two timers racing against each other.
-  const emptyDraft: EditorDraft = {
-    observationData: {},
-    componentNotes: {},
-    scriptDoc: undefined,
-    preObsDate: undefined,
-    preObsNotes: undefined,
-    postObsDate: undefined,
-    postObsNotes: undefined,
-  };
   const [draft, setDraft] = useState<EditorDraft>(emptyDraft);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);

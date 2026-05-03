@@ -45,24 +45,36 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     answersRef.current = answers;
   }, [answers]);
 
+  const flushNow = useCallback(() => {
+    const next: WorkProductAnswer[] = Object.entries(answersRef.current).map(
+      ([questionId, answer]) => ({
+        questionId,
+        answer,
+        updatedAt: new Date(),
+      }),
+    );
+    void setDoc(
+      doc(db, COLLECTIONS.observations, observation.id),
+      { workProductAnswers: next, lastModifiedAt: serverTimestamp() },
+      { merge: true },
+    ).then(() => setSavingState('saved'));
+  }, [observation.id]);
+
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSavingState('saving');
-    timerRef.current = setTimeout(() => {
-      const next: WorkProductAnswer[] = Object.entries(answersRef.current).map(
-        ([questionId, answer]) => ({
-          questionId,
-          answer,
-          updatedAt: new Date(),
-        }),
-      );
-      void setDoc(
-        doc(db, COLLECTIONS.observations, observation.id),
-        { workProductAnswers: next, lastModifiedAt: serverTimestamp() },
-        { merge: true },
-      ).then(() => setSavingState('saved'));
-    }, SAVE_DEBOUNCE_MS);
-  }, [observation.id]);
+    timerRef.current = setTimeout(flushNow, SAVE_DEBOUNCE_MS);
+  }, [flushNow]);
+
+  // Flush any pending save when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        flushNow();
+      }
+    };
+  }, [flushNow]);
 
   function handleChange(questionId: string, value: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
