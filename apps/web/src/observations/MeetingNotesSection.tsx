@@ -64,13 +64,13 @@ function SubSection({
         <div className="space-y-3 px-4 pb-4">
           <div className="flex items-center gap-3">
             <label
-              htmlFor={`meeting-date-${label}`}
+              htmlFor={`meeting-date-${label.toLowerCase().replace(/\s+/g, '-')}`}
               className="text-ops-gray-dark text-xs font-medium"
             >
               Date
             </label>
             <input
-              id={`meeting-date-${label}`}
+              id={`meeting-date-${label.toLowerCase().replace(/\s+/g, '-')}`}
               type="date"
               value={toDateInputValue(dateValue)}
               disabled={readOnly}

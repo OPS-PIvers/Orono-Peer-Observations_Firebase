@@ -38,7 +38,8 @@ export const uploadEvidenceFile = onCall(
 
     const obs = obsSnap.data() as unknown as Observation;
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
+    const rawIsAdmin = request.auth.token['isAdmin'] as boolean | undefined;
+    const isAdmin = rawIsAdmin ?? isAdminRole(callerRole ?? null);
 
     if (!isAdmin && obs.observerEmail !== userEmail) {
       throw new HttpsError('permission-denied', 'Only the observer or admin can upload evidence');

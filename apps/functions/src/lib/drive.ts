@@ -158,7 +158,10 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
       f.id ? drive.files.delete({ fileId: f.id }).catch(() => undefined) : Promise.resolve(),
     ),
   );
-  await drive.files.delete({ fileId: folderId });
+  await drive.files.delete({ fileId: folderId }).catch((err: unknown) => {
+    const status = (err as { code?: number })?.code;
+    if (status !== 404) throw err;
+  });
 }
 
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {
