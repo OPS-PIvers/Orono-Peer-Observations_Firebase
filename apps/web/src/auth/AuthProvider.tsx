@@ -84,11 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       void (async () => {
-        // First sign-in this session: synchronously sync claims and
-        // refresh the token before flipping status to 'signed-in'.
-        // Without this gate, RequireAuth-protected routes mount Firestore
-        // listeners with a no-claims token; rules deny; the listener
-        // captures the error and never auto-recovers.
+        // First sign-in this session: sync claims and refresh the token
+        // before flipping status to 'signed-in'. Without this gate,
+        // RequireAuth-protected routes mount Firestore listeners with a
+        // no-claims token; rules deny; the listener captures the error and
+        // never auto-recovers.
         const isFirstSignIn = syncedUidRef.current !== next.uid;
         if (isFirstSignIn) {
           syncedUidRef.current = next.uid;
@@ -110,7 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
-        const rawIsAdmin = result.claims['isAdmin'] as boolean | undefined;
+        const rawIsAdmin =
+          typeof result.claims['isAdmin'] === 'boolean' ? result.claims['isAdmin'] : undefined;
 
         // Migration: tokens issued before the hasAdminAccess feature landed
         // don't carry an `isAdmin` claim. Re-sync once per session so a staff
@@ -149,6 +150,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut: () => firebaseSignOut(auth),
       refreshClaims: async () => {
         if (!auth.currentUser) return;
+        try {
+          await syncMyClaimsFn({});
+        } catch (err) {
+          console.warn('syncMyClaims failed during refreshClaims', err);
+        }
         await auth.currentUser.getIdToken(true);
       },
     }),
