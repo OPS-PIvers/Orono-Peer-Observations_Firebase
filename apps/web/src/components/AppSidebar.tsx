@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { SIDEBAR_TOGGLE_EVENT } from '@/hooks/useSidebarWidth';
 import {
+  ArrowLeft,
   BookOpen,
   Building2,
   ChevronDown,
@@ -20,6 +21,7 @@ import { SPECIAL_ROLES } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { cn } from '@/lib/utils';
+import { ADMIN_NAV } from '@/admin/adminNav';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -176,6 +178,8 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   const { user, claims, signOut } = useAuth();
   const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
   const location = useLocation();
+  const navigate = useNavigate();
+  const inAdmin = location.pathname.startsWith('/admin');
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
 
   const onCloseMobileRef = useRef(onCloseMobile);
@@ -279,22 +283,86 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
           </div>
         )}
 
-        {/* Main nav */}
-        <div className="flex-1 overflow-y-auto py-2">
-          {showLabels && claims.isAdmin ? <FullAccessModeToggle /> : null}
-          <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
-            {navConfig.main.map((item) => (
-              <li key={item.label}>
-                <NavEntry
-                  item={item}
-                  showLabels={showLabels}
-                  location={location}
-                  sectionOpen={isSectionVisible(item)}
-                  onToggleSection={toggleSection}
-                />
-              </li>
-            ))}
-          </ul>
+        {/* Full Access mode toggle (always above the slider so admins can
+            switch back to "My View" without first sliding out of admin). */}
+        {showLabels && claims.isAdmin ? <FullAccessModeToggle /> : null}
+
+        {/* Sliding viewport: main nav ⇄ admin sub-nav. Driven by the
+            current route — /admin/* shifts the inner track left to reveal
+            the admin panel. Same translate-x + duration-200 idiom used by
+            the mobile sidebar above. */}
+        <div className="relative flex-1 overflow-hidden">
+          <div
+            className={cn(
+              'flex h-full w-[200%] transition-transform duration-200 ease-out',
+              inAdmin && '-translate-x-1/2',
+            )}
+          >
+            {/* Main panel */}
+            <div
+              className="w-1/2 shrink-0 overflow-y-auto py-2"
+              aria-hidden={inAdmin}
+              inert={inAdmin}
+            >
+              <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+                {navConfig.main.map((item) => (
+                  <li key={item.label}>
+                    <NavEntry
+                      item={item}
+                      showLabels={showLabels}
+                      location={location}
+                      sectionOpen={isSectionVisible(item)}
+                      onToggleSection={toggleSection}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Admin panel */}
+            <div
+              className="w-1/2 shrink-0 overflow-y-auto py-2"
+              aria-hidden={!inAdmin}
+              inert={!inAdmin}
+              aria-label="Admin navigation"
+            >
+              <button
+                type="button"
+                onClick={() => void navigate('/my-rubric')}
+                className={cn(
+                  'mb-1 flex w-full items-center rounded-md py-2 text-sm transition-colors',
+                  'text-white/70 hover:bg-white/10 hover:text-white',
+                  showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+                )}
+                aria-label="Back to main menu"
+              >
+                <ArrowLeft className="h-5 w-5 shrink-0" />
+                {showLabels && <span>Back</span>}
+              </button>
+              <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
+                {ADMIN_NAV.map(({ to, label, icon: Icon }) => (
+                  <li key={to}>
+                    <NavLink
+                      to={to}
+                      end
+                      className={({ isActive }) =>
+                        cn(
+                          'flex w-full items-center rounded-md py-2 text-sm transition-colors',
+                          'text-white/70 hover:bg-white/10 hover:text-white',
+                          showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+                          isActive && 'bg-white/15 text-white',
+                        )
+                      }
+                      title={label}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                      {showLabels && <span>{label}</span>}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Footer meta items */}
