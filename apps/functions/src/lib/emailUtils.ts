@@ -34,7 +34,8 @@ export async function loadActiveTemplate(
     .limit(1)
     .get();
   if (snap.empty) return null;
-  const doc = snap.docs[0];
+  // snap.empty guard above ensures docs[0] exists
+  const doc = snap.docs[0]!;
   return { id: doc.id, ...(doc.data() as EmailTemplate) };
 }
 
@@ -115,7 +116,7 @@ export async function sendTemplatedEmail(args: {
   const subject = substituteVariables(template.subject, fullVars);
   const html = substituteVariables(template.bodyHtml, fullVars);
 
-  await sendEmail({ db, to, subject, html, mailDocId, auditDetails });
+  await sendEmail({ db, to, subject, html, mailDocId, ...(auditDetails !== undefined ? { auditDetails } : {}) });
   return true;
 }
 
