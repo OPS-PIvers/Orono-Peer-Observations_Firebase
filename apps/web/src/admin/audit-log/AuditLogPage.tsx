@@ -12,6 +12,7 @@ import {
 import { COLLECTIONS, type AuditLog } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Table,
   TableBody,
@@ -82,14 +83,11 @@ export function AuditLogPage() {
   }, [cursor]);
 
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold">Audit Log</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Append-only record of privileged actions (sign-ins, observation lifecycle, admin edits).
-          Pruned daily by a scheduled function based on the retention setting in App Settings.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="Audit Log"
+        subtitle="Append-only record of privileged actions (sign-ins, observation lifecycle, admin edits). Pruned daily by a scheduled function based on the retention setting in App Settings."
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-3 py-2 text-sm">
@@ -153,7 +151,7 @@ export function AuditLogPage() {
           {loading ? 'Loading…' : hasMore ? 'Load 50 more' : 'No more entries'}
         </Button>
       </div>
-    </div>
+    </>
   );
 }
 

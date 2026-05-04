@@ -11,6 +11,7 @@ import {
   type Role,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
@@ -77,23 +78,27 @@ export function ObservationsListPage() {
   }, [observations, search]);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">Observations</h1>
-          <p className="text-ops-gray mt-1 text-sm">
-            {observations
-              ? `${String(filtered.length)} of ${String(observations.length)} observations`
-              : 'Loading…'}
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/observations/new">
-            <Plus />
-            New observation
-          </Link>
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Observations"
+        subtitle={
+          observations
+            ? `${String(filtered.length)} of ${String(observations.length)} observations`
+            : 'Loading…'
+        }
+        actions={
+          <Button
+            asChild
+            variant="outline"
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <Link to="/observations/new">
+              <Plus />
+              New observation
+            </Link>
+          </Button>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
@@ -191,7 +196,7 @@ export function ObservationsListPage() {
           </TableBody>
         </Table>
       </div>
-    </div>
+    </>
   );
 }
 

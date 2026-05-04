@@ -19,6 +19,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Dialog,
   DialogContent,
@@ -226,17 +227,12 @@ export function StaffPersonPage() {
   ];
 
   return (
-    <div>
-      {/* Person header */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <div>
-          <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">
-            {staffMember.name}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-ops-gray text-sm">
-              {roleDisplayName(roles, staffMember.role)}
-            </span>
+    <>
+      <PageHeader
+        title={staffMember.name}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-2">
+            <span>{roleDisplayName(roles, staffMember.role)}</span>
             <span
               className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(staffMember.year)}`}
             >
@@ -248,55 +244,68 @@ export function StaffPersonPage() {
               </span>
             ) : null}
             {staffMember.buildings.map((b) => (
-              <span key={b} className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
+              <span key={b} className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] text-white/90">
                 {b}
               </span>
             ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/staff">
-              <ChevronLeft className="h-4 w-4" />
-              Back to Staff
-            </Link>
-          </Button>
-
-          {/* Send email dropdown */}
-          <div className="relative" ref={emailMenuRef}>
+          </span>
+        }
+        actions={
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              onClick={() => setEmailMenuOpen((o) => !o)}
-              disabled={!hasTemplates}
-              title={hasTemplates ? undefined : 'No active manual templates'}
+              asChild
+              className="text-white/80 hover:bg-white/10 hover:text-white"
             >
-              <Mail className="h-4 w-4" />
-              Send Email
-              <ChevronDown className="h-3.5 w-3.5" />
+              <Link to="/staff">
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </Link>
             </Button>
-            {emailMenuOpen && hasTemplates ? (
-              <div className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                {manualTemplates.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      setEmailMenuOpen(false);
-                      setSelectedTemplate(t);
-                      setSendDialogOpen(true);
-                    }}
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
 
-          <Button onClick={() => setDialogOpen(true)}>New Observation</Button>
-        </div>
-      </div>
+            {/* Send email dropdown */}
+            <div className="relative" ref={emailMenuRef}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEmailMenuOpen((o) => !o)}
+                disabled={!hasTemplates}
+                title={hasTemplates ? undefined : 'No active manual templates'}
+                className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              >
+                <Mail className="h-4 w-4" />
+                Send Email
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+              {emailMenuOpen && hasTemplates ? (
+                <div className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                  {manualTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setEmailMenuOpen(false);
+                        setSelectedTemplate(t);
+                        setSendDialogOpen(true);
+                      }}
+                      className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <Button
+              onClick={() => setDialogOpen(true)}
+              className="text-ops-blue-dark bg-white hover:bg-white/90"
+            >
+              New Observation
+            </Button>
+          </div>
+        }
+      />
 
       {/* Observation tabs */}
       <div className="mb-4 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -398,7 +407,7 @@ export function StaffPersonPage() {
           </DialogContent>
         </Dialog>
       ) : null}
-    </div>
+    </>
   );
 }
 

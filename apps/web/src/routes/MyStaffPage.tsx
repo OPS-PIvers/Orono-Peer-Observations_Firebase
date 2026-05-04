@@ -4,6 +4,8 @@ import { doc, orderBy } from 'firebase/firestore';
 import { Check } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { PageHeader } from '@/components/PageHeader';
+import { useDevMode } from '@/dev/DevModeContext';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
@@ -16,6 +18,7 @@ const ALL_STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 
 export function MyStaffPage() {
   const { user } = useAuth();
+  const { override } = useDevMode();
   const adminEmail = user?.email?.toLowerCase() ?? '';
 
   const adminDocRef = useMemo(
@@ -23,8 +26,18 @@ export function MyStaffPage() {
     [adminEmail],
   );
   const { data: adminDoc, loading: adminLoading } = useDocument<Staff>(adminDocRef);
-  const adminBuildings: string[] = adminDoc?.buildings ?? [];
-  const missingBuildings = !adminLoading && (!adminDoc || adminBuildings.length === 0);
+
+  // Dev mode can override the building scope when impersonating Administrator
+  // for a specific building. When the override is set, we ignore the user's
+  // own staff doc buildings entirely.
+  const overrideBuilding =
+    override.role === 'administrator' && override.building ? override.building : null;
+  const adminBuildings = useMemo<string[]>(
+    () => (overrideBuilding ? [overrideBuilding] : (adminDoc?.buildings ?? [])),
+    [overrideBuilding, adminDoc],
+  );
+  const missingBuildings =
+    !overrideBuilding && !adminLoading && (!adminDoc || adminBuildings.length === 0);
 
   const { data: allStaff, loading: staffLoading } = useFirestoreCollection<Staff>(
     COLLECTIONS.staff,
@@ -34,9 +47,10 @@ export function MyStaffPage() {
   const buildingScoped = useMemo(() => {
     if (!allStaff) return [];
     if (missingBuildings) return [];
-    const buildings = adminDoc?.buildings ?? [];
-    return allStaff.filter((s) => s.isActive && s.buildings.some((b) => buildings.includes(b)));
-  }, [allStaff, adminDoc, missingBuildings]);
+    return allStaff.filter(
+      (s) => s.isActive && s.buildings.some((b) => adminBuildings.includes(b)),
+    );
+  }, [allStaff, adminBuildings, missingBuildings]);
 
   const probationary = useMemo(() => buildingScoped.filter((s) => s.year >= 4), [buildingScoped]);
   const highCycle = useMemo(
@@ -71,11 +85,8 @@ export function MyStaffPage() {
   ];
 
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">My Staff</h1>
-        <p className="text-ops-gray mt-1 text-sm">Building-scoped staff for your site</p>
-      </header>
+    <>
+      <PageHeader title="My Staff" subtitle="Building-scoped staff for your site" />
 
       {missingBuildings ? (
         <div className="bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md px-4 py-3 text-sm">
@@ -191,6 +202,6 @@ export function MyStaffPage() {
           </tbody>
         </table>
       </div>
-    </div>
+    </>
   );
 }

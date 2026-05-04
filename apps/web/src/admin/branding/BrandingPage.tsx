@@ -8,6 +8,7 @@ import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/PageHeader';
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
@@ -57,15 +58,11 @@ export function BrandingPage() {
   }
 
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold">Branding</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Override the default OPS Tech branding. Defaults pull from{' '}
-          <code className="bg-muted rounded px-1 py-0.5 text-xs">DESIGN.md</code>; admin overrides
-          live in <code className="bg-muted rounded px-1 py-0.5 text-xs">/appSettings/global</code>.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="Branding"
+        subtitle="Override the default OPS Tech branding. Defaults pull from DESIGN.md; admin overrides live in /appSettings/global."
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -155,6 +152,6 @@ export function BrandingPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </>
   );
 }

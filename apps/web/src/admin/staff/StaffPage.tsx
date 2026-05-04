@@ -3,6 +3,7 @@ import { Plus, Search } from 'lucide-react';
 import { COLLECTIONS, isStaffYear, type Staff, type StaffYear } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -38,19 +39,22 @@ export function StaffPage() {
   }, [staff, search]);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Staff</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {staff ? `${String(filtered.length)} of ${String(staff.length)} staff` : 'Loading…'}
-          </p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add staff
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Staff"
+        subtitle={
+          staff ? `${String(filtered.length)} of ${String(staff.length)} staff` : 'Loading…'
+        }
+        actions={
+          <Button
+            onClick={() => setShowCreate(true)}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            <Plus />
+            Add staff
+          </Button>
+        }
+      />
 
       <div className="mb-4 max-w-md">
         <div className="relative">
@@ -150,7 +154,7 @@ export function StaffPage() {
         mode="edit"
         existing={editing}
       />
-    </div>
+    </>
   );
 }
 

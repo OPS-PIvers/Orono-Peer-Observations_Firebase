@@ -6,6 +6,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/PageHeader';
 
 const QUESTION_TYPES = ['work-product', 'instructional-round'] as const;
 type QuestionType = (typeof QUESTION_TYPES)[number];
@@ -72,15 +73,11 @@ export function WorkProductPage() {
   }
 
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold">Observation Question Bank</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Questions for Work Product and Instructional Round observations. Edit text inline;
-          deactivate to hide a question without deleting its history. Set the type so each question
-          appears in the correct staff-facing form.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="Observation Question Bank"
+        subtitle="Questions for Work Product and Instructional Round observations. Edit text inline; deactivate to hide a question without deleting its history. Set the type so each question appears in the correct staff-facing form."
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -181,6 +178,6 @@ export function WorkProductPage() {
         Reordering via drag-and-drop will land in Phase 7 polish; for now, add questions in the
         order you want them displayed.
       </p>
-    </div>
+    </>
   );
 }

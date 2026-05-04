@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Users } from 'lucide-react';
+import { LayoutGrid, List, Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { cn } from '@/lib/utils';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
+const VIEW_MODE_KEY = 'staffDir:viewMode';
+type ViewMode = 'list' | 'cards';
 
 export function StaffDirectoryPage() {
   const {
@@ -20,6 +24,18 @@ export function StaffDirectoryPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window === 'undefined') return 'list';
+    const raw = window.sessionStorage.getItem(VIEW_MODE_KEY);
+    return raw === 'cards' ? 'cards' : 'list';
+  });
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(VIEW_MODE_KEY, viewMode);
+    } catch {
+      // sessionStorage may be unavailable; harmless.
+    }
+  }, [viewMode]);
 
   // Filter is keyed on the staff role slug (or legacy free-text value).
   // Build the dropdown from the union of (a) loaded roles and (b) any
@@ -55,30 +71,26 @@ export function StaffDirectoryPage() {
   }
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">
-            Staff Directory
-          </h1>
-          <p className="text-ops-gray mt-1 text-sm">
-            Click a staff member to view or start observations
-          </p>
-        </div>
-        <div className="relative w-full max-w-xs">
-          <Search
-            aria-hidden="true"
-            className="text-ops-gray-lighter absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email…"
-            className="border-input bg-background h-10 w-full rounded-md border pr-3 pl-9 text-sm"
-          />
-        </div>
-      </header>
+    <>
+      <PageHeader
+        title="Staff Directory"
+        subtitle="Click a staff member to view or start observations"
+        actions={
+          <div className="relative w-full max-w-xs sm:w-72">
+            <Search
+              aria-hidden="true"
+              className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/60"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              className="h-10 w-full rounded-md border border-white/30 bg-white/10 pr-3 pl-9 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:bg-white/15 focus:outline-none"
+            />
+          </div>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
@@ -102,6 +114,38 @@ export function StaffDirectoryPage() {
           />
           Show inactive
         </label>
+        <div
+          className="border-input ml-auto inline-flex h-10 overflow-hidden rounded-md border"
+          role="group"
+          aria-label="View mode"
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            aria-pressed={viewMode === 'list'}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 text-sm transition-colors',
+              viewMode === 'list'
+                ? 'bg-ops-blue-dark text-white'
+                : 'text-ops-gray hover:bg-gray-50',
+            )}
+          >
+            <List className="h-4 w-4" /> List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('cards')}
+            aria-pressed={viewMode === 'cards'}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 text-sm transition-colors',
+              viewMode === 'cards'
+                ? 'bg-ops-blue-dark text-white'
+                : 'text-ops-gray hover:bg-gray-50',
+            )}
+          >
+            <LayoutGrid className="h-4 w-4" /> Cards
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -111,11 +155,19 @@ export function StaffDirectoryPage() {
       ) : null}
 
       {loading && !staff ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="h-36 animate-pulse rounded-lg bg-gray-100" />
-          ))}
-        </div>
+        viewMode === 'cards' ? (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-36 animate-pulse rounded-lg bg-gray-100" />
+            ))}
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-12 animate-pulse bg-gray-50" />
+            ))}
+          </div>
+        )
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <Users className="text-ops-gray-lighter h-10 w-10" />
@@ -130,7 +182,7 @@ export function StaffDirectoryPage() {
             </button>
           ) : null}
         </div>
-      ) : (
+      ) : viewMode === 'cards' ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {filtered.map((s) => (
             <Link
@@ -167,7 +219,45 @@ export function StaffDirectoryPage() {
             </Link>
           ))}
         </div>
+      ) : (
+        <ul className="divide-y divide-gray-100 overflow-hidden rounded-md border border-gray-200 bg-white">
+          {filtered.map((s) => (
+            <li key={s.id}>
+              <Link
+                to={`/staff/${encodeURIComponent(s.email.toLowerCase())}`}
+                className="hover:bg-ops-blue-lighter/30 focus:ring-ops-blue block px-4 py-2.5 transition-colors focus:ring-2 focus:-outline-offset-2 focus:outline-none"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="font-heading text-ops-blue-dark truncate text-sm font-semibold">
+                    {s.name}
+                  </p>
+                  <p className="text-ops-gray shrink-0 text-xs">{roleDisplayName(roles, s.role)}</p>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(s.year)}`}
+                  >
+                    {yearLabel(s.year)}
+                  </span>
+                  {s.summativeYear ? (
+                    <span className="bg-ops-blue-lighter text-ops-blue-dark inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
+                      High Cycle
+                    </span>
+                  ) : null}
+                  {s.buildings.map((b) => (
+                    <span
+                      key={b}
+                      className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600"
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </>
   );
 }

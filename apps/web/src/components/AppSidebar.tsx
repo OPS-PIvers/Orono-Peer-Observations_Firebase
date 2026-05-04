@@ -3,13 +3,13 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { SIDEBAR_TOGGLE_EVENT } from '@/hooks/useSidebarWidth';
 import {
   ArrowLeft,
-  BookOpen,
   Building2,
   ChevronDown,
   ChevronRight,
   ClipboardList,
   Eye,
   FileText,
+  LayoutGrid,
   LogOut,
   Menu,
   Settings,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { SPECIAL_ROLES } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAV } from '@/admin/adminNav';
@@ -106,7 +107,7 @@ function buildNavItems(
   // building-scoped /my-staff link.
   if (role === SPECIAL_ROLES.administrator) {
     const main: NavItem[] = [
-      { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+      { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
     ];
@@ -119,7 +120,7 @@ function buildNavItems(
   if (role === SPECIAL_ROLES.peerEvaluator) {
     return {
       main: [
-        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
         { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
       ],
@@ -133,7 +134,7 @@ function buildNavItems(
   if (flags.isAdmin) {
     return {
       main: [
-        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
@@ -144,7 +145,7 @@ function buildNavItems(
   // Staff (no special access)
   return {
     main: [
-      { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+      { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
       {
         icon: ClipboardList,
         label: 'Observations',
@@ -181,7 +182,8 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }: AppSidebarProps) {
-  const { user, claims, signOut } = useAuth();
+  const { user, signOut } = useAuth();
+  const claims = useEffectiveClaims();
   const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
   const location = useLocation();
   const navigate = useNavigate();

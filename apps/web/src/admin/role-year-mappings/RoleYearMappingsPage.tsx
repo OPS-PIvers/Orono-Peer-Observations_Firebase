@@ -14,6 +14,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/PageHeader';
 
 const YEAR_LABELS: Record<StaffYear, string> = {
   1: 'Y1',
@@ -142,26 +143,25 @@ export function RoleYearMappingsPage() {
   const loading = rolesLoading || rubricsLoading || mappingsLoading;
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Role / Year Mappings</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            For each role-year combination, choose which rubric components are evaluated. Replaces
-            the legacy Settings sheet&apos;s 4-row-per-role block layout.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {savedAt ? (
-            <span className="text-muted-foreground text-xs">
-              Saved {savedAt.toLocaleTimeString()}
-            </span>
-          ) : null}
-          <Button onClick={() => void save()} disabled={!dirty || saving}>
-            {saving ? 'Saving…' : 'Save mappings'}
-          </Button>
-        </div>
-      </header>
+    <>
+      <PageHeader
+        title="Role / Year Mappings"
+        subtitle="For each role-year combination, choose which rubric components are evaluated. Replaces the legacy Settings sheet's 4-row-per-role block layout."
+        actions={
+          <div className="flex items-center gap-2">
+            {savedAt ? (
+              <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
+            ) : null}
+            <Button
+              onClick={() => void save()}
+              disabled={!dirty || saving}
+              className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
+            >
+              {saving ? 'Saving…' : 'Save mappings'}
+            </Button>
+          </div>
+        }
+      />
 
       <div className="mb-6 max-w-md">
         <label className="grid gap-1 text-sm">
@@ -216,7 +216,7 @@ export function RoleYearMappingsPage() {
           onToggleRow={toggleRow}
         />
       )}
-    </div>
+    </>
   );
 }
 

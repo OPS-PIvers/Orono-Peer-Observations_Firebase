@@ -9,6 +9,7 @@ import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/PageHeader';
 
 interface MigrateRolesResult {
   staffMigrated: number;
@@ -64,13 +65,11 @@ export function SettingsPage() {
   }
 
   return (
-    <div>
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold">App Settings</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          System-wide tunables. Changes apply on next page load for users.
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="App Settings"
+        subtitle="System-wide tunables. Changes apply on next page load for users."
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -258,7 +257,7 @@ export function SettingsPage() {
       </div>
 
       <MaintenanceSection />
-    </div>
+    </>
   );
 }
 

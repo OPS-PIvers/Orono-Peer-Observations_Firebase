@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
 import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
@@ -81,20 +82,26 @@ export function NewObservationPage() {
   }, [staff, roles, search, roleFilter, yearFilter, buildingFilter, activeOnly]);
 
   return (
-    <div>
-      <header className="mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mb-2">
-          <ChevronLeft className="h-4 w-4" />
-          Back
-        </Button>
-        <h1 className="text-3xl font-bold">New observation</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Pick the staff member you&apos;re observing.{' '}
-          {staff
-            ? `${String(filtered.length)} of ${String(staff.length)} match.`
-            : 'Loading staff…'}
-        </p>
-      </header>
+    <>
+      <PageHeader
+        title="New observation"
+        subtitle={`Pick the staff member you're observing.${
+          staff
+            ? ` ${String(filtered.length)} of ${String(staff.length)} match.`
+            : ' Loading staff…'
+        }`}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(-1)}
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
@@ -234,6 +241,6 @@ export function NewObservationPage() {
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

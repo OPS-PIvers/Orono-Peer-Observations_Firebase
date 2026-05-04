@@ -16,6 +16,11 @@ export interface DomainNavProps {
    * Defaults to 'light' for use on white/background-colored bars.
    */
   variant?: 'light' | 'dark';
+  /**
+   * Horizontal alignment of the pill row inside the nav. Defaults to
+   * 'left'; use 'center' when sitting under a centered title strip.
+   */
+  align?: 'left' | 'center';
 }
 
 /**
@@ -34,6 +39,7 @@ export function DomainNav({
   className,
   pulseOnClick = false,
   variant = 'light',
+  align = 'left',
 }: DomainNavProps) {
   const domainIds = useMemo(() => rubric.domains.map((d) => d.id), [rubric]);
   const [activeId, setActiveId] = useState<string | null>(domainIds[0] ?? null);
@@ -78,7 +84,10 @@ export function DomainNav({
   );
 
   return (
-    <nav aria-label="Rubric domains" className={cn('flex flex-wrap gap-1', className)}>
+    <nav
+      aria-label="Rubric domains"
+      className={cn('flex flex-wrap gap-1', align === 'center' && 'justify-center', className)}
+    >
       {rubric.domains.map((d) => {
         const active = activeId === d.id;
         return (

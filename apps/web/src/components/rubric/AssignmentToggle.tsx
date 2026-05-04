@@ -7,6 +7,12 @@ export interface AssignmentToggleProps {
   onChange: (next: AssignmentMode) => void;
   disabled?: boolean;
   className?: string;
+  /**
+   * `'light'` (default) renders a filled segmented control on a light
+   * background. `'dark'` is an outline-only variant for use on a
+   * dark/blue page header — no fill, white text.
+   */
+  variant?: 'light' | 'dark';
 }
 
 /**
@@ -19,6 +25,7 @@ export function AssignmentToggle({
   onChange,
   disabled = false,
   className,
+  variant = 'light',
 }: AssignmentToggleProps) {
   return (
     <div
@@ -26,7 +33,8 @@ export function AssignmentToggle({
       aria-label="Rubric scope"
       aria-disabled={disabled || undefined}
       className={cn(
-        'border-border bg-muted inline-flex rounded-md border p-0.5 text-sm',
+        'inline-flex rounded-md border p-0.5 text-sm',
+        variant === 'dark' ? 'border-white/30' : 'border-border bg-muted',
         disabled && 'opacity-60',
         className,
       )}
@@ -36,12 +44,14 @@ export function AssignmentToggle({
         disabled={disabled}
         onClick={() => onChange('assigned')}
         label="Assigned only"
+        variant={variant}
       />
       <Segment
         active={value === 'full'}
         disabled={disabled}
         onClick={() => onChange('full')}
         label="Full Rubric"
+        variant={variant}
       />
     </div>
   );
@@ -52,11 +62,13 @@ function Segment({
   disabled,
   onClick,
   label,
+  variant,
 }: {
   active: boolean;
   disabled: boolean;
   onClick: () => void;
   label: string;
+  variant: 'light' | 'dark';
 }) {
   return (
     <button
@@ -68,9 +80,13 @@ function Segment({
       className={cn(
         'rounded px-3 py-1.5 font-medium transition-colors',
         disabled && 'cursor-not-allowed',
-        active
-          ? 'bg-primary text-primary-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground',
+        variant === 'dark'
+          ? active
+            ? 'bg-white/15 text-white'
+            : 'text-white/70 hover:text-white'
+          : active
+            ? 'bg-primary text-primary-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
       )}
     >
       {label}

@@ -4,6 +4,8 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
+import { DevModeBar } from '@/dev/DevModeBar';
+import { DevModeProvider } from '@/dev/DevModeContext';
 import { ObservationsListPage } from '@/observations/ObservationsListPage';
 import { MyRubricPage } from '@/routes/MyRubricPage';
 import { NotFound } from '@/routes/NotFound';
@@ -125,149 +127,152 @@ function KeyedStaffPersonPage() {
 export function App() {
   return (
     <AuthProvider>
-      <KeyedErrorBoundary>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            {/* Public */}
-            <Route path="/sign-in" element={<SignInScreen />} />
-            {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
+      <DevModeProvider>
+        <KeyedErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              {/* Public */}
+              <Route path="/sign-in" element={<SignInScreen />} />
+              {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
 
-            {/* Authenticated routes wrapped in Layout */}
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <RoleAwareRedirect />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            {/* /dashboard kept for bookmarks; redirects through "/" so RoleAwareRedirect applies */}
-            <Route path="/dashboard" element={<Navigate to="/" replace />} />
-            <Route
-              path="/observations"
-              element={
-                <RequireAuth requireSpecialAccess>
-                  <Layout>
-                    <ObservationsListPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/observations/new"
-              element={
-                <RequireAuth requireSpecialAccess>
-                  <Layout>
-                    <NewObservationPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/observations/:observationId"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <ObservationEditorPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            {/* Staff directory — PE and Full Access */}
-            <Route
-              path="/staff"
-              element={
-                <RequireAuth requireSpecialAccess>
-                  <Layout>
-                    <StaffDirectoryPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            {/* Per-person observation hub */}
-            <Route
-              path="/staff/:email"
-              element={
-                <RequireAuth requireSpecialAccess>
-                  <Layout>
-                    <KeyedStaffPersonPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            {/* Admin building-scoped staff list */}
-            <Route
-              path="/my-staff"
-              element={
-                <RequireAuth requireSpecialAccess>
-                  <Layout>
-                    <MyStaffPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/my-rubric"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <MyRubricPage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <ProfilePage />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/unauthorized"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Unauthorized />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              {/* Authenticated routes wrapped in Layout */}
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <RoleAwareRedirect />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              {/* /dashboard kept for bookmarks; redirects through "/" so RoleAwareRedirect applies */}
+              <Route path="/dashboard" element={<Navigate to="/" replace />} />
+              <Route
+                path="/observations"
+                element={
+                  <RequireAuth requireSpecialAccess>
+                    <Layout>
+                      <ObservationsListPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/observations/new"
+                element={
+                  <RequireAuth requireSpecialAccess>
+                    <Layout>
+                      <NewObservationPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/observations/:observationId"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <ObservationEditorPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              {/* Staff directory — PE and Full Access */}
+              <Route
+                path="/staff"
+                element={
+                  <RequireAuth requireSpecialAccess>
+                    <Layout>
+                      <StaffDirectoryPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              {/* Per-person observation hub */}
+              <Route
+                path="/staff/:email"
+                element={
+                  <RequireAuth requireSpecialAccess>
+                    <Layout>
+                      <KeyedStaffPersonPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              {/* Admin building-scoped staff list */}
+              <Route
+                path="/my-staff"
+                element={
+                  <RequireAuth requireSpecialAccess>
+                    <Layout>
+                      <MyStaffPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/my-rubric"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <MyRubricPage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <ProfilePage />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/unauthorized"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Unauthorized />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            {/* Admin section (gated to Administrator + Full Access) */}
-            <Route
-              path="/admin"
-              element={
-                <RequireAuth requireAdmin>
-                  <Layout>
-                    <AdminLayout />
-                  </Layout>
-                </RequireAuth>
-              }
-            >
-              <Route index element={<Navigate to="staff" replace />} />
-              <Route path="staff" element={<StaffPage />} />
-              <Route path="roles" element={<RolesPage />} />
-              <Route path="buildings" element={<BuildingsPage />} />
-              <Route path="rubrics" element={<RubricsListPage />} />
-              <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
-              <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />
-              <Route path="work-product" element={<WorkProductPage />} />
-              <Route path="email-templates" element={<EmailTemplatesPage />} />
-              <Route path="branding" element={<BrandingPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="audit-log" element={<AuditLogPage />} />
-            </Route>
+              {/* Admin section (gated to Administrator + Full Access) */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireAuth requireAdmin>
+                    <Layout>
+                      <AdminLayout />
+                    </Layout>
+                  </RequireAuth>
+                }
+              >
+                <Route index element={<Navigate to="staff" replace />} />
+                <Route path="staff" element={<StaffPage />} />
+                <Route path="roles" element={<RolesPage />} />
+                <Route path="buildings" element={<BuildingsPage />} />
+                <Route path="rubrics" element={<RubricsListPage />} />
+                <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
+                <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />
+                <Route path="work-product" element={<WorkProductPage />} />
+                <Route path="email-templates" element={<EmailTemplatesPage />} />
+                <Route path="branding" element={<BrandingPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="audit-log" element={<AuditLogPage />} />
+              </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </KeyedErrorBoundary>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </KeyedErrorBoundary>
+        <DevModeBar />
+      </DevModeProvider>
     </AuthProvider>
   );
 }

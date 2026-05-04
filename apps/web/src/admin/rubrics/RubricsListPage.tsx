@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { COLLECTIONS, type Rubric } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import {
   Table,
   TableBody,
@@ -16,22 +17,19 @@ export function RubricsListPage() {
   const { data: rubrics, loading, error } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Rubrics</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            One rubric per role. Each rubric has 4 domains and a variable number of components with
-            proficiency descriptors, best practices, and look-fors.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/admin/roles">
-            <Plus />
-            Add role
-          </Link>
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Rubrics"
+        subtitle="One rubric per role. Each rubric has 4 domains and a variable number of components with proficiency descriptors, best practices, and look-fors."
+        actions={
+          <Button asChild className="text-ops-blue-dark bg-white hover:bg-white/90">
+            <Link to="/admin/roles">
+              <Plus />
+              Add role
+            </Link>
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -89,6 +87,6 @@ export function RubricsListPage() {
           </TableBody>
         </Table>
       </div>
-    </div>
+    </>
   );
 }

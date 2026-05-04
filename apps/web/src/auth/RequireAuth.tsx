@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useAuth } from './AuthProvider';
 
 /**
@@ -22,7 +23,8 @@ export function RequireAuth({
   requireAdmin = false,
   requireSpecialAccess = false,
 }: RequireAuthProps) {
-  const { status, claims } = useAuth();
+  const { status } = useAuth();
+  const claims = useEffectiveClaims();
   const location = useLocation();
 
   if (status === 'loading') {

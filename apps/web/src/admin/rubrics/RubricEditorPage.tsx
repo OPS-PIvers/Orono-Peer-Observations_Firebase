@@ -7,6 +7,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { RubricGridEditor } from './RubricGridEditor';
 
 interface DraftRubric extends Rubric {
@@ -188,36 +189,34 @@ export function RubricEditorPage() {
   const componentCount = draft.domains.reduce((sum, d) => sum + d.components.length, 0);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/admin/rubrics')}
-            className="mb-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            All rubrics
-          </Button>
-          <h1 className="text-3xl font-bold">{draft.displayName}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {draft.domains.length} domain{draft.domains.length === 1 ? '' : 's'}, {componentCount}{' '}
-            component{componentCount === 1 ? '' : 's'}
-            {dirty ? ' • unsaved changes' : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {savedAt ? (
-            <span className="text-muted-foreground text-xs">
-              Saved {savedAt.toLocaleTimeString()}
-            </span>
-          ) : null}
-          <Button onClick={() => void save()} disabled={saving || !dirty}>
-            {saving ? 'Saving…' : 'Save rubric'}
-          </Button>
-        </div>
-      </header>
+    <>
+      <PageHeader
+        title={draft.displayName}
+        subtitle={`${String(draft.domains.length)} domain${draft.domains.length === 1 ? '' : 's'}, ${String(componentCount)} component${componentCount === 1 ? '' : 's'}${dirty ? ' • unsaved changes' : ''}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/admin/rubrics')}
+              className="text-white/80 hover:bg-white/10 hover:text-white"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              All rubrics
+            </Button>
+            {savedAt ? (
+              <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
+            ) : null}
+            <Button
+              onClick={() => void save()}
+              disabled={saving || !dirty}
+              className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
+            >
+              {saving ? 'Saving…' : 'Save rubric'}
+            </Button>
+          </div>
+        }
+      />
 
       {saveError ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-3 py-2 text-sm">
@@ -236,6 +235,6 @@ export function RubricEditorPage() {
         onUpdateLookFor={updateLookFor}
         onRemoveLookFor={removeLookFor}
       />
-    </div>
+    </>
   );
 }

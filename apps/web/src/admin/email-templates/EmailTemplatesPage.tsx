@@ -27,6 +27,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { PageHeader } from '@/components/PageHeader';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -310,19 +311,20 @@ export function EmailTemplatesPage() {
   }
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Email Templates</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Manage notification templates. System templates can be toggled but not deleted.
-          </p>
-        </div>
-        <Button onClick={() => void createTemplate()}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          New Template
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Email Templates"
+        subtitle="Manage notification templates. System templates can be toggled but not deleted."
+        actions={
+          <Button
+            onClick={() => void createTemplate()}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            New Template
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -437,7 +439,7 @@ export function EmailTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 

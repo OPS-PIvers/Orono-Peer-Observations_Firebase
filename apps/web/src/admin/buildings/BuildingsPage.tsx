@@ -5,6 +5,7 @@ import { COLLECTIONS, type Building } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -42,20 +43,20 @@ export function BuildingsPage() {
   const [editing, setEditing] = useState<(Building & { id: string }) | null>(null);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Buildings</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned
-            to one or more of these locations.
-          </p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add building
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Buildings"
+        subtitle={`${buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned to one or more of these locations.`}
+        actions={
+          <Button
+            onClick={() => setShowCreate(true)}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            <Plus />
+            Add building
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -137,7 +138,7 @@ export function BuildingsPage() {
         mode="edit"
         existing={editing}
       />
-    </div>
+    </>
   );
 }
 

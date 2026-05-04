@@ -5,6 +5,7 @@ import { COLLECTIONS, type Role } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -38,20 +39,20 @@ export function RolesPage() {
   const [editing, setEditing] = useState<(Role & { id: string }) | null>(null);
 
   return (
-    <div>
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Roles</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {roles ? `${String(roles.length)} roles` : 'Loading…'} — each role has its own rubric
-            and (role, year) component assignments.
-          </p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add role
-        </Button>
-      </header>
+    <>
+      <PageHeader
+        title="Roles"
+        subtitle={`${roles ? `${String(roles.length)} roles` : 'Loading…'} — each role has its own rubric and (role, year) component assignments.`}
+        actions={
+          <Button
+            onClick={() => setShowCreate(true)}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            <Plus />
+            Add role
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -142,7 +143,7 @@ export function RolesPage() {
         mode="edit"
         existing={editing}
       />
-    </div>
+    </>
   );
 }
 
