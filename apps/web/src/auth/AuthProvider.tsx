@@ -95,8 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             await syncMyClaimsFn({});
             await next.getIdToken(true);
+            // Return and let the token-refresh re-trigger onIdTokenChanged
+            // with fresh claims. Avoids reading a stale token here and also
+            // prevents the migration block below from seeing rawIsAdmin ===
+            // undefined and firing a redundant second syncMyClaims call.
+            return;
           } catch (err) {
             console.warn('syncMyClaims failed', err);
+            // Fall through: set claims from the current (possibly stale) token.
           }
         }
 
