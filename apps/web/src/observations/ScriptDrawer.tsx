@@ -115,11 +115,12 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
       >
         {/* Resize border — slim grey strip above the title row, drag-only.
             Mirrors Google Slides' speaker-notes resize affordance: a thin
-            top edge with a centered pill grip that's always visible. */}
+            top edge with a centered pill grip that's always visible.
+            Pointer-only resize affordance (no keyboard equivalent), so it
+            stays purely decorative for assistive tech. The Expand/Collapse
+            button below provides the keyboard path for show/hide. */}
         <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize script drawer"
+          aria-hidden="true"
           className={cn(
             'group flex shrink-0 items-center justify-center border-t border-b',
             'border-ops-gray-lighter bg-ops-gray-lightest',
@@ -129,7 +130,6 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
           onPointerDown={onPointerDown}
         >
           <div
-            aria-hidden="true"
             className={cn(
               'h-1 rounded-full transition-all',
               open

@@ -429,8 +429,9 @@ export function ObservationEditorPage() {
   return (
     <div className={cn(bodyWrapperCls, 'space-y-4')}>
       <header className="space-y-2">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => {
             if (observation.observedEmail) {
               void navigate(`/staff/${observation.observedEmail}`);
@@ -438,10 +439,10 @@ export function ObservationEditorPage() {
               void navigate(-1);
             }
           }}
-          className="text-ops-blue hover:text-ops-blue-dark inline-flex items-center text-sm font-medium hover:underline"
+          className="text-ops-blue hover:text-ops-blue-dark -ml-2 hover:underline"
         >
           ← Back to {observation.observedName || 'staff'}
-        </button>
+        </Button>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <div className="min-w-0">
             <h1 className="font-heading text-ops-blue-dark text-2xl leading-tight font-semibold">
@@ -471,9 +472,9 @@ export function ObservationEditorPage() {
             </div>
           ) : (
             <p className="text-ops-gray-dark text-sm">
-              {draft.observationName ? draft.observationName : null}
-              {draft.observationName && draft.observationDate ? ' · ' : ''}
-              {draft.observationDate ? draft.observationDate.toLocaleDateString() : ''}
+              {[draft.observationName, draft.observationDate?.toLocaleDateString()]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
           )}
         </div>
