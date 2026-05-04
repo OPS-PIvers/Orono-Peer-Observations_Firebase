@@ -16,6 +16,7 @@ import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
 import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
 import { InstructionalRoundAnswerForm } from '@/observations/InstructionalRoundAnswerForm';
+import { roleDisplayName } from '@/utils/roleLookup';
 
 const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
 
@@ -59,8 +60,10 @@ export function MyRubricPage() {
 
   const role = useMemo<Role | null>(() => {
     if (!staff || !roles) return null;
-    return roles.find((r) => r.displayName === staff.role) ?? null;
+    return roles.find((r) => r.roleId === staff.role) ?? null;
   }, [staff, roles]);
+
+  const roleLabel = roleDisplayName(roles, staff?.role);
 
   const rubric = useMemo<Rubric | null>(() => {
     if (!role || !rubrics) return null;
@@ -109,7 +112,7 @@ export function MyRubricPage() {
           <h1 className="font-heading text-ops-blue-dark text-3xl font-semibold">My Rubric</h1>
           <p className="text-ops-gray mt-1 text-sm">
             {staff
-              ? `${staff.role} · Year ${String(staff.year)}`
+              ? `${roleLabel} · Year ${String(staff.year)}`
               : staffLoading
                 ? 'Loading your role…'
                 : 'No staff record found for your account.'}
@@ -152,7 +155,7 @@ export function MyRubricPage() {
         </div>
       ) : staff && roles && rubrics ? (
         <div className="border-primary bg-accent text-accent-foreground rounded-md border-l-4 px-4 py-3 text-sm">
-          No rubric is set up for the role <strong>{staff.role}</strong>. Ask an admin to verify the
+          No rubric is set up for the role <strong>{roleLabel}</strong>. Ask an admin to verify the
           role mapping.
         </div>
       ) : !staffLoading ? (

@@ -34,6 +34,9 @@ const BrandingPage = lazy(() =>
 const RolesPage = lazy(() =>
   import('@/admin/roles/RolesPage').then((m) => ({ default: m.RolesPage })),
 );
+const BuildingsPage = lazy(() =>
+  import('@/admin/buildings/BuildingsPage').then((m) => ({ default: m.BuildingsPage })),
+);
 const RoleYearMappingsPage = lazy(() =>
   import('@/admin/role-year-mappings/RoleYearMappingsPage').then((m) => ({
     default: m.RoleYearMappingsPage,
@@ -237,6 +240,7 @@ export function App() {
               <Route index element={<Navigate to="staff" replace />} />
               <Route path="staff" element={<StaffPage />} />
               <Route path="roles" element={<RolesPage />} />
+              <Route path="buildings" element={<BuildingsPage />} />
               <Route path="rubrics" element={<RubricsListPage />} />
               <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
               <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />

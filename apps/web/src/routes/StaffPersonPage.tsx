@@ -11,11 +11,13 @@ import {
   type EmailTemplate,
   type Observation,
   type ObservationStatus,
+  type Role,
   type Staff,
 } from '@ops/shared';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -83,6 +85,7 @@ export function StaffPersonPage() {
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const obsConstraints = useMemo(
     () => (email ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')] : []),
@@ -153,17 +156,18 @@ export function StaffPersonPage() {
     setSending(true);
     setSendError(null);
     try {
+      const roleLabel = roleDisplayName(roles, staffMember.role);
       await sendManualEmailFn({
         templateId: selectedTemplate.id,
         toEmail: email,
         vars: {
           observedName: staffMember.name,
           observedEmail: email,
-          observedRole: staffMember.role,
+          observedRole: roleLabel,
           observedYear: String(staffMember.year),
           staffName: staffMember.name,
           staffEmail: email,
-          staffRole: staffMember.role,
+          staffRole: roleLabel,
           observerName: (user?.email ?? '').split('@')[0] ?? '',
           observerEmail: user?.email ?? '',
         },
@@ -230,7 +234,9 @@ export function StaffPersonPage() {
             {staffMember.name}
           </h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-ops-gray text-sm">{staffMember.role}</span>
+            <span className="text-ops-gray text-sm">
+              {roleDisplayName(roles, staffMember.role)}
+            </span>
             <span
               className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(staffMember.year)}`}
             >

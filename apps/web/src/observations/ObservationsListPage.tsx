@@ -8,9 +8,11 @@ import {
   isAdminRole,
   type Observation,
   type ObservationStatus,
+  type Role,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -59,6 +61,7 @@ export function ObservationsListPage() {
     loading,
     error,
   } = useFirestoreCollection<Observation>(COLLECTIONS.observations, constraints);
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const filtered = useMemo(() => {
     if (!observations) return [];
@@ -166,7 +169,7 @@ export function ObservationsListPage() {
                       <div className="text-muted-foreground text-xs">{o.observationName}</div>
                     ) : null}
                     <div className="text-muted-foreground text-xs">
-                      {o.observedRole} · Year {String(o.observedYear)}
+                      {roleDisplayName(roles, o.observedRole)} · Year {String(o.observedYear)}
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">{o.observerEmail}</TableCell>

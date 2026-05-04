@@ -10,8 +10,8 @@ service firebase.storage {
     match /admin-uploads/{path=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-        && (request.auth.token.role == 'Administrator'
-            || request.auth.token.role == 'Full Access');
+        && (request.auth.token.role == 'administrator'
+            || request.auth.token.role == 'full-access');
     }
     match /{path=**} {
       allow read, write: if false;

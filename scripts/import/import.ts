@@ -23,7 +23,7 @@
 
 import { config as loadDotenv } from 'dotenv';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
+import { COLLECTIONS, OBSERVATION_STATUS, slugifyRoleName } from '@ops/shared';
 import { initFirestore, type ImportTarget } from './firebase.js';
 import { listTabs, readSheetValues } from './sheets.js';
 import {
@@ -312,7 +312,9 @@ async function importFinalizedObservations(
           observerEmail: (row[observerEmailCol] ?? '').trim().toLowerCase(),
           observedEmail: (row[observedEmailCol] ?? '').trim().toLowerCase(),
           observedName: observedNameCol >= 0 ? (row[observedNameCol] ?? '').trim() : '',
-          observedRole: observedRoleCol >= 0 ? (row[observedRoleCol] ?? '').trim() : 'Teacher',
+          observedRole: slugifyRoleName(
+            observedRoleCol >= 0 ? (row[observedRoleCol] ?? '').trim() || 'Teacher' : 'Teacher',
+          ),
           observedYear: year,
           observedBuildings: [],
           status: OBSERVATION_STATUS.finalized,

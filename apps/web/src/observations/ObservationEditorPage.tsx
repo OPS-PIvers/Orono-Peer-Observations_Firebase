@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { RubricGrid } from '@/components/rubric';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { ScriptEditor } from './ScriptEditor';
 import { GlobalToolsBar } from './GlobalToolsBar';
 import { ScriptDrawer } from './ScriptDrawer';
@@ -94,18 +95,20 @@ export function ObservationEditorPage() {
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
-  // Derive rubric for this observation (looked up via the observed role's
-  // displayName → role doc → rubricId).
+  // Derive rubric for this observation (looked up via the observed role
+  // slug → role doc → rubricId).
   const rubric = useMemo<Rubric | null>(() => {
     if (!observation || !roles || !rubrics) return null;
-    const role = roles.find((r) => r.displayName === observation.observedRole);
+    const role = roles.find((r) => r.roleId === observation.observedRole);
     if (!role) return null;
     return rubrics.find((rb) => rb.id === role.rubricId) ?? null;
   }, [observation, roles, rubrics]);
 
+  const observedRoleLabel = roleDisplayName(roles, observation?.observedRole);
+
   const mappingPath = observation
     ? (() => {
-        const role = roles?.find((r) => r.displayName === observation.observedRole);
+        const role = roles?.find((r) => r.roleId === observation.observedRole);
         if (!role) return null;
         return `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId(role.roleId, observation.observedYear)}`;
       })()
@@ -429,8 +432,7 @@ export function ObservationEditorPage() {
                 {observation.observedName}
               </h1>
               <p className="text-ops-gray text-sm">
-                {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
-                {observation.type}
+                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
               </p>
               <input
                 type="text"
@@ -452,8 +454,7 @@ export function ObservationEditorPage() {
                 {observation.observedName}
               </h1>
               <p className="text-ops-gray text-sm">
-                {observation.observedRole} · Year {String(observation.observedYear)} ·{' '}
-                {observation.type}
+                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
                 {draft.observationName ? ` · ${draft.observationName}` : ''}
                 {draft.observationDate ? ` · ${draft.observationDate.toLocaleDateString()}` : ''}
               </p>
@@ -519,8 +520,8 @@ export function ObservationEditorPage() {
 
       {!visibleRubric ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
-          Couldn&apos;t find a rubric for role <strong>{observation.observedRole}</strong>. Ask an
-          admin to verify the role and rubric setup.
+          Couldn&apos;t find a rubric for role <strong>{observedRoleLabel}</strong>. Ask an admin to
+          verify the role and rubric setup.
         </div>
       ) : visibleRubric.domains.length === 0 ? (
         <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">

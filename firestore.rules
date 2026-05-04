@@ -11,7 +11,7 @@ rules_version = '2';
 //
 // Custom claims set by the auth flow:
 //   request.auth.token.email                — verified email
-//   request.auth.token.role                 — professional staff role (string)
+//   request.auth.token.role                 — professional staff role slug (e.g. "administrator")
 //   request.auth.token.hasSpecialAccess     — true for Admin / Peer Eval / Full Access
 //   request.auth.token.isAdmin              — true for Administrator/Full Access roles or hasAdminAccess flag
 //
@@ -80,6 +80,11 @@ service cloud.firestore {
     // Read: anyone signed-in from the domain (the client UI needs these to
     // render the rubric for any user). Write: admin only.
     match /roles/{roleId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
+    match /buildings/{buildingId} {
       allow read: if isFromOronoDomain();
       allow write: if isAdmin();
     }

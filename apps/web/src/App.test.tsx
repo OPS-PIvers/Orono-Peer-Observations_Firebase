@@ -7,10 +7,10 @@ import { isSpecialRole } from '@ops/shared';
  */
 describe('shared package wiring', () => {
   it('detects special-access roles', () => {
-    expect(isSpecialRole('Administrator')).toBe(true);
-    expect(isSpecialRole('Peer Evaluator')).toBe(true);
-    expect(isSpecialRole('Full Access')).toBe(true);
-    expect(isSpecialRole('Teacher')).toBe(false);
+    expect(isSpecialRole('administrator')).toBe(true);
+    expect(isSpecialRole('peer-evaluator')).toBe(true);
+    expect(isSpecialRole('full-access')).toBe(true);
+    expect(isSpecialRole('teacher')).toBe(false);
     expect(isSpecialRole(null)).toBe(false);
   });
 });

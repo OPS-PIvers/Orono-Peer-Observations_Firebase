@@ -1,13 +1,28 @@
 import { useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+interface MigrateRolesResult {
+  staffMigrated: number;
+  staffAlreadySlug: number;
+  staffUnmatched: { email: string; rawRole: string }[];
+  observationsMigrated: number;
+  observationsAlreadySlug: number;
+  observationsUnmatched: { observationId: string; rawRole: string }[];
+}
+
+const migrateRolesToSlugsFn = httpsCallable<Record<string, never>, MigrateRolesResult>(
+  functions,
+  'migrateRolesToSlugs',
+);
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
@@ -240,6 +255,126 @@ export function SettingsPage() {
             {saving ? 'Saving…' : 'Save settings'}
           </Button>
         </div>
+      </div>
+
+      <MaintenanceSection />
+    </div>
+  );
+}
+
+function MaintenanceSection() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<MigrateRolesResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await migrateRolesToSlugsFn({});
+      setResult(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Migration failed');
+    } finally {
+      setRunning(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className="border-border bg-background mt-6 max-w-2xl space-y-4 rounded-lg border p-6">
+      <header>
+        <h2 className="text-lg font-semibold">Maintenance</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          One-shot tools that don&apos;t belong in the regular settings flow.
+        </p>
+      </header>
+
+      <div className="border-border space-y-3 rounded-md border p-4">
+        <div>
+          <h3 className="text-sm font-semibold">Migrate roles to slugs</h3>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Converts <code className="font-mono text-xs">staff.role</code> and{' '}
+            <code className="font-mono text-xs">observation.observedRole</code> from the role&apos;s
+            display name (e.g. &quot;Instructional Specialist&quot;) to its{' '}
+            <code className="font-mono text-xs">roleId</code> slug (e.g.{' '}
+            &quot;instructional-specialist&quot;). Idempotent — safe to re-run. Required once after
+            this release; values that don&apos;t match a configured role are left in place and
+            reported below so you can fix them via the staff editor.
+          </p>
+        </div>
+
+        {error ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            {error}
+          </div>
+        ) : null}
+
+        {result ? (
+          <div className="bg-ops-blue-lighter text-ops-blue-dark rounded-md border-l-4 border-l-blue-500 px-3 py-2 text-sm">
+            <p className="font-medium">Migration complete.</p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+              <li>
+                Staff: {result.staffMigrated} migrated, {result.staffAlreadySlug} already slug,{' '}
+                {result.staffUnmatched.length} unmatched
+              </li>
+              <li>
+                Observations: {result.observationsMigrated} migrated,{' '}
+                {result.observationsAlreadySlug} already slug, {result.observationsUnmatched.length}{' '}
+                unmatched
+              </li>
+            </ul>
+            {result.staffUnmatched.length > 0 ? (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer">
+                  Unmatched staff ({result.staffUnmatched.length})
+                </summary>
+                <ul className="mt-1 list-disc pl-5 font-mono">
+                  {result.staffUnmatched.map((u) => (
+                    <li key={u.email}>
+                      {u.email} → &quot;{u.rawRole}&quot;
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+            {result.observationsUnmatched.length > 0 ? (
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer">
+                  Unmatched observations ({result.observationsUnmatched.length})
+                </summary>
+                <ul className="mt-1 list-disc pl-5 font-mono">
+                  {result.observationsUnmatched.map((u) => (
+                    <li key={u.observationId}>
+                      {u.observationId} → &quot;{u.rawRole}&quot;
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
+
+        {confirming ? (
+          <div className="flex items-center gap-2">
+            <Button variant="destructive" size="sm" onClick={() => void run()} disabled={running}>
+              {running ? 'Running…' : 'Yes, run migration'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirming(false)}
+              disabled={running}
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+            Run role-slug migration
+          </Button>
+        )}
       </div>
     </div>
   );

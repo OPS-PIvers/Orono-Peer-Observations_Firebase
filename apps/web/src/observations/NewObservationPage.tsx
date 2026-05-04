@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
-import { COLLECTIONS, type Staff } from '@ops/shared';
+import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,6 +30,7 @@ import { CreateObservationDialog } from './CreateObservationDialog';
 export function NewObservationPage() {
   const navigate = useNavigate();
   const { data: staff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -37,12 +39,19 @@ export function NewObservationPage() {
   const [activeOnly, setActiveOnly] = useState(true);
   const [selected, setSelected] = useState<(Staff & { id: string }) | null>(null);
 
-  // Distinct values for the filter dropdowns
+  // Distinct values for the filter dropdowns. Role filter values are slugs;
+  // include both configured roles and legacy free-text values present on
+  // staff records so unmapped values stay selectable.
   const distinctRoles = useMemo(() => {
-    const set = new Set<string>();
-    staff?.forEach((s) => set.add(s.role));
-    return Array.from(set).sort();
-  }, [staff]);
+    const map = new Map<string, string>();
+    roles?.forEach((r) => map.set(r.roleId, r.displayName));
+    staff?.forEach((s) => {
+      if (!map.has(s.role)) map.set(s.role, s.role);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [staff, roles]);
   const distinctBuildings = useMemo(() => {
     const set = new Set<string>();
     staff?.forEach((s) => s.buildings.forEach((b) => set.add(b)));
@@ -58,16 +67,18 @@ export function NewObservationPage() {
       if (yearFilter !== 'all' && String(s.year) !== yearFilter) return false;
       if (buildingFilter !== 'all' && !s.buildings.includes(buildingFilter)) return false;
       if (q) {
+        const label = roleDisplayName(roles, s.role).toLowerCase();
         const matches =
           s.name.toLowerCase().includes(q) ||
           s.email.toLowerCase().includes(q) ||
+          label.includes(q) ||
           s.role.toLowerCase().includes(q) ||
           s.buildings.some((b) => b.toLowerCase().includes(q));
         if (!matches) return false;
       }
       return true;
     });
-  }, [staff, search, roleFilter, yearFilter, buildingFilter, activeOnly]);
+  }, [staff, roles, search, roleFilter, yearFilter, buildingFilter, activeOnly]);
 
   return (
     <div>
@@ -102,8 +113,8 @@ export function NewObservationPage() {
         >
           <option value="all">All roles</option>
           {distinctRoles.map((r) => (
-            <option key={r} value={r}>
-              {r}
+            <option key={r.value} value={r.value}>
+              {r.label}
             </option>
           ))}
         </select>
@@ -186,7 +197,7 @@ export function NewObservationPage() {
                 >
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{s.email}</TableCell>
-                  <TableCell>{s.role}</TableCell>
+                  <TableCell>{roleDisplayName(roles, s.role)}</TableCell>
                   <TableCell>
                     {s.year < 4 ? `Y${String(s.year)}` : `P${String(s.year - 3)}`}
                   </TableCell>

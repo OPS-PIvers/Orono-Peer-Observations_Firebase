@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_YEARS,
   isStaffYear,
+  type Building,
+  type Role,
   type Staff,
   type StaffYear,
 } from '@ops/shared';
 import { db } from '@/lib/firebase';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -34,7 +37,6 @@ interface FormState {
   role: string;
   year: StaffYear;
   buildings: string[];
-  buildingDraft: string;
   summativeYear: boolean;
   isActive: boolean;
   hasAdminAccess: boolean;
@@ -43,19 +45,33 @@ interface FormState {
 const empty: FormState = {
   email: '',
   name: '',
-  role: 'Teacher',
+  role: '',
   year: 1,
   buildings: [],
-  buildingDraft: '',
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,
 };
 
+const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+
+const SELECT_CLASSNAME =
+  'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
+
 export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogProps) {
   const [form, setForm] = useState<FormState>(empty);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: roles, loading: rolesLoading } = useFirestoreCollection<Role>(
+    COLLECTIONS.roles,
+    ACTIVE_ROLES_CONSTRAINTS,
+  );
+  const { data: buildings, loading: buildingsLoading } = useFirestoreCollection<Building>(
+    COLLECTIONS.buildings,
+    ACTIVE_BUILDINGS_CONSTRAINTS,
+  );
 
   useEffect(() => {
     if (mode === 'edit' && existing) {
@@ -65,7 +81,6 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         role: existing.role,
         year: existing.year,
         buildings: existing.buildings,
-        buildingDraft: '',
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
@@ -75,6 +90,18 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     }
     setError(null);
   }, [mode, existing, open]);
+
+  const isUnmappedRole =
+    form.role !== '' && (roles?.length ?? 0) > 0 && !roles?.some((r) => r.roleId === form.role);
+
+  const knownBuildingNames = useMemo(
+    () => new Set((buildings ?? []).map((b) => b.displayName)),
+    [buildings],
+  );
+  const availableBuildingsToAdd = useMemo(
+    () => (buildings ?? []).filter((b) => !form.buildings.includes(b.displayName)),
+    [buildings, form.buildings],
+  );
 
   async function save() {
     setError(null);
@@ -86,6 +113,10 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
       setError('Name is required.');
       return;
     }
+    if (!form.role.trim()) {
+      setError('Role is required.');
+      return;
+    }
     if (!isStaffYear(form.year)) {
       setError('Year must be 1-6.');
       return;
@@ -94,17 +125,14 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     setSubmitting(true);
     const email = form.email.trim().toLowerCase();
     try {
-      const buildings = form.buildingDraft.trim()
-        ? [...form.buildings, form.buildingDraft.trim()]
-        : form.buildings;
       await setDoc(
         doc(db, COLLECTIONS.staff, email),
         {
           email,
           name: form.name.trim(),
-          role: form.role.trim() || 'Teacher',
+          role: form.role.trim(),
           year: form.year,
-          buildings,
+          buildings: form.buildings,
           summativeYear: form.summativeYear,
           isActive: form.isActive,
           hasAdminAccess: form.hasAdminAccess,
@@ -121,14 +149,10 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     }
   }
 
-  function addBuilding() {
-    const v = form.buildingDraft.trim();
+  function addBuilding(value: string) {
+    const v = value.trim();
     if (!v) return;
-    setForm((f) => ({
-      ...f,
-      buildings: f.buildings.includes(v) ? f.buildings : [...f.buildings, v],
-      buildingDraft: '',
-    }));
+    setForm((f) => (f.buildings.includes(v) ? f : { ...f, buildings: [...f.buildings, v] }));
   }
 
   function removeBuilding(b: string) {
@@ -173,12 +197,38 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="role">Role</Label>
-              <Input
+              <select
                 id="role"
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                autoComplete="off"
-              />
+                disabled={rolesLoading || (roles?.length ?? 0) === 0}
+                className={SELECT_CLASSNAME}
+              >
+                <option value="" disabled>
+                  {rolesLoading
+                    ? 'Loading roles…'
+                    : (roles?.length ?? 0) === 0
+                      ? 'No roles configured'
+                      : 'Choose a role…'}
+                </option>
+                {isUnmappedRole ? (
+                  <option value={form.role}>⚠ {form.role} (unmapped)</option>
+                ) : null}
+                {roles?.map((r) => (
+                  <option key={r.roleId} value={r.roleId}>
+                    {r.displayName}
+                  </option>
+                ))}
+              </select>
+              {isUnmappedRole ? (
+                <p className="text-muted-foreground text-xs">
+                  This role is not in the configured list. Pick a valid role to update.
+                </p>
+              ) : (roles?.length ?? 0) === 0 && !rolesLoading ? (
+                <p className="text-muted-foreground text-xs">
+                  Add roles in Admin → Roles before assigning.
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="year">Year</Label>
@@ -189,7 +239,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
                   const n = Number(e.target.value);
                   if (isStaffYear(n)) setForm((f) => ({ ...f, year: n }));
                 }}
-                className="border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden"
+                className={SELECT_CLASSNAME}
               >
                 {OBSERVATION_YEARS.map((y) => (
                   <option key={y} value={y}>
@@ -203,40 +253,62 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           <div className="grid gap-2">
             <Label>Buildings</Label>
             <div className="flex flex-wrap gap-2">
-              {form.buildings.map((b) => (
-                <span
-                  key={b}
-                  className="bg-accent text-accent-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-                >
-                  {b}
-                  <button
-                    type="button"
-                    onClick={() => removeBuilding(b)}
-                    className="hover:text-destructive"
-                    aria-label={`Remove ${b}`}
+              {form.buildings.map((b) => {
+                const unmapped = !knownBuildingNames.has(b);
+                return (
+                  <span
+                    key={b}
+                    className="bg-accent text-accent-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
+                    {b}
+                    {unmapped ? (
+                      <span className="text-muted-foreground ml-1 text-[10px]">(unmapped)</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removeBuilding(b)}
+                      className="hover:text-destructive"
+                      aria-label={`Remove ${b}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            <select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) {
+                  addBuilding(v);
+                  e.currentTarget.selectedIndex = 0;
+                }
+              }}
+              disabled={buildingsLoading || availableBuildingsToAdd.length === 0}
+              className={SELECT_CLASSNAME}
+              aria-label="Add a building"
+            >
+              <option value="">
+                {buildingsLoading
+                  ? 'Loading buildings…'
+                  : (buildings?.length ?? 0) === 0
+                    ? 'No buildings configured'
+                    : availableBuildingsToAdd.length === 0
+                      ? 'All buildings added'
+                      : 'Add a building…'}
+              </option>
+              {availableBuildingsToAdd.map((b) => (
+                <option key={b.buildingId} value={b.displayName}>
+                  {b.displayName}
+                </option>
               ))}
-            </div>
-            <div className="flex gap-2">
-              <Input
-                value={form.buildingDraft}
-                onChange={(e) => setForm((f) => ({ ...f, buildingDraft: e.target.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addBuilding();
-                  }
-                }}
-                placeholder="Add a building (e.g. OMS, OHS)"
-                autoComplete="off"
-              />
-              <Button type="button" variant="outline" onClick={addBuilding}>
-                Add
-              </Button>
-            </div>
+            </select>
+            {(buildings?.length ?? 0) === 0 && !buildingsLoading ? (
+              <p className="text-muted-foreground text-xs">
+                Add buildings in Admin → Buildings before assigning.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-6">

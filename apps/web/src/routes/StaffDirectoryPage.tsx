@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
-import { COLLECTIONS, type Staff } from '@ops/shared';
+import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
@@ -14,16 +15,26 @@ export function StaffDirectoryPage() {
     loading,
     error,
   } = useFirestoreCollection<Staff>(COLLECTIONS.staff, STAFF_CONSTRAINTS);
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
 
+  // Filter is keyed on the staff role slug (or legacy free-text value).
+  // Build the dropdown from the union of (a) loaded roles and (b) any
+  // legacy values present on staff records, so unmapped values stay
+  // selectable rather than vanishing from the UI.
   const distinctRoles = useMemo(() => {
-    const set = new Set<string>();
-    staff?.forEach((s) => set.add(s.role));
-    return Array.from(set).sort();
-  }, [staff]);
+    const map = new Map<string, string>();
+    roles?.forEach((r) => map.set(r.roleId, r.displayName));
+    staff?.forEach((s) => {
+      if (!map.has(s.role)) map.set(s.role, s.role);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+  }, [staff, roles]);
 
   const filtered = useMemo(() => {
     if (!staff) return [];
@@ -77,8 +88,8 @@ export function StaffDirectoryPage() {
         >
           <option value="">All roles</option>
           {distinctRoles.map((r) => (
-            <option key={r} value={r}>
-              {r}
+            <option key={r.value} value={r.value}>
+              {r.label}
             </option>
           ))}
         </select>
@@ -137,7 +148,7 @@ export function StaffDirectoryPage() {
                   {yearLabel(s.year)}
                 </span>
               </div>
-              <p className="text-ops-gray mb-2 text-xs">{s.role}</p>
+              <p className="text-ops-gray mb-2 text-xs">{roleDisplayName(roles, s.role)}</p>
               {s.summativeYear ? (
                 <span className="bg-ops-blue-lighter text-ops-blue-dark mb-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
                   High Cycle

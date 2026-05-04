@@ -2,13 +2,22 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES } from '@ops/shared';
+import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Role } from '@ops/shared';
 import {
   formatDate,
   loadActiveTemplate,
   sendEmail,
   substituteVariables,
 } from '../lib/emailUtils.js';
+
+/** Build a slug → displayName map from the /roles collection so reminder
+ *  emails can render a human-readable role even though observations now
+ *  store the slug. Falls back to the input value for unmapped legacy
+ *  records. */
+function resolveRoleLabel(rolesByIdOrName: Map<string, string>, value: string): string {
+  if (!value) return '';
+  return rolesByIdOrName.get(value) ?? value;
+}
 
 if (getApps().length === 0) initializeApp();
 
@@ -70,6 +79,17 @@ export const scheduledEmailReminders = onSchedule(
     const db = getFirestore();
     const today = new Date();
 
+    // Resolve role slugs to displayName for email rendering. Includes both
+    // (slug → label) and (legacy displayName → label) entries so this
+    // function works whether the observation has been migrated yet.
+    const rolesSnap = await db.collection(COLLECTIONS.roles).get();
+    const rolesLookup = new Map<string, string>();
+    for (const d of rolesSnap.docs) {
+      const r = d.data() as Role;
+      rolesLookup.set(r.roleId, r.displayName);
+      rolesLookup.set(r.displayName, r.displayName);
+    }
+
     // ── 1. Pre-observation reminders ──────────────────────────────────
     const preObsTemplate = await loadActiveTemplate(db, 'scheduled.preObservation');
     if (preObsTemplate) {
@@ -90,7 +110,10 @@ export const scheduledEmailReminders = onSchedule(
           observerEmail: (obs['observerEmail'] as string | undefined) ?? '',
           observedName: (obs['observedName'] as string | undefined) ?? '',
           observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
-          observedRole: (obs['observedRole'] as string | undefined) ?? '',
+          observedRole: resolveRoleLabel(
+            rolesLookup,
+            (obs['observedRole'] as string | undefined) ?? '',
+          ),
           observedYear: String(obs['observedYear'] ?? ''),
           observationDate: formatDate(obs['observationDate']),
           observationName: (obs['observationName'] as string | undefined) ?? '',
@@ -156,7 +179,10 @@ export const scheduledEmailReminders = onSchedule(
         const vars = {
           observedName: (obs['observedName'] as string | undefined) ?? '',
           observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
-          observedRole: (obs['observedRole'] as string | undefined) ?? '',
+          observedRole: resolveRoleLabel(
+            rolesLookup,
+            (obs['observedRole'] as string | undefined) ?? '',
+          ),
           observationType: (obs['type'] as string | undefined) ?? '',
           observationName: (obs['observationName'] as string | undefined) ?? '',
         };

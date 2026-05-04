@@ -5,10 +5,13 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   type ObservationType,
+  type Role,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { db } from '@/lib/firebase';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { yearLabel } from '@/utils/staffFormatting';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +39,7 @@ export function CreateObservationDialog({
   onCreated,
 }: CreateObservationDialogProps) {
   const { user } = useAuth();
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const [type, setType] = useState<ObservationType>(OBSERVATION_TYPES.standard);
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -99,8 +103,8 @@ export function CreateObservationDialog({
         <DialogHeader>
           <DialogTitle>New observation</DialogTitle>
           <DialogDescription>
-            Creating an observation for <strong>{staff.name}</strong> ({staff.role},{' '}
-            {yearLabel(staff.year)})
+            Creating an observation for <strong>{staff.name}</strong> (
+            {roleDisplayName(roles, staff.role)}, {yearLabel(staff.year)})
           </DialogDescription>
         </DialogHeader>
 

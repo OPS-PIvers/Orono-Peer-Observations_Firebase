@@ -3,7 +3,7 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { isAdminRole, isSpecialRole } from '@ops/shared';
+import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -65,6 +65,15 @@ export const onStaffWritten = onDocumentWritten(
     if (isNewStaff && after?.isActive) {
       try {
         const db = getFirestore();
+        // Resolve role slug → displayName for the invite email so the
+        // recipient sees a human-readable role.
+        let roleLabel = after.role ?? '';
+        if (after.role) {
+          const roleDoc = await db.doc(`${COLLECTIONS.roles}/${after.role}`).get();
+          if (roleDoc.exists) {
+            roleLabel = (roleDoc.data() as Role).displayName;
+          }
+        }
         await sendTemplatedEmail({
           db,
           triggerType: 'staff.created',
@@ -72,7 +81,7 @@ export const onStaffWritten = onDocumentWritten(
           vars: {
             staffName: after.name ?? email.split('@')[0],
             staffEmail: email,
-            staffRole: after.role ?? '',
+            staffRole: roleLabel,
             staffYear: String(after.year ?? 1),
             observedName: after.name ?? email.split('@')[0],
             observedEmail: email,

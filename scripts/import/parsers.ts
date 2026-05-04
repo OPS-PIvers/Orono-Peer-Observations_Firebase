@@ -120,7 +120,7 @@ export function parseStaff(rows: string[][]): ParseStaffResult {
     staff.push({
       email: emailRaw,
       name: name || emailRaw,
-      role: role || 'Teacher',
+      role: roleNameToSlug(role || 'Teacher'),
       year,
       buildings,
       summativeYear,

@@ -74,9 +74,13 @@ export const finalizeObservation = onCall(
       throw new HttpsError('failed-precondition', 'Observation is already finalized.');
     }
 
-    // Look up rubric via the observed role's display name.
+    // Look up rubric via the observed role slug. (Legacy observations may
+    // still have the role's displayName here; fall back to that match so
+    // we don't break finalization for un-migrated docs.)
     const rolesSnap = await db.collection(COLLECTIONS.roles).get();
-    const roleDoc = rolesSnap.docs.find((d) => (d.data() as Role).displayName === obs.observedRole);
+    const roleDoc =
+      rolesSnap.docs.find((d) => (d.data() as Role).roleId === obs.observedRole) ??
+      rolesSnap.docs.find((d) => (d.data() as Role).displayName === obs.observedRole);
     if (!roleDoc) {
       throw new HttpsError(
         'failed-precondition',
@@ -89,7 +93,7 @@ export const finalizeObservation = onCall(
     if (!rubricSnap.exists) {
       throw new HttpsError(
         'failed-precondition',
-        `Rubric "${role.rubricId}" not found for role "${obs.observedRole}".`,
+        `Rubric "${role.rubricId}" not found for role "${role.displayName}".`,
       );
     }
     const rubric = { id: rubricSnap.id, ...rubricSnap.data() } as unknown as Rubric;
@@ -107,10 +111,13 @@ export const finalizeObservation = onCall(
       );
     }
 
+    // The renderer expects a human-readable role label in `observedRole`,
+    // not the slug we now store. Override at the renderer boundary so the
+    // template doesn't need to know about the lookup.
     let pdfBuffer: Buffer;
     try {
       pdfBuffer = await renderObservationPdf({
-        observation: { ...obs, observationId: obs.id },
+        observation: { ...obs, observationId: obs.id, observedRole: role.displayName },
         rubric,
         activeComponentIds,
       });
@@ -187,7 +194,7 @@ export const finalizeObservation = onCall(
           observerEmail: obs.observerEmail,
           observedName: obs.observedName,
           observedEmail: obs.observedEmail,
-          observedRole: obs.observedRole,
+          observedRole: role.displayName,
           observedYear: String(obs.observedYear),
           observationDate: formatDateReadable(obs.observationDate),
           observationName: obs.observationName,
