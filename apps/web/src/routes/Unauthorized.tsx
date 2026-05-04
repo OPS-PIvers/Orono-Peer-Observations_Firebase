@@ -1,11 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
 export function Unauthorized() {
-  const { user, signOut, refreshClaims } = useAuth();
+  const { user, claims, signOut, refreshClaims } = useAuth();
+  const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshState, setRefreshState] = useState<'idle' | 'done' | 'error'>('idle');
+
+  // As soon as claims grant access (e.g. after Refresh access or a background
+  // token update), leave this page and let RoleAwareRedirect send the user
+  // to the right destination.
+  useEffect(() => {
+    if (claims.isAdmin || claims.hasSpecialAccess) {
+      void navigate('/', { replace: true });
+    }
+  }, [claims.isAdmin, claims.hasSpecialAccess, navigate]);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -25,7 +36,7 @@ export function Unauthorized() {
     : refreshState === 'error'
       ? 'Refresh failed — try again'
       : refreshState === 'done'
-        ? 'Access refreshed — try again'
+        ? 'Checking access…'
         : 'Refresh access';
 
   const announcement = refreshing
@@ -33,7 +44,7 @@ export function Unauthorized() {
     : refreshState === 'error'
       ? 'Refresh failed. Please try again.'
       : refreshState === 'done'
-        ? 'Access refreshed. Try navigating back to the page.'
+        ? 'Access refreshed. Checking permissions…'
         : '';
 
   return (
@@ -43,7 +54,6 @@ export function Unauthorized() {
         Your account ({user?.email}) is signed in, but doesn&apos;t have permission to view this
         page. If you believe this is wrong, contact a peer evaluator administrator.
       </p>
-      {/* Screen-reader live region for async state changes */}
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {announcement}
       </span>
