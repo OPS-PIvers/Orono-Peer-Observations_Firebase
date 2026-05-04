@@ -22,3 +22,6 @@ export { finalizeObservation } from './observations/finalizeObservation.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';
+export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js';
+export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
+export { sendManualEmail } from './email/sendManualEmail.js';

@@ -3,8 +3,11 @@ import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import { deleteDriveFolder } from '../lib/drive.js';
+import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -76,10 +79,6 @@ export const onObservationWritten = onDocumentWritten(
   },
   async (event) => {
     const sheetId = MASTER_LOG_SHEET_ID.value();
-    if (!sheetId) {
-      logger.info('onObservationWritten: MASTER_LOG_SHEET_ID unset, skipping');
-      return;
-    }
 
     const beforeData = event.data?.before.exists
       ? (event.data.before.data() as ObsLike | undefined)
@@ -91,6 +90,58 @@ export const onObservationWritten = onDocumentWritten(
     if (!afterData) {
       // Deletion — clean up Drive (Drafts only) and mark the Sheet row.
       await handleDeletion(sheetId, event.params.observationId, beforeData);
+      return;
+    }
+
+    // Detect creation: before didn't exist, after does
+    const isNewObservation = !beforeData && !!afterData;
+    if (isNewObservation && afterData['observedEmail']) {
+      const obsType = afterData['type'] as string | undefined;
+      const triggerType: EmailTriggerType =
+        obsType === OBSERVATION_TYPES.workProduct
+          ? 'observation.created.workProduct'
+          : obsType === OBSERVATION_TYPES.instructionalRound
+            ? 'observation.created.instructionalRound'
+            : 'observation.created.standard';
+
+      try {
+        const db = getFirestore();
+        const observedEmail = afterData['observedEmail'] as string;
+        const observedName = afterData['observedName'] as string;
+        const observerEmail = (afterData['observerEmail'] as string | undefined) ?? '';
+        const observedRole = afterData['observedRole'] as string;
+        const observedYear = String(
+          (afterData['observedYear'] as number | string | undefined) ?? '',
+        );
+        const obsDate = formatDate(afterData['observationDate']);
+        const obsName = (afterData['observationName'] as string | undefined) ?? '';
+
+        await sendTemplatedEmail({
+          db,
+          triggerType,
+          to: observedEmail,
+          vars: {
+            observerName: observerEmail.split('@')[0],
+            observerEmail,
+            observedName,
+            observedEmail,
+            observedRole,
+            observedYear,
+            observationDate: obsDate,
+            observationName: obsName,
+            observationType: obsType ?? '',
+          },
+          mailDocId: `created-${event.params.observationId}`,
+          auditDetails: { observationId: event.params.observationId, triggerType },
+        });
+      } catch (emailErr) {
+        logger.error('onObservationWritten: creation email failed (non-fatal)', emailErr);
+      }
+    }
+
+    // Sheet sync (only when MASTER_LOG_SHEET_ID is configured)
+    if (!sheetId) {
+      logger.info('onObservationWritten: MASTER_LOG_SHEET_ID unset, skipping sheet sync');
       return;
     }
     if (beforeData && !hasMeaningfulChange(beforeData, afterData)) {

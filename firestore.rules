@@ -200,5 +200,13 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow write: if false;
     }
+
+    // --- /mail ---------------------------------------------------------------
+    // Trigger Email extension writes and reads via admin SDK — clients must
+    // never write here directly (that would bypass template rendering and
+    // audit logging).
+    match /mail/{document} {
+      allow read, write: if false;
+    }
   }
 }

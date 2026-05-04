@@ -35,7 +35,7 @@ import {
 } from './parsers.js';
 import {
   APP_SETTINGS_PATH,
-  DEFAULT_FINALIZED_OBSERVATION_TEMPLATE,
+  SYSTEM_TEMPLATES,
   defaultAppSettings,
 } from './seed.js';
 
@@ -227,16 +227,15 @@ async function run(args: CliArgs): Promise<ImportSummary> {
     summary.warnings.push('No Observation_Data tab found in sheet');
   }
 
-  // 7. Defaults: email template + app settings
+  // 7. Defaults: email templates + app settings
   console.log('[import] Seeding defaults…');
-  await setDocAt(
-    `${COLLECTIONS.emailTemplates}/${DEFAULT_FINALIZED_OBSERVATION_TEMPLATE.templateId}`,
-    {
-      ...DEFAULT_FINALIZED_OBSERVATION_TEMPLATE,
+  for (const tmpl of SYSTEM_TEMPLATES) {
+    await setDocAt(`${COLLECTIONS.emailTemplates}/${tmpl.templateId}`, {
+      ...tmpl,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    },
-  );
+    });
+  }
   await setDocAt(APP_SETTINGS_PATH, {
     ...defaultAppSettings(securityAdminEmail),
     updatedAt: FieldValue.serverTimestamp(),
