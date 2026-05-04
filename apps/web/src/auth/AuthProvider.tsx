@@ -95,11 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             await syncMyClaimsFn({});
             await next.getIdToken(true);
-            // Return and let the token-refresh re-trigger onIdTokenChanged
-            // with fresh claims. Avoids reading a stale token here and also
-            // prevents the migration block below from seeing rawIsAdmin ===
-            // undefined and firing a redundant second syncMyClaims call.
-            return;
+            // Intentionally fall through. Returning here would leave
+            // status='loading' if Firebase doesn't re-fire onIdTokenChanged
+            // (which it skips when the force-refreshed token is identical
+            // to the one already cached). Falling through reads the fresh
+            // token via getIdTokenResult() below and sets status directly.
+            // The second onIdTokenChanged (if it does fire) harmlessly
+            // re-sets the same claims.
           } catch (err) {
             console.warn('syncMyClaims failed', err);
             // Fall through: set claims from the current (possibly stale) token.
