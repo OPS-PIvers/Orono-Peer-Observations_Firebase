@@ -25,12 +25,12 @@ function chicagoMidnight(utcNow: Date, offsetDays: number): { start: Date; end: 
   }).format(utcNow);
 
   // 2. Advance by offsetDays (re-format to handle month/year rollover)
-  const [y, m, d] = todayStr.split('-').map(Number);
+  const [y, m, d] = todayStr.split('-').map(Number) as [number, number, number];
   const anchorUTC = new Date(Date.UTC(y, m - 1, d + offsetDays, 12, 0, 0)); // noon UTC on target day
   const targetStr = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Chicago',
   }).format(anchorUTC);
-  const [ty, tm, td] = targetStr.split('-').map(Number);
+  const [ty, tm, td] = targetStr.split('-').map(Number) as [number, number, number];
 
   // 3. Derive the Chicago UTC offset using noon UTC as an anchor (avoids DST edge cases)
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -73,7 +73,7 @@ export const scheduledEmailReminders = onSchedule(
     // ── 1. Pre-observation reminders ──────────────────────────────────
     const preObsTemplate = await loadActiveTemplate(db, 'scheduled.preObservation');
     if (preObsTemplate) {
-      const daysAhead = preObsTemplate.scheduledDays ?? 3;
+      const daysAhead = preObsTemplate.scheduledDays;
       const { start: targetStart, end: targetEnd } = chicagoMidnight(today, daysAhead);
 
       const snap = await db
@@ -103,7 +103,7 @@ export const scheduledEmailReminders = onSchedule(
         } else if (preObsTemplate.recipient === 'both') {
           recipient = [obs['observedEmail'] as string, obs['observerEmail'] as string].filter(
             Boolean,
-          ) as string[];
+          );
         } else {
           recipient = (obs['observedEmail'] as string | undefined) ?? '';
         }
@@ -118,7 +118,9 @@ export const scheduledEmailReminders = onSchedule(
           html: substituteVariables(preObsTemplate.bodyHtml, vars),
           mailDocId: `preobs-${docSnap.id}-${String(daysAhead)}d`,
           auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.preObservation' },
-        }).catch((err) => logger.error('scheduledEmailReminders: preObs send failed', err));
+        }).catch((err: unknown) =>
+          logger.error('scheduledEmailReminders: preObs send failed', err),
+        );
       }
       logger.info('scheduledEmailReminders: preObs processed', { count: snap.size, daysAhead });
     }
@@ -126,7 +128,7 @@ export const scheduledEmailReminders = onSchedule(
     // ── 2. Incomplete WP / IR reminders ──────────────────────────────
     const incompleteTemplate = await loadActiveTemplate(db, 'scheduled.reminderIncomplete');
     if (incompleteTemplate) {
-      const daysAfter = incompleteTemplate.scheduledDays ?? 7;
+      const daysAfter = incompleteTemplate.scheduledDays;
       // Use Chicago midnight as the cutoff so observations created on the same
       // calendar day N days ago are included regardless of time-of-day.
       const { start: cutoff } = chicagoMidnight(today, -daysAfter);
@@ -140,12 +142,12 @@ export const scheduledEmailReminders = onSchedule(
 
       for (const docSnap of wpIrSnap.docs) {
         const obs = docSnap.data();
-        const answers: unknown[] = (obs['workProductAnswers'] as unknown[]) ?? [];
+        const answers: unknown[] = Array.isArray(obs['workProductAnswers'])
+          ? (obs['workProductAnswers'] as unknown[])
+          : [];
         const hasAnyAnswer = answers.some(
           (a) =>
-            typeof a === 'object' &&
-            a !== null &&
-            (a as Record<string, string>)['answer']?.trim(),
+            typeof a === 'object' && a !== null && (a as Record<string, string>)['answer']?.trim(),
         );
         if (hasAnyAnswer) continue;
 
@@ -166,7 +168,9 @@ export const scheduledEmailReminders = onSchedule(
           html: substituteVariables(incompleteTemplate.bodyHtml, vars),
           mailDocId: `incomplete-${docSnap.id}`,
           auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.reminderIncomplete' },
-        }).catch((err) => logger.error('scheduledEmailReminders: incomplete send failed', err));
+        }).catch((err: unknown) =>
+          logger.error('scheduledEmailReminders: incomplete send failed', err),
+        );
       }
       logger.info('scheduledEmailReminders: incomplete processed', { count: wpIrSnap.size });
     }

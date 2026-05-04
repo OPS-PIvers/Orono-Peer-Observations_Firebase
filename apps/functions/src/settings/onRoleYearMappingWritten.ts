@@ -24,7 +24,7 @@ export const onRoleYearMappingWritten = onDocumentWritten(
     const mappingId = event.params.mappingId;
     const roleId = afterData['roleId'] as string;
     const year = afterData['year'] as number;
-    const assignedIds: string[] = (afterData['assignedComponentIds'] as string[]) ?? [];
+    const assignedIds: string[] = (afterData['assignedComponentIds'] as string[] | undefined) ?? [];
 
     // Load the role doc to get display name
     const roleSnap = await db.collection(COLLECTIONS.roles).doc(roleId).get();
@@ -66,7 +66,7 @@ export const onRoleYearMappingWritten = onDocumentWritten(
         },
         mailDocId: `subdomains-${mappingId}-${staffEmail.split('@')[0]}`,
         auditDetails: { mappingId, staffEmail, triggerType: 'roleYearMapping.updated' },
-      }).catch((err) => {
+      }).catch((err: unknown) => {
         logger.error('onRoleYearMappingWritten: send failed', { staffEmail, err });
       });
     });

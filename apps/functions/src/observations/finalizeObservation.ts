@@ -176,21 +176,21 @@ export const finalizeObservation = onCall(
 
     // Send finalized email (non-blocking — failure doesn't roll back finalization)
     try {
-      const pdfLink = webViewLink ?? `https://drive.google.com/file/d/${pdfFileId}/view`;
+      const pdfLink = webViewLink || `https://drive.google.com/file/d/${pdfFileId}/view`;
       const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
       await sendTemplatedEmail({
         db,
         triggerType: 'observation.finalized',
         to: obs.observedEmail,
         vars: {
-          observerName: (obs.observerEmail ?? '').split('@')[0],
+          observerName: obs.observerEmail.split('@')[0] ?? '',
           observerEmail: obs.observerEmail,
           observedName: obs.observedName,
           observedEmail: obs.observedEmail,
           observedRole: obs.observedRole,
           observedYear: String(obs.observedYear),
           observationDate: formatDateReadable(obs.observationDate),
-          observationName: obs.observationName || '',
+          observationName: obs.observationName,
           observationType: obs.type,
           pdfDriveLink: pdfLink,
           driveFolderLink: folderUrl,

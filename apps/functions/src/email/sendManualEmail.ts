@@ -27,8 +27,7 @@ export const sendManualEmail = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const callerRole = request.auth.token['role'] as string | undefined;
-    const hasSpecialAccess =
-      isSpecialRole(callerRole ?? null) || isAdminRole(callerRole ?? null);
+    const hasSpecialAccess = isSpecialRole(callerRole ?? null) || isAdminRole(callerRole ?? null);
     if (!hasSpecialAccess) {
       throw new HttpsError('permission-denied', 'Only PEs and admins can send manual emails');
     }
@@ -52,10 +51,11 @@ export const sendManualEmail = onCall(
     }
 
     const appSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
-    const appName =
-      (appSnap.data()?.['branding']?.['appName'] as string | undefined) ??
-      'Orono Peer Observations';
-    const signupLink = (appSnap.data()?.['signupLink'] as string | undefined) ?? '';
+    const appData = appSnap.data() as
+      | { branding?: { appName?: string }; signupLink?: string }
+      | undefined;
+    const appName = appData?.branding?.appName ?? 'Orono Peer Observations';
+    const signupLink = appData?.signupLink ?? '';
 
     const fullVars: Record<string, string> = {
       appName,

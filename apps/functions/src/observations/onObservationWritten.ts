@@ -108,11 +108,13 @@ export const onObservationWritten = onDocumentWritten(
         const db = getFirestore();
         const observedEmail = afterData['observedEmail'] as string;
         const observedName = afterData['observedName'] as string;
-        const observerEmail = (afterData['observerEmail'] as string) ?? '';
+        const observerEmail = (afterData['observerEmail'] as string | undefined) ?? '';
         const observedRole = afterData['observedRole'] as string;
-        const observedYear = String(afterData['observedYear'] ?? '');
+        const observedYear = String(
+          (afterData['observedYear'] as number | string | undefined) ?? '',
+        );
         const obsDate = formatDate(afterData['observationDate']);
-        const obsName = (afterData['observationName'] as string) ?? '';
+        const obsName = (afterData['observationName'] as string | undefined) ?? '';
 
         await sendTemplatedEmail({
           db,

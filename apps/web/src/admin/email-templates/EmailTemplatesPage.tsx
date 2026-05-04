@@ -51,37 +51,79 @@ const RECIPIENT_LABELS: Record<EmailRecipientType, string> = {
 
 const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
   manual: [
-    'observedName', 'observedEmail', 'observerName', 'observerEmail',
-    'observationDate', 'observationName', 'observationType', 'signupLink', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'observationDate',
+    'observationName',
+    'observationType',
+    'signupLink',
+    'signInLink',
+    'appName',
   ],
   'observation.created.standard': [
-    'observedName', 'observedEmail', 'observerName', 'observerEmail',
-    'observationDate', 'observationName', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'observationDate',
+    'observationName',
+    'signInLink',
+    'appName',
   ],
   'observation.created.workProduct': [
-    'observedName', 'observedEmail', 'observerName', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'signInLink',
+    'appName',
   ],
   'observation.created.instructionalRound': [
-    'observedName', 'observedEmail', 'observerName', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'signInLink',
+    'appName',
   ],
   'observation.finalized': [
-    'observedName', 'observedEmail', 'observerName', 'observerEmail',
-    'observationDate', 'observationName', 'observationType',
-    'pdfDriveLink', 'driveFolderLink', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'observationDate',
+    'observationName',
+    'observationType',
+    'pdfDriveLink',
+    'driveFolderLink',
+    'signInLink',
+    'appName',
   ],
-  'staff.created': [
-    'staffName', 'staffEmail', 'staffRole', 'signInLink', 'appName',
-  ],
+  'staff.created': ['staffName', 'staffEmail', 'staffRole', 'signInLink', 'appName'],
   'roleYearMapping.updated': [
-    'staffName', 'staffEmail', 'staffRole',
-    'assignedComponentCount', 'assignedDomainList', 'signInLink', 'appName',
+    'staffName',
+    'staffEmail',
+    'staffRole',
+    'assignedComponentCount',
+    'assignedDomainList',
+    'signInLink',
+    'appName',
   ],
   'scheduled.preObservation': [
-    'observedName', 'observedEmail', 'observerName',
-    'observationDate', 'observationName', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observationDate',
+    'observationName',
+    'signInLink',
+    'appName',
   ],
   'scheduled.reminderIncomplete': [
-    'observedName', 'observedEmail', 'observationType', 'signInLink', 'appName',
+    'observedName',
+    'observedEmail',
+    'observationType',
+    'signInLink',
+    'appName',
   ],
 };
 
@@ -122,14 +164,12 @@ type TemplateDoc = EmailTemplate & { id: string };
 
 export function EmailTemplatesPage() {
   const { user } = useAuth();
-  const constraints = useMemo(
-    () => [orderBy('isSystem', 'desc'), orderBy('name', 'asc')],
-    [],
-  );
-  const { data: templates, loading, error } = useFirestoreCollection<EmailTemplate>(
-    COLLECTIONS.emailTemplates,
-    constraints,
-  );
+  const constraints = useMemo(() => [orderBy('isSystem', 'desc'), orderBy('name', 'asc')], []);
+  const {
+    data: templates,
+    loading,
+    error,
+  } = useFirestoreCollection<EmailTemplate>(COLLECTIONS.emailTemplates, constraints);
 
   const [filter, setFilter] = useState<FilterCategory>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -155,9 +195,7 @@ export function EmailTemplatesPage() {
       return templates.filter(
         (t) => t.triggerType !== 'manual' && !t.triggerType.startsWith('scheduled.'),
       );
-    if (filter === 'scheduled')
-      return templates.filter((t) => t.triggerType.startsWith('scheduled.'));
-    return templates;
+    return templates.filter((t) => t.triggerType.startsWith('scheduled.'));
   }, [templates, filter]);
 
   function openEditor(t: TemplateDoc) {
@@ -224,7 +262,7 @@ export function EmailTemplatesPage() {
     };
     await setDoc(doc(db, COLLECTIONS.emailTemplates, newId), newDoc);
     setExpandedId(newId);
-    setEditForm({ ...newDoc, id: newId } as Partial<TemplateDoc>);
+    setEditForm({ ...newDoc, id: newId });
   }
 
   async function deleteTemplate(t: TemplateDoc) {
@@ -248,9 +286,7 @@ export function EmailTemplatesPage() {
       await sendManualEmailFn({
         templateId: testTemplateId,
         toEmail: testEmail,
-        vars: Object.fromEntries(
-          KNOWN_TEMPLATE_VARIABLES.map((v) => [v, SAMPLE_VARS[v]]),
-        ),
+        vars: Object.fromEntries(KNOWN_TEMPLATE_VARIABLES.map((v) => [v, SAMPLE_VARS[v]])),
       });
       setTestResult('sent');
     } catch (err) {
@@ -266,7 +302,10 @@ export function EmailTemplatesPage() {
 
   function substitutePreview(html: string): string {
     return html.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-      return SAMPLE_VARS[key as TemplateVariable] ?? `[${key}]`;
+      return (
+        (SAMPLE_VARS as Partial<Record<TemplateVariable, string>>)[key as TemplateVariable] ??
+        `[${key}]`
+      );
     });
   }
 
@@ -280,7 +319,7 @@ export function EmailTemplatesPage() {
           </p>
         </div>
         <Button onClick={() => void createTemplate()}>
-          <Plus className="h-4 w-4 mr-1.5" />
+          <Plus className="mr-1.5 h-4 w-4" />
           New Template
         </Button>
       </header>
@@ -309,7 +348,7 @@ export function EmailTemplatesPage() {
       </div>
 
       {/* Template list */}
-      <div className="border-border bg-background rounded-lg border divide-y divide-border">
+      <div className="border-border bg-background divide-border divide-y rounded-lg border">
         {loading && !templates ? (
           <p className="text-muted-foreground py-8 text-center text-sm">Loading…</p>
         ) : filtered.length === 0 ? (
@@ -355,7 +394,7 @@ export function EmailTemplatesPage() {
             />
           </div>
           {testResult === 'sent' ? (
-            <p className="text-green-700 text-sm">Test email sent!</p>
+            <p className="text-sm text-green-700">Test email sent!</p>
           ) : testResult ? (
             <p className="text-destructive text-sm">{testResult}</p>
           ) : null}
@@ -371,7 +410,12 @@ export function EmailTemplatesPage() {
       </Dialog>
 
       {/* Delete confirm dialog */}
-      <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Template</DialogTitle>
@@ -431,8 +475,9 @@ function TemplateRow({
   substitutePreview,
 }: TemplateRowProps) {
   const triggerType = editForm.triggerType ?? t.triggerType;
-  const relevantVars: TemplateVariable[] =
-    TRIGGER_VARIABLES[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
+  const relevantVars: TemplateVariable[] = (
+    TRIGGER_VARIABLES as Partial<Record<EmailTriggerType, TemplateVariable[]>>
+  )[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
   const isScheduled = triggerType.startsWith('scheduled.');
 
   return (
@@ -444,7 +489,7 @@ function TemplateRow({
           role="switch"
           aria-checked={t.isActive}
           onClick={onToggle}
-          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+          className={`focus-visible:ring-ring relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
             t.isActive ? 'bg-green-500' : 'bg-gray-300'
           }`}
           title={t.isActive ? 'Active — click to disable' : 'Inactive — click to enable'}
@@ -457,8 +502,8 @@ function TemplateRow({
         </button>
 
         {/* Name + badges */}
-        <div className="flex-1 min-w-0">
-          <span className="font-medium text-sm">{t.name}</span>
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium">{t.name}</span>
           <span className="ml-2 inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
             {TRIGGER_LABELS[t.triggerType]}
           </span>
@@ -481,7 +526,7 @@ function TemplateRow({
 
       {/* Inline editor */}
       {expanded ? (
-        <div className="border-t border-border bg-muted/30 px-4 py-4 space-y-4">
+        <div className="border-border bg-muted/30 space-y-4 border-t px-4 py-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label>Name</Label>
@@ -556,8 +601,8 @@ function TemplateRow({
           </div>
 
           {/* Variable chips */}
-          <div className="rounded-md border border-border bg-background p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
+          <div className="border-border bg-background rounded-md border p-3">
+            <p className="text-muted-foreground mb-2 text-xs font-medium">
               Available variables — click to copy
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -565,7 +610,7 @@ function TemplateRow({
                 <button
                   key={v}
                   onClick={() => onCopyVariable(v)}
-                  className="rounded bg-blue-50 px-2 py-0.5 font-mono text-xs text-blue-700 hover:bg-blue-100 transition-colors"
+                  className="rounded bg-blue-50 px-2 py-0.5 font-mono text-xs text-blue-700 transition-colors hover:bg-blue-100"
                   title={`Copy {{${v}}}`}
                 >
                   {`{{${v}}}`}
@@ -586,22 +631,20 @@ function TemplateRow({
 
           {/* Preview — sandboxed iframe prevents script execution */}
           {editForm.bodyHtml ? (
-            <div className="rounded-md border border-border bg-white p-3">
-              <p className="text-xs font-medium text-muted-foreground mb-2">
+            <div className="border-border rounded-md border bg-white p-3">
+              <p className="text-muted-foreground mb-2 text-xs font-medium">
                 Preview (sample data)
               </p>
               <iframe
                 sandbox=""
                 srcDoc={substitutePreview(editForm.bodyHtml)}
-                className="w-full min-h-[160px] border-0"
+                className="min-h-[160px] w-full border-0"
                 title="Email preview"
               />
             </div>
           ) : null}
 
-          {saveError ? (
-            <p className="text-destructive text-sm">{saveError}</p>
-          ) : null}
+          {saveError ? <p className="text-destructive text-sm">{saveError}</p> : null}
 
           {/* Action row */}
           <div className="flex items-center gap-2">
@@ -609,7 +652,7 @@ function TemplateRow({
               {saving ? 'Saving…' : 'Save'}
             </Button>
             <Button variant="outline" onClick={onOpenTest}>
-              <Mail className="h-4 w-4 mr-1.5" />
+              <Mail className="mr-1.5 h-4 w-4" />
               Send Test…
             </Button>
             {!t.isSystem ? (
@@ -619,7 +662,7 @@ function TemplateRow({
                 className="text-destructive hover:text-destructive ml-auto"
                 onClick={onDelete}
               >
-                <Trash2 className="h-4 w-4 mr-1" />
+                <Trash2 className="mr-1 h-4 w-4" />
                 Delete
               </Button>
             ) : null}
