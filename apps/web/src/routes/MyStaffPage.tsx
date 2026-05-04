@@ -43,12 +43,18 @@ export function MyStaffPage() {
     () => buildingScoped.filter((s) => s.summativeYear && s.year < 4),
     [buildingScoped],
   );
+  // Administrators see only staff who are probationary OR in a summative year.
+  // The "All" tab is this union (building AND (probationary ∪ summative)).
+  const inScope = useMemo(
+    () => buildingScoped.filter((s) => s.year >= 4 || s.summativeYear),
+    [buildingScoped],
+  );
 
   const [activeTab, setActiveTab] = useState<StaffTab>('all');
   const [search, setSearch] = useState('');
 
   const tabStaff =
-    activeTab === 'all' ? buildingScoped : activeTab === 'probationary' ? probationary : highCycle;
+    activeTab === 'all' ? inScope : activeTab === 'probationary' ? probationary : highCycle;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,7 +65,7 @@ export function MyStaffPage() {
   const loading = adminLoading || staffLoading;
 
   const tabs: { id: StaffTab; label: string; count: number }[] = [
-    { id: 'all', label: 'All', count: buildingScoped.length },
+    { id: 'all', label: 'All', count: inScope.length },
     { id: 'probationary', label: 'Probationary', count: probationary.length },
     { id: 'highCycle', label: 'High Cycle', count: highCycle.length },
   ];
