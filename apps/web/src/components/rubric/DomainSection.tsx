@@ -84,12 +84,8 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           </div>
         </div>
 
-        {/* Data rowgroup. pt-2 separates the first component row from the
-            blue column-header bar so they don't visually fuse. */}
-        <div
-          role="rowgroup"
-          className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white pt-2')}
-        >
+        {/* Data rowgroup */}
+        <div role="rowgroup" className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white')}>
           {children}
         </div>
       </div>
