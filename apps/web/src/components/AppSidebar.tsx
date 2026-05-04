@@ -97,7 +97,7 @@ function buildNavItems(
   flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, isAdmin: false },
 ): NavConfig {
   const metaItems: NavItem[] = [
-    { icon: User, label: 'Profile', href: '/my-rubric' },
+    { icon: User, label: 'Profile', href: '/profile' },
     { icon: LogOut, label: 'Sign out', action: onSignOut },
   ];
 

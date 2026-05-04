@@ -79,6 +79,9 @@ const StaffPersonPage = lazy(() =>
 const MyStaffPage = lazy(() =>
   import('@/routes/MyStaffPage').then((m) => ({ default: m.MyStaffPage })),
 );
+const ProfilePage = lazy(() =>
+  import('@/routes/ProfilePage').then((m) => ({ default: m.ProfilePage })),
+);
 
 function RouteFallback() {
   return <p className="text-muted-foreground py-12 text-center text-sm">Loading…</p>;
@@ -211,6 +214,16 @@ export function App() {
                 <RequireAuth>
                   <Layout>
                     <MyRubricPage />
+                  </Layout>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <Layout>
+                    <ProfilePage />
                   </Layout>
                 </RequireAuth>
               }
