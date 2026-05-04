@@ -20,17 +20,21 @@ export function Unauthorized() {
     }
   }
 
-  const buttonLabel =
-    refreshing ? 'Refreshing…'
-    : refreshState === 'error' ? 'Refresh failed — try again'
-    : refreshState === 'done' ? 'Access refreshed — try again'
-    : 'Refresh access';
+  const buttonLabel = refreshing
+    ? 'Refreshing…'
+    : refreshState === 'error'
+      ? 'Refresh failed — try again'
+      : refreshState === 'done'
+        ? 'Access refreshed — try again'
+        : 'Refresh access';
 
-  const announcement =
-    refreshing ? 'Refreshing access…'
-    : refreshState === 'error' ? 'Refresh failed. Please try again.'
-    : refreshState === 'done' ? 'Access refreshed. Try navigating back to the page.'
-    : '';
+  const announcement = refreshing
+    ? 'Refreshing access…'
+    : refreshState === 'error'
+      ? 'Refresh failed. Please try again.'
+      : refreshState === 'done'
+        ? 'Access refreshed. Try navigating back to the page.'
+        : '';
 
   return (
     <section className="bg-background border-border mx-auto mt-12 max-w-xl rounded-lg border p-8 text-center shadow-sm">

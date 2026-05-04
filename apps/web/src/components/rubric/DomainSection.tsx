@@ -38,9 +38,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           top-[44px] keeps the bar flush below the DomainNav / GlobalToolsBar
           (~40 px tall) on all breakpoints. scroll-mt-14 on the section ensures
           DomainNav click-navigation lands the header visibly below the nav. */}
-      <div
-        className={cn('bg-ops-blue-dark sticky top-[44px] z-10 border-l-4', accentClass)}
-      >
+      <div className={cn('bg-ops-blue-dark sticky top-[44px] z-10 border-l-4', accentClass)}>
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
             aria-hidden="true"
