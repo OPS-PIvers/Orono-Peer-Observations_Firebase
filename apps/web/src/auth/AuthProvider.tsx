@@ -49,6 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** UID we've already synced claims for this session, to avoid spamming
    *  the callable on every token refresh. */
   const syncedUidRef = useRef<string | null>(null);
+  /** True once we've performed a migration re-sync to pick up the isAdmin
+   *  claim that old tokens (pre-hasAdminAccess) may not carry. */
+  const isAdminMigrationDoneRef = useRef(false);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (next) => {
@@ -101,7 +104,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
-        const isAdmin = (result.claims['isAdmin'] as boolean | undefined) ?? isAdminRole(role);
+        const rawIsAdmin = result.claims['isAdmin'] as boolean | undefined;
+
+        // Migration: tokens issued before the hasAdminAccess feature landed
+        // don't carry an `isAdmin` claim. Re-sync once per session so a staff
+        // member whose hasAdminAccess flag was set in Firestore gets their
+        // claim without having to sign out and back in.
+        if (rawIsAdmin === undefined && !isAdminMigrationDoneRef.current) {
+          isAdminMigrationDoneRef.current = true;
+          try {
+            await syncMyClaimsFn({});
+            await next.getIdToken(true);
+            // onIdTokenChanged will fire again with the refreshed token; bail
+            // here so we don't set stale claims before that second call.
+            return;
+          } catch (err) {
+            console.warn('syncMyClaims migration sync failed', err);
+            // Fall through: set claims with role-based fallback below.
+          }
+        }
+
+        const isAdmin = rawIsAdmin ?? isAdminRole(role);
         setClaims({ role, hasSpecialAccess, isAdmin });
         setStatus('signed-in');
       })();

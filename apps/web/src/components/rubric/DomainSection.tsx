@@ -32,13 +32,14 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
     <section
       id={`domain-${domain.id}`}
       aria-labelledby={headingId}
-      className="overflow-hidden rounded-lg border border-gray-200 shadow-sm"
+      className="scroll-mt-14 overflow-hidden rounded-lg border border-gray-200 shadow-sm"
     >
       {/* Sticky domain title bar — OPS Blue Dark with left accent stripe.
-          top-[52px] matches MobileTopBar height so the bar sticks just below it
-          on mobile; xl:top-0 takes over once the top bar is hidden. */}
+          top-[44px] keeps the bar flush below the DomainNav / GlobalToolsBar
+          (~40 px tall) on all breakpoints. scroll-mt-14 on the section ensures
+          DomainNav click-navigation lands the header visibly below the nav. */}
       <div
-        className={cn('bg-ops-blue-dark sticky top-[52px] z-10 border-l-4 xl:top-0', accentClass)}
+        className={cn('bg-ops-blue-dark sticky top-[44px] z-10 border-l-4', accentClass)}
       >
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
