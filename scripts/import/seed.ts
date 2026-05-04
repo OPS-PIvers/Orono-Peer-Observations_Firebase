@@ -25,7 +25,15 @@ export const DEFAULT_FINALIZED_OBSERVATION_TEMPLATE: Omit<
 <p><a href="{{driveFolderLink}}">Open Observation Folder</a></p>
 <p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
 <p>— {{appName}}</p>`,
-  variables: ['observedName', 'observerName', 'observationDate', 'driveFolderLink', 'pdfDriveLink', 'signInLink', 'appName'],
+  variables: [
+    'observedName',
+    'observerName',
+    'observationDate',
+    'driveFolderLink',
+    'pdfDriveLink',
+    'signInLink',
+    'appName',
+  ],
   triggerType: 'observation.finalized',
   recipient: 'observed',
   scheduledDays: 3,
@@ -37,7 +45,8 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
   {
     templateId: 'observation-signup-request',
     name: 'Observation Signup Request',
-    description: 'Sent manually by PEs to invite a staff member to sign up for an observation timeslot.',
+    description:
+      'Sent manually by PEs to invite a staff member to sign up for an observation timeslot.',
     subject: 'Schedule Your Observation — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer evaluator would like to schedule an observation with you. Please use the link below to sign up for a timeslot that works for your schedule.</p>
@@ -97,7 +106,15 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
 <p>Sign in to {{appName}} to see your rubric and all finalized observations:</p>
 <p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
 <p>— {{appName}}</p>`,
-    variables: ['observedName', 'observerName', 'observationDate', 'driveFolderLink', 'pdfDriveLink', 'signInLink', 'appName'],
+    variables: [
+      'observedName',
+      'observerName',
+      'observationDate',
+      'driveFolderLink',
+      'pdfDriveLink',
+      'signInLink',
+      'appName',
+    ],
     triggerType: 'observation.finalized',
     recipient: 'observed',
     scheduledDays: 3,
@@ -107,7 +124,8 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
   {
     templateId: 'subdomains-assigned',
     name: 'Assigned Subdomains Notification',
-    description: 'Sent to staff when their role-year subdomain assignments are updated by an admin.',
+    description:
+      'Sent to staff when their role-year subdomain assignments are updated by an admin.',
     subject: 'Your Observation Focus Areas Have Been Assigned — {{appName}}',
     bodyHtml: `<p>Hi {{staffName}},</p>
 <p>Your assigned observation focus areas have been updated for the current cycle. You have <strong>{{assignedComponentCount}} component(s)</strong> assigned to your rubric.</p>
@@ -159,7 +177,8 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
   {
     templateId: 'incomplete-response-reminder',
     name: 'Reminder: Incomplete Work Product / IR Responses',
-    description: 'Sent automatically N days after a WP or IR observation is created if staff has not responded.',
+    description:
+      'Sent automatically N days after a WP or IR observation is created if staff has not responded.',
     subject: 'Reminder: Please Complete Your Observation Questions — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>This is a friendly reminder that you have unanswered questions for your <strong>{{observationType}}</strong> observation in {{appName}}.</p>
@@ -194,14 +213,22 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
   {
     templateId: 'observer-observation-confirmation',
     name: 'Observer: Observation Created Confirmation',
-    description: 'Sent to the PE/observer when they create any new observation — confirmation receipt.',
+    description:
+      'Sent to the PE/observer when they create any new observation — confirmation receipt.',
     subject: 'Observation Created for {{observedName}} — {{appName}}',
     bodyHtml: `<p>Hi {{observerName}},</p>
 <p>This confirms that you have created a new <strong>{{observationType}}</strong> observation for <strong>{{observedName}}</strong>.</p>
 <p>Sign in to continue working on this observation:</p>
 <p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
 <p>— {{appName}}</p>`,
-    variables: ['observerName', 'observedName', 'observationType', 'observationDate', 'signInLink', 'appName'],
+    variables: [
+      'observerName',
+      'observedName',
+      'observationType',
+      'observationDate',
+      'signInLink',
+      'appName',
+    ],
     triggerType: 'manual',
     recipient: 'observer',
     scheduledDays: 3,

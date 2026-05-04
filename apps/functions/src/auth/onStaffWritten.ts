@@ -30,7 +30,13 @@ export const onStaffWritten = onDocumentWritten(
   async (event) => {
     const email = event.params.email;
     const after = event.data?.after.data() as
-      | { role?: string; hasAdminAccess?: boolean; isActive?: boolean; name?: string; year?: number }
+      | {
+          role?: string;
+          hasAdminAccess?: boolean;
+          isActive?: boolean;
+          name?: string;
+          year?: number;
+        }
       | undefined;
     const role = after?.role ?? null;
     const hasAdminAccess = after?.hasAdminAccess ?? false;

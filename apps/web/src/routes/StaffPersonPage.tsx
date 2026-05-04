@@ -164,7 +164,7 @@ export function StaffPersonPage() {
           staffName: staffMember.name,
           staffEmail: email,
           staffRole: staffMember.role,
-          observerName: (user?.email ?? '').split('@')[0],
+          observerName: (user?.email ?? '').split('@')[0] ?? '',
           observerEmail: user?.email ?? '',
         },
       });
@@ -270,7 +270,7 @@ export function StaffPersonPage() {
               <ChevronDown className="h-3.5 w-3.5" />
             </Button>
             {emailMenuOpen && hasTemplates ? (
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              <div className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                 {manualTemplates.map((t) => (
                   <button
                     key={t.id}

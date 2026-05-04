@@ -26,12 +26,7 @@ export type EmailTriggerType = (typeof EMAIL_TRIGGER_TYPES)[number];
  * both       = both of the above (two separate sends)
  * admin      = the security admin email from AppSettings
  */
-export const EMAIL_RECIPIENT_TYPES = [
-  'observed',
-  'observer',
-  'both',
-  'admin',
-] as const;
+export const EMAIL_RECIPIENT_TYPES = ['observed', 'observer', 'both', 'admin'] as const;
 export type EmailRecipientType = (typeof EMAIL_RECIPIENT_TYPES)[number];
 
 /**

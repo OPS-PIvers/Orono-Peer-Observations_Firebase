@@ -33,11 +33,7 @@ import {
   parseWorkProductQuestions,
   roleFromName,
 } from './parsers.js';
-import {
-  APP_SETTINGS_PATH,
-  SYSTEM_TEMPLATES,
-  defaultAppSettings,
-} from './seed.js';
+import { APP_SETTINGS_PATH, SYSTEM_TEMPLATES, defaultAppSettings } from './seed.js';
 
 loadDotenv();
 
