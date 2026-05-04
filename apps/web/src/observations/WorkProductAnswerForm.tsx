@@ -42,12 +42,18 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     return map;
   });
 
-  const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const answersRef = useRef(answers);
+  const mountedRef = useRef(true);
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const flushNow = useCallback(() => {
     const next: WorkProductAnswer[] = Object.entries(answersRef.current).map(
@@ -57,11 +63,18 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
         updatedAt: new Date(),
       }),
     );
-    void setDoc(
+    setDoc(
       doc(db, COLLECTIONS.observations, observation.id),
       { workProductAnswers: next, lastModifiedAt: serverTimestamp() },
       { merge: true },
-    ).then(() => setSavingState('saved'));
+    )
+      .then(() => {
+        if (mountedRef.current) setSavingState('saved');
+      })
+      .catch((err: unknown) => {
+        console.error('WorkProductAnswerForm: autosave failed', err);
+        if (mountedRef.current) setSavingState('error');
+      });
   }, [observation.id]);
 
   const scheduleSave = useCallback(() => {
@@ -70,7 +83,9 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     timerRef.current = setTimeout(flushNow, SAVE_DEBOUNCE_MS);
   }, [flushNow]);
 
-  // Flush any pending save when the component unmounts.
+  // Flush any pending save when the component unmounts. The flush
+  // itself guards setState calls behind `mountedRef`, so the post-
+  // unmount resolution path won't touch React state.
   useEffect(() => {
     return () => {
       if (timerRef.current) {
@@ -98,8 +113,14 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
             Respond to each question below. Your answers autosave as you type.
           </p>
         </div>
-        <div className="ml-auto text-xs text-white/60">
-          {savingState === 'saving' ? 'Saving…' : savingState === 'saved' ? 'Saved ✓' : null}
+        <div className="ml-auto text-xs">
+          {savingState === 'saving' ? (
+            <span className="text-white/60">Saving…</span>
+          ) : savingState === 'saved' ? (
+            <span className="text-white/60">Saved ✓</span>
+          ) : savingState === 'error' ? (
+            <span className="text-ops-red-light">Save failed — try again</span>
+          ) : null}
         </div>
       </div>
 

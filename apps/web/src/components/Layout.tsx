@@ -51,6 +51,9 @@ export function Layout({ children }: { children: ReactNode }) {
         <MobileTopBar onOpenSidebar={openMobile} />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
+          <footer className="border-border text-muted-foreground mt-8 border-t px-4 py-4 text-center text-xs">
+            Orono Public Schools · Peer Observations
+          </footer>
         </main>
       </div>
     </div>

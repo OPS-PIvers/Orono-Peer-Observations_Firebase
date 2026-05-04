@@ -19,6 +19,8 @@ export interface MeetingNotesSectionProps {
 
 interface SubSectionProps {
   label: string;
+  /** Stable HTML-id slug — keep distinct per sub-section ('pre' / 'post'). */
+  slug: string;
   dateValue: Date | undefined;
   notesValue: TiptapDoc | undefined;
   readOnly: boolean;
@@ -28,6 +30,7 @@ interface SubSectionProps {
 
 function SubSection({
   label,
+  slug,
   dateValue,
   notesValue,
   readOnly,
@@ -35,6 +38,7 @@ function SubSection({
   onNotesChange,
 }: SubSectionProps) {
   const [open, setOpen] = useState(false);
+  const dateInputId = `meeting-date-${slug}`;
 
   const dateLabel = dateValue
     ? dateValue.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -63,14 +67,11 @@ function SubSection({
       {open ? (
         <div className="space-y-3 px-4 pb-4">
           <div className="flex items-center gap-3">
-            <label
-              htmlFor={`meeting-date-${label.toLowerCase().replace(/\s+/g, '-')}`}
-              className="text-ops-gray-dark text-xs font-medium"
-            >
+            <label htmlFor={dateInputId} className="text-ops-gray-dark text-xs font-medium">
               Date
             </label>
             <input
-              id={`meeting-date-${label.toLowerCase().replace(/\s+/g, '-')}`}
+              id={dateInputId}
               type="date"
               value={toDateInputValue(dateValue)}
               disabled={readOnly}
@@ -118,6 +119,7 @@ export function MeetingNotesSection({
       <div className="divide-y divide-gray-100">
         <SubSection
           label="Pre-Observation Meeting"
+          slug="pre"
           dateValue={preObsDate}
           notesValue={preObsNotes}
           readOnly={readOnly}
@@ -126,6 +128,7 @@ export function MeetingNotesSection({
         />
         <SubSection
           label="Post-Observation Meeting"
+          slug="post"
           dateValue={postObsDate}
           notesValue={postObsNotes}
           readOnly={readOnly}

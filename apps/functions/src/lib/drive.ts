@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { logger } from 'firebase-functions';
 import { google, type drive_v3 } from 'googleapis';
 
 /**
@@ -142,22 +143,39 @@ export interface DriveLink {
 /**
  * Permanently delete a Drive folder and all of its children.
  * Used when a Draft observation is deleted — the SA owns the folder so
- * deletion is unconditional. Silently no-ops if the folder is already gone.
+ * deletion is unconditional. Pages through children so folders with
+ * more than one page of files are cleared completely. Logs (but does
+ * not propagate) per-child failures so the parent delete still runs;
+ * a missing parent (404) is treated as success.
  */
 export async function deleteDriveFolder(folderId: string): Promise<void> {
   const drive = getDriveClient();
   // List immediate children so we can delete them before the folder,
   // ensuring no orphaned files remain accessible from other contexts.
-  const children = await drive.files.list({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id)',
-    pageSize: 1000,
-  });
-  await Promise.all(
-    (children.data.files ?? []).map((f) =>
-      f.id ? drive.files.delete({ fileId: f.id }).catch(() => undefined) : Promise.resolve(),
-    ),
-  );
+  let pageToken: string | undefined;
+  do {
+    const page = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'nextPageToken, files(id)',
+      pageSize: 1000,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    await Promise.all(
+      (page.data.files ?? []).map((f) =>
+        f.id
+          ? drive.files.delete({ fileId: f.id }).catch((err: unknown) => {
+              logger.warn('deleteDriveFolder: failed to delete child', {
+                folderId,
+                fileId: f.id,
+                err,
+              });
+            })
+          : Promise.resolve(),
+      ),
+    );
+    pageToken = page.data.nextPageToken ?? undefined;
+  } while (pageToken);
+
   await drive.files.delete({ fileId: folderId }).catch((err: unknown) => {
     const status = (err as { code?: number })?.code;
     if (status !== 404) throw err;
