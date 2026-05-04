@@ -26,3 +26,4 @@ export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
+export { migrateBestPracticesToLookFors } from './scripts/migrateBestPracticesToLookFors.js';
