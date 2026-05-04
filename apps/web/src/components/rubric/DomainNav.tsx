@@ -14,13 +14,21 @@ export interface DomainNavProps {
   /**
    * 'dark' renders pills for use on a dark (ops-blue-dark) background.
    * Defaults to 'light' for use on white/background-colored bars.
+   * Ignored when `display === 'tabs'`.
    */
   variant?: 'light' | 'dark';
   /**
    * Horizontal alignment of the pill row inside the nav. Defaults to
    * 'left'; use 'center' when sitting under a centered title strip.
+   * Ignored when `display === 'tabs'`.
    */
   align?: 'left' | 'center';
+  /**
+   * 'pills' (default) renders rounded pill buttons in a row. 'tabs'
+   * renders an edge-to-edge brand-red strip with equal-width tabs —
+   * used as the sticky sub-bar under the page title on /my-rubric.
+   */
+  display?: 'pills' | 'tabs';
 }
 
 /**
@@ -40,6 +48,7 @@ export function DomainNav({
   pulseOnClick = false,
   variant = 'light',
   align = 'left',
+  display = 'pills',
 }: DomainNavProps) {
   const domainIds = useMemo(() => rubric.domains.map((d) => d.id), [rubric]);
   const [activeId, setActiveId] = useState<string | null>(domainIds[0] ?? null);
@@ -82,6 +91,32 @@ export function DomainNav({
     },
     [pulseOnClick],
   );
+
+  if (display === 'tabs') {
+    return (
+      <nav aria-label="Rubric domains" className={cn('bg-ops-red flex w-full', className)}>
+        {rubric.domains.map((d) => {
+          const active = activeId === d.id;
+          return (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => handleJump(d.id)}
+              aria-current={active ? 'true' : undefined}
+              className={cn(
+                'flex-1 px-3 py-2.5 text-sm font-medium transition-colors',
+                'border-r border-white/15 last:border-r-0',
+                active ? 'text-ops-red bg-white' : 'hover:bg-ops-red-dark text-white',
+              )}
+            >
+              <span className="opacity-80">D{d.id}</span>
+              <span className="ml-1 hidden sm:inline">{d.name}</span>
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
 
   return (
     <nav

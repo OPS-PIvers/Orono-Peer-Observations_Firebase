@@ -116,20 +116,16 @@ export function MyRubricPage() {
     displayedRubric && displayedRubric.domains.length > 0 ? displayedRubric : null;
 
   return (
-    <>
-      <PageHeader
-        title="My Rubric"
-        subtitle={subtitle}
-        actions={
-          rubric ? (
-            <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} variant="dark" />
-          ) : null
-        }
-        belowBar={
-          visibleRubric ? <DomainNav rubric={visibleRubric} variant="dark" align="center" /> : null
-        }
-      />
-
+    <PageHeader
+      title="My Rubric"
+      subtitle={subtitle}
+      actions={
+        rubric ? (
+          <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} variant="dark" />
+        ) : null
+      }
+      belowBar={visibleRubric ? <DomainNav rubric={visibleRubric} display="tabs" /> : null}
+    >
       <div className="space-y-6">
         {staffError ? (
           <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3 text-sm">
@@ -167,6 +163,6 @@ export function MyRubricPage() {
           <p className="text-muted-foreground py-8 text-center text-sm">Loading your rubric…</p>
         ) : null}
       </div>
-    </>
+    </PageHeader>
   );
 }

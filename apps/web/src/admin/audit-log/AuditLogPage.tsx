@@ -83,12 +83,10 @@ export function AuditLogPage() {
   }, [cursor]);
 
   return (
-    <>
-      <PageHeader
-        title="Audit Log"
-        subtitle="Append-only record of privileged actions (sign-ins, observation lifecycle, admin edits). Pruned daily by a scheduled function based on the retention setting in App Settings."
-      />
-
+    <PageHeader
+      title="Audit Log"
+      subtitle="Append-only record of privileged actions (sign-ins, observation lifecycle, admin edits). Pruned daily by a scheduled function based on the retention setting in App Settings."
+    >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-3 py-2 text-sm">
           {error}
@@ -151,7 +149,7 @@ export function AuditLogPage() {
           {loading ? 'Loading…' : hasMore ? 'Load 50 more' : 'No more entries'}
         </Button>
       </div>
-    </>
+    </PageHeader>
   );
 }
 

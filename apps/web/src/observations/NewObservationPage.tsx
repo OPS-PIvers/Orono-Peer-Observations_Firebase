@@ -82,27 +82,23 @@ export function NewObservationPage() {
   }, [staff, roles, search, roleFilter, yearFilter, buildingFilter, activeOnly]);
 
   return (
-    <>
-      <PageHeader
-        title="New observation"
-        subtitle={`Pick the staff member you're observing.${
-          staff
-            ? ` ${String(filtered.length)} of ${String(staff.length)} match.`
-            : ' Loading staff…'
-        }`}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(-1)}
-            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="New observation"
+      subtitle={`Pick the staff member you're observing.${
+        staff ? ` ${String(filtered.length)} of ${String(staff.length)} match.` : ' Loading staff…'
+      }`}
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate(-1)}
+          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </Button>
+      }
+    >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -241,6 +237,6 @@ export function NewObservationPage() {
           }}
         />
       ) : null}
-    </>
+    </PageHeader>
   );
 }

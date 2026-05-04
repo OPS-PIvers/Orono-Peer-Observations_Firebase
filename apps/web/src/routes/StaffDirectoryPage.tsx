@@ -71,27 +71,25 @@ export function StaffDirectoryPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title="Staff Directory"
-        subtitle="Click a staff member to view or start observations"
-        actions={
-          <div className="relative w-full max-w-xs sm:w-72">
-            <Search
-              aria-hidden="true"
-              className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/60"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email…"
-              className="h-10 w-full rounded-md border border-white/30 bg-white/10 pr-3 pl-9 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:bg-white/15 focus:outline-none"
-            />
-          </div>
-        }
-      />
-
+    <PageHeader
+      title="Staff Directory"
+      subtitle="Click a staff member to view or start observations"
+      actions={
+        <div className="relative w-full max-w-xs sm:w-72">
+          <Search
+            aria-hidden="true"
+            className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-white/60"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or email…"
+            className="h-10 w-full rounded-md border border-white/30 bg-white/10 pr-3 pl-9 text-sm text-white placeholder:text-white/60 focus:border-white/60 focus:bg-white/15 focus:outline-none"
+          />
+        </div>
+      }
+    >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
           value={roleFilter}
@@ -258,6 +256,6 @@ export function StaffDirectoryPage() {
           ))}
         </ul>
       )}
-    </>
+    </PageHeader>
   );
 }

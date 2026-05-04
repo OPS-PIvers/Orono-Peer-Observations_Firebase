@@ -43,21 +43,19 @@ export function BuildingsPage() {
   const [editing, setEditing] = useState<(Building & { id: string }) | null>(null);
 
   return (
-    <>
-      <PageHeader
-        title="Buildings"
-        subtitle={`${buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned to one or more of these locations.`}
-        actions={
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
-            <Plus />
-            Add building
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="Buildings"
+      subtitle={`${buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned to one or more of these locations.`}
+      actions={
+        <Button
+          onClick={() => setShowCreate(true)}
+          className="text-ops-blue-dark bg-white hover:bg-white/90"
+        >
+          <Plus />
+          Add building
+        </Button>
+      }
+    >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load buildings: {error.message}
@@ -138,7 +136,7 @@ export function BuildingsPage() {
         mode="edit"
         existing={editing}
       />
-    </>
+    </PageHeader>
   );
 }
 

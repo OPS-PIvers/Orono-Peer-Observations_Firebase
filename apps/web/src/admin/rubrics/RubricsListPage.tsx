@@ -17,20 +17,18 @@ export function RubricsListPage() {
   const { data: rubrics, loading, error } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
   return (
-    <>
-      <PageHeader
-        title="Rubrics"
-        subtitle="One rubric per role. Each rubric has 4 domains and a variable number of components with proficiency descriptors, best practices, and look-fors."
-        actions={
-          <Button asChild className="text-ops-blue-dark bg-white hover:bg-white/90">
-            <Link to="/admin/roles">
-              <Plus />
-              Add role
-            </Link>
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="Rubrics"
+      subtitle="One rubric per role. Each rubric has 4 domains and a variable number of components with proficiency descriptors, best practices, and look-fors."
+      actions={
+        <Button asChild className="text-ops-blue-dark bg-white hover:bg-white/90">
+          <Link to="/admin/roles">
+            <Plus />
+            Add role
+          </Link>
+        </Button>
+      }
+    >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load rubrics: {error.message}
@@ -87,6 +85,6 @@ export function RubricsListPage() {
           </TableBody>
         </Table>
       </div>
-    </>
+    </PageHeader>
   );
 }

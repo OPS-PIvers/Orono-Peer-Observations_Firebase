@@ -85,9 +85,7 @@ export function MyStaffPage() {
   ];
 
   return (
-    <>
-      <PageHeader title="My Staff" subtitle="Building-scoped staff for your site" />
-
+    <PageHeader title="My Staff" subtitle="Building-scoped staff for your site">
       {missingBuildings ? (
         <div className="bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md px-4 py-3 text-sm">
           Your building assignment isn&apos;t configured. Contact your site admin.
@@ -202,6 +200,6 @@ export function MyStaffPage() {
           </tbody>
         </table>
       </div>
-    </>
+    </PageHeader>
   );
 }

@@ -78,28 +78,26 @@ export function ObservationsListPage() {
   }, [observations, search]);
 
   return (
-    <>
-      <PageHeader
-        title="Observations"
-        subtitle={
-          observations
-            ? `${String(filtered.length)} of ${String(observations.length)} observations`
-            : 'Loading…'
-        }
-        actions={
-          <Button
-            asChild
-            variant="outline"
-            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          >
-            <Link to="/observations/new">
-              <Plus />
-              New observation
-            </Link>
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="Observations"
+      subtitle={
+        observations
+          ? `${String(filtered.length)} of ${String(observations.length)} observations`
+          : 'Loading…'
+      }
+      actions={
+        <Button
+          asChild
+          variant="outline"
+          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        >
+          <Link to="/observations/new">
+            <Plus />
+            New observation
+          </Link>
+        </Button>
+      }
+    >
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -196,7 +194,7 @@ export function ObservationsListPage() {
           </TableBody>
         </Table>
       </div>
-    </>
+    </PageHeader>
   );
 }
 

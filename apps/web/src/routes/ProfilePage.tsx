@@ -109,8 +109,7 @@ export function ProfilePage() {
   const roleLabel = roleDisplayName(roles, staff.role);
 
   return (
-    <>
-      <PageHeader title="Profile" subtitle="Your record at a glance." />
+    <PageHeader title="Profile" subtitle="Your record at a glance.">
       <div className="space-y-6">
         {/* Identity card */}
         <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -247,6 +246,6 @@ export function ProfilePage() {
 
         {/* Future: rubric-rating data viz vs. org aggregate goes here. */}
       </div>
-    </>
+    </PageHeader>
   );
 }

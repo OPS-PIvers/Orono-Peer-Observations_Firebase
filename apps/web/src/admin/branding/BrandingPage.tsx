@@ -58,12 +58,10 @@ export function BrandingPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title="Branding"
-        subtitle="Override the default OPS Tech branding. Defaults pull from DESIGN.md; admin overrides live in /appSettings/global."
-      />
-
+    <PageHeader
+      title="Branding"
+      subtitle="Override the default OPS Tech branding. Defaults pull from DESIGN.md; admin overrides live in /appSettings/global."
+    >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load branding: {error.message}
@@ -152,6 +150,6 @@ export function BrandingPage() {
           </div>
         </aside>
       </div>
-    </>
+    </PageHeader>
   );
 }

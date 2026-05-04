@@ -311,21 +311,19 @@ export function EmailTemplatesPage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title="Email Templates"
-        subtitle="Manage notification templates. System templates can be toggled but not deleted."
-        actions={
-          <Button
-            onClick={() => void createTemplate()}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
-            <Plus className="mr-1.5 h-4 w-4" />
-            New Template
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="Email Templates"
+      subtitle="Manage notification templates. System templates can be toggled but not deleted."
+      actions={
+        <Button
+          onClick={() => void createTemplate()}
+          className="text-ops-blue-dark bg-white hover:bg-white/90"
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          New Template
+        </Button>
+      }
+    >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load templates: {error.message}
@@ -439,7 +437,7 @@ export function EmailTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </PageHeader>
   );
 }
 

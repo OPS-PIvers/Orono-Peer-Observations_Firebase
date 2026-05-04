@@ -39,23 +39,19 @@ export function StaffPage() {
   }, [staff, search]);
 
   return (
-    <>
-      <PageHeader
-        title="Staff"
-        subtitle={
-          staff ? `${String(filtered.length)} of ${String(staff.length)} staff` : 'Loading…'
-        }
-        actions={
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
-            <Plus />
-            Add staff
-          </Button>
-        }
-      />
-
+    <PageHeader
+      title="Staff"
+      subtitle={staff ? `${String(filtered.length)} of ${String(staff.length)} staff` : 'Loading…'}
+      actions={
+        <Button
+          onClick={() => setShowCreate(true)}
+          className="text-ops-blue-dark bg-white hover:bg-white/90"
+        >
+          <Plus />
+          Add staff
+        </Button>
+      }
+    >
       <div className="mb-4 max-w-md">
         <div className="relative">
           <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -154,7 +150,7 @@ export function StaffPage() {
         mode="edit"
         existing={editing}
       />
-    </>
+    </PageHeader>
   );
 }
 

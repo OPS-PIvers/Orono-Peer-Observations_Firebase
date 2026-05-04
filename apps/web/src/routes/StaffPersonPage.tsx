@@ -227,86 +227,84 @@ export function StaffPersonPage() {
   ];
 
   return (
-    <>
-      <PageHeader
-        title={staffMember.name}
-        subtitle={
-          <span className="flex flex-wrap items-center gap-2">
-            <span>{roleDisplayName(roles, staffMember.role)}</span>
-            <span
-              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(staffMember.year)}`}
-            >
-              {yearLabel(staffMember.year)}
-            </span>
-            {staffMember.summativeYear ? (
-              <span className="bg-ops-blue-lighter text-ops-blue-dark inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
-                High Cycle
-              </span>
-            ) : null}
-            {staffMember.buildings.map((b) => (
-              <span key={b} className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] text-white/90">
-                {b}
-              </span>
-            ))}
+    <PageHeader
+      title={staffMember.name}
+      subtitle={
+        <span className="flex flex-wrap items-center gap-2">
+          <span>{roleDisplayName(roles, staffMember.role)}</span>
+          <span
+            className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(staffMember.year)}`}
+          >
+            {yearLabel(staffMember.year)}
           </span>
-        }
-        actions={
-          <div className="flex items-center gap-2">
+          {staffMember.summativeYear ? (
+            <span className="bg-ops-blue-lighter text-ops-blue-dark inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
+              High Cycle
+            </span>
+          ) : null}
+          {staffMember.buildings.map((b) => (
+            <span key={b} className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] text-white/90">
+              {b}
+            </span>
+          ))}
+        </span>
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            asChild
+            className="text-white/80 hover:bg-white/10 hover:text-white"
+          >
+            <Link to="/staff">
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+
+          {/* Send email dropdown */}
+          <div className="relative" ref={emailMenuRef}>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              asChild
-              className="text-white/80 hover:bg-white/10 hover:text-white"
+              onClick={() => setEmailMenuOpen((o) => !o)}
+              disabled={!hasTemplates}
+              title={hasTemplates ? undefined : 'No active manual templates'}
+              className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
             >
-              <Link to="/staff">
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </Link>
+              <Mail className="h-4 w-4" />
+              Send Email
+              <ChevronDown className="h-3.5 w-3.5" />
             </Button>
-
-            {/* Send email dropdown */}
-            <div className="relative" ref={emailMenuRef}>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEmailMenuOpen((o) => !o)}
-                disabled={!hasTemplates}
-                title={hasTemplates ? undefined : 'No active manual templates'}
-                className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-              >
-                <Mail className="h-4 w-4" />
-                Send Email
-                <ChevronDown className="h-3.5 w-3.5" />
-              </Button>
-              {emailMenuOpen && hasTemplates ? (
-                <div className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                  {manualTemplates.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => {
-                        setEmailMenuOpen(false);
-                        setSelectedTemplate(t);
-                        setSendDialogOpen(true);
-                      }}
-                      className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      {t.name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
-            <Button
-              onClick={() => setDialogOpen(true)}
-              className="text-ops-blue-dark bg-white hover:bg-white/90"
-            >
-              New Observation
-            </Button>
+            {emailMenuOpen && hasTemplates ? (
+              <div className="absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                {manualTemplates.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setEmailMenuOpen(false);
+                      setSelectedTemplate(t);
+                      setSendDialogOpen(true);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-        }
-      />
 
+          <Button
+            onClick={() => setDialogOpen(true)}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            New Observation
+          </Button>
+        </div>
+      }
+    >
       {/* Observation tabs */}
       <div className="mb-4 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
         {tabs.map((tab) => (
@@ -407,7 +405,7 @@ export function StaffPersonPage() {
           </DialogContent>
         </Dialog>
       ) : null}
-    </>
+    </PageHeader>
   );
 }
 

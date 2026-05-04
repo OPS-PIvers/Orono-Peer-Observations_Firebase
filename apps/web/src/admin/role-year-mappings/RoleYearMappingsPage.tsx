@@ -143,26 +143,24 @@ export function RoleYearMappingsPage() {
   const loading = rolesLoading || rubricsLoading || mappingsLoading;
 
   return (
-    <>
-      <PageHeader
-        title="Role / Year Mappings"
-        subtitle="For each role-year combination, choose which rubric components are evaluated. Replaces the legacy Settings sheet's 4-row-per-role block layout."
-        actions={
-          <div className="flex items-center gap-2">
-            {savedAt ? (
-              <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
-            ) : null}
-            <Button
-              onClick={() => void save()}
-              disabled={!dirty || saving}
-              className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
-            >
-              {saving ? 'Saving…' : 'Save mappings'}
-            </Button>
-          </div>
-        }
-      />
-
+    <PageHeader
+      title="Role / Year Mappings"
+      subtitle="For each role-year combination, choose which rubric components are evaluated. Replaces the legacy Settings sheet's 4-row-per-role block layout."
+      actions={
+        <div className="flex items-center gap-2">
+          {savedAt ? (
+            <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
+          ) : null}
+          <Button
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+            className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
+          >
+            {saving ? 'Saving…' : 'Save mappings'}
+          </Button>
+        </div>
+      }
+    >
       <div className="mb-6 max-w-md">
         <label className="grid gap-1 text-sm">
           <span className="font-medium">Role</span>
@@ -216,7 +214,7 @@ export function RoleYearMappingsPage() {
           onToggleRow={toggleRow}
         />
       )}
-    </>
+    </PageHeader>
   );
 }
 
