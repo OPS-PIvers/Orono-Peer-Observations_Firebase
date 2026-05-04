@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, ChevronLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -428,56 +428,53 @@ export function ObservationEditorPage() {
 
   return (
     <div className={cn(bodyWrapperCls, 'space-y-4')}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (observation.observedEmail) {
-                void navigate(`/staff/${observation.observedEmail}`);
-              } else {
-                void navigate(-1);
-              }
-            }}
-            className="text-ops-blue hover:text-ops-blue-dark mb-2"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {observation.observedName ? `← Back to ${observation.observedName}` : '← Back'}
-          </Button>
+      <header className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (observation.observedEmail) {
+              void navigate(`/staff/${observation.observedEmail}`);
+            } else {
+              void navigate(-1);
+            }
+          }}
+          className="text-ops-blue hover:text-ops-blue-dark inline-flex items-center text-sm font-medium hover:underline"
+        >
+          ← Back to {observation.observedName || 'staff'}
+        </button>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+          <div className="min-w-0">
+            <h1 className="font-heading text-ops-blue-dark text-2xl leading-tight font-semibold">
+              {observation.observedName}
+            </h1>
+            <p className="text-ops-gray text-sm">
+              {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
+            </p>
+          </div>
           {canEdit ? (
-            <div className="flex flex-col gap-1.5">
-              <h1 className="font-heading text-ops-blue-dark text-2xl font-semibold">
-                {observation.observedName}
-              </h1>
-              <p className="text-ops-gray text-sm">
-                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
-              </p>
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={draft.observationName}
                 onChange={(e) => setObservationName(e.target.value)}
-                placeholder="Add observation name (e.g. Period 3 Algebra)"
-                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 max-w-sm rounded-md border px-3 text-sm outline-none focus:ring-1"
+                placeholder="Observation name (e.g. Period 3 Algebra)"
+                aria-label="Observation name"
+                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-64 rounded-md border px-3 text-sm outline-none focus:ring-1"
               />
               <input
                 type="date"
                 value={toDateInputValue(draft.observationDate)}
                 onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
+                aria-label="Observation date"
                 className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-40 rounded-md border px-3 text-sm outline-none focus:ring-1"
               />
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
-              <h1 className="font-heading text-ops-blue-dark text-2xl font-semibold">
-                {observation.observedName}
-              </h1>
-              <p className="text-ops-gray text-sm">
-                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
-                {draft.observationName ? ` · ${draft.observationName}` : ''}
-                {draft.observationDate ? ` · ${draft.observationDate.toLocaleDateString()}` : ''}
-              </p>
-            </div>
+            <p className="text-ops-gray-dark text-sm">
+              {draft.observationName ? draft.observationName : null}
+              {draft.observationName && draft.observationDate ? ' · ' : ''}
+              {draft.observationDate ? draft.observationDate.toLocaleDateString() : ''}
+            </p>
           )}
         </div>
       </header>

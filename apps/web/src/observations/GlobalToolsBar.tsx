@@ -67,7 +67,7 @@ export function GlobalToolsBar({
 
   return (
     <div
-      className="bg-background border-border supports-[backdrop-filter]:bg-background/90 sticky top-0 z-20 -mx-4 mb-4 border-b px-4 py-2 backdrop-blur"
+      className="border-ops-gray-lighter/70 bg-ops-gray-lightest/95 supports-[backdrop-filter]:bg-ops-gray-lightest/80 sticky top-0 z-20 -mx-4 border-y px-4 py-2 backdrop-blur md:-mx-6 md:px-6"
       data-testid="global-tools-bar"
     >
       <div className="flex flex-wrap items-center gap-3">

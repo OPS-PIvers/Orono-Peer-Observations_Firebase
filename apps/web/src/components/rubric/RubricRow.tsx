@@ -386,12 +386,12 @@ function DescriptorCell({
           'text-left transition-colors',
           'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
           selected
-            ? 'bg-ops-blue text-white shadow-inner'
-            : 'hover:bg-ops-blue-lighter hover:text-ops-blue-dark bg-white text-gray-700',
+            ? 'bg-ops-blue-lighter text-ops-blue-dark ring-ops-blue font-medium ring-2 ring-inset'
+            : 'hover:bg-ops-blue-lighter/50 hover:text-ops-blue-dark bg-white text-gray-700',
         )}
       >
         {selected && (
-          <span className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white/25 text-[10px] text-white">
+          <span className="bg-ops-blue absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-white">
             ✓
           </span>
         )}
@@ -408,7 +408,7 @@ function DescriptorCell({
       aria-label={`${level} — ${text || 'no descriptor'}`}
       className={cn(
         baseClass,
-        selected ? 'bg-ops-blue/10 text-ops-blue-dark font-medium' : 'bg-white text-gray-700',
+        selected ? 'bg-ops-blue-lighter text-ops-blue-dark font-medium' : 'bg-white text-gray-700',
       )}
     >
       <CellBody text={text} />

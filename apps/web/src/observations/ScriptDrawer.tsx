@@ -4,9 +4,14 @@ import { cn } from '@/lib/utils';
 
 const OPEN_KEY = 'ops:script-drawer:open';
 const HEIGHT_KEY = 'ops:script-drawer:height';
-const DEFAULT_HEIGHT = 320;
-const MIN_HEIGHT = 180;
-const HEADER_HEIGHT = 40;
+const DEFAULT_HEIGHT = 400;
+const MIN_HEIGHT = 200;
+// Visible drag-handle strip above the title row. Acts as the resize border
+// (Google-Slides-speaker-notes style) and stays interactive when the drawer
+// is open.
+const RESIZE_HANDLE_HEIGHT = 8;
+const TITLE_HEIGHT = 36;
+const HEADER_HEIGHT = RESIZE_HANDLE_HEIGHT + TITLE_HEIGHT;
 
 function readSession(key: string, fallback: string): string {
   try {
@@ -100,7 +105,7 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
 
       {/* Fixed drawer */}
       <div
-        className="fixed bottom-0 z-30 flex flex-col shadow-[0_-2px_12px_rgba(0,0,0,0.15)]"
+        className="fixed bottom-0 z-30 flex flex-col shadow-[0_-4px_16px_rgba(0,0,0,0.12)]"
         style={{
           left: sidebarWidth,
           right: 0,
@@ -108,38 +113,63 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
         }}
         data-drawer-height={drawerHeight}
       >
-        {/* Drag handle strip — only interactive when open */}
+        {/* Resize border — slim grey strip above the title row, drag-only.
+            Mirrors Google Slides' speaker-notes resize affordance: a thin
+            top edge with a centered pill grip that's always visible. */}
         <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize script drawer"
           className={cn(
-            'bg-ops-blue-dark flex h-10 shrink-0 flex-col items-center justify-center gap-0.5',
-            open && 'cursor-ns-resize',
+            'group flex shrink-0 items-center justify-center border-t border-b',
+            'border-ops-gray-lighter bg-ops-gray-lightest',
+            open ? 'cursor-ns-resize' : 'cursor-default',
           )}
+          style={{ height: RESIZE_HANDLE_HEIGHT }}
           onPointerDown={onPointerDown}
-          aria-hidden="true"
         >
-          {/* Visual groove */}
-          {open && <div className="h-1 w-16 rounded-full bg-white/20" />}
+          <div
+            aria-hidden="true"
+            className={cn(
+              'h-1 rounded-full transition-all',
+              open
+                ? 'bg-ops-gray-light group-hover:bg-ops-blue w-12 group-hover:w-20'
+                : 'bg-ops-gray-lighter w-10',
+            )}
+          />
+        </div>
 
-          {/* Title row */}
-          <div className="flex w-full items-center px-4">
-            <span className="font-heading text-sm font-semibold text-white">Script</span>
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label={open ? 'Collapse script drawer' : 'Expand script drawer'}
-              className="ml-auto inline-flex items-center justify-center rounded p-1 text-white hover:bg-white/10"
-            >
-              {open ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-            </button>
-          </div>
+        {/* Title row */}
+        <div
+          className="bg-ops-blue-dark flex shrink-0 items-center px-4"
+          style={{ height: TITLE_HEIGHT }}
+        >
+          <span className="font-heading text-sm font-semibold tracking-wide text-white">
+            Script
+          </span>
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={open ? 'Collapse script drawer' : 'Expand script drawer'}
+            className="ml-auto inline-flex items-center gap-1 rounded p-1 text-xs font-medium text-white/90 hover:bg-white/10 hover:text-white"
+          >
+            {open ? (
+              <>
+                Collapse
+                <ChevronDown className="h-4 w-4" />
+              </>
+            ) : (
+              <>
+                Expand
+                <ChevronUp className="h-4 w-4" />
+              </>
+            )}
+          </button>
         </div>
 
         {/* Body */}
         {open && (
-          <div
-            className="bg-background flex-1 overflow-y-auto border-t border-white/10 p-3"
-            style={{ height: height }}
-          >
+          <div className="bg-background flex-1 overflow-y-auto p-4" style={{ height: height }}>
             {children}
           </div>
         )}

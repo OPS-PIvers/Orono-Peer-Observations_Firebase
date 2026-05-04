@@ -139,8 +139,8 @@ export function DomainNav({
               active
                 ? 'bg-ops-blue text-white'
                 : variant === 'dark'
-                  ? 'bg-white/10 text-white hover:bg-white/20'
-                  : 'text-ops-blue-dark hover:bg-ops-blue-lighter',
+                  ? 'text-white/70 hover:bg-white/10 hover:text-white'
+                  : 'text-ops-gray hover:bg-ops-blue-lighter hover:text-ops-blue-dark',
             )}
           >
             <span className="opacity-80">D{d.id}</span>
