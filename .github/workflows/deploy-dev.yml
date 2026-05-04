@@ -44,6 +44,13 @@ jobs:
       - name: Build functions
         run: pnpm --filter @ops/functions build
 
+      - name: Install functions production deps
+        # tsup writes lib/package.json during the build above. Running npm
+        # install here gives the Firebase CLI a lib/node_modules it can
+        # resolve firebase-functions from before uploading to Cloud Build.
+        working-directory: apps/functions/lib
+        run: npm install --production --ignore-scripts
+
       - name: Build web (with prod env)
         run: pnpm --filter @ops/web build
         env:

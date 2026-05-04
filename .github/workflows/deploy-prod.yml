@@ -70,6 +70,10 @@ jobs:
       - name: Build functions
         run: pnpm --filter @ops/functions build
 
+      - name: Install functions production deps
+        working-directory: apps/functions/lib
+        run: npm install --production --ignore-scripts
+
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
