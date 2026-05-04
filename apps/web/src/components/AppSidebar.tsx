@@ -186,7 +186,12 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   const location = useLocation();
   const navigate = useNavigate();
   const inAdmin = location.pathname.startsWith('/admin');
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  // Explicit per-section open/close overrides. If a label has no entry,
+  // fall back to "open if a child route is currently active" — that
+  // auto-expands Observations when you're sitting on /observations.
+  // Once the user manually toggles, their choice sticks (so they can
+  // collapse the section even while on a child route).
+  const [explicitOpen, setExplicitOpen] = useState<Map<string, boolean>>(new Map());
 
   const onCloseMobileRef = useRef(onCloseMobile);
   useLayoutEffect(() => {
@@ -205,20 +210,20 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   });
   const showLabels = pcExpanded || mobileOpen;
 
-  function toggleSection(label: string) {
-    setOpenSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
+  function isSectionVisible(item: NavItem): boolean {
+    const override = explicitOpen.get(item.label);
+    if (override !== undefined) return override;
+    return item.children?.some((c) => isActivePath(c.href, location.pathname)) ?? false;
   }
 
-  function isSectionVisible(item: NavItem): boolean {
-    return (
-      openSections.has(item.label) ||
-      (item.children?.some((c) => isActivePath(c.href, location.pathname)) ?? false)
-    );
+  function toggleSection(label: string) {
+    const item = navConfig.main.find((i) => i.label === label);
+    const currentlyVisible = item ? isSectionVisible(item) : false;
+    setExplicitOpen((prev) => {
+      const next = new Map(prev);
+      next.set(label, !currentlyVisible);
+      return next;
+    });
   }
 
   return (

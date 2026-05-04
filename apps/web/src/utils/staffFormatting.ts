@@ -30,3 +30,26 @@ export function schoolYearOf(date: Date): string {
   const start = isSecondHalf ? year : year - 1;
   return `${String(start)}–${String(start + 1)}`;
 }
+
+/**
+ * Coerce a Firestore date-ish value into a JS Date. The shared schemas
+ * type these as `z.date()` but `useFirestoreCollection` doesn't apply a
+ * converter, so values arrive as Firestore Timestamps (with `.toDate()`)
+ * or, in older docs, ISO strings. Returns null for unrecognised input.
+ */
+export function toJsDate(value: unknown): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toDate' in value &&
+    typeof value.toDate === 'function'
+  ) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  return null;
+}

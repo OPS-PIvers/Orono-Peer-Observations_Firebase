@@ -70,6 +70,9 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
+      - name: Deploy Firestore indexes
+        run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only firestore:indexes --non-interactive
+
       - name: Deploy functions
         run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only functions --non-interactive
 

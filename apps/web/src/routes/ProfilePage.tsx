@@ -15,7 +15,13 @@ import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { roleDisplayName } from '@/utils/roleLookup';
-import { schoolYearOf, yearBadgeClass, yearLabel, yearStatusLabel } from '@/utils/staffFormatting';
+import {
+  schoolYearOf,
+  toJsDate,
+  yearBadgeClass,
+  yearLabel,
+  yearStatusLabel,
+} from '@/utils/staffFormatting';
 
 const ADMIN_CONSTRAINTS = [
   where('role', '==', SPECIAL_ROLES.administrator),
@@ -54,14 +60,24 @@ export function ProfilePage() {
   }, [staff, administrators]);
 
   const finalizedByYear = useMemo(() => {
-    const finalized = (observations ?? [])
-      .filter((o) => o.status === OBSERVATION_STATUS.finalized)
-      .sort((a, b) => b.observationDate.getTime() - a.observationDate.getTime());
-    const out = new Map<string, (Observation & { id: string })[]>();
-    for (const o of finalized) {
-      const yr = schoolYearOf(o.observationDate);
+    interface Row {
+      obs: Observation & { id: string };
+      date: Date;
+    }
+    const finalized: Row[] = [];
+    for (const o of observations ?? []) {
+      if (o.status !== OBSERVATION_STATUS.finalized) continue;
+      const date = toJsDate(o.observationDate);
+      if (!date) continue;
+      finalized.push({ obs: o, date });
+    }
+    finalized.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    const out = new Map<string, Row[]>();
+    for (const row of finalized) {
+      const yr = schoolYearOf(row.date);
       const list = out.get(yr) ?? [];
-      list.push(o);
+      list.push(row);
       out.set(yr, list);
     }
     // Map preserves insertion order — first key is the most recent school
@@ -191,7 +207,7 @@ export function ProfilePage() {
           <p className="text-ops-gray mt-2 text-sm italic">No finalized observations yet.</p>
         ) : (
           <div className="mt-3 space-y-2">
-            {finalizedByYear.map(([year, obs], idx) => (
+            {finalizedByYear.map(([year, rows], idx) => (
               <details
                 key={year}
                 open={idx === 0}
@@ -201,13 +217,13 @@ export function ProfilePage() {
                   <span className="font-heading text-ops-blue-dark font-semibold">
                     {year}{' '}
                     <span className="text-ops-gray text-sm font-normal">
-                      ({String(obs.length)})
+                      ({String(rows.length)})
                     </span>
                   </span>
                   <ChevronRight className="text-ops-gray h-4 w-4 transition-transform group-open:rotate-90" />
                 </summary>
                 <ul className="divide-y divide-gray-100 border-t border-gray-200">
-                  {obs.map((o) => (
+                  {rows.map(({ obs: o, date }) => (
                     <li key={o.id} className="hover:bg-ops-blue-lighter/30">
                       <Link
                         to={`/observations/${o.id}`}
@@ -218,9 +234,7 @@ export function ProfilePage() {
                             <span className="text-ops-gray italic">Untitled observation</span>
                           )}
                         </span>
-                        <span className="text-ops-gray text-xs">
-                          {o.observationDate.toLocaleDateString()}
-                        </span>
+                        <span className="text-ops-gray text-xs">{date.toLocaleDateString()}</span>
                       </Link>
                     </li>
                   ))}
