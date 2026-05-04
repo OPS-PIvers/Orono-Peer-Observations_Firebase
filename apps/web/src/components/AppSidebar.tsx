@@ -17,10 +17,11 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { SPECIAL_ROLES } from '@ops/shared';
+import { COLLECTIONS, SPECIAL_ROLES, type Role, type Rubric } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAV } from '@/admin/adminNav';
 
@@ -96,18 +97,27 @@ function buildNavItems(
   role: string | null,
   onSignOut: () => void,
   flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, isAdmin: false },
+  rubricDomains: NavSubItem[] = [],
 ): NavConfig {
   const metaItems: NavItem[] = [
     { icon: User, label: 'Profile', href: '/profile' },
     { icon: LogOut, label: 'Sign out', action: onSignOut },
   ];
 
+  // "My Rubric" entry: when we have rubric domains loaded, expose them as
+  // children so users can jump to a specific domain. Until then, render as
+  // a plain link so the sidebar still works while data loads.
+  const myRubricItem: NavItem =
+    rubricDomains.length > 0
+      ? { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric', children: rubricDomains }
+      : { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' };
+
   // Role-specific layouts come first — Administrators are also `isAdmin`,
   // so checking `role` ahead of `flags.isAdmin` is what wires up their
   // building-scoped /my-staff link.
   if (role === SPECIAL_ROLES.administrator) {
     const main: NavItem[] = [
-      { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
+      myRubricItem,
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
     ];
@@ -120,7 +130,7 @@ function buildNavItems(
   if (role === SPECIAL_ROLES.peerEvaluator) {
     return {
       main: [
-        { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
+        myRubricItem,
         { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
       ],
@@ -134,7 +144,7 @@ function buildNavItems(
   if (flags.isAdmin) {
     return {
       main: [
-        { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
+        myRubricItem,
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
@@ -145,7 +155,7 @@ function buildNavItems(
   // Staff (no special access)
   return {
     main: [
-      { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' },
+      myRubricItem,
       {
         icon: ClipboardList,
         label: 'Observations',
@@ -167,9 +177,29 @@ function buildNavItems(
 }
 
 function isActivePath(href: string, pathname: string): boolean {
-  const hrefPath = href.split('?')[0] ?? href;
+  // Strip both query and hash so `/my-rubric#domain-1` matches when the
+  // user is on `/my-rubric` (used by section-visibility logic to decide
+  // whether to auto-open a parent group).
+  const stripped = href.split('?')[0] ?? href;
+  const hrefPath = stripped.split('#')[0] ?? stripped;
   if (hrefPath === '/') return pathname === '/';
   return pathname === hrefPath || pathname.startsWith(hrefPath + '/');
+}
+
+function isExactChildActive(
+  href: string,
+  location: { pathname: string; hash: string },
+): boolean {
+  const stripped = href.split('?')[0] ?? href;
+  const [hrefPath, hrefHash] = stripped.split('#');
+  const path = hrefPath ?? stripped;
+  const pathMatches =
+    location.pathname === path || location.pathname.startsWith(path + '/');
+  if (!pathMatches) return false;
+  // Only treat hash-link children as active when the URL hash matches,
+  // so we don't highlight all four domain entries simultaneously.
+  if (hrefHash) return location.hash === `#${hrefHash}`;
+  return true;
 }
 
 // ─── AppSidebar component ────────────────────────────────────────────────────
@@ -188,6 +218,22 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   const location = useLocation();
   const navigate = useNavigate();
   const inAdmin = location.pathname.startsWith('/admin');
+
+  // Resolve the user's rubric so we can surface its domains as sub-items
+  // under "My Rubric". Mirrors the role → rubric chain used by MyRubricPage.
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
+  const rubricDomainItems = (() => {
+    if (!claims.role || !roles || !rubrics) return [] as NavSubItem[];
+    const role = roles.find((r) => r.roleId === claims.role);
+    if (!role) return [] as NavSubItem[];
+    const rubric = rubrics.find((rb) => rb.id === role.rubricId);
+    if (!rubric) return [] as NavSubItem[];
+    return rubric.domains.map((d) => ({
+      label: `D${String(d.id)} ${d.name}`,
+      href: `/my-rubric#domain-${String(d.id)}`,
+    }));
+  })();
   // Explicit per-section open/close overrides. If a label has no entry,
   // fall back to "open if a child route is currently active" — that
   // auto-expands Observations when you're sitting on /observations.
@@ -205,11 +251,16 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
   }, [location.pathname]);
 
   const handleSignOut = useCallback(() => void signOut(), [signOut]);
-  const navConfig = buildNavItems(claims.role, handleSignOut, {
-    hasWorkProduct,
-    hasInstructionalRound,
-    isAdmin: claims.isAdmin,
-  });
+  const navConfig = buildNavItems(
+    claims.role,
+    handleSignOut,
+    {
+      hasWorkProduct,
+      hasInstructionalRound,
+      isAdmin: claims.isAdmin,
+    },
+    rubricDomainItems,
+  );
   const showLabels = pcExpanded || mobileOpen;
 
   function isSectionVisible(item: NavItem): boolean {
@@ -243,10 +294,9 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
       <nav
         className={cn(
           'bg-ops-blue-dark fixed inset-y-0 left-0 z-50 flex flex-col text-white',
-          // Brand-red right edge separates the sidebar from the
-          // dark-blue page header without breaking the dividers under
-          // "Peer Observations" / the user identity strip.
-          'border-ops-red border-r-2',
+          // Subtle right drop-shadow gives the sidebar depth without the
+          // hard-edge feel of a colored divider.
+          'shadow-[2px_0_10px_rgba(0,0,0,0.18)]',
           'w-60 transition-all duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0',
           pcExpanded ? 'xl:w-60' : 'xl:w-14',
@@ -410,6 +460,7 @@ interface NavEntryProps {
 }
 
 function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: NavEntryProps) {
+  const navigate = useNavigate();
   const isActive = item.href ? isActivePath(item.href, location.pathname) : false;
 
   const baseItemCls = cn(
@@ -443,7 +494,10 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
       <div>
         <button
           type="button"
-          onClick={() => onToggleSection(item.label)}
+          onClick={() => {
+            if (item.href) void navigate(item.href);
+            onToggleSection(item.label);
+          }}
           aria-expanded={sectionOpen}
           className={cn(baseItemCls, sectionOpen && 'text-white')}
         >
@@ -462,7 +516,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
         {showLabels && sectionOpen && (
           <ul className="mt-0.5 ml-7 border-l border-white/10">
             {item.children.map((child) => {
-              const childActive = isActivePath(child.href, location.pathname);
+              const childActive = isExactChildActive(child.href, location);
               return (
                 <li key={child.href}>
                   <Link

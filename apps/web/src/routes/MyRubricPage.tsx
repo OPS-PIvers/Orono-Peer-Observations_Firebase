@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   COLLECTIONS,
   type Role,
@@ -13,7 +14,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { PageHeader } from '@/components/PageHeader';
-import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
+import { AssignmentToggle, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
 import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
 import { InstructionalRoundAnswerForm } from '@/observations/InstructionalRoundAnswerForm';
@@ -33,6 +34,7 @@ const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
  */
 export function MyRubricPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const lowerEmail = user?.email?.toLowerCase() ?? '';
 
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>(() => {
@@ -102,6 +104,22 @@ export function MyRubricPage() {
   const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
   const { observation: irObservation } = useActiveInstructionalRoundObservation(lowerEmail);
 
+  // Scroll to the targeted domain section when the URL hash changes.
+  // React Router's <Link> updates the hash but does NOT trigger native
+  // browser anchor-scroll, especially because the scrolling container is
+  // <main> (overflow-y:auto) rather than the document. We re-run when
+  // location.key changes too, so clicking the same domain link twice
+  // still triggers a re-scroll. Depending on `displayedRubric` ensures we
+  // wait until the targeted <section> has actually mounted.
+  useEffect(() => {
+    if (!location.hash) return;
+    if (!displayedRubric) return;
+    const id = location.hash.slice(1);
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash, location.key, displayedRubric]);
+
   if (!user) {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;
   }
@@ -121,12 +139,12 @@ export function MyRubricPage() {
   return (
     <PageHeader
       title={headerTitle}
+      variant="plain"
       actions={
         rubric ? (
-          <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} variant="dark" />
+          <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} />
         ) : null
       }
-      belowBar={visibleRubric ? <DomainNav rubric={visibleRubric} display="tabs" /> : null}
     >
       <div className="space-y-6">
         {staffError ? (

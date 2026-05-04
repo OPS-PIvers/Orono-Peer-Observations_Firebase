@@ -3,16 +3,6 @@ import { PROFICIENCY_LEVELS, type RubricDomain } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS } from './RubricGrid';
 
-/* Tailwind safelist — dynamic domain accent classes used in DomainSection.tsx */
-/* border-l-ops-blue border-l-ops-red border-l-ops-blue-light border-l-ops-red-light */
-
-const DOMAIN_ACCENTS: Record<string, string> = {
-  '1': 'border-l-ops-blue',
-  '2': 'border-l-ops-red',
-  '3': 'border-l-ops-blue-light',
-  '4': 'border-l-ops-red-light',
-};
-
 export interface DomainSectionProps {
   domain: RubricDomain;
   children: ReactNode;
@@ -38,26 +28,19 @@ export interface DomainSectionProps {
  * outer `overflow-hidden` is dropped for the same reason.
  */
 export function DomainSection({ domain, children }: DomainSectionProps) {
-  const accentClass = DOMAIN_ACCENTS[domain.id] ?? 'border-l-ops-blue';
   const headingId = `domain-title-${domain.id}`;
 
   return (
     <section
       id={`domain-${domain.id}`}
       aria-labelledby={headingId}
-      className="scroll-mt-[calc(var(--page-chrome-h,0px)+8px)] rounded-lg border border-gray-200 shadow-sm"
+      className="scroll-mt-[calc(var(--page-chrome-h,0px)+8px)]"
     >
       {/* Domain title bar — sticks at the top of the scroll container,
           just below PageHeader's chrome. z-[5] keeps it above row content
           but below PageHeader's z-20 so it tucks under the title strip
           when scrolling between domains. */}
-      <div
-        className={cn(
-          'sticky top-[var(--page-chrome-h,0px)] z-[5]',
-          'bg-ops-blue-dark border-l-4',
-          accentClass,
-        )}
-      >
+      <div className={cn('sticky top-[var(--page-chrome-h,0px)] z-[5]', 'bg-ops-blue-dark')}>
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
             aria-hidden="true"
@@ -71,9 +54,11 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
       </div>
 
-      {/* Column-header row — sticks just below the domain title (its
-          height is ~48px; we offset by that on top of `--page-chrome-h`). */}
-      <div role="rowgroup">
+      {/* Column-header row + data rows share one rowgroup so the
+          sticky column-header has the whole domain as its containing
+          block. Wrapping the header in its own (header-height) rowgroup
+          collapses the sticky anchor and breaks pinning. */}
+      <div role="rowgroup" className="bg-white">
         <div
           role="row"
           className={cn(
@@ -86,7 +71,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
             role="columnheader"
             className={cn(
               'bg-ops-blue-dark',
-              'font-heading border-r border-white/20 px-3 py-2',
+              'font-heading px-3 py-2',
               'text-[11px] font-semibold tracking-widest text-white uppercase',
             )}
           >
@@ -106,17 +91,8 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Data rowgroup — no horizontal scroll wrapper. The grid columns
-          are responsive (Component fixed, four flexible proficiency
-          cols). On very narrow viewports the cells just get cramped
-          rather than triggering an inner scrollbar. */}
-      <div
-        role="rowgroup"
-        className="divide-y divide-gray-100 overflow-hidden rounded-b-lg bg-white"
-      >
-        {children}
+        <div className="divide-y divide-gray-100">{children}</div>
       </div>
     </section>
   );

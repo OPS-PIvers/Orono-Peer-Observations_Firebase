@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Paperclip } from 'lucide-react';
+import { Check, ChevronRight, Paperclip } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
   PROFICIENCY_LEVELS,
@@ -122,13 +122,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'border-border border-b last:border-b-0',
-        mode.kind === 'view' && isAssigned && 'border-l-4 border-l-green-500',
-        mode.kind === 'view' && !isAssigned && 'border-l-4 border-l-transparent',
-      )}
-    >
+    <div>
       {/* Grid row */}
       <div
         className={cn('grid items-stretch', RUBRIC_GRID_COLS)}
@@ -142,31 +136,18 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
           className="bg-ops-blue-dark flex flex-col justify-between gap-2 px-3 py-3"
         >
           <div>
-            <div className="flex items-center gap-2">
-              {mode.kind === 'view' ? (
-                <span
-                  aria-label={isAssigned ? 'Assigned' : 'Not assigned'}
-                  title={isAssigned ? 'Assigned to your role/year' : 'Not part of your assignment'}
-                  className={cn(
-                    'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold',
-                    isAssigned
-                      ? 'bg-green-400 text-white'
-                      : 'border border-white/20 bg-white/10 text-white/40',
-                  )}
-                >
-                  {isAssigned ? '✓' : '○'}
-                </span>
-              ) : null}
-              <span className="font-mono text-[11px] font-semibold text-white/50">
-                {component.id}
-              </span>
-            </div>
+            <span className="font-mono text-[11px] font-semibold text-white/50">
+              {component.id}
+            </span>
             <p className="mt-1 text-sm leading-snug font-semibold text-white">{component.title}</p>
           </div>
 
           {/* "Assigned" text label (view mode, assigned only) */}
           {mode.kind === 'view' && isAssigned && (
-            <span className="text-[10px] font-medium text-green-400 uppercase">Assigned</span>
+            <span className="text-ops-red-light inline-flex items-center gap-1 text-[10px] font-medium uppercase">
+              <Check className="h-3 w-3" aria-hidden="true" />
+              Assigned
+            </span>
           )}
         </div>
 

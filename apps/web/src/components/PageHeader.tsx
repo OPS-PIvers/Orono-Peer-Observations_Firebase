@@ -12,6 +12,12 @@ export interface PageHeaderProps {
    */
   belowBar?: ReactNode;
   /**
+   * Visual treatment. `dark` (default) — dark-blue strip, white text,
+   * title/actions on opposite ends. `plain` — transparent background,
+   * brand-blue title centered, actions floated right.
+   */
+  variant?: 'dark' | 'plain';
+  /**
    * Page body. Wrapped in `mx-auto max-w-7xl px-4 md:px-6 py-6` so its
    * content stays aligned with the inner content of the title strip.
    */
@@ -34,7 +40,14 @@ export interface PageHeaderProps {
  * variable `--page-chrome-h`, so internal sticky elements (e.g. the
  * rubric domain headers) can offset themselves cleanly.
  */
-export function PageHeader({ title, subtitle, actions, belowBar, children }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  belowBar,
+  variant = 'dark',
+  children,
+}: PageHeaderProps) {
   const chromeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +64,32 @@ export function PageHeader({ title, subtitle, actions, belowBar, children }: Pag
       document.documentElement.style.removeProperty('--page-chrome-h');
     };
   }, []);
+
+  if (variant === 'plain') {
+    return (
+      <>
+        <div ref={chromeRef} className="bg-ops-gray-lightest sticky top-0 z-20 w-full">
+          <div
+            className={cn(
+              'mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 md:px-6',
+              subtitle ? 'py-4' : 'py-3',
+            )}
+          >
+            <div aria-hidden="true" />
+            <div className="min-w-0 text-center">
+              <h1 className="font-heading text-ops-blue-dark text-xl font-semibold sm:text-2xl">
+                {title}
+              </h1>
+              {subtitle ? <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p> : null}
+            </div>
+            <div className="flex justify-end">{actions ?? null}</div>
+          </div>
+          {belowBar ? <div className="w-full">{belowBar}</div> : null}
+        </div>
+        <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
+      </>
+    );
+  }
 
   return (
     <>
