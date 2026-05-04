@@ -186,15 +186,11 @@ function isActivePath(href: string, pathname: string): boolean {
   return pathname === hrefPath || pathname.startsWith(hrefPath + '/');
 }
 
-function isExactChildActive(
-  href: string,
-  location: { pathname: string; hash: string },
-): boolean {
+function isExactChildActive(href: string, location: { pathname: string; hash: string }): boolean {
   const stripped = href.split('?')[0] ?? href;
   const [hrefPath, hrefHash] = stripped.split('#');
   const path = hrefPath ?? stripped;
-  const pathMatches =
-    location.pathname === path || location.pathname.startsWith(path + '/');
+  const pathMatches = location.pathname === path || location.pathname.startsWith(path + '/');
   if (!pathMatches) return false;
   // Only treat hash-link children as active when the URL hash matches,
   // so we don't highlight all four domain entries simultaneously.
@@ -230,8 +226,8 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
     const rubric = rubrics.find((rb) => rb.id === role.rubricId);
     if (!rubric) return [] as NavSubItem[];
     return rubric.domains.map((d) => ({
-      label: `D${String(d.id)} ${d.name}`,
-      href: `/my-rubric#domain-${String(d.id)}`,
+      label: `D${d.id} ${d.name}`,
+      href: `/my-rubric#domain-${d.id}`,
     }));
   })();
   // Explicit per-section open/close overrides. If a label has no entry,

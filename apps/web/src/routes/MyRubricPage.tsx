@@ -141,9 +141,7 @@ export function MyRubricPage() {
       title={headerTitle}
       variant="plain"
       actions={
-        rubric ? (
-          <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} />
-        ) : null
+        rubric ? <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} /> : null
       }
     >
       <div className="space-y-6">
