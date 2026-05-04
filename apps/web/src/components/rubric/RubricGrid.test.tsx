@@ -94,7 +94,7 @@ describe('<RubricGrid> view mode', () => {
     expect(screen.getByText('Distinguished 2a')).toBeInTheDocument();
   });
 
-  it('renders ✓/○ assignment chips correctly', () => {
+  it('shows the "Assigned" label only for assigned components', () => {
     render(
       <RubricGrid
         rubric={makeRubric()}
@@ -106,8 +106,8 @@ describe('<RubricGrid> view mode', () => {
         storageScope="test-view"
       />,
     );
-    expect(screen.getAllByLabelText('Assigned')).toHaveLength(1);
-    expect(screen.getAllByLabelText('Not assigned')).toHaveLength(2);
+    // 1a is the only assigned component out of three (1a, 1b, 2a).
+    expect(screen.getAllByText('Assigned')).toHaveLength(1);
   });
 
   it('hides unassigned components when showAssignedOnly is true', () => {
