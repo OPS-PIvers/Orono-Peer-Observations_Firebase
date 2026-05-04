@@ -101,27 +101,19 @@ function buildNavItems(
     { icon: LogOut, label: 'Sign out', action: onSignOut },
   ];
 
-  if (flags.isAdmin) {
-    return {
-      main: [
-        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
-        { icon: Users, label: 'Staff', href: '/staff' },
-        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-        { icon: Settings, label: 'Admin Console', href: '/admin' },
-      ],
-      meta: metaItems,
-    };
-  }
-
+  // Role-specific layouts come first — Administrators are also `isAdmin`,
+  // so checking `role` ahead of `flags.isAdmin` is what wires up their
+  // building-scoped /my-staff link.
   if (role === SPECIAL_ROLES.administrator) {
-    return {
-      main: [
-        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
-        { icon: Building2, label: 'My Staff', href: '/my-staff' },
-        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-      ],
-      meta: metaItems,
-    };
+    const main: NavItem[] = [
+      { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+      { icon: Building2, label: 'My Staff', href: '/my-staff' },
+      { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+    ];
+    if (flags.isAdmin) {
+      main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
+    }
+    return { main, meta: metaItems };
   }
 
   if (role === SPECIAL_ROLES.peerEvaluator) {
@@ -130,6 +122,20 @@ function buildNavItems(
         { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
         { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      ],
+      meta: metaItems,
+    };
+  }
+
+  // Full Access role, or a non-special role with `hasAdminAccess: true`
+  // (the dev-admin escape hatch). No /staff sidebar link — they can
+  // reach the directory via Admin Console → Staff.
+  if (flags.isAdmin) {
+    return {
+      main: [
+        { icon: BookOpen, label: 'My Rubric', href: '/my-rubric' },
+        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+        { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
       meta: metaItems,
     };
