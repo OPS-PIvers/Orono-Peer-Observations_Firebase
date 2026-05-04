@@ -34,11 +34,13 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
       aria-labelledby={headingId}
       className="scroll-mt-14 overflow-hidden rounded-lg border border-gray-200 shadow-sm"
     >
-      {/* Sticky domain title bar — OPS Blue Dark with left accent stripe.
-          top-[44px] keeps the bar flush below the DomainNav / GlobalToolsBar
-          (~40 px tall) on all breakpoints. scroll-mt-14 on the section ensures
-          DomainNav click-navigation lands the header visibly below the nav. */}
-      <div className={cn('bg-ops-blue-dark sticky top-[44px] z-10 border-l-4', accentClass)}>
+      {/* Domain title bar — OPS Blue Dark with left accent stripe. Not
+          sticky; only the page-level <DomainNav> pills bar sticks, which
+          keeps the layering simple and avoids overflow-hidden ↔ sticky
+          interaction bugs. scroll-mt-14 on the section ensures click-
+          navigation from the pills lands the header visibly below the
+          nav. */}
+      <div className={cn('bg-ops-blue-dark border-l-4', accentClass)}>
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
             aria-hidden="true"
@@ -82,8 +84,12 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           </div>
         </div>
 
-        {/* Data rowgroup */}
-        <div role="rowgroup" className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white')}>
+        {/* Data rowgroup. pt-2 separates the first component row from the
+            blue column-header bar so they don't visually fuse. */}
+        <div
+          role="rowgroup"
+          className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white pt-2')}
+        >
           {children}
         </div>
       </div>
