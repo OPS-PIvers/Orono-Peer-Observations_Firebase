@@ -19,23 +19,9 @@ interface MigrateRolesResult {
   observationsUnmatched: { observationId: string; rawRole: string }[];
 }
 
-interface MigrateBestPracticesResult {
-  rubricsScanned: number;
-  rubricsTouched: number;
-  componentsConverted: number;
-  lookForsCreated: number;
-  componentsSkippedHasLookFors: number;
-  sample: { rubricId: string; componentId: string; from: string; to: string[] }[];
-}
-
 const migrateRolesToSlugsFn = httpsCallable<Record<string, never>, MigrateRolesResult>(
   functions,
   'migrateRolesToSlugs',
-);
-
-const migrateBestPracticesFn = httpsCallable<Record<string, never>, MigrateBestPracticesResult>(
-  functions,
-  'migrateBestPracticesToLookFors',
 );
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
@@ -390,109 +376,6 @@ function MaintenanceSection() {
           </Button>
         )}
       </div>
-
-      <BestPracticesMigrationCard />
-    </div>
-  );
-}
-
-function BestPracticesMigrationCard() {
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<MigrateBestPracticesResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
-
-  async function run() {
-    setRunning(true);
-    setError(null);
-    try {
-      const res = await migrateBestPracticesFn({});
-      setResult(res.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Migration failed');
-    } finally {
-      setRunning(false);
-      setConfirming(false);
-    }
-  }
-
-  return (
-    <div className="border-border space-y-3 rounded-md border p-4">
-      <div>
-        <h3 className="text-sm font-semibold">Convert best practices to look-fors</h3>
-        <p className="text-muted-foreground mt-1 text-xs">
-          For every rubric component, splits the multi-line{' '}
-          <code className="font-mono text-xs">bestPractices</code> text into individual checklist
-          items in <code className="font-mono text-xs">lookFors</code> (one per line, bullets
-          stripped) and clears the original field. Only touches components whose{' '}
-          <code className="font-mono text-xs">lookFors</code> is currently empty — won&apos;t
-          clobber items you&apos;ve added by hand. Idempotent — safe to re-run. Existing
-          observations are unaffected.
-        </p>
-      </div>
-
-      {error ? (
-        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
-          {error}
-        </div>
-      ) : null}
-
-      {result ? (
-        <div className="bg-ops-blue-lighter text-ops-blue-dark rounded-md border-l-4 border-l-blue-500 px-3 py-2 text-sm">
-          <p className="font-medium">Conversion complete.</p>
-          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
-            <li>
-              Rubrics scanned: {result.rubricsScanned}; updated: {result.rubricsTouched}
-            </li>
-            <li>
-              Components converted: {result.componentsConverted}; skipped (already had look-fors):{' '}
-              {result.componentsSkippedHasLookFors}
-            </li>
-            <li>Look-fors created: {result.lookForsCreated}</li>
-          </ul>
-          {result.sample.length > 0 ? (
-            <details className="mt-2 text-xs">
-              <summary className="cursor-pointer">Sample ({result.sample.length})</summary>
-              <ul className="mt-1 space-y-2 pl-5">
-                {result.sample.map((s) => (
-                  <li key={`${s.rubricId}-${s.componentId}`}>
-                    <p className="font-mono">
-                      {s.rubricId} / {s.componentId}
-                    </p>
-                    <p className="text-[10px] whitespace-pre-wrap opacity-70">{s.from}</p>
-                    <p className="mt-1 text-[10px] font-medium">→ {s.to.length} look-for(s):</p>
-                    <ul className="list-disc pl-5 text-[10px]">
-                      {s.to.map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </div>
-      ) : null}
-
-      {confirming ? (
-        <div className="flex items-center gap-2">
-          <Button variant="destructive" size="sm" onClick={() => void run()} disabled={running}>
-            {running ? 'Running…' : 'Yes, run conversion'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirming(false)}
-            disabled={running}
-          >
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-          Run best-practices → look-fors conversion
-        </Button>
-      )}
     </div>
   );
 }

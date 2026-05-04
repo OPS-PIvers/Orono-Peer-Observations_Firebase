@@ -93,7 +93,6 @@ export function RubricEditorPage() {
       id: newId,
       title: 'New component',
       proficiencyLevels: { developing: '', basic: '', proficient: '', distinguished: '' },
-      bestPractices: '',
       lookFors: [],
     };
     const next: DraftRubric = {

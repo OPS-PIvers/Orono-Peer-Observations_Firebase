@@ -232,8 +232,6 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
               {notesExpanded ? 'Hide notes' : notesHasContent ? 'View notes' : 'Add notes'}
             </button>
           ) : null}
-
-          {component.bestPractices ? <BestPracticesPopover text={component.bestPractices} /> : null}
         </div>
 
         {/* Look-fors panel */}
@@ -442,20 +440,6 @@ function CellBody({ text }: { text: string }) {
     return <em className="opacity-60">No descriptor set</em>;
   }
   return <span className="whitespace-pre-line">{text}</span>;
-}
-
-function BestPracticesPopover({ text }: { text: string }) {
-  return (
-    <details className="group relative">
-      <summary className="text-ops-gray-light hover:text-ops-gray-dark inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium">
-        <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-        Best practices
-      </summary>
-      <p className="border-border bg-background mt-2 rounded-md border p-3 text-sm whitespace-pre-line text-gray-700">
-        {text}
-      </p>
-    </details>
-  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

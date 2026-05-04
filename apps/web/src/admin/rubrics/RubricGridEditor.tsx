@@ -282,24 +282,10 @@ function ComponentRow({
         ))}
       </div>
 
-      {/* Expandable detail strip — best practices + look-fors. Spans the
-          full grid width via the parent's min-w. */}
+      {/* Expandable detail strip — look-fors. Spans the full grid width
+          via the parent's min-w. */}
       {expanded && (
         <div className="space-y-4 border-t border-gray-200 bg-gray-50 px-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor={`bp-${component.id}`} className="text-sm font-medium">
-              Best practices
-            </Label>
-            <Textarea
-              id={`bp-${component.id}`}
-              value={component.bestPractices}
-              onChange={(e) => onPatch({ bestPractices: e.target.value })}
-              rows={4}
-              placeholder="Multi-line list of best-practice indicators (one per line)"
-              className="bg-white"
-            />
-          </div>
-
           <fieldset className="space-y-2">
             <div className="flex items-center justify-between">
               <legend className="text-sm font-medium">Look-fors</legend>

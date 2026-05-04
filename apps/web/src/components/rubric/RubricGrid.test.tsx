@@ -34,7 +34,6 @@ function makeRubric(): Rubric {
               proficient: 'Proficient 1a description',
               distinguished: 'Distinguished 1a description',
             },
-            bestPractices: '',
             lookFors: [
               { id: 'lf1', text: 'Look-for one' },
               { id: 'lf2', text: 'Look-for two' },
@@ -49,7 +48,6 @@ function makeRubric(): Rubric {
               proficient: 'Proficient 1b',
               distinguished: 'Distinguished 1b',
             },
-            bestPractices: '',
             lookFors: [],
           },
         ],
@@ -67,7 +65,6 @@ function makeRubric(): Rubric {
               proficient: 'Proficient 2a',
               distinguished: 'Distinguished 2a',
             },
-            bestPractices: '',
             lookFors: [],
           },
         ],

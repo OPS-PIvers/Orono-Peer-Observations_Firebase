@@ -5,7 +5,7 @@ import { isoDate, slugId } from './common.js';
  * /rubrics/{rubricId} — full rubric definition for a role.
  *
  * Structure mirrors the Danielson Framework variant the GAS app shipped:
- *   4 domains × 5-6 components × 4 proficiency levels + best practices.
+ *   4 domains × 5-6 components × 4 proficiency levels + look-fors.
  *
  * Component IDs follow the GAS convention (e.g., "1a", "2c", "3e") and are
  * referenced by /settings/roleYearMappings (which subset is active for a
@@ -52,7 +52,6 @@ export const rubricComponent = z.object({
   id: componentId,
   title: z.string().trim().min(1).max(200),
   proficiencyLevels: proficiencyDescriptors,
-  bestPractices: z.string().trim().default(''),
   lookFors: z.array(rubricLookFor).default([]),
 });
 export type RubricComponent = z.infer<typeof rubricComponent>;

@@ -332,11 +332,13 @@ export function parseRubric(input: ParseRubricInput): ParseRubricResult {
     const compTitle = (compMatch[3] ?? '').trim();
     const domainDigit = compMatch[1] ?? '1';
 
-    // Best Practices content is 2 rows below the component row, in col[1]
-    // (col[0] is empty, col[1] holds the multi-line content with embedded
-    // newlines preserved by the Sheets API).
+    // The sheet's "Best Practices" cell is 2 rows below the component row
+    // (col[1]); it's a multi-line list that we split into individual
+    // look-for checklist items at import time so the new editor surfaces
+    // them as checkboxes.
     const bpRow = rows[i + 2];
-    const bestPractices = (bpRow?.[1] ?? '').trim();
+    const bpRaw = (bpRow?.[1] ?? '').trim();
+    const lookFors = splitBestPracticesToLookFors(bpRaw, compId);
 
     const domainKey = currentDomainId ?? domainDigit;
     let domain = domainsMap.get(domainKey);
@@ -358,8 +360,7 @@ export function parseRubric(input: ParseRubricInput): ParseRubricResult {
         proficient: (row[3] ?? '').trim(),
         distinguished: (row[4] ?? '').trim(),
       },
-      bestPractices,
-      lookFors: [], // not present in the GAS rubric sheets — admins add via UI
+      lookFors,
     });
   }
 
@@ -379,6 +380,24 @@ export function parseRubric(input: ParseRubricInput): ParseRubricResult {
     },
     warnings,
   };
+}
+
+const BP_BULLET_PREFIX = /^[\s]*[•\-*—·]+[\s]+/;
+
+/** Split the sheet's multi-line "Best Practices" content into individual
+ *  lookFor checklist items: one per non-blank line, with leading bullet
+ *  characters stripped. Mirrors the in-product migration that ran post-
+ *  release. */
+function splitBestPracticesToLookFors(
+  raw: string,
+  componentId: string,
+): { id: string; text: string }[] {
+  if (!raw) return [];
+  return raw
+    .split(/\r?\n/)
+    .map((s) => s.replace(BP_BULLET_PREFIX, '').trim())
+    .filter((s) => s.length > 0)
+    .map((text, idx) => ({ id: `lf-import-${componentId}-${String(idx + 1)}`, text }));
 }
 
 // ────────────────────────────────────────────────────────────────────────
