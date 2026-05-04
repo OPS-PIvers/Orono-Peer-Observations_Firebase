@@ -41,6 +41,9 @@ jobs:
       - name: Build shared package
         run: pnpm --filter @ops/shared build
 
+      - name: Build functions
+        run: pnpm --filter @ops/functions build
+
       - name: Build web (with prod env)
         run: pnpm --filter @ops/web build
         env:
@@ -52,10 +55,16 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_USE_EMULATORS: 'false'
 
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
       - name: Auth to Firebase
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy functions
+        run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only functions --non-interactive
 
       - name: Deploy to dev-paul preview channel
         uses: FirebaseExtended/action-hosting-deploy@v0
