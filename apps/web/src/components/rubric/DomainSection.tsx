@@ -82,7 +82,7 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
               key={level}
               role="columnheader"
               className={cn(
-                'bg-ops-red',
+                'bg-ops-red-light',
                 'border-r border-white/20 px-3 py-2 last:border-r-0',
                 'font-heading text-[11px] font-semibold tracking-widest text-white uppercase',
               )}
