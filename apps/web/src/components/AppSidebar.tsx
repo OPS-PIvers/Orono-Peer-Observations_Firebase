@@ -243,6 +243,10 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
       <nav
         className={cn(
           'bg-ops-blue-dark fixed inset-y-0 left-0 z-50 flex flex-col text-white',
+          // Brand-red right edge separates the sidebar from the
+          // dark-blue page header without breaking the dividers under
+          // "Peer Observations" / the user identity strip.
+          'border-ops-red border-r-2',
           'w-60 transition-all duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0',
           pcExpanded ? 'xl:w-60' : 'xl:w-14',

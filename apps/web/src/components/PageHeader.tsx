@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface PageHeaderProps {
@@ -6,51 +6,72 @@ export interface PageHeaderProps {
   subtitle?: ReactNode;
   actions?: ReactNode;
   /**
-   * Optional second strip rendered below the title row. Sticks to the top
-   * of the scroll container as the page scrolls. Renders edge-to-edge —
-   * the child component supplies its own background.
+   * Optional second strip rendered below the title row, inside the same
+   * sticky wrapper so it stays anchored at the top alongside the title.
+   * Renders edge-to-edge — the child component supplies its own background.
    */
   belowBar?: ReactNode;
   /**
-   * Page body. Rendered as siblings of the header strips so it inherits
-   * Layout's `max-w-7xl` body wrapper (the wrapper does not extend to the
-   * dark strip — the strip uses viewport-width margin bleed to escape).
+   * Page body. Wrapped in `mx-auto max-w-7xl px-4 md:px-6 py-6` so its
+   * content stays aligned with the inner content of the title strip.
    */
   children?: ReactNode;
 }
 
 /**
- * Page chrome: a full-bleed dark-blue title strip and an optional sticky
- * sub-bar (e.g. domain tabs), followed by the page body.
+ * Page chrome: a full-width dark-blue title strip (always anchored at
+ * the top of the scroll container) with an optional `belowBar` (e.g.
+ * domain tabs) stacked beneath it inside the same sticky wrapper. The
+ * page body follows below.
  *
- * Bleed strategy: Layout wraps all page content in `mx-auto max-w-7xl
- * px-4 md:px-6 py-6`. The dark strip uses negative margins computed as
- * `calc(50% - 50vw)` on the x-axis, plus `-mt-6` to absorb the wrapper's
- * top padding. The result is an element whose painted box spans the full
- * `<main>` width while its inner content stays aligned with the body
- * column.
+ * Width: this component assumes `<main>` is the natural full-width
+ * container — Layout no longer wraps children in a `max-w-7xl` div.
+ * The dark strip therefore fills `<main>` exactly (between the fixed
+ * sidebar and the viewport's right edge — no horizontal overflow).
+ *
+ * Sticky-offset for downstream content: while mounted, the height of
+ * the sticky chrome is exposed on `document.documentElement` as the CSS
+ * variable `--page-chrome-h`, so internal sticky elements (e.g. the
+ * rubric domain headers) can offset themselves cleanly.
  */
 export function PageHeader({ title, subtitle, actions, belowBar, children }: PageHeaderProps) {
+  const chromeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = chromeRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const update = () => {
+      document.documentElement.style.setProperty('--page-chrome-h', `${String(el.offsetHeight)}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--page-chrome-h');
+    };
+  }, []);
+
   return (
     <>
-      <div
-        className={cn(
-          'bg-ops-blue-dark mx-[calc(50%-50vw)] -mt-6 w-screen text-white',
-          !belowBar && 'mb-6',
-        )}
-      >
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 md:px-6">
-          <div className="min-w-0">
-            <h1 className="font-heading text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
-            {subtitle ? <p className="mt-1 text-sm text-white/70">{subtitle}</p> : null}
+      <div ref={chromeRef} className="sticky top-0 z-20 w-full">
+        <div className="bg-ops-blue-dark text-white">
+          <div
+            className={cn(
+              'mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 md:px-6',
+              subtitle ? 'py-4' : 'py-3',
+            )}
+          >
+            <div className="min-w-0">
+              <h1 className="font-heading text-xl font-semibold text-white sm:text-2xl">{title}</h1>
+              {subtitle ? <p className="mt-1 text-sm text-white/70">{subtitle}</p> : null}
+            </div>
+            {actions ? <div className="shrink-0">{actions}</div> : null}
           </div>
-          {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
+        {belowBar ? <div className="w-full">{belowBar}</div> : null}
       </div>
-      {belowBar ? (
-        <div className="sticky top-0 z-10 mx-[calc(50%-50vw)] mb-6 w-screen">{belowBar}</div>
-      ) : null}
-      {children}
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
     </>
   );
 }

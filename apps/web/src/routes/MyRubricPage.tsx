@@ -106,7 +106,10 @@ export function MyRubricPage() {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;
   }
 
-  const subtitle = staff
+  // The role/year string IS the title — there's no separate page name
+  // ("My Rubric" was redundant with the sidebar entry it was launched
+  // from). Dropping the subtitle saves a row of vertical space.
+  const headerTitle = staff
     ? `${roleLabel} · Year ${String(staff.year)}`
     : staffLoading
       ? 'Loading your role…'
@@ -117,8 +120,7 @@ export function MyRubricPage() {
 
   return (
     <PageHeader
-      title="My Rubric"
-      subtitle={subtitle}
+      title={headerTitle}
       actions={
         rubric ? (
           <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} variant="dark" />

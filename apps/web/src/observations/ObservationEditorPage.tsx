@@ -23,6 +23,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -390,25 +391,43 @@ export function ObservationEditorPage() {
     }
   }
 
+  // Layout used to wrap routes in `mx-auto max-w-7xl px-4 py-6 md:px-6`,
+  // but that wrapper now lives inside `PageHeader`. This page renders its
+  // own custom header (no `PageHeader`), so it owns the body wrapper too.
+  const bodyWrapperCls = 'mx-auto max-w-7xl px-4 py-6 md:px-6';
+
   if (!observationId) {
-    return <div className="text-destructive">No observation ID in URL.</div>;
+    return (
+      <div className={bodyWrapperCls}>
+        <div className="text-destructive">No observation ID in URL.</div>
+      </div>
+    );
   }
-  if (loading && !observation) return <p className="text-muted-foreground">Loading…</p>;
+  if (loading && !observation)
+    return (
+      <div className={bodyWrapperCls}>
+        <p className="text-muted-foreground">Loading…</p>
+      </div>
+    );
   if (error)
     return (
-      <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
-        Failed to load observation: {error.message}
+      <div className={bodyWrapperCls}>
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
+          Failed to load observation: {error.message}
+        </div>
       </div>
     );
   if (!observation)
     return (
-      <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
-        Observation not found, or you don&apos;t have permission to view it.
+      <div className={bodyWrapperCls}>
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
+          Observation not found, or you don&apos;t have permission to view it.
+        </div>
       </div>
     );
 
   return (
-    <div className="space-y-4">
+    <div className={cn(bodyWrapperCls, 'space-y-4')}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Button

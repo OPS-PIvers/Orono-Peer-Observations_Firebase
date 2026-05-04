@@ -104,9 +104,12 @@ export function DomainNav({
               onClick={() => handleJump(d.id)}
               aria-current={active ? 'true' : undefined}
               className={cn(
-                'flex-1 px-3 py-2.5 text-sm font-medium transition-colors',
+                'relative flex-1 px-3 py-2.5 text-sm font-medium transition-colors',
                 'border-r border-white/15 last:border-r-0',
-                active ? 'text-ops-red bg-white' : 'hover:bg-ops-red-dark text-white',
+                'border-b-2',
+                active
+                  ? 'bg-ops-red-dark border-b-white text-white'
+                  : 'hover:bg-ops-red-dark/70 border-b-transparent text-white/85 hover:text-white',
               )}
             >
               <span className="opacity-80">D{d.id}</span>

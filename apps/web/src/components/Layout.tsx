@@ -49,8 +49,14 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       >
         <MobileTopBar onOpenSidebar={openMobile} />
+        {/* `<main>` fills the area between the fixed sidebar and the
+            viewport's right edge — no `max-w-7xl mx-auto` wrapper here.
+            That centering wrapper now lives inside `PageHeader` (around
+            its body) so the dark header strip can extend edge-to-edge of
+            `<main>` without negative-margin tricks. Pages that don't use
+            PageHeader supply their own width-constrained wrapper. */}
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
+          {children}
           <footer className="border-border text-muted-foreground mt-8 border-t px-4 py-4 text-center text-xs">
             Orono Public Schools · Peer Observations
           </footer>

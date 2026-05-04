@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { PROFICIENCY_LEVELS, type RubricDomain } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS, RUBRIC_GRID_MIN_W } from './RubricGrid';
+import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS } from './RubricGrid';
 
 /* Tailwind safelist — dynamic domain accent classes used in DomainSection.tsx */
 /* border-l-ops-blue border-l-ops-red border-l-ops-blue-light border-l-ops-red-light */
@@ -19,10 +19,23 @@ export interface DomainSectionProps {
 }
 
 /**
- * One domain's worth of rubric rows. Includes a sticky dark-blue domain
- * header and a blue column-header row. The outer wrapper carries
- * `id="domain-{domainId}"` so the sibling `<DomainNav>` scroll-spy can
- * target it.
+ * One domain's worth of rubric rows. The dark-blue domain title strip
+ * and the red proficiency-header row are both `position: sticky` so
+ * they pin to the top of the scroll container while the user scrolls
+ * through that domain's components, then yield to the next domain's
+ * sticky pair when its section reaches the top.
+ *
+ * Sticky offsets reference the `--page-chrome-h` CSS variable that
+ * `PageHeader` writes onto `<html>` — the title strip + tabs sit above
+ * these stickies, so domain headers must offset by that amount.
+ *
+ * The previous version had an `overflow-x-auto` wrapper around the
+ * column-header row + data rows together, which broke vertical sticky
+ * (the implicit `overflow-y: auto` made that wrapper a sticky-clipping
+ * containing block). We now let the grid wrap responsively instead —
+ * `RubricGrid.RUBRIC_GRID_COLS` defines minmax columns and the section
+ * has no horizontal scroll container, so sticky works cleanly. The
+ * outer `overflow-hidden` is dropped for the same reason.
  */
 export function DomainSection({ domain, children }: DomainSectionProps) {
   const accentClass = DOMAIN_ACCENTS[domain.id] ?? 'border-l-ops-blue';
@@ -32,15 +45,19 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
     <section
       id={`domain-${domain.id}`}
       aria-labelledby={headingId}
-      className="scroll-mt-14 overflow-hidden rounded-lg border border-gray-200 shadow-sm"
+      className="scroll-mt-[calc(var(--page-chrome-h,0px)+8px)] rounded-lg border border-gray-200 shadow-sm"
     >
-      {/* Domain title bar — OPS Blue Dark with left accent stripe. Not
-          sticky; only the page-level <DomainNav> pills bar sticks, which
-          keeps the layering simple and avoids overflow-hidden ↔ sticky
-          interaction bugs. scroll-mt-14 on the section ensures click-
-          navigation from the pills lands the header visibly below the
-          nav. */}
-      <div className={cn('bg-ops-blue-dark border-l-4', accentClass)}>
+      {/* Domain title bar — sticks at the top of the scroll container,
+          just below PageHeader's chrome. z-[5] keeps it above row content
+          but below PageHeader's z-20 so it tucks under the title strip
+          when scrolling between domains. */}
+      <div
+        className={cn(
+          'sticky top-[var(--page-chrome-h,0px)] z-[5]',
+          'bg-ops-blue-dark border-l-4',
+          accentClass,
+        )}
+      >
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
             aria-hidden="true"
@@ -54,40 +71,52 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
       </div>
 
-      {/* Horizontal scroll container — column headers + rows share one
-          scroll viewport so they stay aligned. */}
-      <div className="overflow-x-auto" role="grid" aria-labelledby={headingId}>
-        {/* Column header rowgroup */}
-        <div role="rowgroup">
-          <div role="row" className={cn('bg-ops-blue grid', RUBRIC_GRID_MIN_W, RUBRIC_GRID_COLS)}>
-            <div
-              role="columnheader"
-              className="font-heading border-r border-white/20 px-3 py-2 text-[11px] font-semibold tracking-widest text-white/80 uppercase"
-            >
-              Component
-            </div>
-            {PROFICIENCY_LEVELS.map((level) => (
-              <div
-                key={level}
-                role="columnheader"
-                className={cn(
-                  'border-r border-white/20 px-3 py-2 last:border-r-0',
-                  'font-heading text-[11px] font-semibold tracking-widest uppercase',
-                  level === 'proficient' || level === 'distinguished'
-                    ? 'text-white'
-                    : 'text-white/80',
-                )}
-              >
-                {PROFICIENCY_LABELS[level]}
-              </div>
-            ))}
+      {/* Column-header row — sticks just below the domain title (its
+          height is ~48px; we offset by that on top of `--page-chrome-h`). */}
+      <div role="rowgroup">
+        <div
+          role="row"
+          className={cn(
+            'sticky top-[calc(var(--page-chrome-h,0px)+48px)] z-[4]',
+            'grid',
+            RUBRIC_GRID_COLS,
+          )}
+        >
+          <div
+            role="columnheader"
+            className={cn(
+              'bg-ops-blue-dark',
+              'font-heading border-r border-white/20 px-3 py-2',
+              'text-[11px] font-semibold tracking-widest text-white uppercase',
+            )}
+          >
+            Component
           </div>
+          {PROFICIENCY_LEVELS.map((level) => (
+            <div
+              key={level}
+              role="columnheader"
+              className={cn(
+                'bg-ops-red',
+                'border-r border-white/20 px-3 py-2 last:border-r-0',
+                'font-heading text-[11px] font-semibold tracking-widest text-white uppercase',
+              )}
+            >
+              {PROFICIENCY_LABELS[level]}
+            </div>
+          ))}
         </div>
+      </div>
 
-        {/* Data rowgroup */}
-        <div role="rowgroup" className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-100 bg-white')}>
-          {children}
-        </div>
+      {/* Data rowgroup — no horizontal scroll wrapper. The grid columns
+          are responsive (Component fixed, four flexible proficiency
+          cols). On very narrow viewports the cells just get cramped
+          rather than triggering an inner scrollbar. */}
+      <div
+        role="rowgroup"
+        className="divide-y divide-gray-100 overflow-hidden rounded-b-lg bg-white"
+      >
+        {children}
       </div>
     </section>
   );

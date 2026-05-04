@@ -15,7 +15,7 @@ export function AdminPlaceholder({
   children?: ReactNode;
 }) {
   return (
-    <div>
+    <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
       <h1 className="mb-2 text-3xl font-bold">{title}</h1>
       <div className="border-primary bg-accent text-accent-foreground rounded-md border-l-4 p-4">
         <p className="text-sm">
