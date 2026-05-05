@@ -144,7 +144,7 @@ describe('<RubricGrid> view mode', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('does not render the notes strip toggle in view mode', () => {
+  it('does not render the notes or evidence chips in view mode', () => {
     render(
       <RubricGrid
         rubric={makeRubric()}
@@ -156,8 +156,8 @@ describe('<RubricGrid> view mode', () => {
         storageScope="test-view"
       />,
     );
-    expect(screen.queryByRole('button', { name: /add notes/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /view notes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Notes/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Evidence/ })).not.toBeInTheDocument();
   });
 });
 
@@ -237,13 +237,13 @@ describe('<RubricGrid> edit mode', () => {
     await userEvent.click(cell);
     expect(onProficiency).not.toHaveBeenCalled();
 
-    // Expand the look-fors strip; checkboxes should be disabled.
-    await userEvent.click(screen.getByRole('button', { name: /look-fors \(2\)/i }));
+    // Open the look-fors panel; checkboxes should be disabled.
+    await userEvent.click(screen.getByRole('button', { name: /Look-fors/ }));
     const checkbox = screen.getByRole('checkbox', { name: 'Look-for one' });
     expect(checkbox).toBeDisabled();
   });
 
-  it('look-fors strip toggles open and checkbox click syncs state', async () => {
+  it('look-fors chip toggles the panel and checkbox click syncs state', async () => {
     const onToggleLookFor = vi.fn();
     render(
       <RubricGrid
@@ -252,26 +252,26 @@ describe('<RubricGrid> edit mode', () => {
         storageScope="test-edit-lf"
       />,
     );
-    // Strip starts collapsed.
+    // Panel starts closed.
     expect(screen.queryByRole('checkbox', { name: 'Look-for one' })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /look-fors \(2\)/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Look-fors/ }));
     const checkbox = screen.getByRole('checkbox', { name: 'Look-for one' });
     await userEvent.click(checkbox);
     expect(onToggleLookFor).toHaveBeenCalledWith('1a', 'lf1');
   });
 
-  it('lazy-mounts Tiptap only when notes strip is expanded', async () => {
+  it('lazy-mounts Tiptap only when the notes panel is opened', async () => {
     render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-notes" />);
-    // Pre-expand: no contenteditable in the document.
+    // Pre-open: no contenteditable in the document.
     expect(document.querySelector('[contenteditable]')).toBeNull();
 
-    const [firstAddNotes] = screen.getAllByRole('button', { name: /add notes/i });
-    if (!firstAddNotes) throw new Error('expected an Add notes button');
-    await userEvent.click(firstAddNotes);
+    const [firstNotesChip] = screen.getAllByRole('button', { name: /^Notes$/ });
+    if (!firstNotesChip) throw new Error('expected a Notes chip button');
+    await userEvent.click(firstNotesChip);
     expect(document.querySelector('[contenteditable]')).not.toBeNull();
   });
 
-  it('auto-expands the notes strip when the component already has note content', () => {
+  it('does NOT auto-open the notes panel even when the component has notes', () => {
     const notesDoc: TiptapDoc = {
       type: 'doc',
       content: [
@@ -288,22 +288,7 @@ describe('<RubricGrid> edit mode', () => {
         storageScope="test-edit-auto-notes"
       />,
     );
-    // Auto-expanded → Tiptap mounted.
-    expect(document.querySelector('[contenteditable]')).not.toBeNull();
-  });
-
-  it('does NOT auto-expand the notes strip for an empty paragraph doc', () => {
-    const blankDoc: TiptapDoc = {
-      type: 'doc',
-      content: [{ type: 'paragraph' }],
-    };
-    render(
-      <RubricGrid
-        rubric={makeRubric()}
-        mode={editMode({ notes: { '1a': blankDoc } })}
-        storageScope="test-edit-blank-notes"
-      />,
-    );
+    // Panel stays closed; the user clicks the chip to view existing notes.
     expect(document.querySelector('[contenteditable]')).toBeNull();
   });
 

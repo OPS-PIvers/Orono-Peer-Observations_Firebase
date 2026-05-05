@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronRight, Paperclip } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, FileText, Lightbulb, Paperclip } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
   PROFICIENCY_LEVELS,
@@ -40,44 +40,38 @@ export interface RubricRowProps {
   storageScope: string;
 }
 
+type ActivePanel = null | 'lookfors' | 'notes' | 'evidence';
+
 /**
- * One rubric component rendered as a matrix row plus collapsible
- * look-fors and (in edit mode) notes strips below it.
- *
- * In `view` mode the descriptor cells are read-only; an assignment chip
- * distinguishes assigned components. In `edit` mode cells are clickable
- * and a notes editor lazy-mounts only when the strip is expanded.
+ * One rubric component rendered as a matrix row. Look-fors, notes, and
+ * evidence chips live at the bottom of the dark left cell so the grid
+ * itself stays cohesive — clicking a chip drops a single combined panel
+ * below the row, spanning all five columns. Only one panel can be open
+ * at a time per row; clicking the active chip closes it.
  */
 export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
   const readOnly = mode.kind !== 'edit' || mode.readOnly;
+  const isEdit = mode.kind === 'edit';
 
-  const lookForsKey = `rubric-lookfors:${storageScope}:${component.id}`;
-  const [lookForsExpanded, setLookForsExpanded] = useSessionStorageBoolean(lookForsKey, false);
-
-  const notesHasContent = useMemo(() => hasTiptapContent(notesDoc), [notesDoc]);
-  const [notesExpanded, setNotesExpanded] = useState(notesHasContent);
-  const notesAutoExpandedRef = useRef(false);
-  useEffect(() => {
-    if (!notesAutoExpandedRef.current && notesHasContent) {
-      notesAutoExpandedRef.current = true;
-      setNotesExpanded(true);
-    }
-  }, [notesHasContent]);
-
-  // Evidence strip state (edit mode only)
   const evidenceFiles: DriveFileRef[] =
     mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
-  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
+  const notesHasContent = hasTiptapContent(notesDoc);
+  const selectedLookForCount = mode.kind === 'edit' ? entry.selectedLookForIds.length : 0;
+
+  const [active, setActive] = useState<ActivePanel>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const togglePanel = (panel: NonNullable<ActivePanel>) => {
+    setActive((prev) => (prev === panel ? null : panel));
+  };
+
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || mode.kind !== 'edit') return;
-    // Reset so the same file can be selected again
     e.target.value = '';
 
     if (file.size > 20 * 1024 * 1024) {
@@ -96,7 +90,6 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
         mimeType: file.type || 'application/octet-stream',
         base64Data,
       });
-      // Firestore listener in ObservationEditorPage will update evidenceLinks automatically
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -122,19 +115,23 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
     mode.onNotesChange(component.id, doc);
   }
 
+  const panelId = `panel-${storageScope}-${component.id}`;
+  const showLookForsChip = component.lookFors.length > 0;
+  const showNotesChip = isEdit;
+  const showEvidenceChip = isEdit;
+
   return (
     <div>
-      {/* Grid row */}
       <div
         className={cn('grid items-stretch', RUBRIC_GRID_COLS)}
         role="row"
         data-component-row={component.id}
       >
-        {/* Component label cell */}
+        {/* Component label cell (dark) — id, title, Assigned (view), chip strip. */}
         <div
           role="rowheader"
           aria-label={component.title}
-          className="bg-ops-blue-dark flex flex-col justify-between gap-2 px-3 py-3"
+          className="bg-ops-blue-dark flex flex-col gap-2 px-3 py-3"
         >
           <div>
             <span className="font-mono text-[11px] font-semibold text-white/50">
@@ -143,13 +140,49 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
             <p className="mt-1 text-sm leading-snug font-semibold text-white">{component.title}</p>
           </div>
 
-          {/* "Assigned" text label (view mode, assigned only) */}
-          {mode.kind === 'view' && isAssigned && (
-            <span className="text-ops-red-light inline-flex items-center gap-1 text-[10px] font-medium uppercase">
-              <Check className="h-3 w-3" aria-hidden="true" />
-              Assigned
-            </span>
-          )}
+          {/* Pushes Assigned + chips to the bottom of the cell. */}
+          <div className="mt-auto flex flex-col gap-1.5">
+            {mode.kind === 'view' && isAssigned && (
+              <span className="text-ops-red-light inline-flex items-center gap-1 text-[10px] font-medium uppercase">
+                <Check className="h-3 w-3" aria-hidden="true" />
+                Assigned
+              </span>
+            )}
+
+            <div className="flex flex-wrap items-center gap-1">
+              {showLookForsChip && (
+                <CellChip
+                  active={active === 'lookfors'}
+                  onClick={() => togglePanel('lookfors')}
+                  icon={<Lightbulb className="h-3 w-3" />}
+                  label="Look-fors"
+                  count={component.lookFors.length}
+                  {...(selectedLookForCount > 0 ? { badge: selectedLookForCount } : {})}
+                  ariaControls={panelId}
+                />
+              )}
+              {showNotesChip && (
+                <CellChip
+                  active={active === 'notes'}
+                  onClick={() => togglePanel('notes')}
+                  icon={<FileText className="h-3 w-3" />}
+                  label="Notes"
+                  hasContent={notesHasContent}
+                  ariaControls={panelId}
+                />
+              )}
+              {showEvidenceChip && (
+                <CellChip
+                  active={active === 'evidence'}
+                  onClick={() => togglePanel('evidence')}
+                  icon={<Paperclip className="h-3 w-3" />}
+                  label="Evidence"
+                  {...(evidenceFiles.length > 0 ? { count: evidenceFiles.length } : {})}
+                  ariaControls={panelId}
+                />
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Four descriptor cells */}
@@ -170,92 +203,20 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
         })}
       </div>
 
-      {/* Look-fors + notes control strip */}
-      <div className="border-border bg-ops-blue-dark/5 border-t px-3 py-2">
-        <div className="flex flex-wrap items-center gap-3">
-          {component.lookFors.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setLookForsExpanded((v) => !v)}
-              aria-expanded={lookForsExpanded}
-              aria-controls={`lookfors-${storageScope}-${component.id}`}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                lookForsExpanded
-                  ? 'bg-ops-blue text-white'
-                  : 'bg-ops-blue/10 text-ops-blue hover:bg-ops-blue/20',
-              )}
-            >
-              <ChevronRight
-                className={cn('h-3.5 w-3.5 transition-transform', lookForsExpanded && 'rotate-90')}
-              />
-              Look-fors ({component.lookFors.length})
-              {mode.kind === 'edit' && entry.selectedLookForIds.length > 0 ? (
-                <span
-                  className={cn(
-                    'inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold',
-                    lookForsExpanded ? 'bg-white/20 text-white' : 'bg-ops-blue text-white',
-                  )}
-                >
-                  {entry.selectedLookForIds.length}
-                </span>
-              ) : null}
-            </button>
+      {/* Single combined drop-down panel — only one section visible at a
+          time so adjacent rows stay flush when nothing is open. */}
+      {active !== null ? (
+        <div id={panelId} className="bg-ops-blue-lighter/15 border-t border-gray-200 px-4 py-3">
+          {active === 'lookfors' ? (
+            <LookForsPanel
+              component={component}
+              selectedIds={mode.kind === 'edit' ? entry.selectedLookForIds : []}
+              readOnly={readOnly}
+              onToggle={handleToggleLookFor}
+            />
           ) : null}
 
-          {mode.kind === 'edit' ? (
-            <button
-              type="button"
-              onClick={() => setNotesExpanded((v) => !v)}
-              aria-expanded={notesExpanded}
-              aria-controls={`notes-${storageScope}-${component.id}`}
-              className="text-ops-gray-light hover:text-ops-gray-dark ml-auto inline-flex items-center gap-1 text-xs font-medium"
-            >
-              {notesExpanded ? 'Hide notes' : notesHasContent ? 'View notes' : 'Add notes'}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Look-fors panel */}
-        {component.lookFors.length > 0 && lookForsExpanded ? (
-          <div
-            id={`lookfors-${storageScope}-${component.id}`}
-            className="bg-ops-blue-lighter/40 mt-2 grid grid-cols-1 gap-1.5 p-3 sm:grid-cols-2"
-          >
-            {component.lookFors.map((lf) => {
-              const checked = mode.kind === 'edit' && entry.selectedLookForIds.includes(lf.id);
-              return (
-                <label
-                  key={lf.id}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm transition-colors',
-                    checked
-                      ? 'border-ops-blue bg-ops-blue/5 text-ops-blue-dark'
-                      : 'hover:border-ops-blue/40 hover:bg-ops-blue/5 border-gray-200 text-gray-700',
-                    readOnly && 'cursor-default',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={readOnly}
-                    onChange={() => handleToggleLookFor(lf.id)}
-                    className="accent-ops-blue mt-0.5 h-4 w-4"
-                    aria-label={lf.text}
-                  />
-                  <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
-                </label>
-              );
-            })}
-          </div>
-        ) : null}
-
-        {/* Notes panel */}
-        {mode.kind === 'edit' && notesExpanded ? (
-          <div
-            id={`notes-${storageScope}-${component.id}`}
-            className="border-l-ops-blue mt-2 border-l-4 bg-gray-50 px-4 py-3"
-          >
+          {active === 'notes' ? (
             <TiptapEditor
               value={notesDoc}
               onChange={handleNotesChange}
@@ -264,74 +225,178 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
               variant="full"
               minHeight="8rem"
             />
-          </div>
-        ) : null}
-      </div>
+          ) : null}
 
-      {/* Evidence strip (edit mode only) */}
-      {mode.kind === 'edit' ? (
-        <div className="border-border border-t">
-          {/* Evidence strip header */}
-          <div
-            className={cn(
-              'flex w-full items-center gap-2 px-4 py-2 text-xs transition-colors',
-              evidenceExpanded
-                ? 'bg-ops-blue-lighter/40 text-ops-gray-dark'
-                : 'text-ops-gray hover:bg-ops-blue-lighter/40 bg-gray-50',
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => setEvidenceExpanded((v) => !v)}
-              aria-expanded={evidenceExpanded}
-              className="flex flex-1 items-center gap-2 text-left"
-            >
-              <Paperclip className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-medium">
-                Evidence{evidenceFiles.length > 0 ? ` (${String(evidenceFiles.length)})` : ''}
-              </span>
-            </button>
-            {!readOnly ? (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-ops-blue hover:bg-ops-blue-dark ml-auto rounded px-2 py-0.5 text-white"
-                disabled={uploading}
-              >
-                {uploading ? 'Uploading…' : '+ Add'}
-              </button>
-            ) : null}
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="*/*"
-            className="hidden"
-            onChange={(e) => void handleFileSelect(e)}
-          />
-
-          {evidenceExpanded ? (
-            <div className="bg-gray-50 px-4 py-3">
-              {uploadError ? <p className="text-ops-red mb-2 text-xs">{uploadError}</p> : null}
-              {uploading ? (
-                <div className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-500">
-                  <span className="animate-pulse">Uploading…</span>
-                </div>
-              ) : null}
-              {evidenceFiles.length === 0 && !uploading ? (
-                <p className="text-xs text-gray-400 italic">No evidence attached yet.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {evidenceFiles.map((ref) => (
-                    <EvidenceChip key={ref.driveFileId} fileRef={ref} />
-                  ))}
-                </div>
-              )}
-            </div>
+          {active === 'evidence' && isEdit ? (
+            <EvidencePanel
+              files={evidenceFiles}
+              uploading={uploading}
+              uploadError={uploadError}
+              onPickFile={() => fileInputRef.current?.click()}
+              readOnly={readOnly}
+            />
           ) : null}
         </div>
       ) : null}
+
+      {/* Hidden file input persists across panel toggles so an in-flight
+          upload survives closing the panel. */}
+      {isEdit ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="*/*"
+          className="hidden"
+          onChange={(e) => void handleFileSelect(e)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ─── CellChip ─────────────────────────────────────────────────────────────────
+
+function CellChip({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+  badge,
+  hasContent,
+  ariaControls,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count?: number;
+  badge?: number;
+  hasContent?: boolean;
+  ariaControls?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-controls={ariaControls}
+      aria-expanded={active}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors',
+        active
+          ? 'text-ops-blue-dark bg-white shadow-sm'
+          : 'bg-white/10 text-white/85 hover:bg-white/20 hover:text-white',
+      )}
+    >
+      <span aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+      {count !== undefined ? (
+        <span className={cn('text-[10px]', active ? 'text-ops-blue-dark/60' : 'opacity-70')}>
+          {count}
+        </span>
+      ) : null}
+      {badge !== undefined ? (
+        <span
+          className={cn(
+            'ml-0.5 inline-flex min-w-[14px] items-center justify-center rounded-full px-1 text-[10px] font-semibold',
+            active ? 'bg-ops-red text-white' : 'bg-ops-red text-white',
+          )}
+          aria-label={`${String(badge)} selected`}
+        >
+          {badge}
+        </span>
+      ) : null}
+      {hasContent && badge === undefined ? (
+        <span
+          className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-ops-red' : 'bg-ops-red-light')}
+          aria-label="Has content"
+        />
+      ) : null}
+    </button>
+  );
+}
+
+// ─── LookForsPanel ────────────────────────────────────────────────────────────
+
+function LookForsPanel({
+  component,
+  selectedIds,
+  readOnly,
+  onToggle,
+}: {
+  component: RubricComponent;
+  selectedIds: string[];
+  readOnly: boolean;
+  onToggle: (lookForId: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+      {component.lookFors.map((lf) => {
+        const checked = selectedIds.includes(lf.id);
+        return (
+          <label
+            key={lf.id}
+            className={cn(
+              'flex items-start gap-2 rounded-md border p-2 text-sm transition-colors',
+              readOnly ? 'cursor-default' : 'cursor-pointer',
+              checked
+                ? 'border-ops-blue bg-ops-blue/5 text-ops-blue-dark'
+                : 'hover:border-ops-blue/40 hover:bg-ops-blue/5 border-gray-200 bg-white text-gray-700',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={readOnly}
+              onChange={() => onToggle(lf.id)}
+              className="accent-ops-blue mt-0.5 h-4 w-4"
+              aria-label={lf.text}
+            />
+            <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── EvidencePanel ────────────────────────────────────────────────────────────
+
+function EvidencePanel({
+  files,
+  uploading,
+  uploadError,
+  onPickFile,
+  readOnly,
+}: {
+  files: DriveFileRef[];
+  uploading: boolean;
+  uploadError: string | null;
+  onPickFile: () => void;
+  readOnly: boolean;
+}) {
+  return (
+    <div>
+      {uploadError ? <p className="text-ops-red mb-2 text-xs">{uploadError}</p> : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {files.map((ref) => (
+          <EvidenceChip key={ref.driveFileId} fileRef={ref} />
+        ))}
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={onPickFile}
+            disabled={uploading}
+            className="bg-ops-blue hover:bg-ops-blue-dark inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
+          >
+            {uploading ? 'Uploading…' : '+ Add file'}
+          </button>
+        ) : null}
+        {files.length === 0 && !uploading && readOnly ? (
+          <p className="text-xs text-gray-400 italic">No evidence attached.</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -425,36 +490,6 @@ function CellBody({ text }: { text: string }) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function useSessionStorageBoolean(
-  key: string,
-  initial: boolean,
-): [boolean, (next: boolean | ((prev: boolean) => boolean)) => void] {
-  const [value, setValue] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return initial;
-    try {
-      const raw = window.sessionStorage.getItem(key);
-      if (raw === null) return initial;
-      return raw === '1';
-    } catch {
-      return initial;
-    }
-  });
-
-  const update = (next: boolean | ((prev: boolean) => boolean)) => {
-    setValue((prev) => {
-      const resolved = typeof next === 'function' ? next(prev) : next;
-      try {
-        window.sessionStorage.setItem(key, resolved ? '1' : '0');
-      } catch {
-        // sessionStorage may be unavailable (private mode); UI still works.
-      }
-      return resolved;
-    });
-  };
-
-  return [value, update];
-}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
