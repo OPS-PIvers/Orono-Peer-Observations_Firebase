@@ -191,18 +191,32 @@ async function uploadToGeminiFiles(
 }
 
 /**
+ * Extracts the bare file name (e.g. "abc123") from a Gemini Files URI,
+ * which can be either "files/abc123" or a full "https://.../files/abc123" form.
+ */
+function geminiFileName(fileUri: string): string {
+  if (fileUri.startsWith('https://')) {
+    const tail = fileUri.split('/files/')[1];
+    if (!tail) throw new Error(`Unrecognized Gemini file URI: ${fileUri}`);
+    return tail;
+  }
+  return fileUri.replace(/^files\//, '');
+}
+
+/**
  * Polls the Gemini Files API until the file state is ACTIVE.
  * New uploads start as PROCESSING; FAILED is terminal.
+ *
+ * Default budget: 100 × 3s = 5 minutes. The Cloud Function has a 9-minute
+ * timeout, so this leaves headroom for the actual transcription call.
  */
 async function waitForGeminiFileActive(
   fileUri: string,
   apiKey: string,
-  maxAttempts = 20,
+  maxAttempts = 100,
   delayMs = 3000,
 ): Promise<void> {
-  const fileName = fileUri.startsWith('https://')
-    ? fileUri.split('/files/')[1]
-    : fileUri.replace(/^files\//, '');
+  const fileName = geminiFileName(fileUri);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await fetch(
@@ -262,15 +276,21 @@ async function transcribeWithGeminiFileUri(
 /**
  * Deletes a file from Gemini Files API storage.
  * Called in finally to avoid accumulating temp files in the project quota.
+ *
+ * 404 is treated as success (file already gone). Other non-OK responses throw
+ * so the caller's `.catch` can log a warning.
  */
 async function deleteGeminiFile(fileUri: string, apiKey: string): Promise<void> {
-  const fileName = fileUri.startsWith('https://')
-    ? fileUri.split('/files/')[1]
-    : fileUri.replace(/^files\//, '');
+  const fileName = geminiFileName(fileUri);
 
-  await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'DELETE',
-  });
+  const res = await fetch(
+    `${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Gemini Files delete failed ${String(res.status)}: ${text.slice(0, 200)}`);
+  }
 }
 
 interface GeminiResponse {
