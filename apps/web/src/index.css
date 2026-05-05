@@ -188,3 +188,15 @@
 [data-pulse] {
   animation: ops-pulse-ring 600ms ease-out;
 }
+
+/* Indeterminate top-of-content progress bar (TopLoadingBar.tsx). Shown
+   only when a lazy chunk takes longer than ~150ms, so brief navigations
+   feel instant. */
+@keyframes ops-topbar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}

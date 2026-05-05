@@ -20,6 +20,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { prefetch as prefetchRoute, PREFETCH_BY_PATH } from '@/lazyRoutes';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAV } from '@/admin/adminNav';
 
@@ -204,6 +205,24 @@ function isExactChildActive(
   return hrefSearch === locSearch;
 }
 
+/**
+ * Hover/focus/touch handlers that kick off the lazy-route chunk for the
+ * given href before the user clicks. Vite caches the dynamic-import
+ * promise, so calling these multiple times costs nothing.
+ *
+ * Returns an empty object when no route matches the href (e.g. external
+ * links, hash-only links, action items) so callers can spread the result
+ * unconditionally.
+ */
+function prefetchHandlersFor(href: string | undefined) {
+  if (!href) return {};
+  const path = (href.split('#')[0] ?? '').split('?')[0] ?? '';
+  const name = PREFETCH_BY_PATH[path];
+  if (!name) return {};
+  const fire = () => prefetchRoute(name);
+  return { onMouseEnter: fire, onFocus: fire, onTouchStart: fire };
+}
+
 // ─── AppSidebar component ────────────────────────────────────────────────────
 
 interface AppSidebarProps {
@@ -361,6 +380,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
               <button
                 type="button"
                 onClick={() => void navigate('/my-rubric')}
+                {...prefetchHandlersFor('/my-rubric')}
                 className={cn(
                   'mb-1 flex w-full items-center rounded-md py-2 text-sm transition-colors',
                   'text-white/70 hover:bg-white/10 hover:text-white',
@@ -377,6 +397,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
                     <NavLink
                       to={to}
                       end
+                      {...prefetchHandlersFor(to)}
                       className={({ isActive }) =>
                         cn(
                           'flex w-full items-center rounded-md py-2 text-sm transition-colors',
@@ -467,6 +488,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
             if (item.href) void navigate(item.href);
             onToggleSection(item.label);
           }}
+          {...prefetchHandlersFor(item.href)}
           aria-expanded={sectionOpen}
           className={cn(baseItemCls, sectionOpen && 'text-white')}
         >
@@ -490,6 +512,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
                 <li key={child.href}>
                   <Link
                     to={child.href}
+                    {...prefetchHandlersFor(child.href)}
                     className={cn(
                       'block rounded-md py-1.5 pr-2 pl-3 text-sm transition-colors',
                       childActive
@@ -520,7 +543,11 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
   if (!item.href) return null;
 
   return (
-    <Link to={item.href} className={cn(baseItemCls, isActive && 'bg-white/15 text-white')}>
+    <Link
+      to={item.href}
+      {...prefetchHandlersFor(item.href)}
+      className={cn(baseItemCls, isActive && 'bg-white/15 text-white')}
+    >
       <item.icon className="h-5 w-5 shrink-0" />
       {showLabels && <span>{item.label}</span>}
     </Link>

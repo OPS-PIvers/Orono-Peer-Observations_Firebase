@@ -1,12 +1,11 @@
-import { Component, lazy, Suspense, type ReactNode } from 'react';
+import { Component, lazy, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
 import { DevModeProvider } from '@/dev/DevModeContext';
-import { ObservationsListPage } from '@/observations/ObservationsListPage';
-import { MyRubricPage } from '@/routes/MyRubricPage';
+import * as L from '@/lazyRoutes';
 import { NotFound } from '@/routes/NotFound';
 import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
 import { Unauthorized } from '@/routes/Unauthorized';
@@ -18,75 +17,6 @@ const DevSignIn =
   import.meta.env.MODE === 'development'
     ? lazy(() => import('@/auth/DevSignIn').then((m) => ({ default: m.DevSignIn })))
     : null;
-
-// Code-split heavy routes. Admin pages and the observation editor pull
-// in Tiptap, the audio recorder, and the rubric editor surface — all
-// pages a typical user opens at most a few times per session, well
-// outside the critical sign-in / list path.
-const AdminLayout = lazy(() =>
-  import('@/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })),
-);
-const AuditLogPage = lazy(() =>
-  import('@/admin/audit-log/AuditLogPage').then((m) => ({ default: m.AuditLogPage })),
-);
-const BrandingPage = lazy(() =>
-  import('@/admin/branding/BrandingPage').then((m) => ({ default: m.BrandingPage })),
-);
-const RolesPage = lazy(() =>
-  import('@/admin/roles/RolesPage').then((m) => ({ default: m.RolesPage })),
-);
-const BuildingsPage = lazy(() =>
-  import('@/admin/buildings/BuildingsPage').then((m) => ({ default: m.BuildingsPage })),
-);
-const RoleYearMappingsPage = lazy(() =>
-  import('@/admin/role-year-mappings/RoleYearMappingsPage').then((m) => ({
-    default: m.RoleYearMappingsPage,
-  })),
-);
-const RubricEditorPage = lazy(() =>
-  import('@/admin/rubrics/RubricEditorPage').then((m) => ({ default: m.RubricEditorPage })),
-);
-const RubricsListPage = lazy(() =>
-  import('@/admin/rubrics/RubricsListPage').then((m) => ({ default: m.RubricsListPage })),
-);
-const SettingsPage = lazy(() =>
-  import('@/admin/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
-);
-const StaffPage = lazy(() =>
-  import('@/admin/staff/StaffPage').then((m) => ({ default: m.StaffPage })),
-);
-const WorkProductPage = lazy(() =>
-  import('@/admin/work-product/WorkProductPage').then((m) => ({ default: m.WorkProductPage })),
-);
-const EmailTemplatesPage = lazy(() =>
-  import('@/admin/email-templates/EmailTemplatesPage').then((m) => ({
-    default: m.EmailTemplatesPage,
-  })),
-);
-const NewObservationPage = lazy(() =>
-  import('@/observations/NewObservationPage').then((m) => ({ default: m.NewObservationPage })),
-);
-const ObservationEditorPage = lazy(() =>
-  import('@/observations/ObservationEditorPage').then((m) => ({
-    default: m.ObservationEditorPage,
-  })),
-);
-const StaffDirectoryPage = lazy(() =>
-  import('@/routes/StaffDirectoryPage').then((m) => ({ default: m.StaffDirectoryPage })),
-);
-const StaffPersonPage = lazy(() =>
-  import('@/routes/StaffPersonPage').then((m) => ({ default: m.StaffPersonPage })),
-);
-const MyStaffPage = lazy(() =>
-  import('@/routes/MyStaffPage').then((m) => ({ default: m.MyStaffPage })),
-);
-const ProfilePage = lazy(() =>
-  import('@/routes/ProfilePage').then((m) => ({ default: m.ProfilePage })),
-);
-
-function RouteFallback() {
-  return <p className="text-muted-foreground py-12 text-center text-sm">Loading…</p>;
-}
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -120,7 +50,24 @@ function KeyedErrorBoundary({ children }: { children: ReactNode }) {
 // subscription (keyed on constraint types, not values) is always fresh.
 function KeyedStaffPersonPage() {
   const { email } = useParams<{ email: string }>();
-  return <StaffPersonPage key={email} />;
+  return <L.StaffPersonPage key={email} />;
+}
+
+// Layout route: RequireAuth runs once, Layout mounts once and persists
+// across child navigations via <Outlet />. The Suspense boundary lives
+// inside Layout (around <Outlet />), so when a lazy child page chunk is
+// loading, only the main content area suspends — the sidebar and header
+// stay on screen.
+interface ShellProps {
+  requireAdmin?: boolean;
+  requireSpecialAccess?: boolean;
+}
+function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: ShellProps) {
+  return (
+    <RequireAuth requireAdmin={requireAdmin} requireSpecialAccess={requireSpecialAccess}>
+      <Layout />
+    </RequireAuth>
+  );
 }
 
 export function App() {
@@ -128,147 +75,50 @@ export function App() {
     <AuthProvider>
       <DevModeProvider>
         <KeyedErrorBoundary>
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              {/* Public */}
-              <Route path="/sign-in" element={<SignInScreen />} />
-              {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
+          <Routes>
+            {/* Public */}
+            <Route path="/sign-in" element={<SignInScreen />} />
+            {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
+            <Route path="/dashboard" element={<Navigate to="/" replace />} />
 
-              {/* Authenticated routes wrapped in Layout */}
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <RoleAwareRedirect />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              {/* /dashboard kept for bookmarks; redirects through "/" so RoleAwareRedirect applies */}
-              <Route path="/dashboard" element={<Navigate to="/" replace />} />
-              <Route
-                path="/observations"
-                element={
-                  <RequireAuth requireSpecialAccess>
-                    <Layout>
-                      <ObservationsListPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/observations/new"
-                element={
-                  <RequireAuth requireSpecialAccess>
-                    <Layout>
-                      <NewObservationPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/observations/:observationId"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <ObservationEditorPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              {/* Staff directory — PE and Full Access */}
-              <Route
-                path="/staff"
-                element={
-                  <RequireAuth requireSpecialAccess>
-                    <Layout>
-                      <StaffDirectoryPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              {/* Per-person observation hub */}
-              <Route
-                path="/staff/:email"
-                element={
-                  <RequireAuth requireSpecialAccess>
-                    <Layout>
-                      <KeyedStaffPersonPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              {/* Admin building-scoped staff list */}
-              <Route
-                path="/my-staff"
-                element={
-                  <RequireAuth requireSpecialAccess>
-                    <Layout>
-                      <MyStaffPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/my-rubric"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <MyRubricPage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <ProfilePage />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/unauthorized"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Unauthorized />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
+            {/* Authenticated routes (no special access required) */}
+            <Route element={<StandardShell />}>
+              <Route path="/" element={<RoleAwareRedirect />} />
+              <Route path="/my-rubric" element={<L.MyRubricPage />} />
+              <Route path="/profile" element={<L.ProfilePage />} />
+              <Route path="/unauthorized" element={<Unauthorized />} />
+              <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
+            </Route>
 
-              {/* Admin section (gated to Administrator + Full Access) */}
-              <Route
-                path="/admin"
-                element={
-                  <RequireAuth requireAdmin>
-                    <Layout>
-                      <AdminLayout />
-                    </Layout>
-                  </RequireAuth>
-                }
-              >
+            {/* Special access (PE + Full Access) */}
+            <Route element={<StandardShell requireSpecialAccess />}>
+              <Route path="/observations" element={<L.ObservationsListPage />} />
+              <Route path="/observations/new" element={<L.NewObservationPage />} />
+              <Route path="/staff" element={<L.StaffDirectoryPage />} />
+              <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
+              <Route path="/my-staff" element={<L.MyStaffPage />} />
+            </Route>
+
+            {/* Admin section (gated to Administrator + Full Access) */}
+            <Route element={<StandardShell requireAdmin />}>
+              <Route path="/admin" element={<L.AdminLayout />}>
                 <Route index element={<Navigate to="staff" replace />} />
-                <Route path="staff" element={<StaffPage />} />
-                <Route path="roles" element={<RolesPage />} />
-                <Route path="buildings" element={<BuildingsPage />} />
-                <Route path="rubrics" element={<RubricsListPage />} />
-                <Route path="rubrics/:rubricId" element={<RubricEditorPage />} />
-                <Route path="role-year-mappings" element={<RoleYearMappingsPage />} />
-                <Route path="work-product" element={<WorkProductPage />} />
-                <Route path="email-templates" element={<EmailTemplatesPage />} />
-                <Route path="branding" element={<BrandingPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route path="audit-log" element={<AuditLogPage />} />
+                <Route path="staff" element={<L.StaffPage />} />
+                <Route path="roles" element={<L.RolesPage />} />
+                <Route path="buildings" element={<L.BuildingsPage />} />
+                <Route path="rubrics" element={<L.RubricsListPage />} />
+                <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
+                <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />
+                <Route path="work-product" element={<L.WorkProductPage />} />
+                <Route path="email-templates" element={<L.EmailTemplatesPage />} />
+                <Route path="branding" element={<L.BrandingPage />} />
+                <Route path="settings" element={<L.SettingsPage />} />
+                <Route path="audit-log" element={<L.AuditLogPage />} />
               </Route>
+            </Route>
 
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
         </KeyedErrorBoundary>
       </DevModeProvider>
     </AuthProvider>
