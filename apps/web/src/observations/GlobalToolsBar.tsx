@@ -134,6 +134,13 @@ export function GlobalToolsBar({
   );
 }
 
+// Wait this long before swapping the indicator to "Saving…". Fast writes
+// (the common case on a healthy connection) finish well before this and
+// never flash the spinner — the label stays on "All changes saved", which
+// avoids the jittery saved/saving cycling that happens with per-keystroke
+// autosave.
+const SAVING_LABEL_DELAY_MS = 600;
+
 export function SaveStatusIndicator({
   state,
   error,
@@ -141,18 +148,37 @@ export function SaveStatusIndicator({
   state: 'idle' | 'saving' | 'saved' | 'error';
   error: string | null;
 }) {
-  if (state === 'saving') {
+  const [showSavingLabel, setShowSavingLabel] = useState(false);
+  const [everSaved, setEverSaved] = useState(false);
+
+  useEffect(() => {
+    if (state === 'saved') setEverSaved(true);
+  }, [state]);
+
+  useEffect(() => {
+    if (state !== 'saving') {
+      setShowSavingLabel(false);
+      return;
+    }
+    const t = setTimeout(() => setShowSavingLabel(true), SAVING_LABEL_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  if (state === 'error') {
+    return <span className="text-destructive text-xs">Save failed: {error}</span>;
+  }
+  if (state === 'saving' && showSavingLabel) {
     return (
       <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
         <Loader2 className="h-3 w-3 animate-spin" /> Saving…
       </span>
     );
   }
-  if (state === 'saved') {
+  // While 'saving' but pre-delay, keep showing the prior "saved" label so
+  // the indicator doesn't flicker between "Saved" and "Saving…" on every
+  // keystroke. Don't claim "saved" before the first successful write.
+  if (state === 'saved' || (state === 'saving' && everSaved)) {
     return <span className="text-muted-foreground text-xs">All changes saved</span>;
-  }
-  if (state === 'error') {
-    return <span className="text-destructive text-xs">Save failed: {error}</span>;
   }
   return null;
 }
