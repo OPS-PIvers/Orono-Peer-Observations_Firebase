@@ -13,6 +13,7 @@ import { COLLECTIONS, type AuditLog } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import {
   Table,
   TableBody,
@@ -106,11 +107,25 @@ export function AuditLogPage() {
           </TableHeader>
           <TableBody>
             {loading && entries.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 8 }).map((_, i) => (
+                <TableRow key={`skeleton-${String(i)}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-36" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-44" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-56" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-7 w-20" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : entries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">

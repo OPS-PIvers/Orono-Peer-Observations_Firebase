@@ -6,6 +6,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -72,11 +73,28 @@ export function RolesPage() {
           </TableHeader>
           <TableBody>
             {loading && !roles ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={`skeleton-${String(i)}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16 rounded" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-14 rounded" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-7 w-12" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : roles?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">

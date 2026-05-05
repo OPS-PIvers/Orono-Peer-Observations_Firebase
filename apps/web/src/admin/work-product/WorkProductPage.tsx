@@ -7,6 +7,7 @@ import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 
 const QUESTION_TYPES = ['work-product', 'instructional-round'] as const;
 type QuestionType = (typeof QUESTION_TYPES)[number];
@@ -119,7 +120,20 @@ export function WorkProductPage() {
       </div>
 
       {loading && !questions ? (
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <ol className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <li
+              key={`skeleton-${String(i)}`}
+              className="border-border bg-background flex items-center gap-2 rounded-md border p-3"
+            >
+              <Skeleton className="h-4 w-4" />
+              <Skeleton className="h-4 w-6" />
+              <Skeleton className="h-9 flex-1" />
+              <Skeleton className="h-7 w-32" />
+              <Skeleton className="h-4 w-16" />
+            </li>
+          ))}
+        </ol>
       ) : sorted.length === 0 ? (
         <p className="text-muted-foreground text-sm">No questions yet. Add one above.</p>
       ) : (

@@ -5,6 +5,7 @@ import { Check } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import { useDevMode } from '@/dev/DevModeContext';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -138,11 +139,31 @@ export function MyStaffPage() {
           </thead>
           <tbody>
             {loading && !allStaff ? (
-              <tr>
-                <td colSpan={6} className="text-ops-gray py-6 text-center text-sm">
-                  Loading…
-                </td>
-              </tr>
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr
+                  key={`skeleton-${String(i)}`}
+                  className={i % 2 === 0 ? 'bg-white' : 'bg-ops-gray-lightest'}
+                >
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-4 w-32" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-4 w-28" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-5 w-10 rounded" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-4 w-28" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-4 w-4" />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Skeleton className="h-7 w-20" />
+                  </td>
+                </tr>
+              ))
             ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="text-ops-gray py-6 text-center text-sm">
