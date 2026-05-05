@@ -53,9 +53,25 @@ export function DevModeBar() {
   const isOverridden = override.role !== null;
 
   return (
-    <div className="fixed top-4 right-4 z-50" ref={panelRef}>
+    <div className="relative" ref={panelRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors',
+          isOverridden
+            ? 'bg-amber-500 text-white hover:bg-amber-600'
+            : 'bg-white/10 hover:bg-white/20 text-white',
+        )}
+        title="Open dev mode"
+      >
+        <Wrench className="h-3.5 w-3.5" />
+        DEV: {shortLabel(override.role)}
+        <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+      </button>
       {open ? (
-        <div className="w-64 rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div className="absolute top-full right-0 z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-xl">
           <div className="bg-ops-blue-dark flex items-center justify-between rounded-t-lg px-3 py-2 text-white">
             <span className="font-heading flex items-center gap-1.5 text-sm font-semibold">
               <Wrench className="h-3.5 w-3.5" /> Dev Mode
@@ -128,23 +144,7 @@ export function DevModeBar() {
             ) : null}
           </div>
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg transition-colors',
-            isOverridden
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
-              : 'bg-ops-blue-dark hover:bg-ops-blue text-white',
-          )}
-          title="Open dev mode"
-        >
-          <Wrench className="h-3.5 w-3.5" />
-          DEV: {shortLabel(override.role)}
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }

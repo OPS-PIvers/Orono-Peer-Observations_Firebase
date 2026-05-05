@@ -1,0 +1,101 @@
+import { useEffect, useRef, useState } from 'react';
+import { Mic } from 'lucide-react';
+import type { Observation } from '@ops/shared';
+import { Button } from '@/components/ui/button';
+import { AudioRecorder, type Phase } from './AudioRecorder';
+
+export interface AudioPopoverButtonProps {
+  observationId: string;
+  audioFileIds: Observation['audioDriveFileIds'];
+  transcripts: Observation['transcripts'];
+  readOnly: boolean;
+}
+
+/**
+ * Mic button + always-mounted AudioRecorder popover. Extracted from
+ * `GlobalToolsBar` so it can live anywhere in the editor chrome without
+ * inheriting the toolbar's stacking context. The popover is positioned
+ * absolutely below the trigger button and uses a high z-index so it
+ * stacks above sibling sticky chrome.
+ *
+ * The recorder is always mounted (visibility toggled via `hidden`) — that
+ * keeps an in-flight `MediaRecorder` alive across open/close cycles, so
+ * closing the popover mid-record doesn't drop the audio.
+ */
+export function AudioPopoverButton({
+  observationId,
+  audioFileIds,
+  transcripts,
+  readOnly,
+}: AudioPopoverButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Click-outside / Escape close. While recording or uploading, the
+  // popover stays open so the user can hit Stop without re-opening it.
+  useEffect(() => {
+    if (!open) return;
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (phase === 'recording' || phase === 'uploading') return;
+      if (popoverRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && phase !== 'recording' && phase !== 'uploading') {
+        setOpen(false);
+      }
+    }
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [open, phase]);
+
+  return (
+    <div className="relative">
+      <Button
+        ref={triggerRef}
+        type="button"
+        variant={open ? 'default' : 'outline'}
+        size="sm"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls="audio-popover"
+        className="relative"
+      >
+        <Mic className="h-4 w-4" />
+        Audio
+        {audioFileIds.length > 0 ? (
+          <span className="ml-1 text-xs opacity-70">({audioFileIds.length})</span>
+        ) : null}
+        {phase === 'recording' ? (
+          <span
+            aria-label="Recording in progress"
+            className="bg-ops-red absolute -top-1 -right-1 inline-block h-2.5 w-2.5 animate-pulse rounded-full ring-2 ring-white"
+          />
+        ) : null}
+      </Button>
+
+      <div
+        id="audio-popover"
+        ref={popoverRef}
+        hidden={!open}
+        className="border-border bg-popover text-popover-foreground absolute top-full right-0 z-50 mt-2 w-[min(28rem,calc(100vw-2rem))] rounded-lg border p-3 shadow-lg"
+      >
+        <AudioRecorder
+          observationId={observationId}
+          audioFileIds={audioFileIds}
+          transcripts={transcripts}
+          readOnly={readOnly}
+          onPhaseChange={setPhase}
+        />
+      </div>
+    </div>
+  );
+}

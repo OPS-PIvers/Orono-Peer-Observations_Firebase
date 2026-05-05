@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -23,7 +23,6 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -34,14 +33,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
-import { RubricGrid } from '@/components/rubric';
+import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
+import { DomainNav, RubricGrid } from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { ScriptEditor } from './ScriptEditor';
-import { GlobalToolsBar } from './GlobalToolsBar';
 import { ScriptDrawer } from './ScriptDrawer';
 import { MeetingNotesSection } from './MeetingNotesSection';
 import { WorkProductResponseViewer } from './WorkProductResponseViewer';
 import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseViewer';
+import { AudioPopoverButton } from './AudioPopoverButton';
+import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -165,6 +166,10 @@ export function ObservationEditorPage() {
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
 
+  // Sticky chrome ref — `EditorChrome` consumes it via `usePublishChromeHeight`
+  // so `DomainSection.tsx`'s `top-[var(--page-chrome-h)]` resolves correctly.
+  const chromeRef = useRef<HTMLDivElement>(null);
+
   // Hydrate the local draft exactly once per observation. Subsequent
   // snapshots (including the user's own write coming back) must not touch
   // local state, or they'd overwrite keystrokes typed during the autosave
@@ -253,6 +258,7 @@ export function ObservationEditorPage() {
   const isReadOnly = observation?.status === OBSERVATION_STATUS.finalized;
   const isObserver = observation?.observerEmail === user?.email?.toLowerCase();
   const canEdit = !isReadOnly && isObserver;
+  const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
 
   const updateEntry = useCallback(
     (componentId: string, patch: Partial<ObservationComponentEntry>) => {
@@ -403,10 +409,10 @@ export function ObservationEditorPage() {
     }
   }
 
-  // Layout used to wrap routes in `mx-auto max-w-7xl px-4 py-6 md:px-6`,
-  // but that wrapper now lives inside `PageHeader`. This page renders its
-  // own custom header (no `PageHeader`), so it owns the body wrapper too.
-  const bodyWrapperCls = 'mx-auto max-w-7xl px-4 py-6 md:px-6';
+  // Body content wrapper — used by both the loading/error/not-found
+  // branches and the main return so all variants align with the chrome's
+  // inner content width.
+  const bodyWrapperCls = 'mx-auto max-w-7xl px-4 py-6 md:px-6 space-y-4';
 
   if (!observationId) {
     return (
@@ -439,141 +445,149 @@ export function ObservationEditorPage() {
     );
 
   return (
-    <div className={cn(bodyWrapperCls, 'space-y-4')}>
-      <header className="space-y-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            if (observation.observedEmail) {
-              void navigate(`/staff/${observation.observedEmail}`);
-            } else {
-              void navigate(-1);
-            }
-          }}
-          className="text-ops-blue hover:text-ops-blue-dark -ml-2 hover:underline"
-        >
-          ← Back to {observation.observedName || 'staff'}
-        </Button>
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-          <div className="min-w-0">
-            <h1 className="font-heading text-ops-blue-dark text-2xl leading-tight font-semibold">
-              {observation.observedName}
-            </h1>
-            <p className="text-ops-gray text-sm">
-              {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
-            </p>
-          </div>
-          {canEdit ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="text"
-                value={draft.observationName}
-                onChange={(e) => setObservationName(e.target.value)}
-                placeholder="Observation name (e.g. Period 3 Algebra)"
-                aria-label="Observation name"
-                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-64 rounded-md border px-3 text-sm outline-none focus:ring-1"
-              />
-              <input
-                type="date"
-                value={toDateInputValue(draft.observationDate)}
-                onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
-                aria-label="Observation date"
-                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-40 rounded-md border px-3 text-sm outline-none focus:ring-1"
-              />
+    <>
+      <div className={bodyWrapperCls}>
+        <header className="space-y-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (observation.observedEmail) {
+                void navigate(`/staff/${observation.observedEmail}`);
+              } else {
+                void navigate(-1);
+              }
+            }}
+            className="text-ops-blue hover:text-ops-blue-dark -ml-2 h-7 px-2 hover:bg-transparent hover:underline"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to {observation.observedName || 'staff'}
+          </Button>
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+            <div className="min-w-0">
+              <h1 className="font-heading text-ops-blue-dark text-2xl leading-tight font-semibold sm:text-3xl">
+                {observation.observedName}
+              </h1>
+              <p className="text-ops-gray mt-0.5 text-sm">
+                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
+              </p>
             </div>
-          ) : (
-            <p className="text-ops-gray-dark text-sm">
-              {[draft.observationName, draft.observationDate?.toLocaleDateString()]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          )}
-        </div>
-      </header>
+            {canEdit ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={draft.observationName}
+                  onChange={(e) => setObservationName(e.target.value)}
+                  placeholder="Observation name (e.g. Period 3 Algebra)"
+                  aria-label="Observation name"
+                  className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-64 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
+                />
+                <input
+                  type="date"
+                  value={toDateInputValue(draft.observationDate)}
+                  onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
+                  aria-label="Observation date"
+                  className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-40 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
+                />
+              </div>
+            ) : (
+              <p className="text-ops-gray-dark text-sm">
+                {[draft.observationName, draft.observationDate?.toLocaleDateString()]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+        </header>
+      </div>
 
-      {justFinalized ? (
-        <FinalizedBanner result={justFinalized} observedEmail={observation.observedEmail} />
-      ) : null}
-
-      <FinalizeDialog
-        open={finalizeOpen}
-        onOpenChange={(open) => {
-          if (!finalizing) setFinalizeOpen(open);
-        }}
-        observation={observation}
-        finalizing={finalizing}
-        error={finalizeError}
-        onConfirm={() => void handleFinalize()}
-      />
-
-      {!canEdit && !isReadOnly ? (
-        <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
-          You can view this observation but not edit it (you&apos;re not the observer).
-        </div>
-      ) : null}
-      {isReadOnly ? (
-        <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
-          This observation is finalized and read-only.
-        </div>
-      ) : null}
-
-      <MeetingNotesSection
-        preObsDate={draft.preObsDate}
-        preObsNotes={draft.preObsNotes}
-        postObsDate={draft.postObsDate}
-        postObsNotes={draft.postObsNotes}
-        readOnly={!canEdit}
-        onPreObsDateChange={setPreObsDate}
-        onPreObsNotesChange={setPreObsNotes}
-        onPostObsDateChange={setPostObsDate}
-        onPostObsNotesChange={setPostObsNotes}
-      />
-
-      {observation.type === OBSERVATION_TYPES.workProduct ? (
-        <WorkProductResponseViewer observation={observation} />
-      ) : null}
-
-      {observation.type === OBSERVATION_TYPES.instructionalRound ? (
-        <InstructionalRoundResponseViewer observation={observation} />
-      ) : null}
-
-      <GlobalToolsBar
+      <EditorToolbar
+        chromeRef={chromeRef}
         observation={observation}
         canEdit={canEdit}
         savingState={savingState}
         saveError={saveError}
-        onFinalize={() => setFinalizeOpen(true)}
+        showFinalize={showFinalize}
         rubric={visibleRubric}
+        onFinalize={() => setFinalizeOpen(true)}
       />
 
-      {!visibleRubric ? (
-        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
-          Couldn&apos;t find a rubric for role <strong>{observedRoleLabel}</strong>. Ask an admin to
-          verify the role and rubric setup.
-        </div>
-      ) : visibleRubric.domains.length === 0 ? (
-        <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
-          No components are assigned for this role/year combination. Ask an admin to update the
-          role/year mappings.
-        </div>
-      ) : (
-        <RubricGrid
-          rubric={visibleRubric}
-          mode={{
-            kind: 'edit',
-            entries: draft.observationData,
-            notes: draft.componentNotes,
-            evidenceLinks: observation.evidenceLinks ?? {},
-            observationId: observation.id,
-            readOnly: !canEdit,
-            onProficiency: (componentId, proficiency) => updateEntry(componentId, { proficiency }),
-            onToggleLookFor: toggleLookFor,
-            onNotesChange: setNotesDoc,
+      <div className={bodyWrapperCls}>
+        {justFinalized ? (
+          <FinalizedBanner result={justFinalized} observedEmail={observation.observedEmail} />
+        ) : null}
+
+        <FinalizeDialog
+          open={finalizeOpen}
+          onOpenChange={(open) => {
+            if (!finalizing) setFinalizeOpen(open);
           }}
-          storageScope={`edit-${observation.id}`}
+          observation={observation}
+          finalizing={finalizing}
+          error={finalizeError}
+          onConfirm={() => void handleFinalize()}
         />
-      )}
+
+        {!canEdit && !isReadOnly ? (
+          <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+            You can view this observation but not edit it (you&apos;re not the observer).
+          </div>
+        ) : null}
+        {isReadOnly ? (
+          <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+            This observation is finalized and read-only.
+          </div>
+        ) : null}
+
+        <MeetingNotesSection
+          preObsDate={draft.preObsDate}
+          preObsNotes={draft.preObsNotes}
+          postObsDate={draft.postObsDate}
+          postObsNotes={draft.postObsNotes}
+          readOnly={!canEdit}
+          onPreObsDateChange={setPreObsDate}
+          onPreObsNotesChange={setPreObsNotes}
+          onPostObsDateChange={setPostObsDate}
+          onPostObsNotesChange={setPostObsNotes}
+        />
+
+        {observation.type === OBSERVATION_TYPES.workProduct ? (
+          <WorkProductResponseViewer observation={observation} />
+        ) : null}
+
+        {observation.type === OBSERVATION_TYPES.instructionalRound ? (
+          <InstructionalRoundResponseViewer observation={observation} />
+        ) : null}
+
+        {!visibleRubric ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
+            Couldn&apos;t find a rubric for role <strong>{observedRoleLabel}</strong>. Ask an admin
+            to verify the role and rubric setup.
+          </div>
+        ) : visibleRubric.domains.length === 0 ? (
+          <div className="text-muted-foreground rounded-md border border-dashed p-8 text-center text-sm">
+            No components are assigned for this role/year combination. Ask an admin to update the
+            role/year mappings.
+          </div>
+        ) : (
+          <RubricGrid
+            rubric={visibleRubric}
+            mode={{
+              kind: 'edit',
+              entries: draft.observationData,
+              notes: draft.componentNotes,
+              evidenceLinks: observation.evidenceLinks ?? {},
+              observationId: observation.id,
+              readOnly: !canEdit,
+              onProficiency: (componentId, proficiency) =>
+                updateEntry(componentId, { proficiency }),
+              onToggleLookFor: toggleLookFor,
+              onNotesChange: setNotesDoc,
+            }}
+            storageScope={`edit-${observation.id}`}
+          />
+        )}
+      </div>
 
       <ScriptDrawer sidebarWidth={sidebarWidth}>
         <ScriptEditor
@@ -584,6 +598,83 @@ export function ObservationEditorPage() {
           placeholder="Start typing what you see and hear during the observation…"
         />
       </ScriptDrawer>
+    </>
+  );
+}
+
+interface EditorToolbarProps {
+  chromeRef: React.RefObject<HTMLDivElement | null>;
+  observation: Observation & { id: string };
+  canEdit: boolean;
+  savingState: 'idle' | 'saving' | 'saved' | 'error';
+  saveError: string | null;
+  showFinalize: boolean;
+  rubric: Rubric | null;
+  onFinalize: () => void;
+}
+
+/**
+ * Slim sticky toolbar for the observation editor. One row, never wraps:
+ * the DomainNav jump-pills scroll horizontally on the left, the action
+ * group (Audio + save status + status badge + Finalize) sits on the
+ * right. The page title and editable name/date inputs scroll with the
+ * page above this — only the controls a user actually needs while
+ * working through the rubric stay anchored.
+ *
+ * Publishes its measured height to `--page-chrome-h` so
+ * `DomainSection.tsx`'s `top-[var(--page-chrome-h)]` sticky domain
+ * titles offset cleanly below it (instead of underneath, which used to
+ * make only the proficiency-level row appear sticky).
+ */
+function EditorToolbar({
+  chromeRef,
+  observation,
+  canEdit,
+  savingState,
+  saveError,
+  showFinalize,
+  rubric,
+  onFinalize,
+}: EditorToolbarProps) {
+  usePublishChromeHeight(chromeRef);
+  const hasDomains = !!rubric && rubric.domains.length > 0;
+
+  return (
+    <div
+      ref={chromeRef}
+      className="border-ops-gray-lighter bg-ops-gray-lightest/95 supports-[backdrop-filter]:bg-ops-gray-lightest/85 sticky top-0 z-20 w-full border-y backdrop-blur"
+    >
+      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2 md:px-6">
+        <div className="-mx-1 flex min-w-0 flex-1 overflow-x-auto">
+          {hasDomains ? (
+            <div className="px-1">
+              <DomainNav rubric={rubric} />
+            </div>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {canEdit ? (
+            <AudioPopoverButton
+              observationId={observation.id}
+              audioFileIds={observation.audioDriveFileIds}
+              transcripts={observation.transcripts}
+              readOnly={!canEdit}
+            />
+          ) : null}
+          <span className="hidden md:inline-flex">
+            <SaveStatusIndicator state={savingState} error={saveError} />
+          </span>
+          <StatusBadge status={observation.status} />
+          {showFinalize ? (
+            <Button onClick={onFinalize} size="sm">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Finalize</span>
+            </Button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

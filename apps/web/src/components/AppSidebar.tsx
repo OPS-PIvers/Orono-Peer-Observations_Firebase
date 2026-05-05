@@ -11,11 +11,9 @@ import {
   FileText,
   LayoutGrid,
   LogOut,
-  Menu,
   Settings,
   User,
   Users,
-  X,
 } from 'lucide-react';
 import { COLLECTIONS, SPECIAL_ROLES, type Role, type Rubric } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -210,12 +208,11 @@ function isExactChildActive(
 
 interface AppSidebarProps {
   pcExpanded: boolean;
-  onTogglePc: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
 
-export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }: AppSidebarProps) {
+export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebarProps) {
   const { user, signOut } = useAuth();
   const claims = useEffectiveClaims();
   const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
@@ -285,19 +282,21 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* Mobile backdrop — sits below the persistent AppHeader so the
+          dimming starts where the drawer does. */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 xl:hidden"
+          className="fixed top-[52px] right-0 bottom-0 left-0 z-30 bg-black/40 xl:hidden"
           onClick={onCloseMobile}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — slides in under the AppHeader (top-[52px]) so the
+          header stays visible and interactive while the drawer is open. */}
       <nav
         className={cn(
-          'bg-ops-blue-dark fixed inset-y-0 left-0 z-50 flex flex-col text-white',
+          'bg-ops-blue-dark fixed top-[52px] bottom-0 left-0 z-40 flex flex-col text-white',
           // Subtle right drop-shadow gives the sidebar depth without the
           // hard-edge feel of a colored divider.
           'shadow-[2px_0_10px_rgba(0,0,0,0.18)]',
@@ -307,42 +306,8 @@ export function AppSidebar({ pcExpanded, onTogglePc, mobileOpen, onCloseMobile }
         )}
         aria-label="Main navigation"
       >
-        {/* Header */}
-        <div className="flex h-[52px] shrink-0 items-center border-b border-white/10 px-2">
-          <button
-            type="button"
-            onClick={onTogglePc}
-            className="hidden h-8 w-8 items-center justify-center rounded-md text-white hover:bg-white/10 xl:inline-flex"
-            aria-label={pcExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onCloseMobile}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-white hover:bg-white/10 xl:hidden"
-            aria-label="Close navigation"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          {showLabels && (
-            <>
-              <img
-                src="/brand/torch-icon.png"
-                alt=""
-                className="ml-2 h-8 w-8 shrink-0 object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-              <span className="font-heading ml-2 truncate text-sm font-semibold text-white">
-                Peer Observations
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* User identity strip */}
+        {/* User identity strip — first thing inside the sidebar now that
+            AppHeader owns the brand. */}
         {showLabels && user && (
           <div className="shrink-0 border-b border-white/10 px-3 py-2.5">
             <div className="truncate text-sm font-medium text-white">

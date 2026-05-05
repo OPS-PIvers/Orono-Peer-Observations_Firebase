@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
 import { cn } from '@/lib/utils';
 
 export interface PageHeaderProps {
@@ -49,21 +50,7 @@ export function PageHeader({
   children,
 }: PageHeaderProps) {
   const chromeRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = chromeRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const update = () => {
-      document.documentElement.style.setProperty('--page-chrome-h', `${String(el.offsetHeight)}px`);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      document.documentElement.style.removeProperty('--page-chrome-h');
-    };
-  }, []);
+  usePublishChromeHeight(chromeRef);
 
   if (variant === 'plain') {
     return (
