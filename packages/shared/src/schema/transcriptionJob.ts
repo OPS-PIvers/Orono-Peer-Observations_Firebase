@@ -29,6 +29,11 @@ export const transcriptionJob = z.object({
   /** When status === 'Completed', also populated for convenience (the
    *  authoritative copy lives on /observations/{id}.transcripts[audioFileId]). */
   transcriptPreview: z.string().nullable().default(null),
+  /** Gemini Files API URI (e.g. "files/abc123") for the temporarily uploaded
+   *  audio. Set right after upload and cleared after successful delete in the
+   *  worker's finally block. A stale non-null value on an old job indicates
+   *  the worker died before cleanup; pruneOrphanGeminiFiles reclaims it. */
+  geminiFileUri: z.string().nullable().default(null),
   createdAt: isoDate,
 });
 export type TranscriptionJob = z.infer<typeof transcriptionJob>;

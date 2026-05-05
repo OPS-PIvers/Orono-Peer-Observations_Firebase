@@ -18,6 +18,7 @@ export { uploadAudio } from './audio/uploadAudio.js';
 export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
+export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';

@@ -73,6 +73,10 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         GEMINI_API_KEY.value(),
       );
 
+      // Persist the URI so a separate sweep can clean it up if this
+      // instance dies (timeout/OOM) before the finally block runs.
+      await jobRef.update({ geminiFileUri });
+
       logger.info('onTranscriptionJobCreated: uploaded to Gemini Files API', {
         jobId: snapshot.id,
         geminiFileUri,
@@ -111,12 +115,16 @@ export const onTranscriptionJobCreated = onDocumentCreated(
       });
     } finally {
       if (geminiFileUri) {
-        await deleteGeminiFile(geminiFileUri, GEMINI_API_KEY.value()).catch((e: unknown) => {
+        try {
+          await deleteGeminiFile(geminiFileUri, GEMINI_API_KEY.value());
+          await jobRef.update({ geminiFileUri: null });
+        } catch (e: unknown) {
           logger.warn('onTranscriptionJobCreated: failed to delete Gemini temp file', {
             geminiFileUri,
             error: String(e),
           });
-        });
+          // Leave geminiFileUri set on the job; pruneOrphanGeminiFiles will retry.
+        }
       }
     }
   },

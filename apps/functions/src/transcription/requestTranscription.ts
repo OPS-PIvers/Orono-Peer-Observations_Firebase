@@ -81,6 +81,7 @@ export const requestTranscription = onCall(
       completedAt: null,
       error: null,
       transcriptPreview: null,
+      geminiFileUri: null,
       createdAt: FieldValue.serverTimestamp(),
     });
     return { jobId: jobRef.id };
