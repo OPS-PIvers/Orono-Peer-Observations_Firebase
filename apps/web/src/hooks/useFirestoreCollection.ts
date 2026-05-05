@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import {
   type DocumentData,
   type QueryConstraint,
@@ -15,62 +15,63 @@ export interface UseFirestoreCollectionResult<T> {
 }
 
 /**
- * Subscribe to a Firestore collection and return the live snapshot as
- * an array. Caller passes constraints (where/orderBy/limit) — no opinion
- * on filtering.
+ * Subscribe to a Firestore collection and return the live snapshot as an
+ * array. Caller passes constraints (where/orderBy/limit) — no opinion on
+ * filtering.
  *
- * Use this for admin pages that need real-time updates as data changes
- * (e.g. another admin tab updates the staff list while this one's open).
- *
- * For one-shot fetches, use TanStack Query with `getDocs` instead.
+ * Backed by TanStack Query so the snapshot survives component unmounts
+ * (default `gcTime` 5 min): navigating away and back returns cached data
+ * instantly, and the underlying `onSnapshot` listener keeps streaming
+ * updates while any observer is mounted.
  */
 export function useFirestoreCollection<T = DocumentData>(
   collectionPath: string,
   constraints: QueryConstraint[] = [],
 ): UseFirestoreCollectionResult<T> {
-  const [data, setData] = useState<(T & { id: string })[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  // Stable key so the effect doesn't re-subscribe on every render due to
-  // a new constraints array reference. Constraints with the same
-  // type sequence are treated as equivalent — callers should keep their
-  // constraint arrays stable (memoize, don't construct inline) for
-  // anything more sophisticated than that.
+  const queryClient = useQueryClient();
+  // Stable key so callers can pass `constraints` inline without forcing a
+  // resubscribe per render. Equivalent constraint *types* are treated as
+  // equal — callers needing finer-grained keying should memoize.
   const constraintsKey = constraints.map((c) => c.type).join('|');
+  const queryKey: QueryKey = ['firestore-collection', collectionPath, constraintsKey];
 
-  useEffect(() => {
-    // Empty path is the "don't subscribe yet" sentinel — used by callers
-    // that want to mount this hook conditionally without violating the
-    // rules of hooks. Mirrors `useFirestoreDoc`'s behavior.
-    if (!collectionPath) {
-      setLoading(false);
-      setError(null);
-      setData(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
+  const result = useQuery<(T & { id: string })[]>({
+    queryKey,
+    enabled: !!collectionPath,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    queryFn: ({ signal }) =>
+      new Promise((resolve, reject) => {
+        const ref = collection(db, collectionPath);
+        const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
+        let resolvedFirst = false;
+        const unsub = onSnapshot(
+          q,
+          (snap) => {
+            const next = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
+            if (!resolvedFirst) {
+              resolvedFirst = true;
+              resolve(next);
+            } else {
+              queryClient.setQueryData(queryKey, next);
+            }
+          },
+          (err) => {
+            if (!resolvedFirst) {
+              resolvedFirst = true;
+              reject(err);
+            } else {
+              console.error('[useFirestoreCollection] subscription error', err);
+            }
+          },
+        );
+        signal.addEventListener('abort', unsub);
+      }),
+  });
 
-    const ref = collection(db, collectionPath);
-    const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const next = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
-        setData(next);
-        setLoading(false);
-      },
-      (err) => {
-        setError(err);
-        setLoading(false);
-      },
-    );
-
-    return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- constraintsKey is the dep
-  }, [collectionPath, constraintsKey]);
-
-  return { data, loading, error };
+  return {
+    data: result.data ?? null,
+    loading: !!collectionPath && result.isPending,
+    error: result.error ?? null,
+  };
 }
