@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { CalendarClock, ChevronDown } from 'lucide-react';
 import type { TiptapDoc } from '@ops/shared';
@@ -16,6 +17,13 @@ export interface MeetingNotesSectionProps {
   onPreObsNotesChange: (doc: TiptapDoc) => void;
   onPostObsDateChange: (date: Date | undefined) => void;
   onPostObsNotesChange: (doc: TiptapDoc) => void;
+  /**
+   * Optional slot rendered to the far right of the toggle row at md+
+   * widths, dropped below the row at narrow widths. Used by the
+   * observation editor to host the Assigned/Full Rubric toggle inline
+   * with Planning/Reflection on desktop.
+   */
+  actions?: ReactNode;
 }
 
 type ActiveTab = null | 'pre' | 'post';
@@ -85,7 +93,8 @@ function TabButton({
       onClick={onClick}
       aria-expanded={active}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+        'flex w-full items-center justify-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors',
+        'md:inline-flex md:w-auto md:shrink-0 md:justify-start',
         active
           ? 'border-ops-blue bg-ops-blue/10 text-ops-blue-dark'
           : hasContent
@@ -117,30 +126,33 @@ export function MeetingNotesSection({
   onPreObsNotesChange,
   onPostObsDateChange,
   onPostObsNotesChange,
+  actions,
 }: MeetingNotesSectionProps) {
   const [active, setActive] = useState<ActiveTab>(null);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-ops-gray-dark text-xs font-semibold tracking-wide uppercase">
+    <div className="space-y-2 md:space-y-0">
+      <div className="grid grid-cols-2 gap-2 md:flex md:flex-nowrap md:items-center md:overflow-x-auto">
+        <span className="text-ops-gray-dark hidden shrink-0 text-xs font-semibold tracking-wide uppercase sm:inline">
           Meeting Notes
         </span>
         <TabButton
           active={active === 'pre'}
           hasContent={preObsDate !== undefined || hasTiptapContent(preObsNotes)}
           onClick={() => setActive((v) => (v === 'pre' ? null : 'pre'))}
-          label="Pre-Observation"
+          label="Planning"
           date={dateLabel(preObsDate)}
         />
         <TabButton
           active={active === 'post'}
           hasContent={postObsDate !== undefined || hasTiptapContent(postObsNotes)}
           onClick={() => setActive((v) => (v === 'post' ? null : 'post'))}
-          label="Post-Observation"
+          label="Reflection"
           date={dateLabel(postObsDate)}
         />
+        {actions ? <div className="hidden md:ml-auto md:block">{actions}</div> : null}
       </div>
+      {actions ? <div className="md:hidden">{actions}</div> : null}
       {active === 'pre' ? (
         <Panel
           slug="pre"

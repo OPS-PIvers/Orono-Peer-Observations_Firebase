@@ -9,23 +9,18 @@ export interface DomainSectionProps {
 }
 
 /**
- * One domain's worth of rubric rows. The dark-blue domain title strip
- * and the red proficiency-header row are both `position: sticky` so
- * they pin to the top of the scroll container while the user scrolls
- * through that domain's components, then yield to the next domain's
- * sticky pair when its section reaches the top.
+ * One domain's worth of rubric rows, desktop layout. The dark-blue
+ * domain title strip and the red proficiency-header row are both
+ * `position: sticky` so they pin to the top of the scroll container
+ * while the user scrolls through that domain's components, then yield
+ * to the next domain's sticky pair when its section reaches the top.
  *
  * Sticky offsets reference the `--page-chrome-h` CSS variable that
- * `PageHeader` writes onto `<html>` — the title strip + tabs sit above
- * these stickies, so domain headers must offset by that amount.
+ * EditorToolbar publishes onto `<html>` — the title strip + tabs sit
+ * above these stickies, so domain headers must offset by that amount.
  *
- * The previous version had an `overflow-x-auto` wrapper around the
- * column-header row + data rows together, which broke vertical sticky
- * (the implicit `overflow-y: auto` made that wrapper a sticky-clipping
- * containing block). We now let the grid wrap responsively instead —
- * `RubricGrid.RUBRIC_GRID_COLS` defines minmax columns and the section
- * has no horizontal scroll container, so sticky works cleanly. The
- * outer `overflow-hidden` is dropped for the same reason.
+ * Mobile uses `MobileDomainCard` instead (in RubricGrid.tsx); this
+ * component is no longer rendered there.
  */
 export function DomainSection({ domain, children }: DomainSectionProps) {
   const headingId = `domain-title-${domain.id}`;
@@ -36,10 +31,6 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
       aria-labelledby={headingId}
       className="scroll-mt-[calc(var(--page-chrome-h,0px)+8px)]"
     >
-      {/* Domain title bar — sticks at the top of the scroll container,
-          just below PageHeader's chrome. z-[5] keeps it above row content
-          but below PageHeader's z-20 so it tucks under the title strip
-          when scrolling between domains. */}
       <div className={cn('sticky top-[var(--page-chrome-h,0px)] z-[5]', 'bg-ops-blue-dark')}>
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
@@ -54,10 +45,6 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
       </div>
 
-      {/* Column-header row + data rows share one rowgroup so the
-          sticky column-header has the whole domain as its containing
-          block. Wrapping the header in its own (header-height) rowgroup
-          collapses the sticky anchor and breaks pinning. */}
       <div role="rowgroup" className="bg-white">
         <div
           role="row"

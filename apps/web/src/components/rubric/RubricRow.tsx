@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Check, FileText, Lightbulb, Paperclip } from 'lucide-react';
+import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
   PROFICIENCY_LEVELS,
@@ -14,7 +14,7 @@ import { functions } from '@/lib/firebase';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import { hasTiptapContent } from '@/utils/tiptapContent';
-import { RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
+import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
 
 const uploadEvidenceFn = httpsCallable<
   {
@@ -41,6 +41,9 @@ export interface RubricRowProps {
 }
 
 type ActivePanel = null | 'lookfors' | 'notes' | 'evidence';
+
+/** Mobile-only: which inner section of an expanded component is open. */
+type MobileSection = 'ratings' | 'lookfors' | 'notes' | 'evidence' | null;
 
 /**
  * One rubric component rendered as a matrix row. Look-fors, notes, and
@@ -120,6 +123,86 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   const showNotesChip = isEdit;
   const showEvidenceChip = isEdit;
 
+  const chipStrip = (
+    <div className="flex flex-nowrap items-center gap-1">
+      {showLookForsChip && (
+        <CellChip
+          active={active === 'lookfors'}
+          onClick={() => togglePanel('lookfors')}
+          icon={<Search className="h-3 w-3" />}
+          label="Look-fors"
+          hasContent={selectedLookForCount > 0}
+          ariaControls={panelId}
+        />
+      )}
+      {showNotesChip && (
+        <CellChip
+          active={active === 'notes'}
+          onClick={() => togglePanel('notes')}
+          icon={<FileText className="h-3 w-3" />}
+          label="Notes"
+          hasContent={notesHasContent}
+          ariaControls={panelId}
+        />
+      )}
+      {showEvidenceChip && (
+        <CellChip
+          active={active === 'evidence'}
+          onClick={() => togglePanel('evidence')}
+          icon={<Paperclip className="h-3 w-3" />}
+          label="Evidence"
+          {...(evidenceFiles.length > 0 ? { count: evidenceFiles.length } : {})}
+          ariaControls={panelId}
+        />
+      )}
+    </div>
+  );
+
+  const combinedPanel =
+    active !== null ? (
+      <div id={panelId} className="bg-ops-blue-lighter/15 border-t border-gray-200 px-4 py-3">
+        {active === 'lookfors' ? (
+          <LookForsPanel
+            component={component}
+            selectedIds={mode.kind === 'edit' ? entry.selectedLookForIds : []}
+            readOnly={readOnly}
+            onToggle={handleToggleLookFor}
+          />
+        ) : null}
+
+        {active === 'notes' ? (
+          <TiptapEditor
+            value={notesDoc}
+            onChange={handleNotesChange}
+            readOnly={readOnly}
+            placeholder="Capture observations, evidence, and feedback for this component."
+            variant="full"
+            minHeight="8rem"
+          />
+        ) : null}
+
+        {active === 'evidence' && isEdit ? (
+          <EvidencePanel
+            files={evidenceFiles}
+            uploading={uploading}
+            uploadError={uploadError}
+            onPickFile={() => fileInputRef.current?.click()}
+            readOnly={readOnly}
+          />
+        ) : null}
+      </div>
+    ) : null;
+
+  const hiddenFileInput = isEdit ? (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="*/*"
+      className="hidden"
+      onChange={(e) => void handleFileSelect(e)}
+    />
+  ) : null;
+
   return (
     <div>
       <div
@@ -149,39 +232,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
               </span>
             )}
 
-            <div className="flex flex-wrap items-center gap-1">
-              {showLookForsChip && (
-                <CellChip
-                  active={active === 'lookfors'}
-                  onClick={() => togglePanel('lookfors')}
-                  icon={<Lightbulb className="h-3 w-3" />}
-                  label="Look-fors"
-                  count={component.lookFors.length}
-                  {...(selectedLookForCount > 0 ? { badge: selectedLookForCount } : {})}
-                  ariaControls={panelId}
-                />
-              )}
-              {showNotesChip && (
-                <CellChip
-                  active={active === 'notes'}
-                  onClick={() => togglePanel('notes')}
-                  icon={<FileText className="h-3 w-3" />}
-                  label="Notes"
-                  hasContent={notesHasContent}
-                  ariaControls={panelId}
-                />
-              )}
-              {showEvidenceChip && (
-                <CellChip
-                  active={active === 'evidence'}
-                  onClick={() => togglePanel('evidence')}
-                  icon={<Paperclip className="h-3 w-3" />}
-                  label="Evidence"
-                  {...(evidenceFiles.length > 0 ? { count: evidenceFiles.length } : {})}
-                  ariaControls={panelId}
-                />
-              )}
-            </div>
+            {chipStrip}
           </div>
         </div>
 
@@ -203,52 +254,196 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
         })}
       </div>
 
-      {/* Single combined drop-down panel — only one section visible at a
-          time so adjacent rows stay flush when nothing is open. */}
-      {active !== null ? (
-        <div id={panelId} className="bg-ops-blue-lighter/15 border-t border-gray-200 px-4 py-3">
-          {active === 'lookfors' ? (
-            <LookForsPanel
-              component={component}
-              selectedIds={mode.kind === 'edit' ? entry.selectedLookForIds : []}
-              readOnly={readOnly}
-              onToggle={handleToggleLookFor}
-            />
-          ) : null}
+      {combinedPanel}
+      {hiddenFileInput}
+    </div>
+  );
+}
 
-          {active === 'notes' ? (
-            <TiptapEditor
-              value={notesDoc}
-              onChange={handleNotesChange}
-              readOnly={readOnly}
-              placeholder="Capture observations, evidence, and feedback for this component."
-              variant="full"
-              minHeight="8rem"
-            />
-          ) : null}
+// ─── MobileLevelRow ───────────────────────────────────────────────────────────
 
-          {active === 'evidence' && isEdit ? (
-            <EvidencePanel
-              files={evidenceFiles}
-              uploading={uploading}
-              uploadError={uploadError}
-              onPickFile={() => fileInputRef.current?.click()}
-              readOnly={readOnly}
-            />
+/**
+ * One proficiency level rendered as a collapsible row inside an
+ * expanded component card. Tapping the row toggles the descriptor.
+ * The selected level (edit mode) is communicated by a brand-blue
+ * left-bar + tint on the whole row + a checkmark — the row IS the
+ * selection indicator. The Select/Clear control lives inside the
+ * expanded descriptor body, so only one is on screen at a time.
+ */
+function MobileLevelRow({
+  level,
+  text,
+  expanded,
+  selected,
+  interactive,
+  onToggleExpand,
+  onSelect,
+}: {
+  level: ProficiencyLevel;
+  text: string;
+  expanded: boolean;
+  selected: boolean;
+  interactive: boolean;
+  onToggleExpand: () => void;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'border-t border-gray-200 first:border-t-0',
+        // Zebra-stripe non-selected rows so the four levels read
+        // clearly against each other; selection class wins below.
+        'even:bg-slate-100',
+        selected && 'bg-ops-blue-lighter/40 border-l-ops-blue border-l-4',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        aria-expanded={expanded}
+        aria-label={`${level} descriptor`}
+        data-proficiency={level}
+        className={cn(
+          // Indent under the Ratings parent (pl-10) so the hierarchy
+          // reads clearly. When selected, drop one unit of padding to
+          // compensate for the 4px brand-blue left border.
+          'flex w-full items-center gap-2 py-2.5 pr-4 pl-10 text-left transition-colors',
+          !selected && 'hover:bg-ops-blue-lighter/20',
+          selected && 'pl-9',
+        )}
+      >
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 shrink-0 text-gray-400 transition-transform',
+            expanded && 'rotate-180',
+          )}
+          aria-hidden="true"
+        />
+        <span
+          className={cn(
+            'text-sm',
+            selected ? 'text-ops-blue-dark font-semibold' : 'font-medium text-gray-700',
+          )}
+        >
+          {PROFICIENCY_LABELS[level]}
+        </span>
+        {selected ? (
+          <Check className="text-ops-blue ml-1 h-4 w-4 shrink-0" aria-label="Selected" />
+        ) : null}
+      </button>
+      {expanded ? (
+        <div className="space-y-3 bg-gray-50 py-3 pr-4 pl-14">
+          <p className="text-sm leading-relaxed text-gray-700">
+            {text ? (
+              <span className="whitespace-pre-line">{text}</span>
+            ) : (
+              <em className="opacity-60">No descriptor set</em>
+            )}
+          </p>
+          {interactive ? (
+            <button
+              type="button"
+              onClick={onSelect}
+              aria-pressed={selected}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                selected
+                  ? 'border-ops-blue text-ops-blue-dark hover:bg-ops-blue-lighter/40 border bg-white'
+                  : 'bg-ops-blue hover:bg-ops-blue-dark text-white',
+              )}
+            >
+              {selected ? (
+                <>
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  Clear selection
+                </>
+              ) : (
+                <>Select {PROFICIENCY_LABELS[level]}</>
+              )}
+            </button>
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      {/* Hidden file input persists across panel toggles so an in-flight
-          upload survives closing the panel. */}
-      {isEdit ? (
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="*/*"
-          className="hidden"
-          onChange={(e) => void handleFileSelect(e)}
+// ─── MobileSectionRow ─────────────────────────────────────────────────────────
+
+/**
+ * Generic collapsible row used for Look-fors, Notes, and Evidence
+ * inside an expanded component card. Renders a toggle header and, when
+ * expanded, the supplied panel content.
+ */
+function MobileSectionRow({
+  icon,
+  label,
+  count,
+  badge,
+  badgeText,
+  hasContent,
+  expanded,
+  onToggle,
+  bodyPadding = true,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  count?: number;
+  badge?: number;
+  /** A short text badge (e.g. the saved rating like "Proficient"). */
+  badgeText?: string;
+  hasContent?: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+  /** Pad/tint the expanded body. Set false when children manage their own layout. */
+  bodyPadding?: boolean;
+  children: React.ReactNode;
+}) {
+  // Top-level section rows (Ratings / Look-fors / Notes / Evidence)
+  // intentionally don't zebra-stripe — only the deepest leaf rows
+  // (the proficiency levels inside Ratings) alternate. Striping at
+  // multiple nesting levels caused adjacent rows to land on the
+  // same shade and read as a single block.
+  return (
+    <div className="border-t border-gray-200">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="hover:bg-ops-blue-lighter/20 flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors"
+      >
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 shrink-0 text-gray-400 transition-transform',
+            expanded && 'rotate-180',
+          )}
+          aria-hidden="true"
         />
+        <span
+          className="text-ops-blue-dark inline-flex h-5 w-5 items-center justify-center"
+          aria-hidden="true"
+        >
+          {icon}
+        </span>
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        {count !== undefined ? <span className="text-xs text-gray-500">{count}</span> : null}
+        {badgeText ? (
+          <span className="bg-ops-blue ml-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
+            {badgeText}
+          </span>
+        ) : null}
+        {badge !== undefined ? (
+          <span className="bg-ops-red ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white">
+            {badge}
+          </span>
+        ) : null}
+        {hasContent ? (
+          <span className="bg-ops-red ml-1 h-1.5 w-1.5 rounded-full" aria-label="Has content" />
+        ) : null}
+      </button>
+      {expanded ? (
+        <div className={bodyPadding ? 'bg-gray-50 px-4 py-3' : 'bg-white'}>{children}</div>
       ) : null}
     </div>
   );
@@ -283,7 +478,7 @@ function CellChip({
       aria-controls={ariaControls}
       aria-expanded={active}
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors',
+        'relative inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap transition-colors',
         active
           ? 'text-ops-blue-dark bg-white shadow-sm'
           : 'bg-white/10 text-white/85 hover:bg-white/20 hover:text-white',
@@ -297,11 +492,10 @@ function CellChip({
         </span>
       ) : null}
       {badge !== undefined ? (
+        // Top-right notification-style badge so the chip's intrinsic
+        // width never changes when the count appears or grows.
         <span
-          className={cn(
-            'ml-0.5 inline-flex min-w-[14px] items-center justify-center rounded-full px-1 text-[10px] font-semibold',
-            active ? 'bg-ops-red text-white' : 'bg-ops-red text-white',
-          )}
+          className="bg-ops-red ring-ops-blue-dark absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white ring-2"
           aria-label={`${String(badge)} selected`}
         >
           {badge}
@@ -487,6 +681,186 @@ function CellBody({ text }: { text: string }) {
     return <em className="opacity-60">No descriptor set</em>;
   }
   return <span className="whitespace-pre-line">{text}</span>;
+}
+
+// ─── MobileComponentBody ──────────────────────────────────────────────────────
+
+/**
+ * Mobile-only renderer for one component's body — the four collapsible
+ * sections (Ratings, Look-fors, Notes, Evidence). Does NOT include the
+ * component's title/id strip; the caller owns that, since on mobile we
+ * present components as horizontal tabs and the title belongs above
+ * the tabs, not above each section block.
+ *
+ * Self-contained: owns its own per-component UI state and Firestore-
+ * adjacent handlers. Re-mount via React `key` on `component.id` to
+ * reset state when the user switches tabs.
+ */
+export function MobileComponentBody({
+  component,
+  mode,
+}: {
+  component: RubricComponent;
+  mode: RubricGridMode;
+  storageScope: string;
+}) {
+  const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
+  const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
+  const readOnly = mode.kind !== 'edit' || mode.readOnly;
+  const isEdit = mode.kind === 'edit';
+  const evidenceFiles: DriveFileRef[] =
+    mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
+  const notesHasContent = hasTiptapContent(notesDoc);
+  const selectedLookForCount = mode.kind === 'edit' ? entry.selectedLookForIds.length : 0;
+  const selectedLevel = mode.kind === 'edit' ? entry.proficiency : null;
+  const interactive = mode.kind === 'edit' && !mode.readOnly;
+  const showLookForsRow = component.lookFors.length > 0;
+  const showNotesRow = isEdit;
+  const showEvidenceRow = isEdit;
+
+  const [section, setSection] = useState<MobileSection>(null);
+  const [level, setLevel] = useState<ProficiencyLevel | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleSection(s: NonNullable<MobileSection>) {
+    setSection((prev) => (prev === s ? null : s));
+  }
+
+  function handleSelectProficiency(lvl: ProficiencyLevel) {
+    if (mode.kind !== 'edit' || mode.readOnly) return;
+    const next = entry.proficiency === lvl ? null : lvl;
+    mode.onProficiency(component.id, next);
+  }
+
+  function handleToggleLookFor(lookForId: string) {
+    if (mode.kind !== 'edit' || mode.readOnly) return;
+    mode.onToggleLookFor(component.id, lookForId);
+  }
+
+  function handleNotesChange(doc: TiptapDoc) {
+    if (mode.kind !== 'edit' || mode.readOnly) return;
+    mode.onNotesChange(component.id, doc);
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || mode.kind !== 'edit') return;
+    e.target.value = '';
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('File exceeds 20 MB limit');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const base64Data = await fileToBase64(file);
+      await uploadEvidenceFn({
+        observationId: mode.observationId,
+        componentId: component.id,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64Data,
+      });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div data-component-row={component.id}>
+      <MobileSectionRow
+        icon={<SquareCheck className="h-4 w-4" />}
+        label="Ratings"
+        {...(selectedLevel ? { badgeText: PROFICIENCY_LABELS[selectedLevel] } : {})}
+        expanded={section === 'ratings'}
+        onToggle={() => toggleSection('ratings')}
+        bodyPadding={false}
+      >
+        <div className="divide-y divide-gray-200 border-y border-gray-200">
+          {PROFICIENCY_LEVELS.map((lvl) => (
+            <MobileLevelRow
+              key={lvl}
+              level={lvl}
+              text={component.proficiencyLevels[lvl]}
+              expanded={level === lvl}
+              selected={selectedLevel === lvl}
+              interactive={interactive}
+              onToggleExpand={() => setLevel((p) => (p === lvl ? null : lvl))}
+              onSelect={() => handleSelectProficiency(lvl)}
+            />
+          ))}
+        </div>
+      </MobileSectionRow>
+
+      {showLookForsRow ? (
+        <MobileSectionRow
+          icon={<Search className="h-4 w-4" />}
+          label="Look-fors"
+          {...(selectedLookForCount > 0 ? { badge: selectedLookForCount } : {})}
+          expanded={section === 'lookfors'}
+          onToggle={() => toggleSection('lookfors')}
+        >
+          <LookForsPanel
+            component={component}
+            selectedIds={mode.kind === 'edit' ? entry.selectedLookForIds : []}
+            readOnly={readOnly}
+            onToggle={handleToggleLookFor}
+          />
+        </MobileSectionRow>
+      ) : null}
+
+      {showNotesRow ? (
+        <MobileSectionRow
+          icon={<FileText className="h-4 w-4" />}
+          label="Notes"
+          hasContent={notesHasContent}
+          expanded={section === 'notes'}
+          onToggle={() => toggleSection('notes')}
+        >
+          <TiptapEditor
+            value={notesDoc}
+            onChange={handleNotesChange}
+            readOnly={readOnly}
+            placeholder="Capture observations, evidence, and feedback for this component."
+            variant="full"
+            minHeight="8rem"
+          />
+        </MobileSectionRow>
+      ) : null}
+
+      {showEvidenceRow ? (
+        <MobileSectionRow
+          icon={<Paperclip className="h-4 w-4" />}
+          label="Evidence"
+          {...(evidenceFiles.length > 0 ? { count: evidenceFiles.length } : {})}
+          expanded={section === 'evidence'}
+          onToggle={() => toggleSection('evidence')}
+        >
+          <EvidencePanel
+            files={evidenceFiles}
+            uploading={uploading}
+            uploadError={uploadError}
+            onPickFile={() => fileInputRef.current?.click()}
+            readOnly={readOnly}
+          />
+        </MobileSectionRow>
+      ) : null}
+
+      {isEdit ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="*/*"
+          className="hidden"
+          onChange={(e) => void handleFileSelect(e)}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -81,40 +81,64 @@ export function DomainNav({
     if (sections.length === 0) return;
 
     const firstId = domainIds[0] ?? null;
-    const lastId = domainIds[domainIds.length - 1] ?? null;
     const scroller = findScrollParent(navRef.current);
 
     let raf = 0;
     const compute = () => {
       raf = 0;
-      // The active pill is the last domain whose section top has crossed
-      // under the sticky chrome — i.e. whose sticky header is currently
-      // pinned. Read the live chrome height from the CSS variable that
-      // EditorToolbar publishes via usePublishChromeHeight.
+      // The active pill is the domain section that occupies the most
+      // pixels of the visible content area (below page chrome, above
+      // viewport bottom). This handles both the scroll-through case
+      // (you're "in" whichever domain fills the screen) and the
+      // scrolled-to-end case (the last domain naturally wins because
+      // it occupies the bottom of the viewport). Top-crossing alone
+      // either skipped D3 on short pages or never reached D4 on long
+      // ones; max-visible-area covers both.
       const chromeH =
         Number.parseFloat(
           getComputedStyle(document.documentElement).getPropertyValue('--page-chrome-h'),
         ) || 0;
 
-      // When scrolled to the very bottom, the last section's top has
-      // already passed under chrome — but on short pages the second-to-
-      // last domain's top might still be the latest crossing. Force the
-      // last pill so the user sees the page is "done".
-      const atBottom =
-        scroller instanceof HTMLElement
-          ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2
-          : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-      if (atBottom && lastId) {
-        setActiveId(lastId);
-        return;
+      const scrollerEl = scroller instanceof HTMLElement ? scroller : null;
+      const scrollerRect = scrollerEl?.getBoundingClientRect();
+      const viewportTop = (scrollerRect?.top ?? 0) + chromeH;
+      const viewportBottom = scrollerRect?.bottom ?? window.innerHeight;
+
+      let bestVisible = -1;
+      let active: string | null = firstId;
+      for (const section of sections) {
+        const rect = section.getBoundingClientRect();
+        const top = Math.max(rect.top, viewportTop);
+        const bottom = Math.min(rect.bottom, viewportBottom);
+        const visible = Math.max(0, bottom - top);
+        // Strict `>` so on ties (e.g. nothing visible yet) the FIRST
+        // section in the loop wins, matching firstId default.
+        if (visible > bestVisible) {
+          bestVisible = visible;
+          active = section.id.replace(/^domain-/, '');
+        }
       }
 
-      let active: string | null = firstId;
-      // 4px slack so the highlight flips just as the header touches the
-      // toolbar, not a frame after.
-      for (const section of sections) {
-        if (section.getBoundingClientRect().top <= chromeH + 4) {
-          active = section.id.replace(/^domain-/, '');
+      // When the user has actually scrolled to the page bottom AND
+      // the last section is visible, prefer it. This covers small
+      // assigned-only lists where the last domain occupies less area
+      // than its predecessor — without this, max-area alone leaves
+      // the previous domain highlighted even though the user is
+      // looking at the end of the rubric.
+      const atBottom = scrollerEl
+        ? scrollerEl.scrollTop + scrollerEl.clientHeight >= scrollerEl.scrollHeight - 2
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      if (atBottom) {
+        const last = sections[sections.length - 1];
+        if (last) {
+          const lastRect = last.getBoundingClientRect();
+          const lastVisible = Math.max(
+            0,
+            Math.min(lastRect.bottom, viewportBottom) - Math.max(lastRect.top, viewportTop),
+          );
+          if (lastVisible > 0) {
+            active = last.id.replace(/^domain-/, '');
+          }
         }
       }
       setActiveId(active);
@@ -181,7 +205,7 @@ export function DomainNav({
     <nav
       ref={navRef}
       aria-label="Rubric domains"
-      className={cn('flex flex-wrap gap-1', align === 'center' && 'justify-center', className)}
+      className={cn('flex flex-nowrap gap-1', align === 'center' && 'justify-center', className)}
     >
       {rubric.domains.map((d) => {
         const active = activeId === d.id;

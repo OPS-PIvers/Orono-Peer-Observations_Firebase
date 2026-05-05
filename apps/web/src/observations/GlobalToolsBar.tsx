@@ -34,16 +34,20 @@ export function SaveStatusIndicator({
   }
   if (state === 'saving' && showSavingLabel) {
     return (
-      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+      <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap">
         <Loader2 className="h-3 w-3 animate-spin" /> Saving…
       </span>
     );
   }
-  // While 'saving' but pre-delay, keep showing the prior "All changes saved"
-  // label so the indicator doesn't flicker. Don't claim "saved" before the
-  // first successful write.
+  // While 'saving' but pre-delay, keep showing the prior "Saved"
+  // label so the indicator doesn't flicker. Don't claim "saved" before
+  // the first successful write.
   if (state === 'saved' || (state === 'saving' && everSaved)) {
-    return <span className="text-muted-foreground text-xs">All changes saved</span>;
+    return (
+      <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap">
+        Saved
+      </span>
+    );
   }
   return null;
 }
@@ -53,7 +57,7 @@ export function StatusBadge({ status }: { status: Observation['status'] }) {
     return (
       <span
         className={cn(
-          'bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs',
+          'bg-ops-gray-lighter text-ops-gray-dark inline-flex shrink-0 items-center rounded-full border border-gray-300 px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase',
         )}
       >
         Draft
@@ -61,7 +65,7 @@ export function StatusBadge({ status }: { status: Observation['status'] }) {
     );
   }
   return (
-    <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+    <span className="bg-ops-blue-lighter text-ops-blue-dark border-ops-blue/30 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
       Finalized
     </span>
   );

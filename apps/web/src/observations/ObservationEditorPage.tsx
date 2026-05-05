@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -23,6 +23,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -34,7 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
-import { DomainNav, RubricGrid } from '@/components/rubric';
+import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
@@ -139,10 +140,18 @@ export function ObservationEditorPage() {
     [activeComponents],
   );
 
+  // The evaluator can flip between just the components assigned for
+  // this role-year (default — what they're actually scoring) and the
+  // full rubric (read-the-other-descriptors mode). Only the assigned
+  // ones are persisted/scored regardless.
+  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('assigned');
+
   // Build a filtered rubric so the matrix only renders rows the observed
-  // staff member is actually evaluated on for this role-year.
+  // staff member is actually evaluated on for this role-year — unless
+  // the toggle is set to "Full Rubric".
   const visibleRubric = useMemo<Rubric | null>(() => {
     if (!rubric) return null;
+    if (assignmentMode === 'full') return rubric;
     const filteredDomains = rubric.domains
       .map((d) => ({
         ...d,
@@ -150,7 +159,7 @@ export function ObservationEditorPage() {
       }))
       .filter((d) => d.components.length > 0);
     return { ...rubric, domains: filteredDomains };
-  }, [rubric, assignedComponentIds]);
+  }, [rubric, assignedComponentIds, assignmentMode]);
 
   // Local draft of observationData + componentNotes; flushed to Firestore
   // on debounce. Both fields share the same autosave cycle so we don't
@@ -448,56 +457,67 @@ export function ObservationEditorPage() {
     <>
       <div className={bodyWrapperCls}>
         <header className="space-y-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (observation.observedEmail) {
-                void navigate(`/staff/${observation.observedEmail}`);
-              } else {
-                void navigate(-1);
-              }
-            }}
-            className="text-ops-blue hover:text-ops-blue-dark -ml-2 h-7 px-2 hover:bg-transparent hover:underline"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to {observation.observedName || 'staff'}
-          </Button>
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-            <div className="min-w-0">
-              <h1 className="font-heading text-ops-blue-dark text-2xl leading-tight font-semibold sm:text-3xl">
-                {observation.observedName}
-              </h1>
-              <p className="text-ops-gray mt-0.5 text-sm">
-                {observedRoleLabel} · Year {String(observation.observedYear)} · {observation.type}
-              </p>
+          {/* Title row: back arrow, observed name, info popover,
+              status chip, save-state indicator. The row wraps when
+              narrow so the name is never truncated — saving state can
+              drop below on tight widths. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Back"
+              onClick={() => {
+                if (observation.observedEmail) {
+                  void navigate(`/staff/${observation.observedEmail}`);
+                } else {
+                  void navigate(-1);
+                }
+              }}
+              className="text-ops-blue hover:text-ops-blue-dark hover:bg-ops-blue-lighter/30 -ml-2 h-9 w-9 shrink-0 px-0"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h1 className="font-heading text-ops-blue-dark text-xl leading-tight font-semibold sm:text-2xl md:text-3xl">
+              {observation.observedName}
+            </h1>
+            {/* Info + Draft chip + save state stay together as one
+                inline group so "Saving…" never breaks onto its own
+                line away from the Draft chip. */}
+            <div className="inline-flex shrink-0 items-center gap-2">
+              <ObservationInfoPopover
+                role={observedRoleLabel}
+                year={observation.observedYear}
+                type={observation.type}
+              />
+              <StatusBadge status={observation.status} />
+              <SaveStatusIndicator state={savingState} error={saveError} />
             </div>
-            {canEdit ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={draft.observationName}
-                  onChange={(e) => setObservationName(e.target.value)}
-                  placeholder="Observation name (e.g. Period 3 Algebra)"
-                  aria-label="Observation name"
-                  className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-64 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
-                />
-                <input
-                  type="date"
-                  value={toDateInputValue(draft.observationDate)}
-                  onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
-                  aria-label="Observation date"
-                  className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-40 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
-                />
-              </div>
-            ) : (
-              <p className="text-ops-gray-dark text-sm">
-                {[draft.observationName, draft.observationDate?.toLocaleDateString()]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            )}
           </div>
+          {canEdit ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={draft.observationName}
+                onChange={(e) => setObservationName(e.target.value)}
+                placeholder="Observation name (e.g. Period 3 Algebra)"
+                aria-label="Observation name"
+                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 min-w-0 flex-1 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
+              />
+              <input
+                type="date"
+                value={toDateInputValue(draft.observationDate)}
+                onChange={(e) => setObservationDate(parseDateInput(e.target.value))}
+                aria-label="Observation date"
+                className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 w-[10.5rem] shrink-0 rounded-md border bg-white px-3 text-sm outline-none focus:ring-1"
+              />
+            </div>
+          ) : (
+            <p className="text-ops-gray-dark text-sm">
+              {[draft.observationName, draft.observationDate?.toLocaleDateString()]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
         </header>
       </div>
 
@@ -505,10 +525,8 @@ export function ObservationEditorPage() {
         chromeRef={chromeRef}
         observation={observation}
         canEdit={canEdit}
-        savingState={savingState}
-        saveError={saveError}
-        showFinalize={showFinalize}
         rubric={visibleRubric}
+        showFinalize={showFinalize}
         onFinalize={() => setFinalizeOpen(true)}
       />
 
@@ -549,6 +567,13 @@ export function ObservationEditorPage() {
           onPreObsNotesChange={setPreObsNotes}
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
+          // Park the rubric scope toggle on the right of the meeting-
+          // notes row at md+ so it sits inline with Planning/
+          // Reflection. At mobile widths it drops below the row as a
+          // full-width control.
+          actions={
+            <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} fullWidth />
+          }
         />
 
         {observation.type === OBSERVATION_TYPES.workProduct ? (
@@ -606,18 +631,16 @@ interface EditorToolbarProps {
   chromeRef: React.RefObject<HTMLDivElement | null>;
   observation: Observation & { id: string };
   canEdit: boolean;
-  savingState: 'idle' | 'saving' | 'saved' | 'error';
-  saveError: string | null;
-  showFinalize: boolean;
   rubric: Rubric | null;
+  showFinalize: boolean;
   onFinalize: () => void;
 }
 
 /**
  * Slim sticky toolbar for the observation editor. One row, never wraps:
  * the DomainNav jump-pills scroll horizontally on the left, the action
- * group (Audio + save status + status badge + Finalize) sits on the
- * right. The page title and editable name/date inputs scroll with the
+ * group (Audio + Finalize CTA) sits on the right. The page title +
+ * status chip + save state + editable name/date inputs scroll with the
  * page above this — only the controls a user actually needs while
  * working through the rubric stay anchored.
  *
@@ -630,10 +653,8 @@ function EditorToolbar({
   chromeRef,
   observation,
   canEdit,
-  savingState,
-  saveError,
-  showFinalize,
   rubric,
+  showFinalize,
   onFinalize,
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
@@ -663,18 +684,106 @@ function EditorToolbar({
               readOnly={!canEdit}
             />
           ) : null}
-          <span className="hidden md:inline-flex">
-            <SaveStatusIndicator state={savingState} error={saveError} />
-          </span>
-          <StatusBadge status={observation.status} />
           {showFinalize ? (
-            <Button onClick={onFinalize} size="sm">
-              <CheckCircle2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Finalize</span>
+            <Button
+              onClick={onFinalize}
+              size="sm"
+              className="bg-ops-red hover:bg-ops-red-dark h-9 px-3 font-semibold text-white"
+            >
+              Finalize
             </Button>
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Small (i) button next to the observation title. On click it opens a
+ * popover with the role / year / observation-type metadata that used
+ * to live as a static second line under the title.
+ */
+function ObservationInfoPopover({
+  role,
+  year,
+  type,
+}: {
+  role: string;
+  year: number | string;
+  type: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (popoverRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  // "Standard" gets " Observation" appended for clarity; the other
+  // two types ("Work Product", "Instructional Round") are already
+  // self-describing.
+  const typeLabel = type === 'Standard' ? 'Standard Observation' : type;
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Show observation details"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'inline-flex h-7 w-7 items-center justify-center rounded-full',
+          'text-ops-gray hover:bg-ops-blue-lighter/40 hover:text-ops-blue-dark',
+          open && 'bg-ops-blue-lighter/40 text-ops-blue-dark',
+          'transition-colors',
+        )}
+      >
+        <Info className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {open ? (
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label="Observation details"
+          // Center the popover horizontally under the trigger so it
+          // never gets cut off at either viewport edge. `max-w` clamps
+          // the width on extremely narrow viewports.
+          className="border-border bg-popover text-popover-foreground absolute top-full left-1/2 z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border p-3 text-sm shadow-lg"
+        >
+          <dl className="space-y-1">
+            <div className="flex gap-1.5">
+              <dt className="text-ops-gray w-12 shrink-0">Role</dt>
+              <dd className="font-medium">{role}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-ops-gray w-12 shrink-0">Year</dt>
+              <dd className="font-medium">{String(year)}</dd>
+            </div>
+            <div className="flex gap-1.5">
+              <dt className="text-ops-gray w-12 shrink-0">Type</dt>
+              <dd className="font-medium">{typeLabel}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
     </div>
   );
 }

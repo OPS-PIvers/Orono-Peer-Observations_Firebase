@@ -13,6 +13,16 @@ export interface AssignmentToggleProps {
    * dark/blue page header — no fill, white text.
    */
   variant?: 'light' | 'dark';
+  /**
+   * When true, the toggle stretches to fill its container with two
+   * equal-width segments. Defaults to false (inline auto-width).
+   */
+  /**
+   * When true, the toggle stretches to fill its container with two
+   * equal-width segments below `md`, then collapses back to inline
+   * auto-width at `md+`. Defaults to false (always inline auto-width).
+   */
+  fullWidth?: boolean;
 }
 
 /**
@@ -26,6 +36,7 @@ export function AssignmentToggle({
   disabled = false,
   className,
   variant = 'light',
+  fullWidth = false,
 }: AssignmentToggleProps) {
   return (
     <div
@@ -33,7 +44,8 @@ export function AssignmentToggle({
       aria-label="Rubric scope"
       aria-disabled={disabled || undefined}
       className={cn(
-        'inline-flex rounded-md border p-0.5 text-sm',
+        fullWidth ? 'flex w-full md:inline-flex md:w-auto' : 'inline-flex',
+        'rounded-md border p-0.5 text-sm',
         variant === 'dark' ? 'border-white/30' : 'border-border bg-muted',
         disabled && 'opacity-60',
         className,
@@ -45,6 +57,7 @@ export function AssignmentToggle({
         onClick={() => onChange('assigned')}
         label="Assigned only"
         variant={variant}
+        fullWidth={fullWidth}
       />
       <Segment
         active={value === 'full'}
@@ -52,6 +65,7 @@ export function AssignmentToggle({
         onClick={() => onChange('full')}
         label="Full Rubric"
         variant={variant}
+        fullWidth={fullWidth}
       />
     </div>
   );
@@ -63,12 +77,14 @@ function Segment({
   onClick,
   label,
   variant,
+  fullWidth,
 }: {
   active: boolean;
   disabled: boolean;
   onClick: () => void;
   label: string;
   variant: 'light' | 'dark';
+  fullWidth: boolean;
 }) {
   return (
     <button
@@ -79,6 +95,7 @@ function Segment({
       onClick={onClick}
       className={cn(
         'rounded px-3 py-1.5 font-medium transition-colors',
+        fullWidth && 'flex-1 md:flex-none',
         disabled && 'cursor-not-allowed',
         variant === 'dark'
           ? active

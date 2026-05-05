@@ -63,16 +63,18 @@ export function AudioPopoverButton({
         ref={triggerRef}
         type="button"
         variant={open ? 'default' : 'outline'}
-        size="sm"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="audio-popover"
-        className="relative"
+        aria-label={`Record audio${audioFileIds.length > 0 ? ` (${String(audioFileIds.length)} clip${audioFileIds.length === 1 ? '' : 's'})` : ''}`}
+        className="relative h-9 w-9 shrink-0"
       >
         <Mic className="h-4 w-4" />
-        Audio
         {audioFileIds.length > 0 ? (
-          <span className="ml-1 text-xs opacity-70">({audioFileIds.length})</span>
+          <span className="bg-ops-blue absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white">
+            {audioFileIds.length}
+          </span>
         ) : null}
         {phase === 'recording' ? (
           <span
