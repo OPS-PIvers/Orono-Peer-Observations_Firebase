@@ -26,13 +26,38 @@ export const ComponentTagMark = Mark.create({
           return { 'data-component-id': componentId };
         },
       },
+      bg: {
+        default: null as string | null,
+        parseHTML: (element: MinimalElement) => element.getAttribute('data-bg'),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const bg = attributes['bg'];
+          if (typeof bg !== 'string' || bg.length === 0) return {};
+          return { 'data-bg': bg };
+        },
+      },
+      fg: {
+        default: null as string | null,
+        parseHTML: (element: MinimalElement) => element.getAttribute('data-fg'),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const fg = attributes['fg'];
+          if (typeof fg !== 'string' || fg.length === 0) return {};
+          return { 'data-fg': fg };
+        },
+      },
     };
   },
   parseHTML() {
     return [{ tag: 'mark[data-component-tag]' }];
   },
-  renderHTML({ HTMLAttributes }) {
-    return ['mark', mergeAttributes(HTMLAttributes, { 'data-component-tag': '' }), 0];
+  renderHTML({ HTMLAttributes, mark }) {
+    const bg = (mark.attrs as { bg?: string | null }).bg;
+    const fg = (mark.attrs as { fg?: string | null }).fg;
+    const styleParts: string[] = [];
+    if (bg) styleParts.push(`background-color:${bg}`);
+    if (fg) styleParts.push(`color:${fg}`);
+    const extra: Record<string, string> = { 'data-component-tag': '' };
+    if (styleParts.length > 0) extra['style'] = styleParts.join(';');
+    return ['mark', mergeAttributes(HTMLAttributes, extra), 0];
   },
   inclusive: false,
 });

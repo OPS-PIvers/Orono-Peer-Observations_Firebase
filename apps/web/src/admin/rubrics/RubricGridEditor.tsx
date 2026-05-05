@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Trash2, X } from 'lucide-react';
 import {
   PROFICIENCY_LEVELS,
+  type ComponentColor,
   type Rubric,
   type RubricComponent,
   type RubricDomain,
 } from '@ops/shared';
+import { colorFor } from '@/observations/component-colors';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -229,6 +231,11 @@ function ComponentRow({
             placeholder="Component title"
             className="h-8 text-sm font-medium"
           />
+          <ColorSwatchRow
+            component={component}
+            onChange={(color) => onPatch({ color })}
+            onReset={() => onPatch({ color: undefined })}
+          />
           <div className="mt-auto flex items-center gap-1">
             <Button
               variant="ghost"
@@ -341,6 +348,71 @@ function ComponentRow({
             </Button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Per-component color swatches. The script editor's tag mark and side-panel
+ * buttons read this so each component has a distinct highlight color. When
+ * `component.color` is unset, `colorFor()` returns a deterministic fallback
+ * derived from the component id; the live preview chip below the inputs
+ * shows whatever color the script editor will actually use.
+ */
+function ColorSwatchRow({
+  component,
+  onChange,
+  onReset,
+}: {
+  component: RubricComponent;
+  onChange: (color: ComponentColor) => void;
+  onReset: () => void;
+}) {
+  const resolved = colorFor(component);
+  const explicit = component.color;
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[10px]"
+        style={{ backgroundColor: resolved.bg, color: resolved.fg }}
+        aria-label="Tag color preview"
+        title="Tag color preview"
+      >
+        {component.id}
+      </span>
+      <label className="flex items-center gap-1 text-[10px] text-gray-500">
+        Bg
+        <input
+          type="color"
+          value={resolved.bg}
+          onChange={(e) => onChange({ bg: e.target.value, fg: resolved.fg })}
+          className="h-5 w-6 cursor-pointer rounded border border-gray-300"
+          aria-label="Background color"
+        />
+      </label>
+      <label className="flex items-center gap-1 text-[10px] text-gray-500">
+        Fg
+        <input
+          type="color"
+          value={resolved.fg}
+          onChange={(e) => onChange({ bg: resolved.bg, fg: e.target.value })}
+          className="h-5 w-6 cursor-pointer rounded border border-gray-300"
+          aria-label="Text color"
+        />
+      </label>
+      {explicit ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onReset}
+          className="h-6 px-1.5 text-[10px] text-gray-500"
+          type="button"
+        >
+          Reset
+        </Button>
+      ) : (
+        <span className="text-[10px] text-gray-400">auto</span>
       )}
     </div>
   );

@@ -601,6 +601,7 @@ export function ObservationEditorPage() {
               kind: 'edit',
               entries: draft.observationData,
               notes: draft.componentNotes,
+              ...(draft.scriptDoc ? { scriptDoc: draft.scriptDoc } : {}),
               evidenceLinks: observation.evidenceLinks ?? {},
               observationId: observation.id,
               readOnly: !canEdit,
@@ -620,6 +621,7 @@ export function ObservationEditorPage() {
           onChange={setScriptDoc}
           readOnly={!canEdit}
           availableComponents={activeComponents}
+          observationId={observation.id}
           placeholder="Start typing what you see and hear during the observation…"
         />
       </ScriptDrawer>

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -14,6 +14,10 @@ import { functions } from '@/lib/firebase';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import { hasTiptapContent } from '@/utils/tiptapContent';
+import {
+  buildScriptNotesDoc,
+  extractTaggedSpansForComponent,
+} from '@/observations/extract-script-tags';
 import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
 
 const uploadEvidenceFn = httpsCallable<
@@ -171,13 +175,12 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
         ) : null}
 
         {active === 'notes' ? (
-          <TiptapEditor
-            value={notesDoc}
-            onChange={handleNotesChange}
+          <NotesPanel
+            componentId={component.id}
+            scriptDoc={mode.kind === 'edit' ? mode.scriptDoc : undefined}
+            notesDoc={notesDoc}
+            onNotesChange={handleNotesChange}
             readOnly={readOnly}
-            placeholder="Capture observations, evidence, and feedback for this component."
-            variant="full"
-            minHeight="8rem"
           />
         ) : null}
 
@@ -511,6 +514,118 @@ function CellChip({
   );
 }
 
+// ─── NotesPanel ───────────────────────────────────────────────────────────────
+
+/**
+ * Notes panel with a Script / Manual toggle. The Script tab is read-only
+ * and mirrors any spans in `scriptDoc` carrying this component's tag — it
+ * updates live as the observer tags more text in the script editor. The
+ * Manual tab is the existing free-form notes editor, persisted to
+ * `componentNotes[componentId]`.
+ */
+function NotesPanel({
+  componentId,
+  scriptDoc,
+  notesDoc,
+  onNotesChange,
+  readOnly,
+}: {
+  componentId: string;
+  scriptDoc: TiptapDoc | undefined;
+  notesDoc: TiptapDoc | undefined;
+  onNotesChange: (doc: TiptapDoc) => void;
+  readOnly: boolean;
+}) {
+  const taggedSpans = useMemo(
+    () => extractTaggedSpansForComponent(scriptDoc, componentId),
+    [scriptDoc, componentId],
+  );
+  const scriptNotesDoc = useMemo(
+    () => buildScriptNotesDoc(taggedSpans, componentId),
+    [taggedSpans, componentId],
+  );
+  const manualHasContent = hasTiptapContent(notesDoc);
+
+  // Default: Manual when the user already typed something, otherwise
+  // Script when there's at least one tagged span (let the evidence speak
+  // first), otherwise fall back to Manual so the user has a place to type.
+  const initialView: 'script' | 'manual' =
+    manualHasContent || taggedSpans.length === 0 ? 'manual' : 'script';
+  const [view, setView] = useState<'script' | 'manual'>(initialView);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1 text-xs">
+        <NotesTab
+          active={view === 'script'}
+          onClick={() => setView('script')}
+          label={`Script tags${taggedSpans.length > 0 ? ` (${String(taggedSpans.length)})` : ''}`}
+        />
+        <NotesTab
+          active={view === 'manual'}
+          onClick={() => setView('manual')}
+          label="Manual notes"
+        />
+        {view === 'script' ? (
+          <span className="text-muted-foreground ml-auto text-[10px] italic">
+            Mirrored from the script — read only
+          </span>
+        ) : null}
+      </div>
+
+      {view === 'script' ? (
+        taggedSpans.length === 0 ? (
+          <p className="text-muted-foreground rounded-md border border-dashed bg-white px-3 py-3 text-xs italic">
+            No script tags for this component yet. Highlight text in the script editor and pick this
+            component to start mirroring evidence here.
+          </p>
+        ) : (
+          <TiptapEditor
+            value={scriptNotesDoc}
+            onChange={() => undefined}
+            readOnly
+            variant="compact"
+            minHeight="6rem"
+          />
+        )
+      ) : (
+        <TiptapEditor
+          value={notesDoc}
+          onChange={onNotesChange}
+          readOnly={readOnly}
+          placeholder="Capture observations, evidence, and feedback for this component."
+          variant="full"
+          minHeight="8rem"
+        />
+      )}
+    </div>
+  );
+}
+
+function NotesTab({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+        active ? 'bg-ops-blue text-white' : 'bg-ops-blue/10 text-ops-blue hover:bg-ops-blue/20',
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ─── LookForsPanel ────────────────────────────────────────────────────────────
 
 function LookForsPanel({
@@ -821,13 +936,12 @@ export function MobileComponentBody({
           expanded={section === 'notes'}
           onToggle={() => toggleSection('notes')}
         >
-          <TiptapEditor
-            value={notesDoc}
-            onChange={handleNotesChange}
+          <NotesPanel
+            componentId={component.id}
+            scriptDoc={mode.scriptDoc}
+            notesDoc={notesDoc}
+            onNotesChange={handleNotesChange}
             readOnly={readOnly}
-            placeholder="Capture observations, evidence, and feedback for this component."
-            variant="full"
-            minHeight="8rem"
           />
         </MobileSectionRow>
       ) : null}

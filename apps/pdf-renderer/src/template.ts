@@ -9,6 +9,8 @@ import {
   type TiptapDoc,
 } from '@ops/shared';
 import { ComponentTagMark } from './component-tag-mark.js';
+import { colorFor } from './component-colors.js';
+import { extractTaggedSpansForComponent } from './extract-script-tags.js';
 
 const TIPTAP_EXTENSIONS = [StarterKit, Link, ComponentTagMark];
 
@@ -55,6 +57,8 @@ export function renderObservationHtml(payload: RenderPayload): string {
           const lookFors = component.lookFors.filter((lf) =>
             entry?.selectedLookForIds.includes(lf.id),
           );
+          const scriptSpans = extractTaggedSpansForComponent(observation.scriptDoc, component.id);
+          const fallbackColor = colorFor(component);
           return `
             <section class="component">
               <header class="component-header">
@@ -83,6 +87,22 @@ export function renderObservationHtml(payload: RenderPayload): string {
                       <h4>Look-fors observed</h4>
                       <ul>
                         ${lookFors.map((lf) => `<li>${escapeHtml(lf.text)}</li>`).join('')}
+                      </ul>
+                    </div>`
+                  : ''
+              }
+              ${
+                scriptSpans.length > 0
+                  ? `<div class="notes-from-script">
+                      <h4>From script</h4>
+                      <ul>
+                        ${scriptSpans
+                          .map((span) => {
+                            const bg = span.bg ?? fallbackColor.bg;
+                            const fg = span.fg ?? fallbackColor.fg;
+                            return `<li><mark style="background-color:${escapeHtml(bg)};color:${escapeHtml(fg)}">${escapeHtml(span.text)}</mark></li>`;
+                          })
+                          .join('')}
                       </ul>
                     </div>`
                   : ''
@@ -289,6 +309,18 @@ function styles(): string {
       background: var(--ops-blue-lighter);
       color: var(--ops-blue-dark);
       padding: 0 2px;
+      border-radius: 2px;
+    }
+    .notes-from-script { margin-top: 0.6em; }
+    .notes-from-script h4 { margin: 0.2em 0 0.3em; font-size: 10pt; color: var(--ops-gray-dark); }
+    .notes-from-script ul { list-style: none; padding: 0; margin: 0; }
+    .notes-from-script li {
+      margin: 0.2em 0;
+      font-size: 10pt;
+      line-height: 1.4;
+    }
+    .notes-from-script li mark {
+      padding: 0.1em 0.3em;
       border-radius: 2px;
     }
     .script-section, .transcripts-section { margin-top: 2em; page-break-inside: auto; }

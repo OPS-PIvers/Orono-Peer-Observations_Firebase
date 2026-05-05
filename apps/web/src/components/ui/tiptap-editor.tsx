@@ -3,6 +3,7 @@ import { type Content, type Editor, EditorContent, useEditor } from '@tiptap/rea
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
+import { ComponentTagMark } from '@/observations/component-tag-mark';
 import {
   Bold,
   Heading2,
@@ -63,6 +64,7 @@ export function TiptapEditor({
       }),
       Placeholder.configure({ placeholder: placeholder ?? '' }),
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+      ComponentTagMark,
     ],
     content: (value ?? EMPTY_DOC) as Content,
     editable: !readOnly,

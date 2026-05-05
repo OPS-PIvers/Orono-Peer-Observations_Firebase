@@ -20,6 +20,7 @@ export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
+export { geminiTagScript } from './observations/geminiTagScript.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';

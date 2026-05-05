@@ -37,6 +37,13 @@ export type RubricGridMode =
       kind: 'edit';
       entries: Record<string, ObservationComponentEntry>;
       notes: Record<string, TiptapDoc>;
+      /**
+       * Live script document — used by the per-component notes panel to
+       * derive a read-only "Script tags" view alongside the manual notes.
+       * Changes propagate automatically through React props; no separate
+       * callback needed.
+       */
+      scriptDoc?: TiptapDoc;
       evidenceLinks: Record<string, DriveFileRef[]>;
       observationId: string;
       readOnly: boolean;

@@ -48,11 +48,20 @@ export const rubricLookFor = z.object({
 });
 export type RubricLookFor = z.infer<typeof rubricLookFor>;
 
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a #RRGGBB hex string');
+
+export const componentColor = z.object({
+  bg: hexColor,
+  fg: hexColor,
+});
+export type ComponentColor = z.infer<typeof componentColor>;
+
 export const rubricComponent = z.object({
   id: componentId,
   title: z.string().trim().min(1).max(200),
   proficiencyLevels: proficiencyDescriptors,
   lookFors: z.array(rubricLookFor).default([]),
+  color: componentColor.optional(),
 });
 export type RubricComponent = z.infer<typeof rubricComponent>;
 
