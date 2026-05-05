@@ -186,16 +186,24 @@ function isActivePath(href: string, pathname: string): boolean {
   return pathname === hrefPath || pathname.startsWith(hrefPath + '/');
 }
 
-function isExactChildActive(href: string, location: { pathname: string; hash: string }): boolean {
-  const stripped = href.split('?')[0] ?? href;
-  const [hrefPath, hrefHash] = stripped.split('#');
-  const path = hrefPath ?? stripped;
+function isExactChildActive(
+  href: string,
+  location: { pathname: string; hash: string; search: string },
+): boolean {
+  const [pathAndQuery, hrefHash] = href.split('#');
+  const [hrefPath, hrefQuery] = (pathAndQuery ?? href).split('?');
+  const path = hrefPath ?? href;
   const pathMatches = location.pathname === path || location.pathname.startsWith(path + '/');
   if (!pathMatches) return false;
-  // Only treat hash-link children as active when the URL hash matches,
-  // so we don't highlight all four domain entries simultaneously.
+  // Hash-link children (e.g. /my-rubric#domain-1) are active only when the
+  // URL hash matches — otherwise all four domain entries would highlight.
   if (hrefHash) return location.hash === `#${hrefHash}`;
-  return true;
+  // Query-discriminated children (e.g. /observations?status=draft vs. plain
+  // /observations) must match the current query exactly, so the "All
+  // observations" link doesn't co-highlight with the filtered ones.
+  const hrefSearch = new URLSearchParams(hrefQuery ?? '').toString();
+  const locSearch = new URLSearchParams(location.search).toString();
+  return hrefSearch === locSearch;
 }
 
 // ─── AppSidebar component ────────────────────────────────────────────────────
@@ -519,8 +527,9 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
                     to={child.href}
                     className={cn(
                       'block rounded-md py-1.5 pr-2 pl-3 text-sm transition-colors',
-                      'text-white/70 hover:bg-white/10 hover:text-white',
-                      childActive && 'bg-white/15 text-white',
+                      childActive
+                        ? 'bg-white/15 text-white hover:bg-white/20'
+                        : 'text-white/70 hover:bg-white/10 hover:text-white',
                     )}
                   >
                     {child.label}
