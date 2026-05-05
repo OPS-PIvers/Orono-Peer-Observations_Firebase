@@ -177,9 +177,13 @@ export function ObservationEditorPage() {
       observationData: src.observationData,
       componentNotes: src.componentNotes,
       scriptDoc: src.scriptDoc,
-      preObsDate: src.preObsDate,
+      // Coerce Firestore Timestamps to JS Dates — MeetingNotesSection's
+      // dateLabel calls .toLocaleDateString(), which throws on Timestamp
+      // and re-throws each render under the route error boundary, looking
+      // like an infinite render loop.
+      preObsDate: toJsDate(src.preObsDate),
       preObsNotes: src.preObsNotes,
-      postObsDate: src.postObsDate,
+      postObsDate: toJsDate(src.postObsDate),
       postObsNotes: src.postObsNotes,
       observationName: src.observationName,
       observationDate: toJsDate(src.observationDate),
