@@ -209,17 +209,25 @@ export function ObservationEditorPage() {
         },
         { merge: true },
       );
-      setSavingState('saved');
+      // Don't claim "saved" if the user kept typing during the round-trip —
+      // another flush is already queued, and flipping to 'saved' here would
+      // briefly mislead them before the next 'saving' transition.
+      if (flushTimer.current === null) {
+        setSavingState('saved');
+      }
     } catch (err) {
       setSavingState('error');
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     }
   }, [observation]);
 
+  // Debounce only — leave the visible indicator on its prior state ('saved'
+  // or 'idle') during the wait. flush() itself flips to 'saving', and the
+  // indicator defers rendering that label so fast writes don't flash.
   const scheduleSave = useCallback(() => {
     if (flushTimer.current) clearTimeout(flushTimer.current);
-    setSavingState('saving');
     flushTimer.current = setTimeout(() => {
+      flushTimer.current = null;
       void flush();
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [flush]);
