@@ -53,7 +53,7 @@ export function DevModeBar() {
   const isOverridden = override.role !== null;
 
   return (
-    <div className="fixed right-4 bottom-4 z-50" ref={panelRef}>
+    <div className="fixed top-4 right-4 z-50" ref={panelRef}>
       {open ? (
         <div className="w-64 rounded-lg border border-gray-200 bg-white shadow-xl">
           <div className="bg-ops-blue-dark flex items-center justify-between rounded-t-lg px-3 py-2 text-white">

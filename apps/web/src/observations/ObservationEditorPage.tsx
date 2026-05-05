@@ -582,7 +582,6 @@ export function ObservationEditorPage() {
           readOnly={!canEdit}
           availableComponents={activeComponents}
           placeholder="Start typing what you see and hear during the observation…"
-          minHeight="16rem"
         />
       </ScriptDrawer>
     </div>

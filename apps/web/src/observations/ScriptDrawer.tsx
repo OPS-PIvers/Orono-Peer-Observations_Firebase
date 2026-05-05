@@ -1,17 +1,21 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const OPEN_KEY = 'ops:script-drawer:open';
 const HEIGHT_KEY = 'ops:script-drawer:height';
-const DEFAULT_HEIGHT = 400;
-const MIN_HEIGHT = 200;
-// Visible drag-handle strip above the title row. Acts as the resize border
-// (Google-Slides-speaker-notes style) and stays interactive when the drawer
-// is open.
-const RESIZE_HANDLE_HEIGHT = 8;
-const TITLE_HEIGHT = 36;
-const HEADER_HEIGHT = RESIZE_HANDLE_HEIGHT + TITLE_HEIGHT;
+// Body height (px) on first visit. Zero = collapsed by default; a returning
+// user gets whatever they last left it at, restored from sessionStorage.
+const DEFAULT_BODY_HEIGHT = 0;
+// Drag bar at the top of the drawer. Always visible, always interactive —
+// the only way to expand or resize the drawer.
+const HANDLE_HEIGHT = 24;
+// Once the body crosses this size we surface a centered chevron-down at the
+// drawer's bottom edge so the user can collapse without dragging all the way
+// back. Below the threshold the chevron would overlap the handle area, so
+// we keep it hidden.
+const COLLAPSE_BTN_THRESHOLD = 80;
+// Cap drawer at 75% viewport so the rubric above stays usable.
+const MAX_HEIGHT_RATIO = 0.75;
 
 function readSession(key: string, fallback: string): string {
   try {
@@ -36,54 +40,45 @@ export interface ScriptDrawerProps {
 }
 
 /**
- * Fixed-bottom resizable drawer that renders the script editor.
- * The rubric above it must add padding-bottom equal to the drawer's open height
- * so content isn't hidden. That padding is communicated via a CSS custom
- * property set on the drawer element and mirrored via the `paddingBottom` prop
- * to the parent through a data attribute read by the scroll container.
+ * Fixed-bottom resizable drawer for the script editor. There is no
+ * expand/collapse button — the user drags the handle bar to open it,
+ * resize it, or close it (drag down to zero). When the body is tall
+ * enough, a floating chevron-down at the bottom-center offers a quick
+ * one-click collapse back to zero.
  */
 export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
-  const [open, setOpen] = useState<boolean>(() => readSession(OPEN_KEY, 'false') === 'true');
-  const [height, setHeight] = useState<number>(() => {
-    const raw = parseInt(readSession(HEIGHT_KEY, String(DEFAULT_HEIGHT)), 10);
-    return Number.isFinite(raw) ? Math.max(MIN_HEIGHT, raw) : DEFAULT_HEIGHT;
+  const [bodyHeight, setBodyHeight] = useState<number>(() => {
+    const raw = parseInt(readSession(HEIGHT_KEY, String(DEFAULT_BODY_HEIGHT)), 10);
+    return Number.isFinite(raw) ? Math.max(0, raw) : DEFAULT_BODY_HEIGHT;
   });
 
   const dragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
 
-  const toggle = useCallback(() => {
-    setOpen((prev) => {
-      writeSession(OPEN_KEY, String(!prev));
-      return !prev;
-    });
-  }, []);
-
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!open) return;
       dragging.current = true;
       dragStartY.current = e.clientY;
-      dragStartHeight.current = height;
+      dragStartHeight.current = bodyHeight;
       e.currentTarget.setPointerCapture(e.pointerId);
       e.preventDefault();
     },
-    [open, height],
+    [bodyHeight],
   );
 
   useEffect(() => {
     function onMove(e: PointerEvent) {
       if (!dragging.current) return;
       const delta = dragStartY.current - e.clientY;
-      const maxH = window.innerHeight * 0.75;
-      const next = Math.min(maxH, Math.max(MIN_HEIGHT, dragStartHeight.current + delta));
-      setHeight(next);
+      const maxH = window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT;
+      const next = Math.min(maxH, Math.max(0, dragStartHeight.current + delta));
+      setBodyHeight(next);
     }
     function onUp() {
       if (!dragging.current) return;
       dragging.current = false;
-      setHeight((h) => {
+      setBodyHeight((h) => {
         writeSession(HEIGHT_KEY, String(h));
         return h;
       });
@@ -96,14 +91,19 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
     };
   }, []);
 
-  const drawerHeight = open ? height + HEADER_HEIGHT : HEADER_HEIGHT;
+  const collapse = useCallback(() => {
+    setBodyHeight(0);
+    writeSession(HEIGHT_KEY, '0');
+  }, []);
+
+  const drawerHeight = bodyHeight + HANDLE_HEIGHT;
+  const showCollapseBtn = bodyHeight >= COLLAPSE_BTN_THRESHOLD;
 
   return (
     <>
-      {/* Spacer so rubric content isn't hidden behind fixed drawer */}
+      {/* Spacer so rubric content isn't hidden behind the fixed drawer. */}
       <div style={{ height: drawerHeight }} aria-hidden="true" />
 
-      {/* Fixed drawer */}
       <div
         className="fixed bottom-0 z-30 flex flex-col shadow-[0_-4px_16px_rgba(0,0,0,0.12)]"
         style={{
@@ -113,66 +113,48 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
         }}
         data-drawer-height={drawerHeight}
       >
-        {/* Resize border — slim grey strip above the title row, drag-only.
-            Mirrors Google Slides' speaker-notes resize affordance: a thin
-            top edge with a centered pill grip that's always visible.
-            Pointer-only resize affordance (no keyboard equivalent), so it
-            stays purely decorative for assistive tech. The Expand/Collapse
-            button below provides the keyboard path for show/hide. */}
+        {/* Drag handle — full-width strip with the "Script" label and a
+            centered pill grip. Acts as the resize affordance and the only
+            way to open the drawer. */}
         <div
           aria-hidden="true"
           className={cn(
-            'group flex shrink-0 items-center justify-center border-t border-b',
-            'border-ops-gray-lighter bg-ops-gray-lightest',
-            open ? 'cursor-ns-resize' : 'cursor-default',
+            'group relative flex shrink-0 cursor-ns-resize items-center border-t border-b',
+            'border-ops-gray-lighter bg-ops-gray-lightest px-3 select-none',
           )}
-          style={{ height: RESIZE_HANDLE_HEIGHT }}
+          style={{ height: HANDLE_HEIGHT }}
           onPointerDown={onPointerDown}
         >
+          <span className="text-ops-gray-dark text-[11px] font-semibold tracking-wide uppercase">
+            Script
+          </span>
           <div
             className={cn(
-              'h-1 rounded-full transition-all',
-              open
-                ? 'bg-ops-gray-light group-hover:bg-ops-blue w-12 group-hover:w-20'
-                : 'bg-ops-gray-lighter w-10',
+              'pointer-events-none absolute top-1/2 left-1/2 h-1 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all',
+              'bg-ops-gray-light group-hover:bg-ops-blue group-hover:w-20',
             )}
           />
         </div>
 
-        {/* Title row */}
-        <div
-          className="bg-ops-blue-dark flex shrink-0 items-center px-4"
-          style={{ height: TITLE_HEIGHT }}
-        >
-          <span className="font-heading text-sm font-semibold tracking-wide text-white">
-            Script
-          </span>
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label={open ? 'Collapse script drawer' : 'Expand script drawer'}
-            className="ml-auto inline-flex items-center gap-1 rounded p-1 text-xs font-medium text-white/90 hover:bg-white/10 hover:text-white"
-          >
-            {open ? (
-              <>
-                Collapse
-                <ChevronDown className="h-4 w-4" />
-              </>
-            ) : (
-              <>
-                Expand
-                <ChevronUp className="h-4 w-4" />
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Body */}
-        {open && (
-          <div className="bg-background flex-1 overflow-y-auto p-4" style={{ height: height }}>
+        {/* Body. Renders as long as bodyHeight > 0 so the script editor
+            scales smoothly as the user drags. flex-1 lets the script
+            editor inside fill whatever space the handle leaves. */}
+        {bodyHeight > 0 ? (
+          <div className="bg-background flex min-h-0 flex-1 flex-col overflow-hidden p-4">
             {children}
           </div>
-        )}
+        ) : null}
+
+        {showCollapseBtn ? (
+          <button
+            type="button"
+            onClick={collapse}
+            aria-label="Collapse script drawer"
+            className="border-ops-gray-lighter text-ops-gray-dark hover:text-ops-blue absolute bottom-1.5 left-1/2 z-10 inline-flex h-6 w-14 -translate-x-1/2 items-center justify-center rounded-full border bg-white/85 shadow-sm backdrop-blur hover:bg-white"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        ) : null}
       </div>
     </>
   );

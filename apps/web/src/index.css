@@ -109,6 +109,9 @@
    to add classes to inner nodes. */
 .tiptap-surface {
   line-height: 1.55;
+  /* Fill the scrollable wrapper so empty space below content is still
+     clickable to focus the editor (e.g. tall script drawer). */
+  min-height: 100%;
 }
 .tiptap-surface > * + * {
   margin-top: 0.5rem;

@@ -47,7 +47,7 @@ export function ScriptEditor({
   readOnly = false,
   availableComponents,
   placeholder,
-  minHeight = '22rem',
+  minHeight = '0',
 }: ScriptEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -84,15 +84,15 @@ export function ScriptEditor({
   return (
     <div
       className={cn(
-        'border-input bg-background overflow-hidden rounded-md border',
+        'border-input bg-background flex h-full min-h-0 flex-col overflow-hidden rounded-md border',
         readOnly && 'opacity-70',
       )}
     >
       {!readOnly ? (
         <ScriptToolbar editor={editor} availableComponents={availableComponents} />
       ) : null}
-      <div style={{ minHeight }}>
-        <EditorContent editor={editor} />
+      <div className="min-h-0 flex-1 overflow-auto" style={{ minHeight }}>
+        <EditorContent editor={editor} className="h-full" />
       </div>
     </div>
   );
