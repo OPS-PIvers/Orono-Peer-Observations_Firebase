@@ -8,36 +8,15 @@ import { downloadFile, getDriveClient } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
-/**
- * Public Gemini API key (`generativelanguage.googleapis.com`). Stored as a
- * Secret Manager secret; configured once via:
- *
- *   firebase functions:secrets:set GEMINI_API_KEY
- *
- * The key is created in https://aistudio.google.com/apikey and tied to the
- * same GCP project as the rest of the app for billing simplicity.
- */
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 
 const TRANSCRIPTION_PROMPT =
   'Transcribe the attached audio recording verbatim. Output only the transcript text — no headers, no speaker labels, no timestamps, no commentary. Preserve sentence boundaries with line breaks where natural pauses occur.';
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 
-/** Hard cap to keep the inline-data path safe; ~15MB raw audio. */
-const MAX_AUDIO_BYTES = 15 * 1024 * 1024;
+const GEMINI_FILES_BASE = 'https://generativelanguage.googleapis.com';
 
-/**
- * Firestore-triggered worker that processes transcription jobs.
- *
- * Lifecycle:
- *   Pending → Running → Completed (transcript on observation.transcripts[fileId])
- *                     ↘ Failed (job.error populated)
- *
- * Reads audio bytes from Drive (SA-owned), sends inline base64 to the
- * Gemini API, and writes the resulting transcript back. The observation
- * doc's onSnapshot in the editor surfaces the new transcript live.
- */
 export const onTranscriptionJobCreated = onDocumentCreated(
   {
     document: 'transcriptionJobs/{jobId}',
@@ -68,22 +47,42 @@ export const onTranscriptionJobCreated = onDocumentCreated(
 
     await jobRef.update({ status: 'Running', startedAt: FieldValue.serverTimestamp() });
 
+    let geminiFileUri: string | null = null;
+
     try {
       const drive = getDriveClient();
       const meta = await drive.files.get({
         fileId: job.audioDriveFileId,
-        fields: 'mimeType, size',
+        fields: 'mimeType, size, name',
       });
       const mimeType = meta.data.mimeType ?? 'audio/webm';
       const sizeBytes = meta.data.size ? Number(meta.data.size) : 0;
-      if (sizeBytes > MAX_AUDIO_BYTES) {
-        throw new Error(
-          `Audio is too large for inline transcription (${formatMb(sizeBytes)} > ${formatMb(MAX_AUDIO_BYTES)}). Split the recording into shorter clips.`,
-        );
-      }
+
+      logger.info('onTranscriptionJobCreated: downloading audio', {
+        jobId: snapshot.id,
+        sizeBytes,
+        mimeType,
+      });
 
       const audio = await downloadFile(job.audioDriveFileId);
-      const transcript = await transcribeWithGemini(audio, mimeType, GEMINI_API_KEY.value());
+
+      geminiFileUri = await uploadToGeminiFiles(
+        audio,
+        mimeType,
+        meta.data.name ?? 'recording',
+        GEMINI_API_KEY.value(),
+      );
+
+      logger.info('onTranscriptionJobCreated: uploaded to Gemini Files API', {
+        jobId: snapshot.id,
+        geminiFileUri,
+      });
+
+      const transcript = await transcribeWithGeminiFileUri(
+        geminiFileUri,
+        mimeType,
+        GEMINI_API_KEY.value(),
+      );
 
       await obsRef.update({
         [`transcripts.${job.audioDriveFileId}`]: transcript,
@@ -94,6 +93,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         completedAt: FieldValue.serverTimestamp(),
         transcriptPreview: transcript.slice(0, 280),
       });
+
       logger.info('Transcription completed', {
         jobId: snapshot.id,
         observationId: job.observationId,
@@ -109,21 +109,128 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         completedAt: FieldValue.serverTimestamp(),
         error: err instanceof Error ? err.message : 'Unknown error',
       });
+    } finally {
+      if (geminiFileUri) {
+        await deleteGeminiFile(geminiFileUri, GEMINI_API_KEY.value()).catch((e: unknown) => {
+          logger.warn('onTranscriptionJobCreated: failed to delete Gemini temp file', {
+            geminiFileUri,
+            error: String(e),
+          });
+        });
+      }
     }
   },
 );
 
-interface GeminiResponse {
-  candidates?: { content?: { parts?: { text?: string }[] } }[];
+/**
+ * Uploads audio bytes to the Gemini Files API using a resumable upload.
+ * Returns the file URI (e.g. "files/abc123") to reference in generateContent.
+ *
+ * Gemini Files API stores the file temporarily (48 hours). We delete it
+ * immediately after transcription in the finally block above.
+ */
+async function uploadToGeminiFiles(
+  audio: Buffer,
+  mimeType: string,
+  displayName: string,
+  apiKey: string,
+): Promise<string> {
+  const initResponse = await fetch(
+    `${GEMINI_FILES_BASE}/upload/v1beta/files?uploadType=resumable&key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(audio.length),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+      },
+      body: JSON.stringify({ file: { displayName } }),
+    },
+  );
+
+  if (!initResponse.ok) {
+    const text = await initResponse.text();
+    throw new Error(
+      `Gemini Files API init failed ${String(initResponse.status)}: ${text.slice(0, 300)}`,
+    );
+  }
+
+  const uploadUrl = initResponse.headers.get('x-goog-upload-url');
+  if (!uploadUrl) {
+    throw new Error('Gemini Files API did not return an upload URL');
+  }
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(audio.length),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: audio,
+  });
+
+  if (!uploadResponse.ok) {
+    const text = await uploadResponse.text();
+    throw new Error(
+      `Gemini Files API upload failed ${String(uploadResponse.status)}: ${text.slice(0, 300)}`,
+    );
+  }
+
+  const fileData = (await uploadResponse.json()) as { file?: { uri?: string; state?: string } };
+  const uri = fileData.file?.uri;
+  if (!uri) {
+    throw new Error('Gemini Files API upload response missing file URI');
+  }
+
+  await waitForGeminiFileActive(uri, apiKey);
+
+  return uri;
 }
 
-async function transcribeWithGemini(
-  audio: Buffer,
+/**
+ * Polls the Gemini Files API until the file state is ACTIVE.
+ * New uploads start as PROCESSING; FAILED is terminal.
+ */
+async function waitForGeminiFileActive(
+  fileUri: string,
+  apiKey: string,
+  maxAttempts = 20,
+  delayMs = 3000,
+): Promise<void> {
+  const fileName = fileUri.startsWith('https://')
+    ? fileUri.split('/files/')[1]
+    : fileUri.replace(/^files\//, '');
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(
+      `${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`,
+    );
+    if (!res.ok) {
+      throw new Error(`Gemini Files status check failed: ${String(res.status)}`);
+    }
+    const data = (await res.json()) as { state?: string };
+    if (data.state === 'ACTIVE') return;
+    if (data.state === 'FAILED') {
+      throw new Error('Gemini Files API reported file processing FAILED');
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  throw new Error('Timed out waiting for Gemini file to become ACTIVE');
+}
+
+/**
+ * Calls generateContent referencing the uploaded file by URI.
+ * No base64 encoding, no size cap.
+ */
+async function transcribeWithGeminiFileUri(
+  fileUri: string,
   mimeType: string,
   apiKey: string,
 ): Promise<string> {
-  const base64 = audio.toString('base64');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_FILES_BASE}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -131,15 +238,19 @@ async function transcribeWithGemini(
       contents: [
         {
           role: 'user',
-          parts: [{ text: TRANSCRIPTION_PROMPT }, { inlineData: { mimeType, data: base64 } }],
+          parts: [{ text: TRANSCRIPTION_PROMPT }, { fileData: { fileUri, mimeType } }],
         },
       ],
     }),
   });
+
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Gemini API error ${String(response.status)}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `Gemini generateContent failed ${String(response.status)}: ${text.slice(0, 500)}`,
+    );
   }
+
   const data = (await response.json()) as GeminiResponse;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
@@ -148,6 +259,20 @@ async function transcribeWithGemini(
   return text.trim();
 }
 
-function formatMb(bytes: number): string {
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+/**
+ * Deletes a file from Gemini Files API storage.
+ * Called in finally to avoid accumulating temp files in the project quota.
+ */
+async function deleteGeminiFile(fileUri: string, apiKey: string): Promise<void> {
+  const fileName = fileUri.startsWith('https://')
+    ? fileUri.split('/files/')[1]
+    : fileUri.replace(/^files\//, '');
+
+  await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`, {
+    method: 'DELETE',
+  });
+}
+
+interface GeminiResponse {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
 }
