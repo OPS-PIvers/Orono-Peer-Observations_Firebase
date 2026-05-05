@@ -2,7 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS } from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -41,6 +41,20 @@ export const requestTranscription = onCall(
     }
 
     const db = getFirestore();
+    const settingsSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+    // Firestore reads return raw doc data; the Zod defaults in AppSettings
+    // are only applied during parse. Treat the whole tree as optional so a
+    // partially-populated doc doesn't crash this guard.
+    const settings = settingsSnap.exists
+      ? (settingsSnap.data() as { gemini?: { audioTranscription?: { enabled?: boolean } } })
+      : null;
+    if (settings?.gemini?.audioTranscription?.enabled === false) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Audio transcription is currently disabled by an admin.',
+      );
+    }
+
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
     const obsSnap = await obsRef.get();
     if (!obsSnap.exists) {

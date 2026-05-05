@@ -19,6 +19,7 @@ export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
+export { backfillScriptTagColors } from './observations/backfillScriptTagColors.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { geminiTagScript } from './observations/geminiTagScript.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';

@@ -4,7 +4,9 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
+  DEFAULT_GEMINI_MODEL,
   isAdminRole,
   roleYearMappingDocId,
   type ComponentColor,
@@ -19,7 +21,6 @@ import {
 if (getApps().length === 0) initializeApp();
 
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 interface GeminiTagRequest {
@@ -75,6 +76,23 @@ export const geminiTagScript = onCall(
       throw new HttpsError('permission-denied', 'Only the observer or an admin can auto-tag.');
     }
 
+    const settingsSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+    // Raw Firestore reads don't apply Zod defaults; partial-shape the tree.
+    const settings = settingsSnap.exists
+      ? (settingsSnap.data() as {
+          gemini?: { scriptAutoTag?: { enabled?: boolean; model?: string } };
+        })
+      : null;
+    if (settings?.gemini?.scriptAutoTag?.enabled === false) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Script auto-tagging is currently disabled by an admin.',
+      );
+    }
+    const configuredModel = settings?.gemini?.scriptAutoTag?.model;
+    const model =
+      configuredModel && configuredModel.length > 0 ? configuredModel : DEFAULT_GEMINI_MODEL;
+
     const scriptDoc = obs.scriptDoc;
     if (!scriptDoc) {
       throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
@@ -120,6 +138,7 @@ export const geminiTagScript = onCall(
       activeComponents,
       paragraphs,
       GEMINI_API_KEY.value(),
+      model,
     );
 
     const validIds = new Set(activeComponents.map((c) => c.id));
@@ -164,6 +183,7 @@ async function callGeminiForTags(
   components: RubricComponent[],
   paragraphs: string[],
   apiKey: string,
+  model: string,
 ): Promise<RawTagSuggestion[]> {
   const componentBlock = components.map((c) => ({
     id: c.id,
@@ -190,7 +210,7 @@ ${JSON.stringify(componentBlock, null, 2)}
 SCRIPT:
 ${JSON.stringify(paragraphBlock, null, 2)}`;
 
-  const url = `${GEMINI_BASE}/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

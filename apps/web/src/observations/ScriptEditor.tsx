@@ -24,6 +24,7 @@ import {
 import type { RubricComponent, RubricDomain, TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { functions } from '@/lib/firebase';
+import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { ComponentTagMark } from './component-tag-mark';
 import { colorFor } from './component-colors';
 
@@ -109,6 +110,9 @@ export function ScriptEditor({
     };
   }, [editor]);
 
+  const geminiFeatures = useGeminiFeatures();
+  const autoTagEnabled = geminiFeatures.scriptAutoTag.enabled;
+
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoTagBusy, setAutoTagBusy] = useState(false);
   const [autoTagError, setAutoTagError] = useState<string | null>(null);
@@ -171,7 +175,7 @@ export function ScriptEditor({
           activeTagId={activeTagId}
           pickerOpen={pickerOpen}
           onTogglePicker={() => setPickerOpen((v) => !v)}
-          onAutoTag={observationId ? () => void runAutoTag() : null}
+          onAutoTag={observationId && autoTagEnabled ? () => void runAutoTag() : null}
           autoTagBusy={autoTagBusy}
         />
       ) : null}

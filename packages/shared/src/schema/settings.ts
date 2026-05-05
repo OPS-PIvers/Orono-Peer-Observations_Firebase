@@ -54,6 +54,74 @@ export const branding = z.object({
 });
 export type Branding = z.infer<typeof branding>;
 
+/**
+ * Gemini API models we expose in the admin UI. The `id` is the exact
+ * string passed to `generativelanguage.googleapis.com/v1beta/models/{id}`.
+ * Keep the list ordered with the recommended default (3.1 Flash-Lite) first.
+ */
+export const GEMINI_MODEL_OPTIONS = [
+  {
+    id: 'gemini-3.1-flash-lite-preview',
+    label: 'Gemini 3.1 Flash-Lite (preview)',
+    note: 'Cheapest, fastest. Default.',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    label: 'Gemini 3 Flash (preview)',
+    note: 'Stronger reasoning at higher cost.',
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    label: 'Gemini 3.1 Pro (preview)',
+    note: 'Highest quality 3.x; slower, most expensive.',
+  },
+  {
+    id: 'gemini-2.5-flash-lite',
+    label: 'Gemini 2.5 Flash-Lite',
+    note: 'GA 2.5 alternative to the 3.x preview.',
+  },
+  {
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    note: 'GA 2.5 mid-tier.',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    label: 'Gemini 2.5 Pro',
+    note: 'GA 2.5 top-tier.',
+  },
+] as const;
+
+export type GeminiModelId = (typeof GEMINI_MODEL_OPTIONS)[number]['id'];
+
+export const DEFAULT_GEMINI_MODEL: GeminiModelId = 'gemini-3.1-flash-lite-preview';
+
+export const geminiFeature = z.object({
+  enabled: z.boolean().default(true),
+  /**
+   * Free-form string so admins can paste a newer model id we haven't yet
+   * added to GEMINI_MODEL_OPTIONS without us having to ship a release.
+   * Must look like a Gemini model id; the API will reject anything else.
+   */
+  model: z
+    .string()
+    .regex(/^gemini-[a-z0-9.-]+$/, 'Model must look like "gemini-…"')
+    .default(DEFAULT_GEMINI_MODEL),
+});
+export type GeminiFeature = z.infer<typeof geminiFeature>;
+
+export const geminiFeatures = z.object({
+  audioTranscription: geminiFeature.default({
+    enabled: true,
+    model: DEFAULT_GEMINI_MODEL,
+  }),
+  scriptAutoTag: geminiFeature.default({
+    enabled: true,
+    model: DEFAULT_GEMINI_MODEL,
+  }),
+});
+export type GeminiFeatures = z.infer<typeof geminiFeatures>;
+
 export const appSettings = z.object({
   sessionDurationHours: z.number().int().positive().max(168).default(24),
   auditLogRetentionDays: z.number().int().positive().max(3650).default(365),
@@ -66,6 +134,11 @@ export const appSettings = z.object({
     appName: 'Orono Peer Observations',
     primaryColor: '#2d3f89',
     logoDriveFileId: null,
+  }),
+  /** Per-feature Gemini config: enable/disable + model selection. */
+  gemini: geminiFeatures.default({
+    audioTranscription: { enabled: true, model: DEFAULT_GEMINI_MODEL },
+    scriptAutoTag: { enabled: true, model: DEFAULT_GEMINI_MODEL },
   }),
   /** Where security alerts go. */
   securityAdminEmail: email,

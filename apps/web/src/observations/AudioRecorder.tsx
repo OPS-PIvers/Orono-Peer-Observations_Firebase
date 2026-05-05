@@ -4,6 +4,7 @@ import { getIdToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { cn } from '@/lib/utils';
 
 interface RequestTranscriptionResponse {
@@ -56,6 +57,7 @@ export function AudioRecorder({
   /** fileIds with a transcription request in flight (local optimistic). */
   const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
   const [transcribeError, setTranscribeError] = useState<Record<string, string>>({});
+  const transcriptionEnabled = useGeminiFeatures().audioTranscription.enabled;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -193,8 +195,10 @@ export function AudioRecorder({
       setPhase('idle');
       onUploaded?.(data.audioFileId);
       // Auto-request transcription so the user doesn't have to click again
-      // for the common path.
-      void requestTranscription(data.audioFileId);
+      // for the common path. Skipped when admins have disabled the feature.
+      if (transcriptionEnabled) {
+        void requestTranscription(data.audioFileId);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
       setPhase('error');
@@ -229,6 +233,7 @@ export function AudioRecorder({
         transcribing={transcribing}
         transcribeError={transcribeError}
         onTranscribe={(id) => void requestTranscription(id)}
+        transcriptionEnabled={transcriptionEnabled}
         readOnly={readOnly}
       />
     </div>
@@ -313,6 +318,7 @@ function RecordingsList({
   transcribing,
   transcribeError,
   onTranscribe,
+  transcriptionEnabled,
   readOnly,
 }: {
   observationId: string;
@@ -321,6 +327,7 @@ function RecordingsList({
   transcribing: Set<string>;
   transcribeError: Record<string, string>;
   onTranscribe: (audioFileId: string) => void;
+  transcriptionEnabled: boolean;
   readOnly: boolean;
 }) {
   if (audioFileIds.length === 0) {
@@ -347,7 +354,7 @@ function RecordingsList({
                     ? ' · transcribing…'
                     : ' · no transcript yet'}
               </span>
-              {!readOnly ? (
+              {!readOnly && transcriptionEnabled ? (
                 <Button
                   variant="ghost"
                   size="sm"

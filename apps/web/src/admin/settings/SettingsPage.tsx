@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODEL_OPTIONS,
+  type AppSettings,
+  type GeminiFeature,
+  type GeminiFeatures,
+} from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
@@ -20,10 +28,49 @@ interface MigrateRolesResult {
   observationsUnmatched: { observationId: string; rawRole: string }[];
 }
 
+interface BackfillResult {
+  observationsScanned: number;
+  observationsUpdated: number;
+  spansUpdated: number;
+  observationsSkipped: number;
+}
+
 const migrateRolesToSlugsFn = httpsCallable<Record<string, never>, MigrateRolesResult>(
   functions,
   'migrateRolesToSlugs',
 );
+
+const backfillScriptTagColorsFn = httpsCallable<Record<string, never>, BackfillResult>(
+  functions,
+  'backfillScriptTagColors',
+);
+
+const DEFAULT_GEMINI_FEATURES: GeminiFeatures = {
+  audioTranscription: { enabled: true, model: DEFAULT_GEMINI_MODEL },
+  scriptAutoTag: { enabled: true, model: DEFAULT_GEMINI_MODEL },
+};
+
+const GEMINI_FEATURE_META: {
+  key: keyof GeminiFeatures;
+  title: string;
+  description: string;
+  hiddenWhenDisabled: string;
+}[] = [
+  {
+    key: 'audioTranscription',
+    title: 'Audio transcription',
+    description:
+      'After a recording is saved, send the audio to Gemini and store the verbatim transcript on the observation.',
+    hiddenWhenDisabled: 'Hides the Transcribe button on the audio recorder.',
+  },
+  {
+    key: 'scriptAutoTag',
+    title: 'Script auto-tag',
+    description:
+      'One-click button in the script editor that asks Gemini to tag verbatim spans with rubric components.',
+    hiddenWhenDisabled: 'Hides the Auto-tag button in the script editor toolbar.',
+  },
+];
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
@@ -171,6 +218,38 @@ export function SettingsPage() {
             </span>
           </label>
         </div>
+
+        <fieldset className="border-border space-y-4 rounded-md border p-4">
+          <legend className="px-2 text-sm font-medium">Gemini features</legend>
+          <p className="text-muted-foreground text-xs">
+            Toggle individual Gemini-powered features and pick the model each one uses. Default is{' '}
+            <code className="font-mono">{DEFAULT_GEMINI_MODEL}</code>. Disabled features are hidden
+            from the UI for everyone.
+          </p>
+          {GEMINI_FEATURE_META.map((meta) => {
+            const current: GeminiFeature =
+              form.gemini?.[meta.key] ?? DEFAULT_GEMINI_FEATURES[meta.key];
+            return (
+              <GeminiFeatureRow
+                key={meta.key}
+                title={meta.title}
+                description={meta.description}
+                hiddenWhenDisabled={meta.hiddenWhenDisabled}
+                value={current}
+                onChange={(next) =>
+                  setForm((f) => ({
+                    ...f,
+                    gemini: {
+                      ...DEFAULT_GEMINI_FEATURES,
+                      ...(f.gemini ?? {}),
+                      [meta.key]: next,
+                    },
+                  }))
+                }
+              />
+            );
+          })}
+        </fieldset>
 
         <fieldset className="border-border space-y-4 rounded-md border p-4">
           <legend className="px-2 text-sm font-medium">Rate limits</legend>
@@ -372,6 +451,144 @@ function MaintenanceSection() {
             Run role-slug migration
           </Button>
         )}
+      </div>
+
+      <BackfillScriptTagColorsCard />
+    </div>
+  );
+}
+
+function BackfillScriptTagColorsCard() {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<BackfillResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await backfillScriptTagColorsFn({});
+      setResult(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Backfill failed');
+    } finally {
+      setRunning(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className="border-border space-y-3 rounded-md border p-4">
+      <div>
+        <h3 className="text-sm font-semibold">Backfill script-tag colors</h3>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Walks every observation&apos;s <code className="font-mono text-xs">scriptDoc</code> and
+          back-fills <code className="font-mono text-xs">bg</code>/
+          <code className="font-mono text-xs">fg</code> attributes on{' '}
+          <code className="font-mono text-xs">componentTag</code> marks that were saved before
+          per-component colors were stored on the mark. After running, every tagged span renders in
+          its component&apos;s actual color (in the editor and in finalized PDFs). Idempotent — safe
+          to re-run.
+        </p>
+      </div>
+
+      {error ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+          {error}
+        </div>
+      ) : null}
+
+      {result ? (
+        <div className="bg-ops-blue-lighter text-ops-blue-dark rounded-md border-l-4 border-l-blue-500 px-3 py-2 text-sm">
+          <p className="font-medium">Backfill complete.</p>
+          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
+            <li>Observations scanned: {result.observationsScanned}</li>
+            <li>Observations updated: {result.observationsUpdated}</li>
+            <li>Spans coloured: {result.spansUpdated}</li>
+            <li>
+              Skipped (no rubric match): {result.observationsSkipped}
+              {result.observationsSkipped > 0
+                ? ' — fix the role on those observations and re-run.'
+                : ''}
+            </li>
+          </ul>
+        </div>
+      ) : null}
+
+      {confirming ? (
+        <div className="flex items-center gap-2">
+          <Button variant="destructive" size="sm" onClick={() => void run()} disabled={running}>
+            {running ? 'Running…' : 'Yes, run backfill'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirming(false)}
+            disabled={running}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+          Run script-tag color backfill
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function GeminiFeatureRow({
+  title,
+  description,
+  hiddenWhenDisabled,
+  value,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  hiddenWhenDisabled: string;
+  value: GeminiFeature;
+  onChange: (next: GeminiFeature) => void;
+}) {
+  const knownIds = new Set(GEMINI_MODEL_OPTIONS.map((m) => m.id));
+  const isCustomModel = !knownIds.has(value.model as (typeof GEMINI_MODEL_OPTIONS)[number]['id']);
+  return (
+    <div className="border-border bg-muted/20 space-y-2 rounded-md border p-3">
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          onChange={(e) => onChange({ ...value, enabled: e.target.checked })}
+          className="mt-0.5 h-4 w-4"
+        />
+        <span className="flex-1">
+          <span className="font-medium">{title}</span>
+          <span className="text-muted-foreground block text-xs">{description}</span>
+          {!value.enabled ? (
+            <span className="text-ops-red-dark mt-1 block text-xs italic">
+              Disabled · {hiddenWhenDisabled}
+            </span>
+          ) : null}
+        </span>
+      </label>
+
+      <div className="grid gap-1 pl-6">
+        <Label className="text-xs">Gemini model</Label>
+        <select
+          value={value.model}
+          onChange={(e) => onChange({ ...value, model: e.target.value })}
+          disabled={!value.enabled}
+          className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 rounded-md border bg-white px-2 text-sm outline-none focus:ring-1 disabled:opacity-50"
+        >
+          {GEMINI_MODEL_OPTIONS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label} — {m.note}
+            </option>
+          ))}
+          {isCustomModel ? <option value={value.model}>{value.model} (custom)</option> : null}
+        </select>
       </div>
     </div>
   );

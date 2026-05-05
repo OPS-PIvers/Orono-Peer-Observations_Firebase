@@ -3,7 +3,7 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS } from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS, DEFAULT_GEMINI_MODEL } from '@ops/shared';
 import { downloadFile, getDriveClient } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
@@ -13,9 +13,30 @@ const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 const TRANSCRIPTION_PROMPT =
   'Transcribe the attached audio recording verbatim. Output only the transcript text — no headers, no speaker labels, no timestamps, no commentary. Preserve sentence boundaries with line breaks where natural pauses occur.';
 
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
-
 const GEMINI_FILES_BASE = 'https://generativelanguage.googleapis.com';
+
+/**
+ * Resolves the Gemini model id from /appSettings/global. Admins pick the
+ * model per Gemini-feature in the Settings page; we read it at job time so
+ * a model swap takes effect without redeploying.
+ */
+async function resolveTranscriptionModel(): Promise<string> {
+  try {
+    const snap = await getFirestore()
+      .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
+      .get();
+    if (!snap.exists) return DEFAULT_GEMINI_MODEL;
+    // Raw Firestore reads don't apply Zod defaults; partial-shape the tree.
+    const settings = snap.data() as { gemini?: { audioTranscription?: { model?: string } } };
+    const model = settings.gemini?.audioTranscription?.model;
+    return model && model.length > 0 ? model : DEFAULT_GEMINI_MODEL;
+  } catch (err) {
+    logger.warn('resolveTranscriptionModel: settings fetch failed; using default', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return DEFAULT_GEMINI_MODEL;
+  }
+}
 
 export const onTranscriptionJobCreated = onDocumentCreated(
   {
@@ -77,15 +98,18 @@ export const onTranscriptionJobCreated = onDocumentCreated(
       // instance dies (timeout/OOM) before the finally block runs.
       await jobRef.update({ geminiFileUri });
 
+      const model = await resolveTranscriptionModel();
       logger.info('onTranscriptionJobCreated: uploaded to Gemini Files API', {
         jobId: snapshot.id,
         geminiFileUri,
+        model,
       });
 
       const transcript = await transcribeWithGeminiFileUri(
         geminiFileUri,
         mimeType,
         GEMINI_API_KEY.value(),
+        model,
       );
 
       await obsRef.update({
@@ -251,8 +275,9 @@ async function transcribeWithGeminiFileUri(
   fileUri: string,
   mimeType: string,
   apiKey: string,
+  model: string,
 ): Promise<string> {
-  const url = `${GEMINI_FILES_BASE}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_FILES_BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
