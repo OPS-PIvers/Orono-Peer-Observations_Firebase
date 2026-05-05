@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppSidebar, useSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
 import { useAuth } from '@/auth/AuthProvider';
@@ -9,6 +10,11 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile } = useSidebar();
   const { user, claims } = useAuth();
   const lowerEmail = user?.email?.toLowerCase() ?? '';
+  const { pathname } = useLocation();
+  // Hide footer on the observation editor — its sticky script drawer
+  // owns the bottom of the viewport and a footer above it reads as
+  // misplaced chrome.
+  const isEditorRoute = pathname.startsWith('/observations/') && pathname !== '/observations/new';
 
   // App shell: full-width AppHeader on top, sidebar + content below it.
   // The header spans the entire viewport (above the sidebar) so we never
@@ -26,9 +32,11 @@ export function Layout({ children }: { children: ReactNode }) {
         >
           <main className="flex-1 overflow-y-auto">
             {children}
-            <footer className="border-border text-muted-foreground mt-8 border-t px-4 py-4 text-center text-xs">
-              Orono Public Schools · Peer Observations
-            </footer>
+            {!isEditorRoute ? (
+              <footer className="border-border text-muted-foreground mt-8 border-t px-4 py-4 text-center text-xs">
+                Orono Public Schools · Peer Observations
+              </footer>
+            ) : null}
           </main>
         </div>
       </div>

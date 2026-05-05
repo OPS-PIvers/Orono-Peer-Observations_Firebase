@@ -4,7 +4,6 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
-import { DevModeBar } from '@/dev/DevModeBar';
 import { DevModeProvider } from '@/dev/DevModeContext';
 import { ObservationsListPage } from '@/observations/ObservationsListPage';
 import { MyRubricPage } from '@/routes/MyRubricPage';
@@ -271,7 +270,6 @@ export function App() {
             </Routes>
           </Suspense>
         </KeyedErrorBoundary>
-        <DevModeBar />
       </DevModeProvider>
     </AuthProvider>
   );

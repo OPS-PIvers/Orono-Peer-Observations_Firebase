@@ -1,6 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Rubric } from '@ops/shared';
 import { cn } from '@/lib/utils';
+
+function findScrollParent(el: HTMLElement | null): HTMLElement | Window {
+  // Walk up looking for the nearest ancestor that actually scrolls
+  // vertically. Just checking `overflow-y: auto` is misleading because
+  // `overflow-x: auto` also promotes overflow-y to `auto` per spec — and
+  // the DomainNav's own horizontally-scrolling wrapper would be picked
+  // up first, breaking the at-bottom check.
+  let node: HTMLElement | null = el?.parentElement ?? null;
+  while (node) {
+    const style = window.getComputedStyle(node);
+    if (/(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return window;
+}
 
 export interface DomainNavProps {
   rubric: Rubric;
@@ -52,32 +69,67 @@ export function DomainNav({
 }: DomainNavProps) {
   const domainIds = useMemo(() => rubric.domains.map((d) => d.id), [rubric]);
   const [activeId, setActiveId] = useState<string | null>(domainIds[0] ?? null);
+  const navRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return;
-    const observed: HTMLElement[] = [];
+    if (typeof window === 'undefined') return;
+    const sections: HTMLElement[] = [];
     for (const id of domainIds) {
       const el = document.getElementById(`domain-${id}`);
-      if (el instanceof HTMLElement) observed.push(el);
+      if (el instanceof HTMLElement) sections.push(el);
     }
-    if (observed.length === 0) return;
+    if (sections.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Pick the entry closest to the top of the active band.
-        const [first] = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (first) {
-          const id = (first.target as HTMLElement).id.replace(/^domain-/, '');
-          setActiveId(id);
+    const firstId = domainIds[0] ?? null;
+    const lastId = domainIds[domainIds.length - 1] ?? null;
+    const scroller = findScrollParent(navRef.current);
+
+    let raf = 0;
+    const compute = () => {
+      raf = 0;
+      // The active pill is the last domain whose section top has crossed
+      // under the sticky chrome — i.e. whose sticky header is currently
+      // pinned. Read the live chrome height from the CSS variable that
+      // EditorToolbar publishes via usePublishChromeHeight.
+      const chromeH =
+        Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--page-chrome-h'),
+        ) || 0;
+
+      // When scrolled to the very bottom, the last section's top has
+      // already passed under chrome — but on short pages the second-to-
+      // last domain's top might still be the latest crossing. Force the
+      // last pill so the user sees the page is "done".
+      const atBottom =
+        scroller instanceof HTMLElement
+          ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2
+          : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      if (atBottom && lastId) {
+        setActiveId(lastId);
+        return;
+      }
+
+      let active: string | null = firstId;
+      // 4px slack so the highlight flips just as the header touches the
+      // toolbar, not a frame after.
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= chromeH + 4) {
+          active = section.id.replace(/^domain-/, '');
         }
-      },
-      { rootMargin: '-30% 0px -60% 0px', threshold: 0 },
-    );
-    for (const el of observed) observer.observe(el);
+      }
+      setActiveId(active);
+    };
+
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(compute);
+    };
+
+    compute();
+    scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => {
-      observer.disconnect();
+      scroller.removeEventListener('scroll', onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
     };
   }, [domainIds]);
 
@@ -94,7 +146,11 @@ export function DomainNav({
 
   if (display === 'tabs') {
     return (
-      <nav aria-label="Rubric domains" className={cn('bg-ops-red flex w-full', className)}>
+      <nav
+        ref={navRef}
+        aria-label="Rubric domains"
+        className={cn('bg-ops-red flex w-full', className)}
+      >
         {rubric.domains.map((d) => {
           const active = activeId === d.id;
           return (
@@ -123,6 +179,7 @@ export function DomainNav({
 
   return (
     <nav
+      ref={navRef}
       aria-label="Rubric domains"
       className={cn('flex flex-wrap gap-1', align === 'center' && 'justify-center', className)}
     >
