@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { type DocumentReference, onSnapshot } from 'firebase/firestore';
 
 /**
@@ -6,9 +7,9 @@ import { type DocumentReference, onSnapshot } from 'firebase/firestore';
  * `useFirestoreDoc` but takes a `DocumentReference` so the caller can
  * pass a typed ref (e.g. one built from `withConverter`).
  *
- * Backed by TanStack Query so cached data survives unmounts; the live
- * `onSnapshot` listener keeps streaming updates while any observer is
- * mounted.
+ * Subscription lifecycle is tied to the component mount; the TanStack
+ * Query cache is used to share the last-known snapshot across mounts so
+ * remounts return data synchronously and don't flash `Loading…`.
  */
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function useDocument<T>(ref: DocumentReference | null): {
@@ -20,47 +21,44 @@ export function useDocument<T>(ref: DocumentReference | null): {
   const path = ref?.path ?? '';
   const queryKey: QueryKey = ['firestore-doc-ref', path];
 
-  const result = useQuery<(T & { id: string }) | null>({
-    queryKey,
-    enabled: !!ref,
-    staleTime: Infinity,
-    gcTime: 5 * 60_000,
-    queryFn: ({ signal }) =>
-      new Promise((resolve, reject) => {
-        if (!ref) {
-          resolve(null);
-          return;
-        }
-        let resolvedFirst = false;
-        const unsub = onSnapshot(
-          ref,
-          (snap) => {
-            const next = snap.exists()
-              ? ({ id: snap.id, ...snap.data() } as T & { id: string })
-              : null;
-            if (!resolvedFirst) {
-              resolvedFirst = true;
-              resolve(next);
-            } else {
-              queryClient.setQueryData(queryKey, next);
-            }
-          },
-          (err) => {
-            if (!resolvedFirst) {
-              resolvedFirst = true;
-              reject(err);
-            } else {
-              console.error('[useDocument] subscription error', err);
-            }
-          },
-        );
-        signal.addEventListener('abort', unsub);
-      }),
-  });
+  const cached = queryClient.getQueryData<(T & { id: string }) | null>(queryKey);
+  const [data, setData] = useState<(T & { id: string }) | null>(cached ?? null);
+  const [loading, setLoading] = useState(!!ref && cached === undefined);
+  const [error, setError] = useState<Error | null>(null);
 
-  return {
-    data: result.data ?? null,
-    loading: !!ref && result.isPending,
-    error: result.error ?? null,
-  };
+  useEffect(() => {
+    if (!ref) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const cachedNow = queryClient.getQueryData<(T & { id: string }) | null>(queryKey);
+    if (cachedNow !== undefined) {
+      setData(cachedNow);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        const next = snap.exists() ? ({ id: snap.id, ...snap.data() } as T & { id: string }) : null;
+        queryClient.setQueryData(queryKey, next);
+        setData(next);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        setError(err);
+        setLoading(false);
+      },
+    );
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- queryKey is derived from path
+  }, [path, queryClient]);
+
+  return { data, loading, error };
 }

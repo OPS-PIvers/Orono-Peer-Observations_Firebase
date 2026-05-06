@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import {
   type DocumentData,
   type QueryConstraint,
@@ -19,10 +20,11 @@ export interface UseFirestoreCollectionResult<T> {
  * array. Caller passes constraints (where/orderBy/limit) — no opinion on
  * filtering.
  *
- * Backed by TanStack Query so the snapshot survives component unmounts
- * (default `gcTime` 5 min): navigating away and back returns cached data
- * instantly, and the underlying `onSnapshot` listener keeps streaming
- * updates while any observer is mounted.
+ * Subscription lifecycle is tied to the component mount (useEffect cleanup
+ * unsubs on unmount). The TanStack Query cache is used solely to share
+ * data across mounts — on remount within `gcTime` the previous snapshot
+ * is returned synchronously so there's no `Loading…` flash, and a fresh
+ * `onSnapshot` reattaches in the same effect to keep streaming updates.
  */
 export function useFirestoreCollection<T = DocumentData>(
   collectionPath: string,
@@ -35,43 +37,46 @@ export function useFirestoreCollection<T = DocumentData>(
   const constraintsKey = constraints.map((c) => c.type).join('|');
   const queryKey: QueryKey = ['firestore-collection', collectionPath, constraintsKey];
 
-  const result = useQuery<(T & { id: string })[]>({
-    queryKey,
-    enabled: !!collectionPath,
-    staleTime: Infinity,
-    gcTime: 5 * 60_000,
-    queryFn: ({ signal }) =>
-      new Promise((resolve, reject) => {
-        const ref = collection(db, collectionPath);
-        const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
-        let resolvedFirst = false;
-        const unsub = onSnapshot(
-          q,
-          (snap) => {
-            const next = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
-            if (!resolvedFirst) {
-              resolvedFirst = true;
-              resolve(next);
-            } else {
-              queryClient.setQueryData(queryKey, next);
-            }
-          },
-          (err) => {
-            if (!resolvedFirst) {
-              resolvedFirst = true;
-              reject(err);
-            } else {
-              console.error('[useFirestoreCollection] subscription error', err);
-            }
-          },
-        );
-        signal.addEventListener('abort', unsub);
-      }),
-  });
+  const cached = queryClient.getQueryData<(T & { id: string })[]>(queryKey);
+  const [data, setData] = useState<(T & { id: string })[] | null>(cached ?? null);
+  const [loading, setLoading] = useState(cached === undefined);
+  const [error, setError] = useState<Error | null>(null);
 
-  return {
-    data: result.data ?? null,
-    loading: !!collectionPath && result.isPending,
-    error: result.error ?? null,
-  };
+  useEffect(() => {
+    if (!collectionPath) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const cachedNow = queryClient.getQueryData<(T & { id: string })[]>(queryKey);
+    if (cachedNow !== undefined) {
+      setData(cachedNow);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    const ref = collection(db, collectionPath);
+    const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const next = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
+        queryClient.setQueryData(queryKey, next);
+        setData(next);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        setError(err);
+        setLoading(false);
+      },
+    );
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- constraintsKey is the dep
+  }, [collectionPath, constraintsKey, queryClient]);
+
+  return { data, loading, error };
 }
