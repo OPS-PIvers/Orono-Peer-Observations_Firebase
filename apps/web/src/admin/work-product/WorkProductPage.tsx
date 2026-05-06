@@ -120,20 +120,25 @@ export function WorkProductPage() {
       </div>
 
       {loading && !questions ? (
-        <ol className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <li
-              key={`skeleton-${String(i)}`}
-              className="border-border bg-background flex items-center gap-2 rounded-md border p-3"
-            >
-              <Skeleton className="h-4 w-4" />
-              <Skeleton className="h-4 w-6" />
-              <Skeleton className="h-9 flex-1" />
-              <Skeleton className="h-7 w-32" />
-              <Skeleton className="h-4 w-16" />
-            </li>
-          ))}
-        </ol>
+        <>
+          <span className="sr-only" role="status" aria-live="polite">
+            Loading questions…
+          </span>
+          <ol className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <li
+                key={`skeleton-${String(i)}`}
+                className="border-border bg-background flex items-center gap-2 rounded-md border p-3"
+              >
+                <Skeleton className="h-4 w-4" />
+                <Skeleton className="h-4 w-6" />
+                <Skeleton className="h-9 flex-1" />
+                <Skeleton className="h-7 w-32" />
+                <Skeleton className="h-4 w-16" />
+              </li>
+            ))}
+          </ol>
+        </>
       ) : sorted.length === 0 ? (
         <p className="text-muted-foreground text-sm">No questions yet. Add one above.</p>
       ) : (

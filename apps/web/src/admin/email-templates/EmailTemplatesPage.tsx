@@ -351,16 +351,21 @@ export function EmailTemplatesPage() {
       {/* Template list */}
       <div className="border-border bg-background divide-border divide-y rounded-lg border">
         {loading && !templates ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={`skeleton-${String(i)}`} className="flex items-center gap-3 px-4 py-3">
-              <Skeleton className="h-5 w-5 rounded-full" />
-              <div className="flex flex-1 flex-col gap-2">
-                <Skeleton className="h-4 w-56" />
-                <Skeleton className="h-3 w-72" />
+          <>
+            <span className="sr-only" role="status" aria-live="polite">
+              Loading email templates…
+            </span>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={`skeleton-${String(i)}`} className="flex items-center gap-3 px-4 py-3">
+                <Skeleton className="h-5 w-5 rounded-full" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-56" />
+                  <Skeleton className="h-3 w-72" />
+                </div>
+                <Skeleton className="h-7 w-16" />
               </div>
-              <Skeleton className="h-7 w-16" />
-            </div>
-          ))
+            ))}
+          </>
         ) : filtered.length === 0 ? (
           <p className="text-muted-foreground py-8 text-center text-sm">No templates.</p>
         ) : (

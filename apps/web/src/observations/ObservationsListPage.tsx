@@ -157,6 +157,7 @@ export function ObservationsListPage() {
                     <div className="space-y-1.5">
                       <Skeleton className="h-4 w-40" />
                       <Skeleton className="h-3 w-56" />
+                      <Skeleton className="h-3 w-32" />
                     </div>
                   </TableCell>
                   <TableCell>

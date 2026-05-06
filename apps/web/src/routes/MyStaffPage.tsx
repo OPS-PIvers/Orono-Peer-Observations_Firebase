@@ -145,6 +145,11 @@ export function MyStaffPage() {
                   className={i % 2 === 0 ? 'bg-white' : 'bg-ops-gray-lightest'}
                 >
                   <td className="px-4 py-3">
+                    {i === 0 ? (
+                      <span className="sr-only" role="status" aria-live="polite">
+                        Loading staff…
+                      </span>
+                    ) : null}
                     <Skeleton className="h-4 w-32" />
                   </td>
                   <td className="px-4 py-3">
@@ -156,11 +161,11 @@ export function MyStaffPage() {
                   <td className="px-4 py-3">
                     <Skeleton className="h-4 w-28" />
                   </td>
-                  <td className="px-4 py-3">
-                    <Skeleton className="h-4 w-4" />
+                  <td className="px-4 py-3 text-center">
+                    <Skeleton className="mx-auto h-4 w-4" />
                   </td>
                   <td className="px-4 py-3">
-                    <Skeleton className="h-7 w-20" />
+                    <Skeleton className="h-7 w-32" />
                   </td>
                 </tr>
               ))

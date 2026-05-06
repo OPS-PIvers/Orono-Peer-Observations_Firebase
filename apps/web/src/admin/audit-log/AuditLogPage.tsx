@@ -110,6 +110,11 @@ export function AuditLogPage() {
               Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={`skeleton-${String(i)}`}>
                   <TableCell>
+                    {i === 0 ? (
+                      <span className="sr-only" role="status" aria-live="polite">
+                        Loading audit log…
+                      </span>
+                    ) : null}
                     <Skeleton className="h-4 w-36" />
                   </TableCell>
                   <TableCell>

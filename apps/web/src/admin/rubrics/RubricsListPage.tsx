@@ -52,6 +52,11 @@ export function RubricsListPage() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={`skeleton-${String(i)}`}>
                   <TableCell>
+                    {i === 0 ? (
+                      <span className="sr-only" role="status" aria-live="polite">
+                        Loading rubrics…
+                      </span>
+                    ) : null}
                     <Skeleton className="h-4 w-44" />
                   </TableCell>
                   <TableCell>
