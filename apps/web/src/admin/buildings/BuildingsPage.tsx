@@ -1,12 +1,11 @@
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Building } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
-import { Skeleton } from '@/components/Skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,13 +17,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AdminDataView,
+  type AdminDataViewSort,
+  type ColumnDef,
+} from '@/admin/_shared/AdminDataView';
+import { sortRows } from '@/admin/_shared/sortRows';
 
 function slugify(s: string): string {
   return s
@@ -34,6 +37,8 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+type BuildingRow = Building & { id: string };
+
 export function BuildingsPage() {
   const {
     data: buildings,
@@ -41,7 +46,54 @@ export function BuildingsPage() {
     error,
   } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
   const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState<(Building & { id: string }) | null>(null);
+  const [editing, setEditing] = useState<BuildingRow | null>(null);
+  const [sort, setSort] = useState<AdminDataViewSort | null>({
+    key: 'displayName',
+    direction: 'asc',
+  });
+
+  const columns: ColumnDef<BuildingRow>[] = useMemo(
+    () => [
+      {
+        key: 'displayName',
+        header: 'Display name',
+        cellClassName: 'font-medium',
+        sortAccessor: (b) => b.displayName,
+        cell: (b) => b.displayName,
+        mobile: { primary: true },
+      },
+      {
+        key: 'buildingId',
+        header: 'Building ID',
+        cellClassName: 'text-muted-foreground font-mono text-xs',
+        sortAccessor: (b) => b.buildingId,
+        cell: (b) => b.buildingId,
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        headClassName: 'w-24',
+        sortAccessor: (b) => (b.isActive ? 1 : 0),
+        cell: (b) =>
+          b.isActive ? (
+            <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+              Active
+            </span>
+          ) : (
+            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+              Inactive
+            </span>
+          ),
+        mobile: { footer: true },
+      },
+    ],
+    [],
+  );
+
+  const sorted = useMemo(
+    () => sortRows(buildings ?? [], columns, sort),
+    [buildings, columns, sort],
+  );
 
   return (
     <PageHeader
@@ -63,76 +115,33 @@ export function BuildingsPage() {
         </div>
       ) : null}
 
-      <div className="border-border bg-background overflow-hidden rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Display name</TableHead>
-              <TableHead>Building ID</TableHead>
-              <TableHead className="w-24">Status</TableHead>
-              <TableHead className="w-20" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && !buildings ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <TableRow key={`skeleton-${String(i)}`}>
-                  <TableCell>
-                    <Skeleton className="h-4 w-44" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-14 rounded" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-7 w-12" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : buildings?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                  No buildings yet. Add one to get started.
-                </TableCell>
-              </TableRow>
-            ) : (
-              buildings?.map((b) => (
-                <TableRow key={b.id} className="cursor-pointer" onClick={() => setEditing(b)}>
-                  <TableCell className="font-medium">{b.displayName}</TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {b.buildingId}
-                  </TableCell>
-                  <TableCell>
-                    {b.isActive ? (
-                      <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-                        Inactive
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditing(b);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <AdminDataView
+        columns={columns}
+        rows={loading && !buildings ? null : sorted}
+        loading={loading}
+        rowKey={(b) => b.id}
+        onRowClick={(b) => setEditing(b)}
+        empty="No buildings yet. Add one to get started."
+        sort={sort}
+        onSortChange={setSort}
+        rowActions={(b) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 min-h-9 w-9 min-w-9"
+                aria-label={`Actions for ${b.displayName}`}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setEditing(b)}>Edit</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      />
 
       <BuildingDialog
         open={showCreate}
@@ -184,7 +193,6 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Re-derive form when the dialog re-opens with a different `existing`.
   if (open && form.buildingId !== (existing?.buildingId ?? '') && existing) {
     setForm({
       displayName: existing.displayName,

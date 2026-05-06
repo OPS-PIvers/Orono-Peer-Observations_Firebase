@@ -146,21 +146,32 @@ export function WorkProductPage() {
           {sorted.map((q, idx) => (
             <li
               key={q.id}
-              className="border-border bg-background flex items-start gap-2 rounded-md border p-3"
+              className="border-border bg-background grid grid-cols-[auto_auto_1fr_auto] gap-2 rounded-md border p-3 md:grid-cols-[auto_auto_1fr_auto_auto_auto] md:items-center"
             >
-              <span className="text-muted-foreground mt-2 cursor-grab" aria-hidden>
+              <span className="text-muted-foreground cursor-grab self-center" aria-hidden>
                 <GripVertical className="h-4 w-4" />
               </span>
-              <span className="text-muted-foreground mt-2 w-6 text-right text-sm">{idx + 1}.</span>
+              <span className="text-muted-foreground w-6 self-center text-right text-sm">
+                {idx + 1}.
+              </span>
               <Input
                 value={q.text}
                 onChange={(e) => void update(q, { text: e.target.value })}
-                className="flex-1"
+                className="col-span-1 col-start-3 md:col-start-3"
               />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => void destroy(q.id)}
+                aria-label="Delete question"
+                className="md:col-start-6"
+              >
+                <X className="h-4 w-4" />
+              </Button>
               <select
                 value={q.type}
                 onChange={(e) => void update(q, { type: e.target.value as QuestionType })}
-                className="rounded-md border border-gray-200 px-2 py-1.5 text-xs"
+                className="col-start-3 h-9 rounded-md border border-gray-200 px-2 py-1.5 text-xs md:col-start-4 md:w-auto"
                 aria-label="Question type"
               >
                 {QUESTION_TYPES.map((t) => (
@@ -169,7 +180,7 @@ export function WorkProductPage() {
                   </option>
                 ))}
               </select>
-              <label className="mt-2 flex items-center gap-1 text-xs">
+              <label className="col-start-3 flex items-center gap-1 text-xs md:col-start-5 md:self-center">
                 <input
                   type="checkbox"
                   checked={q.isActive}
@@ -178,14 +189,6 @@ export function WorkProductPage() {
                 />
                 Active
               </label>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => void destroy(q.id)}
-                aria-label="Delete question"
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </li>
           ))}
         </ol>

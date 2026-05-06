@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   type QueryDocumentSnapshot,
   Timestamp,
@@ -13,15 +13,7 @@ import { COLLECTIONS, type AuditLog } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
-import { Skeleton } from '@/components/Skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { AdminDataView, type ColumnDef } from '@/admin/_shared/AdminDataView';
 
 const PAGE_SIZE = 50;
 
@@ -83,6 +75,46 @@ export function AuditLogPage() {
     }
   }, [cursor]);
 
+  const columns: ColumnDef<LogEntry>[] = useMemo(
+    () => [
+      {
+        key: 'timestamp',
+        header: 'Timestamp',
+        headClassName: 'w-44',
+        cellClassName: 'font-mono text-xs',
+        cell: (e) => formatTimestamp(e.timestamp),
+        mobile: { primary: true },
+      },
+      {
+        key: 'user',
+        header: 'User',
+        headClassName: 'w-56',
+        cellClassName: 'text-sm',
+        cell: (e) => e.userEmail ?? <em>system</em>,
+      },
+      {
+        key: 'action',
+        header: 'Action',
+        headClassName: 'w-44',
+        cellClassName: 'font-mono text-xs',
+        cell: (e) => e.action,
+      },
+      {
+        key: 'target',
+        header: 'Target',
+        cellClassName: 'font-mono text-xs',
+        cell: (e) => e.target,
+      },
+      {
+        key: 'details',
+        header: 'Details',
+        headClassName: 'w-32',
+        cell: (e) => <DetailsButton details={e.details} />,
+      },
+    ],
+    [],
+  );
+
   return (
     <PageHeader
       title="Audit Log"
@@ -94,68 +126,14 @@ export function AuditLogPage() {
         </div>
       ) : null}
 
-      <div className="border-border bg-background overflow-hidden rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-44">Timestamp</TableHead>
-              <TableHead className="w-56">User</TableHead>
-              <TableHead className="w-44">Action</TableHead>
-              <TableHead>Target</TableHead>
-              <TableHead className="w-32">Details</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && entries.length === 0 ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <TableRow key={`skeleton-${String(i)}`}>
-                  <TableCell>
-                    {i === 0 ? (
-                      <span className="sr-only" role="status" aria-live="polite">
-                        Loading audit log…
-                      </span>
-                    ) : null}
-                    <Skeleton className="h-4 w-36" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-44" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-56" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-7 w-20" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : entries.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                  No audit log entries yet. Entries appear here as users sign in and admins make
-                  changes.
-                </TableCell>
-              </TableRow>
-            ) : (
-              entries.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell className="font-mono text-xs">
-                    {formatTimestamp(e.timestamp)}
-                  </TableCell>
-                  <TableCell className="text-sm">{e.userEmail ?? <em>system</em>}</TableCell>
-                  <TableCell className="font-mono text-xs">{e.action}</TableCell>
-                  <TableCell className="font-mono text-xs">{e.target}</TableCell>
-                  <TableCell>
-                    <DetailsButton details={e.details} />
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <AdminDataView
+        columns={columns}
+        rows={loading && entries.length === 0 ? null : entries}
+        loading={loading && entries.length === 0}
+        rowKey={(e) => e.id}
+        empty="No audit log entries yet. Entries appear here as users sign in and admins make changes."
+        skeletonRows={8}
+      />
 
       <div className="mt-4 flex items-center justify-between">
         <p className="text-muted-foreground text-xs">
@@ -174,9 +152,6 @@ export function AuditLogPage() {
 }
 
 function formatTimestamp(ts: AuditLog['timestamp']): string {
-  // Firestore Timestamps come through as the SDK Timestamp class; Dates
-  // are also possible if a Cloud Function used Date.now() before Firestore
-  // serialized. Handle both.
   const date = ts instanceof Timestamp ? ts.toDate() : ts;
   if (!(date instanceof Date)) return String(ts);
   return date.toLocaleString();
@@ -189,11 +164,18 @@ function DetailsButton({ details }: { details: AuditLog['details'] }) {
   }
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setOpen((v) => !v)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
         {open ? 'Hide' : 'View'}
       </Button>
       {open ? (
-        <pre className="bg-muted absolute right-0 z-10 mt-1 max-h-64 max-w-md overflow-auto rounded-md p-3 text-xs">
+        <pre className="bg-muted mt-2 max-h-64 max-w-full overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
           {JSON.stringify(details, null, 2)}
         </pre>
       ) : null}

@@ -1,12 +1,11 @@
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Role } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
-import { Skeleton } from '@/components/Skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -18,13 +17,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AdminDataView,
+  type AdminDataViewSort,
+  type ColumnDef,
+} from '@/admin/_shared/AdminDataView';
+import { sortRows } from '@/admin/_shared/sortRows';
 
 function slugify(s: string): string {
   return s
@@ -34,10 +37,78 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+type RoleRow = Role & { id: string };
+
 export function RolesPage() {
   const { data: roles, loading, error } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState<(Role & { id: string }) | null>(null);
+  const [editing, setEditing] = useState<RoleRow | null>(null);
+  const [sort, setSort] = useState<AdminDataViewSort | null>({
+    key: 'displayName',
+    direction: 'asc',
+  });
+
+  const columns: ColumnDef<RoleRow>[] = useMemo(
+    () => [
+      {
+        key: 'displayName',
+        header: 'Display name',
+        cellClassName: 'font-medium',
+        sortAccessor: (r) => r.displayName,
+        cell: (r) => r.displayName,
+        mobile: { primary: true },
+      },
+      {
+        key: 'roleId',
+        header: 'Role ID',
+        cellClassName: 'text-muted-foreground font-mono text-xs',
+        sortAccessor: (r) => r.roleId,
+        cell: (r) => r.roleId,
+      },
+      {
+        key: 'rubricId',
+        header: 'Rubric ID',
+        cellClassName: 'text-muted-foreground font-mono text-xs',
+        sortAccessor: (r) => r.rubricId,
+        cell: (r) => r.rubricId,
+      },
+      {
+        key: 'special',
+        header: 'Special access',
+        headClassName: 'w-32',
+        sortAccessor: (r) => (r.isSpecialAccess ? 1 : 0),
+        cell: (r) =>
+          r.isSpecialAccess ? (
+            <span className="bg-ops-red-lighter text-ops-red-dark inline-flex items-center rounded px-2 py-0.5 text-xs">
+              Special
+            </span>
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          ),
+        mobile: { footer: true },
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        headClassName: 'w-24',
+        sortAccessor: (r) => (r.isActive ? 1 : 0),
+        cell: (r) =>
+          r.isActive ? (
+            <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+              Active
+            </span>
+          ) : (
+            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
+              Inactive
+            </span>
+          ),
+        mobile: { footer: true },
+      },
+    ],
+    [],
+  );
+
+  const sorted = useMemo(() => sortRows(roles ?? [], columns, sort), [roles, columns, sort]);
 
   return (
     <PageHeader
@@ -59,96 +130,33 @@ export function RolesPage() {
         </div>
       ) : null}
 
-      <div className="border-border bg-background overflow-hidden rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Display name</TableHead>
-              <TableHead>Role ID</TableHead>
-              <TableHead>Rubric ID</TableHead>
-              <TableHead className="w-32">Special access</TableHead>
-              <TableHead className="w-24">Status</TableHead>
-              <TableHead className="w-20" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && !roles ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={`skeleton-${String(i)}`}>
-                  <TableCell>
-                    <Skeleton className="h-4 w-40" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-28" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-28" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-16 rounded" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-5 w-14 rounded" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-7 w-12" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : roles?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  No roles yet. Add one to get started.
-                </TableCell>
-              </TableRow>
-            ) : (
-              roles?.map((r) => (
-                <TableRow key={r.id} className="cursor-pointer" onClick={() => setEditing(r)}>
-                  <TableCell className="font-medium">{r.displayName}</TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {r.roleId}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {r.rubricId}
-                  </TableCell>
-                  <TableCell>
-                    {r.isSpecialAccess ? (
-                      <span className="bg-ops-red-lighter text-ops-red-dark inline-flex items-center rounded px-2 py-0.5 text-xs">
-                        Special
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {r.isActive ? (
-                      <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-                        Inactive
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditing(r);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <AdminDataView
+        columns={columns}
+        rows={loading && !roles ? null : sorted}
+        loading={loading}
+        rowKey={(r) => r.id}
+        onRowClick={(r) => setEditing(r)}
+        empty="No roles yet. Add one to get started."
+        sort={sort}
+        onSortChange={setSort}
+        rowActions={(r) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 min-h-9 w-9 min-w-9"
+                aria-label={`Actions for ${r.displayName}`}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setEditing(r)}>Edit</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      />
 
       <RoleDialog open={showCreate} onOpenChange={setShowCreate} mode="create" existing={null} />
       <RoleDialog
@@ -201,8 +209,6 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Re-derive form when the dialog re-opens with a different `existing`.
-  // Cheap: form is small, this just resets when the modal opens fresh.
   if (open && form.roleId !== (existing?.roleId ?? '') && existing) {
     setForm({
       displayName: existing.displayName,
@@ -301,7 +307,7 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="roleId">Role ID</Label>
               <Input

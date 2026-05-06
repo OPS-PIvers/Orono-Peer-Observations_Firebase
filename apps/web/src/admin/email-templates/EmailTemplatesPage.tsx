@@ -498,13 +498,13 @@ function TemplateRow({
   return (
     <div>
       {/* Row header */}
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-start gap-3 px-4 py-3">
         {/* Active toggle */}
         <button
           role="switch"
           aria-checked={t.isActive}
           onClick={onToggle}
-          className={`focus-visible:ring-ring relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+          className={`focus-visible:ring-ring relative mt-1 inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
             t.isActive ? 'bg-green-500' : 'bg-gray-300'
           }`}
           title={t.isActive ? 'Active — click to disable' : 'Inactive — click to enable'}
@@ -516,26 +516,29 @@ function TemplateRow({
           />
         </button>
 
-        {/* Name + badges */}
+        {/* Name + badges — wrap on narrow screens so each badge stays
+            readable instead of overflowing. */}
         <div className="min-w-0 flex-1">
-          <span className="text-sm font-medium">{t.name}</span>
-          <span className="ml-2 inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
-            {TRIGGER_LABELS[t.triggerType]}
-          </span>
-          <span className="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-            {RECIPIENT_LABELS[t.recipient]}
-          </span>
-          {t.isSystem ? (
-            <span className="ml-1 inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500">
-              System
+          <div className="text-sm font-medium break-words">{t.name}</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+              {TRIGGER_LABELS[t.triggerType]}
             </span>
-          ) : null}
+            <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+              {RECIPIENT_LABELS[t.recipient]}
+            </span>
+            {t.isSystem ? (
+              <span className="inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500">
+                System
+              </span>
+            ) : null}
+          </div>
         </div>
 
         {/* Edit toggle */}
         <Button variant="ghost" size="sm" onClick={onEditToggle} className="shrink-0">
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          <span className="ml-1">{expanded ? 'Close' : 'Edit'}</span>
+          <span className="ml-1 hidden sm:inline">{expanded ? 'Close' : 'Edit'}</span>
         </Button>
       </div>
 

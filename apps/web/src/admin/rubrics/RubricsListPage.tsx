@@ -1,21 +1,74 @@
-import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { COLLECTIONS, type Rubric } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
-import { Skeleton } from '@/components/Skeleton';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  AdminDataView,
+  type AdminDataViewSort,
+  type ColumnDef,
+} from '@/admin/_shared/AdminDataView';
+import { sortRows } from '@/admin/_shared/sortRows';
+
+interface RubricRow extends Rubric {
+  id: string;
+  componentCount: number;
+}
 
 export function RubricsListPage() {
   const { data: rubrics, loading, error } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
+  const [sort, setSort] = useState<AdminDataViewSort | null>({
+    key: 'displayName',
+    direction: 'asc',
+  });
+
+  const decorated: RubricRow[] = useMemo(
+    () =>
+      (rubrics ?? []).map((r) => ({
+        ...r,
+        componentCount: r.domains.reduce((sum, d) => sum + d.components.length, 0),
+      })),
+    [rubrics],
+  );
+
+  const columns: ColumnDef<RubricRow>[] = useMemo(
+    () => [
+      {
+        key: 'displayName',
+        header: 'Display name',
+        cellClassName: 'font-medium',
+        sortAccessor: (r) => r.displayName,
+        cell: (r) => r.displayName,
+        mobile: { primary: true },
+      },
+      {
+        key: 'rubricId',
+        header: 'Rubric ID',
+        cellClassName: 'text-muted-foreground font-mono text-xs',
+        sortAccessor: (r) => r.rubricId,
+        cell: (r) => r.rubricId,
+      },
+      {
+        key: 'domains',
+        header: 'Domains',
+        headClassName: 'w-24',
+        sortAccessor: (r) => r.domains.length,
+        cell: (r) => r.domains.length,
+      },
+      {
+        key: 'components',
+        header: 'Components',
+        headClassName: 'w-28',
+        sortAccessor: (r) => r.componentCount,
+        cell: (r) => r.componentCount,
+      },
+    ],
+    [],
+  );
+
+  const sorted = useMemo(() => sortRows(decorated, columns, sort), [decorated, columns, sort]);
 
   return (
     <PageHeader
@@ -36,75 +89,20 @@ export function RubricsListPage() {
         </div>
       ) : null}
 
-      <div className="border-border bg-background overflow-hidden rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Display name</TableHead>
-              <TableHead>Rubric ID</TableHead>
-              <TableHead className="w-24">Domains</TableHead>
-              <TableHead className="w-28">Components</TableHead>
-              <TableHead className="w-24" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && !rubrics ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={`skeleton-${String(i)}`}>
-                  <TableCell>
-                    {i === 0 ? (
-                      <span className="sr-only" role="status" aria-live="polite">
-                        Loading rubrics…
-                      </span>
-                    ) : null}
-                    <Skeleton className="h-4 w-44" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-32" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-6" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-8" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-7 w-12" />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : rubrics?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                  No rubrics yet. Add a role to get started.
-                </TableCell>
-              </TableRow>
-            ) : (
-              rubrics
-                ?.slice()
-                .sort((a, b) => a.displayName.localeCompare(b.displayName))
-                .map((r) => {
-                  const componentCount = r.domains.reduce((sum, d) => sum + d.components.length, 0);
-                  return (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-medium">{r.displayName}</TableCell>
-                      <TableCell className="text-muted-foreground font-mono text-xs">
-                        {r.rubricId}
-                      </TableCell>
-                      <TableCell>{r.domains.length}</TableCell>
-                      <TableCell>{componentCount}</TableCell>
-                      <TableCell>
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to={`/admin/rubrics/${r.id}`}>Edit</Link>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <AdminDataView
+        columns={columns}
+        rows={loading && !rubrics ? null : sorted}
+        loading={loading}
+        rowKey={(r) => r.id}
+        empty="No rubrics yet. Add a role to get started."
+        sort={sort}
+        onSortChange={setSort}
+        rowActions={(r) => (
+          <Button variant="outline" size="sm" asChild>
+            <Link to={`/admin/rubrics/${r.id}`}>Edit</Link>
+          </Button>
+        )}
+      />
     </PageHeader>
   );
 }
