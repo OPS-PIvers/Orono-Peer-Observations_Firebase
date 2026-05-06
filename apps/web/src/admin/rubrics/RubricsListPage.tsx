@@ -4,6 +4,7 @@ import { COLLECTIONS, type Rubric } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import {
   Table,
   TableBody,
@@ -48,11 +49,30 @@ export function RubricsListPage() {
           </TableHeader>
           <TableBody>
             {loading && !rubrics ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={`skeleton-${String(i)}`}>
+                  <TableCell>
+                    {i === 0 ? (
+                      <span className="sr-only" role="status" aria-live="polite">
+                        Loading rubrics…
+                      </span>
+                    ) : null}
+                    <Skeleton className="h-4 w-44" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-6" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-8" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-7 w-12" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : rubrics?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-muted-foreground py-6 text-center">

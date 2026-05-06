@@ -6,6 +6,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -74,11 +75,22 @@ export function BuildingsPage() {
           </TableHeader>
           <TableBody>
             {loading && !buildings ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 4 }).map((_, i) => (
+                <TableRow key={`skeleton-${String(i)}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-44" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-14 rounded" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-7 w-12" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : buildings?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-muted-foreground py-6 text-center">

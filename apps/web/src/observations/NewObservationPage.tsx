@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
 import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
+import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
@@ -171,11 +172,28 @@ export function NewObservationPage() {
           </TableHeader>
           <TableBody>
             {loading && !staff ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  Loading…
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 8 }).map((_, i) => (
+                <TableRow key={`skeleton-${String(i)}`}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-48" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-8" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-28" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-7 w-20" />
+                  </TableCell>
+                </TableRow>
+              ))
             ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
