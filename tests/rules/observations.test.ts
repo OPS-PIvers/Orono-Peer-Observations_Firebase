@@ -51,9 +51,12 @@ describe('observations: read access', () => {
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('observed teacher CANNOT read a Draft observation about them', async () => {
+  it('observed teacher CAN read a Draft Standard observation about them', async () => {
+    // Loosened in May 2026: staff dashboard shows pre/obs/post cards the
+    // moment the peer evaluator creates the Draft, so the observed staff
+    // member needs read access to their own Draft regardless of type.
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
   it('observed teacher CAN read a Finalized observation about them', async () => {
@@ -79,11 +82,15 @@ describe('observations: read access', () => {
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('PE can list observations; teachers cannot', async () => {
+  it('PE can list observations; unrelated teacher cannot', async () => {
     const peDb = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertSucceeds(getDocs(collection(peDb, 'observations')));
-    const teacherDb = testEnv.authenticatedContext('t', claims.teacher()).firestore();
-    await assertFails(getDocs(collection(teacherDb, 'observations')));
+    // A teacher who is NOT the observed staff member can't list the
+    // collection — list scopes per-doc to `observedEmail == auth.email`.
+    const otherDb = testEnv
+      .authenticatedContext('other', claims.teacher('other@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDocs(collection(otherDb, 'observations')));
   });
 });
 
@@ -250,10 +257,12 @@ describe('observations: staff WP/IR draft access', () => {
     await assertSucceeds(getDoc(doc(db, 'observations/irObs')));
   });
 
-  it('observed teacher CANNOT read a Standard Draft (existing behavior preserved)', async () => {
+  it('observed teacher CAN read a Standard Draft', async () => {
+    // Loosened in May 2026 so the staff dashboard surfaces pre/obs/post
+    // cards while the observation is still being drafted by the PE.
     await seedDraftObs('stdObs', { type: 'Standard' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(getDoc(doc(db, 'observations/stdObs')));
+    await assertSucceeds(getDoc(doc(db, 'observations/stdObs')));
   });
 
   it('observed teacher CAN save workProductAnswers on a WP Draft', async () => {
