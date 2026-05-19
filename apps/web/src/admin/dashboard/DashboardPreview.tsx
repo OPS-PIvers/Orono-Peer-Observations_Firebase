@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
@@ -129,6 +129,64 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
     : null;
 
   return (
+    <PreviewFrame>
+      <DashboardView
+        staff={staff}
+        firstName={extractFirstName(staff.name)}
+        yearTierLabel={yearTierLabelFor(staff.year)}
+        cycleYearLabel={currentSchoolYearLabel()}
+        cycleCloseLabel="May 15"
+        sections={sections}
+        tasks={tasks}
+        quickMaterials={quickMaterials}
+        peerEvaluator={peerEvaluator}
+        readOnly
+      />
+    </PreviewFrame>
+  );
+}
+
+/**
+ * Chrome around the live preview: header banner + zoomable viewport.
+ *
+ * The inner dashboard is locked to its natural 1240px design width so the
+ * staff layout doesn't trigger its single-column responsive media query
+ * inside this small column. CSS `zoom` (rather than `transform: scale`)
+ * shrinks both the visual and the box, so the wrapping container reports
+ * the correct height to the scroll container and no horizontal ghost
+ * area lingers.
+ *
+ * Scale is computed from the wrapper's actual rendered width via
+ * ResizeObserver so the preview tracks the column as the viewport resizes.
+ */
+const NATURAL_WIDTH = 1240;
+
+function PreviewFrame({ children }: { children: React.ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.6);
+
+  useEffect(() => {
+    if (!wrapperRef.current) return;
+    const target = wrapperRef.current;
+    const applyWidth = (w: number) => {
+      if (w <= 0) return;
+      // Cap at 1 so we never enlarge on extra-wide monitors.
+      setScale(Math.max(0.3, Math.min(1, w / NATURAL_WIDTH)));
+    };
+    // Sync initial measurement — ResizeObserver's first fire is async and
+    // can lose to React Strict Mode's double-mount in dev, leaving us
+    // stuck on the useState default.
+    applyWidth(target.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      applyWidth(entry.contentRect.width);
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
     <div className="border-border bg-background flex h-full flex-col overflow-hidden rounded-lg border">
       <div className="bg-ops-blue-lighter/50 border-border flex items-center gap-2 border-b px-3 py-2 text-xs font-semibold">
         <Eye className="text-ops-blue h-4 w-4" />
@@ -137,21 +195,8 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
           Live, with your unsaved edits
         </span>
       </div>
-      <div className="flex-1 origin-top-left overflow-auto">
-        <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%' }}>
-          <DashboardView
-            staff={staff}
-            firstName={extractFirstName(staff.name)}
-            yearTierLabel={yearTierLabelFor(staff.year)}
-            cycleYearLabel={currentSchoolYearLabel()}
-            cycleCloseLabel="May 15"
-            sections={sections}
-            tasks={tasks}
-            quickMaterials={quickMaterials}
-            peerEvaluator={peerEvaluator}
-            readOnly
-          />
-        </div>
+      <div ref={wrapperRef} className="flex-1 overflow-x-hidden overflow-y-auto">
+        <div style={{ zoom: scale, width: `${String(NATURAL_WIDTH)}px` }}>{children}</div>
       </div>
     </div>
   );

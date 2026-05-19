@@ -101,8 +101,15 @@ export function DashboardSettingsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-        <div className={cn(showPreviewMobile && 'hidden lg:block')}>
+      {/* Two-column layout: editor 1/3 (scrolls), preview 2/3 (sticky).
+          Mobile/tablet collapses to a single column with the preview toggle. */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div
+          className={cn(
+            showPreviewMobile && 'hidden lg:block',
+            'lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-2',
+          )}
+        >
           {tab === 'layout' ? (
             <SectionTilesEditor value={draft.draft.sections} onChange={draft.setSections} />
           ) : null}
@@ -119,7 +126,7 @@ export function DashboardSettingsPage() {
         <div
           className={cn(
             !showPreviewMobile && 'hidden lg:block',
-            'lg:sticky lg:top-24 lg:h-[calc(100vh-160px)]',
+            'lg:sticky lg:top-24 lg:h-[calc(100vh-180px)]',
           )}
         >
           <DashboardPreview
