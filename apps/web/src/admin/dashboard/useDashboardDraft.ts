@@ -97,7 +97,9 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     if (hydrated) return;
     if (configLoading || quickLoading) return;
     const next: DashboardDraft = {
-      sections: stripIds(configDoc)?.sections ?? { ...DEFAULT_SECTIONS },
+      // Merge over defaults so older saved docs (missing newer toggles
+      // like `roleChip`) still get a complete sections object.
+      sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
       checkpoints: stripIds(configDoc)?.checkpoints ?? {},
       quickMaterials: stripIds(quickDoc)?.items ?? [],
     };

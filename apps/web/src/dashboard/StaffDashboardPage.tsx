@@ -196,7 +196,7 @@ export function StaffDashboardPage() {
       yearTierLabel={yearTierLabelFor(staff.year)}
       cycleYearLabel={currentSchoolYearLabel()}
       cycleCloseLabel="May 15"
-      sections={config?.sections ?? DEFAULT_SECTIONS}
+      sections={{ ...DEFAULT_SECTIONS, ...config?.sections }}
       tasks={tasks}
       quickMaterials={quick?.items ?? []}
       peerEvaluator={peerEvaluator}

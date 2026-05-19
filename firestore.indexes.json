@@ -32,6 +32,14 @@
         { "fieldPath": "observedEmail", "order": "ASCENDING" },
         { "fieldPath": "lastModifiedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "modules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "displayName", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

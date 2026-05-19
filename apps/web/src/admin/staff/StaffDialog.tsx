@@ -59,7 +59,11 @@ const empty: FormState = {
 
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
 const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
-const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+// Modules: no orderBy on the wire. The collection is small (a handful of
+// modules per district) and dropping the orderBy means new deployments
+// don't need to wait for the composite index to finish building before
+// the dropdown is usable. We sort client-side below.
+const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
@@ -77,9 +81,13 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     COLLECTIONS.buildings,
     ACTIVE_BUILDINGS_CONSTRAINTS,
   );
-  const { data: modules, loading: modulesLoading } = useFirestoreCollection<ModuleDoc>(
+  const { data: modulesRaw, loading: modulesLoading } = useFirestoreCollection<ModuleDoc>(
     COLLECTIONS.modules,
     ACTIVE_MODULES_CONSTRAINTS,
+  );
+  const modules = useMemo(
+    () => (modulesRaw ?? []).slice().sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [modulesRaw],
   );
 
   useEffect(() => {
