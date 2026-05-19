@@ -12,6 +12,8 @@ import {
   LayoutGrid,
   LogOut,
   Settings,
+  Sparkles,
+  SlidersHorizontal,
   User,
   Users,
 } from 'lucide-react';
@@ -114,11 +116,20 @@ function buildNavItems(
   // Role-specific layouts come first — Administrators are also `isAdmin`,
   // so checking `role` ahead of `flags.isAdmin` is what wires up their
   // building-scoped /my-staff link.
+  const dashboardItem: NavItem = { icon: Sparkles, label: 'My Dashboard', href: '/dashboard' };
+  const dashboardConfigItem: NavItem = {
+    icon: SlidersHorizontal,
+    label: 'Dashboard Setup',
+    href: '/dashboard-config',
+  };
+
   if (role === SPECIAL_ROLES.administrator) {
     const main: NavItem[] = [
+      dashboardItem,
       myRubricItem,
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      dashboardConfigItem,
     ];
     if (flags.isAdmin) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
@@ -129,9 +140,11 @@ function buildNavItems(
   if (role === SPECIAL_ROLES.peerEvaluator) {
     return {
       main: [
+        dashboardItem,
         myRubricItem,
         { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+        dashboardConfigItem,
       ],
       meta: metaItems,
     };
@@ -143,8 +156,10 @@ function buildNavItems(
   if (flags.isAdmin) {
     return {
       main: [
+        dashboardItem,
         myRubricItem,
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+        dashboardConfigItem,
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
       meta: metaItems,
@@ -154,6 +169,7 @@ function buildNavItems(
   // Staff (no special access)
   return {
     main: [
+      dashboardItem,
       myRubricItem,
       {
         icon: ClipboardList,

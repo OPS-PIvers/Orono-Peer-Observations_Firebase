@@ -213,5 +213,31 @@ service cloud.firestore {
     match /mail/{document} {
       allow read, write: if false;
     }
+
+    // --- /dashboardTemplates/{tier} -----------------------------------------
+    // One doc per tier ("continuing" | "probationary"). Read: any signed-in
+    // domain user — every staff member's dashboard subscribes. Write: PE
+    // OR admin (peer evaluators co-own checkpoint setup; admins include
+    // the dev-admin escape hatch via the hasAdminAccess flag).
+    match /dashboardTemplates/{tier} {
+      allow read: if isFromOronoDomain();
+      allow write: if hasSpecialAccess() || isAdmin();
+    }
+
+    // --- /dashboardQuickMaterials/{id} --------------------------------------
+    // Single "global" doc holding the right-rail quick-materials list. Read
+    // for everyone signed-in; write for PE or admin.
+    match /dashboardQuickMaterials/{id} {
+      allow read: if isFromOronoDomain();
+      allow write: if hasSpecialAccess() || isAdmin();
+    }
+
+    // --- /dashboardProgress/{email} -----------------------------------------
+    // Per-staff progress. Staff member: read/write their own doc (e.g., to
+    // mark a checkpoint done from the dashboard). PE/admin: read/write any
+    // (PEs nudge progress on behalf of their observees).
+    match /dashboardProgress/{email} {
+      allow read, write: if isCurrentUserEmail(email) || hasSpecialAccess() || isAdmin();
+    }
   }
 }

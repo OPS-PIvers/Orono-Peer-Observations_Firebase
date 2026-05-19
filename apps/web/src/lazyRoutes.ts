@@ -12,6 +12,8 @@ import { lazy } from 'react';
  */
 
 const importers = {
+  StaffDashboardPage: () => import('@/dashboard/StaffDashboardPage'),
+  DashboardConfigPage: () => import('@/dashboard/DashboardConfigPage'),
   MyRubricPage: () => import('@/routes/MyRubricPage'),
   MyStaffPage: () => import('@/routes/MyStaffPage'),
   ProfilePage: () => import('@/routes/ProfilePage'),
@@ -36,6 +38,12 @@ const importers = {
 
 export type RouteName = keyof typeof importers;
 
+export const StaffDashboardPage = lazy(() =>
+  importers.StaffDashboardPage().then((m) => ({ default: m.StaffDashboardPage })),
+);
+export const DashboardConfigPage = lazy(() =>
+  importers.DashboardConfigPage().then((m) => ({ default: m.DashboardConfigPage })),
+);
 export const MyRubricPage = lazy(() =>
   importers.MyRubricPage().then((m) => ({ default: m.MyRubricPage })),
 );
@@ -100,6 +108,8 @@ export function prefetch(name: RouteName): void {
 /** URL pathname → RouteName map so the sidebar can prefetch by href
  *  without hardcoding component names at every NavLink. */
 export const PREFETCH_BY_PATH: Record<string, RouteName> = {
+  '/dashboard': 'StaffDashboardPage',
+  '/dashboard-config': 'DashboardConfigPage',
   '/my-rubric': 'MyRubricPage',
   '/my-staff': 'MyStaffPage',
   '/staff': 'StaffDirectoryPage',

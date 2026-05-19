@@ -7,7 +7,11 @@ import { useEffectiveClaims } from '@/dev/DevModeContext';
  *
  * Administrator → /my-staff
  * Peer Evaluator → /staff
- * Everyone else (Full Access, dev-admin escape hatch, plain staff) → /my-rubric
+ * Everyone else (plain staff, Full Access without admin claim) → /dashboard
+ *
+ * Staff land on the new /dashboard (Staff Dashboard) — the year-cycle
+ * checklist + materials view. The legacy /my-rubric page is still
+ * reachable from the sidebar.
  */
 export function RoleAwareRedirect() {
   const claims = useEffectiveClaims();
@@ -20,5 +24,5 @@ export function RoleAwareRedirect() {
     return <Navigate to="/staff" replace />;
   }
 
-  return <Navigate to="/my-rubric" replace />;
+  return <Navigate to="/dashboard" replace />;
 }

@@ -61,10 +61,19 @@ function KeyedStaffPersonPage() {
 interface ShellProps {
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
+  requireAdminOrSpecialAccess?: boolean;
 }
-function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: ShellProps) {
+function StandardShell({
+  requireAdmin = false,
+  requireSpecialAccess = false,
+  requireAdminOrSpecialAccess = false,
+}: ShellProps) {
   return (
-    <RequireAuth requireAdmin={requireAdmin} requireSpecialAccess={requireSpecialAccess}>
+    <RequireAuth
+      requireAdmin={requireAdmin}
+      requireSpecialAccess={requireSpecialAccess}
+      requireAdminOrSpecialAccess={requireAdminOrSpecialAccess}
+    >
       <Layout />
     </RequireAuth>
   );
@@ -79,11 +88,11 @@ export function App() {
             {/* Public */}
             <Route path="/sign-in" element={<SignInScreen />} />
             {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
-            <Route path="/dashboard" element={<Navigate to="/" replace />} />
 
             {/* Authenticated routes (no special access required) */}
             <Route element={<StandardShell />}>
               <Route path="/" element={<RoleAwareRedirect />} />
+              <Route path="/dashboard" element={<L.StaffDashboardPage />} />
               <Route path="/my-rubric" element={<L.MyRubricPage />} />
               <Route path="/profile" element={<L.ProfilePage />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
@@ -97,6 +106,11 @@ export function App() {
               <Route path="/staff" element={<L.StaffDirectoryPage />} />
               <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
               <Route path="/my-staff" element={<L.MyStaffPage />} />
+            </Route>
+
+            {/* PE + admin shared surface: dashboard setup is co-owned. */}
+            <Route element={<StandardShell requireAdminOrSpecialAccess />}>
+              <Route path="/dashboard-config" element={<L.DashboardConfigPage />} />
             </Route>
 
             {/* Admin section (gated to Administrator + Full Access) */}
