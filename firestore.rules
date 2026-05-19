@@ -151,23 +151,11 @@ service cloud.firestore {
     match /observations/{observationId} {
       allow get: if (
         isCurrentUserEmail(resource.data.observerEmail)
-        || (
-          isCurrentUserEmail(resource.data.observedEmail)
-          && (
-            resource.data.status == 'Finalized'
-            || resource.data.type in ['Work Product', 'Instructional Round']
-          )
-        )
+        || isCurrentUserEmail(resource.data.observedEmail)
         || hasSpecialAccess()
       );
       allow list: if hasSpecialAccess()
-        || (
-          isCurrentUserEmail(resource.data.observedEmail)
-          && (
-            resource.data.status == 'Finalized'
-            || resource.data.type in ['Work Product', 'Instructional Round']
-          )
-        );
+        || isCurrentUserEmail(resource.data.observedEmail);
 
       allow create: if hasSpecialAccess()
         && request.resource.data.observerEmail == request.auth.token.email

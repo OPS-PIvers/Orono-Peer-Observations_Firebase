@@ -175,6 +175,9 @@ function monthLabel(d: Date): string {
 export interface DeriveContext {
   /** All visible Finalized observations for this staff member, newest first. */
   finalizedStandard: Observation[];
+  /** Active (Draft) Standard observation, if any — surfaces pre/obs/post
+   *  cards before the observation is finalized. */
+  standardDraft: Observation | null;
   /** Active (Draft) Work Product observation, if any. */
   workProductDraft: Observation | null;
   /** Active (Draft) Instructional Round observation, if any. */
@@ -201,7 +204,10 @@ type Builder = (ctx: DeriveContext) => Omit<CheckpointWithStatus, 'key'> | null;
 const BUILDERS: Record<CheckpointTypeKey, Builder> = {
   signup: (ctx) => {
     const labels = BUILTIN_DEFAULTS.signup;
-    const hasFinalized = ctx.finalizedStandard.length > 0;
+    // The moment any observation (Draft or Finalized) exists for the staff
+    // member, signup transitions to "Scheduled". Until then the link to the
+    // signup form is the action.
+    const hasObs = ctx.standardDraft != null || ctx.finalizedStandard.length > 0;
     const signupLink = ctx.appSettings?.signupLink ?? '';
     return {
       id: 'signup',
@@ -210,74 +216,75 @@ const BUILDERS: Record<CheckpointTypeKey, Builder> = {
       title: labels.title,
       desc: 'Pick a window that works for your class. Your peer evaluator confirms within 2 school days.',
       monthLabel: '',
-      dateLabel: hasFinalized ? 'Scheduled' : 'Open',
+      dateLabel: hasObs ? 'Scheduled' : 'Open',
       dueRelative: '',
       cta: labels.cta,
       ctaUrl: signupLink,
-      status: hasFinalized ? 'done' : signupLink ? 'soon' : 'upcoming',
-      completedLabel: hasFinalized ? 'Scheduled' : null,
+      status: hasObs ? 'done' : signupLink ? 'soon' : 'upcoming',
+      completedLabel: hasObs ? 'Scheduled' : null,
       percent: null,
       percentLabel: '',
     };
   },
 
   preObs: (ctx) => {
-    // Standard preObs is only visible post-finalize (security rules hide
-    // Draft Standard observations from the observee). Surface the date from
-    // the most recent finalized Standard observation when present.
-    const obs = ctx.finalizedStandard[0];
+    // Surface as soon as a Standard observation (Draft or Finalized) exists.
+    // If the PE hasn't picked a date yet, show an "awaiting date" state.
+    const finalized = ctx.finalizedStandard[0] ?? null;
+    const draft = ctx.standardDraft;
+    const obs = finalized ?? draft;
     if (!obs) return null;
     const preDate = toDate(obs.preObsDate);
-    if (!preDate) return null;
     const labels = BUILTIN_DEFAULTS.preObs;
+    const isFinal = finalized != null;
     return {
       id: 'preObs',
       type: labels.type,
       typeLabel: labels.typeLabel,
       title: labels.title,
       desc: '20-minute conversation with your peer evaluator. Lesson plan, focus components, context.',
-      monthLabel: monthLabel(preDate),
-      dateLabel: dateLabel(preDate),
+      monthLabel: preDate ? monthLabel(preDate) : '',
+      dateLabel: preDate ? dateLabel(preDate) : 'Awaiting date',
       dueRelative: '',
       cta: labels.cta,
       ctaUrl: `/observations/${obs.observationId}`,
-      status: 'done',
-      completedLabel: dateLabel(preDate),
+      status: isFinal && preDate ? 'done' : preDate ? 'soon' : 'upcoming',
+      completedLabel: isFinal && preDate ? dateLabel(preDate) : null,
       percent: null,
       percentLabel: '',
     };
   },
 
   observation: (ctx) => {
-    const obs = ctx.finalizedStandard[0];
+    const finalized = ctx.finalizedStandard[0] ?? null;
+    const draft = ctx.standardDraft;
+    const obs = finalized ?? draft;
     if (!obs) return null;
     const obsDate = toDate(obs.observationDate);
-    if (!obsDate) return null;
     const labels = BUILTIN_DEFAULTS.observation;
+    const isFinal = finalized != null;
     return {
       id: 'observation',
       type: labels.type,
       typeLabel: labels.typeLabel,
       title: labels.title,
       desc: 'Your peer evaluator joins your room during the window you selected.',
-      monthLabel: monthLabel(obsDate),
-      dateLabel: dateLabel(obsDate),
+      monthLabel: obsDate ? monthLabel(obsDate) : '',
+      dateLabel: obsDate ? dateLabel(obsDate) : 'Awaiting date',
       dueRelative: '',
       cta: labels.cta,
       ctaUrl: `/observations/${obs.observationId}`,
-      status: 'done',
-      completedLabel: dateLabel(obsDate),
+      status: isFinal && obsDate ? 'done' : obsDate ? 'soon' : 'upcoming',
+      completedLabel: isFinal && obsDate ? dateLabel(obsDate) : null,
       percent: null,
       percentLabel: '',
     };
   },
 
   reviewDraft: (ctx) => {
-    // Staff can read Drafts of WP / IR observations during the cycle. The
-    // "review draft" card lights up while a WP or IR observation is Draft.
-    const wp = ctx.workProductDraft;
-    const ir = ctx.instructionalRoundDraft;
-    const obs = wp ?? ir;
+    // Staff can read Drafts of any observation during the cycle. The
+    // "review draft" card lights up while any observation is Draft.
+    const obs = ctx.standardDraft ?? ctx.workProductDraft ?? ctx.instructionalRoundDraft;
     if (!obs) return null;
     const lastMod = toDate(obs.lastModifiedAt);
     const labels = BUILTIN_DEFAULTS.reviewDraft;
@@ -300,24 +307,26 @@ const BUILDERS: Record<CheckpointTypeKey, Builder> = {
   },
 
   postObs: (ctx) => {
-    const obs = ctx.finalizedStandard[0];
+    const finalized = ctx.finalizedStandard[0] ?? null;
+    const draft = ctx.standardDraft;
+    const obs = finalized ?? draft;
     if (!obs) return null;
     const postDate = toDate(obs.postObsDate);
-    if (!postDate) return null;
     const labels = BUILTIN_DEFAULTS.postObs;
+    const isFinal = finalized != null;
     return {
       id: 'postObs',
       type: labels.type,
       typeLabel: labels.typeLabel,
       title: labels.title,
       desc: '30 minutes to talk through proficiency ratings and where to focus next.',
-      monthLabel: monthLabel(postDate),
-      dateLabel: dateLabel(postDate),
+      monthLabel: postDate ? monthLabel(postDate) : '',
+      dateLabel: postDate ? dateLabel(postDate) : 'Awaiting date',
       dueRelative: '',
       cta: labels.cta,
       ctaUrl: `/observations/${obs.observationId}`,
-      status: 'done',
-      completedLabel: dateLabel(postDate),
+      status: isFinal && postDate ? 'done' : postDate ? 'soon' : 'upcoming',
+      completedLabel: isFinal && postDate ? dateLabel(postDate) : null,
       percent: null,
       percentLabel: '',
     };

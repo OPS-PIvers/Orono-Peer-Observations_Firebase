@@ -21,6 +21,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
+import { useActiveStandardObservation } from '@/hooks/useActiveStandardObservation';
 import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { db } from '@/lib/firebase';
@@ -90,6 +91,7 @@ export function StaffDashboardPage() {
     finalizedConstraints,
   );
 
+  const { observation: standardDraft } = useActiveStandardObservation(emailLower);
   const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
   const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
   const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
@@ -104,6 +106,7 @@ export function StaffDashboardPage() {
     if (!staff) return [];
     return deriveCheckpoints(config?.checkpoints ?? {}, {
       finalizedStandard,
+      standardDraft,
       workProductDraft: wpDraft,
       instructionalRoundDraft: irDraft,
       finalizedWorkProduct: null,
@@ -118,6 +121,7 @@ export function StaffDashboardPage() {
     staff,
     config,
     finalizedStandard,
+    standardDraft,
     wpDraft,
     irDraft,
     wpQuestions.data,
@@ -180,7 +184,7 @@ export function StaffDashboardPage() {
     );
   }
 
-  const peSource = wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
+  const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
   const peerEvaluator: { name: string; email: string; role: string } | null = peSource
     ? {
         name: peSource.observerEmail.split('@')[0] ?? peSource.observerEmail,

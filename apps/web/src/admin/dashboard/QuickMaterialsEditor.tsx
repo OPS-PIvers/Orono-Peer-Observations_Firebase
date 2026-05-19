@@ -139,44 +139,9 @@ export function QuickMaterialsEditor({
                 <SortableItem key={m._id} id={m._id}>
                   {({ dragHandleProps }) => (
                     <li className="border-border bg-background rounded-lg border p-3">
-                      <div className="flex items-start gap-2">
+                      <div className="mb-2 flex items-center gap-2">
                         <GripHandle dragHandleProps={dragHandleProps} />
-                        <div className="min-w-0 flex-1 space-y-3">
-                          <div className="grid gap-3 md:grid-cols-[140px_1fr_1fr]">
-                            <div className="grid gap-1">
-                              <Label className="text-xs">{QM_ICON_PICKER}</Label>
-                              <IconPicker
-                                value={m.icon}
-                                onChange={(icon: MaterialIcon) => update(idx, { icon })}
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <Label className="text-xs">{QM_FIELD_TITLE}</Label>
-                              <Input
-                                value={m.label}
-                                onChange={(e) => update(idx, { label: e.target.value })}
-                                placeholder="My rubric"
-                              />
-                            </div>
-                            <div className="grid gap-1">
-                              <Label className="text-xs">{QM_FIELD_SUBTITLE}</Label>
-                              <Input
-                                value={m.sub}
-                                onChange={(e) => update(idx, { sub: e.target.value })}
-                                placeholder="Domains 2 & 3 · 14 components"
-                              />
-                            </div>
-                          </div>
-                          <div className="grid gap-1">
-                            <Label className="text-xs">{QM_FIELD_URL}</Label>
-                            <Input
-                              value={m.url}
-                              onChange={(e) => update(idx, { url: e.target.value })}
-                              placeholder="https://drive.google.com/…"
-                            />
-                          </div>
-                          <ChipPreview item={m} />
-                        </div>
+                        <ChipPreview item={m} />
                         <Button
                           type="button"
                           variant="ghost"
@@ -186,6 +151,39 @@ export function QuickMaterialsEditor({
                         >
                           <Trash2 className="text-destructive h-4 w-4" />
                         </Button>
+                      </div>
+                      <div className="grid gap-3 pl-8">
+                        <div className="grid gap-1">
+                          <Label className="text-xs">{QM_FIELD_TITLE}</Label>
+                          <Input
+                            value={m.label}
+                            onChange={(e) => update(idx, { label: e.target.value })}
+                            placeholder="My rubric"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label className="text-xs">{QM_FIELD_SUBTITLE}</Label>
+                          <Input
+                            value={m.sub}
+                            onChange={(e) => update(idx, { sub: e.target.value })}
+                            placeholder="Domains 2 & 3 · 14 components"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label className="text-xs">{QM_FIELD_URL}</Label>
+                          <Input
+                            value={m.url}
+                            onChange={(e) => update(idx, { url: e.target.value })}
+                            placeholder="https://drive.google.com/…"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label className="text-xs">{QM_ICON_PICKER}</Label>
+                          <IconPicker
+                            value={m.icon}
+                            onChange={(icon: MaterialIcon) => update(idx, { icon })}
+                          />
+                        </div>
                       </div>
                     </li>
                   )}
@@ -209,20 +207,20 @@ function ChipPreview({ item }: { item: DashboardQuickMaterial }) {
   return (
     <div
       className={cn(
-        'border-border bg-muted/30 grid grid-cols-[32px_1fr_auto] items-center gap-3 rounded-md border-l-2 px-3 py-2',
+        'border-border bg-muted/30 flex min-w-0 flex-1 items-center gap-2 rounded-md border-l-2 px-2 py-1.5',
         'border-l-ops-blue',
       )}
     >
-      <div className="bg-ops-blue-lighter text-ops-blue flex h-8 w-8 items-center justify-center rounded">
-        <DashboardIcon name={item.icon} size={16} />
+      <div className="bg-ops-blue-lighter text-ops-blue flex h-7 w-7 shrink-0 items-center justify-center rounded">
+        <DashboardIcon name={item.icon} size={14} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">
-          {empty ? 'Card preview' : item.label || '(no title)'}
+          {empty ? 'New material' : item.label || '(no title)'}
         </div>
         {item.sub ? <div className="text-muted-foreground truncate text-xs">{item.sub}</div> : null}
       </div>
-      {item.url ? <ExternalLink className="text-muted-foreground h-4 w-4" /> : null}
+      {item.url ? <ExternalLink className="text-muted-foreground h-3.5 w-3.5 shrink-0" /> : null}
     </div>
   );
 }

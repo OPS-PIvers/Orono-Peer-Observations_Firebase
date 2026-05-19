@@ -1,50 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { limit, orderBy, where } from 'firebase/firestore';
 import {
-  APP_SETTINGS_DOC_ID,
-  COLLECTIONS,
-  OBSERVATION_STATUS,
-  OBSERVATION_TYPES,
-  type AppSettings,
   type DashboardCheckpointsConfig,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
-  type ModuleDoc,
-  type Observation,
-  type Role,
-  type Staff,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
-import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
-import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
-import { DashboardView, type ModuleChip } from '@/dashboard/DashboardView';
-import { deriveCheckpoints, extractFirstName } from '@/dashboard/deriveCheckpoints';
+import { DashboardView } from '@/dashboard/DashboardView';
 import { Eye } from 'lucide-react';
+import {
+  SAMPLE_BUILDING_NAMES,
+  SAMPLE_FIRST_NAME,
+  SAMPLE_MODULE_CHIPS,
+  SAMPLE_PEER_EVALUATOR,
+  SAMPLE_ROLE_DISPLAY_NAME,
+  SAMPLE_STAFF,
+  SAMPLE_YEAR_TIER_LABEL,
+  buildSampleCheckpoints,
+} from './previewSampleData';
 
 /**
  * Right-column live preview. Renders <DashboardView> with the admin's
- * *draft* sections/checkpoints/quick-materials — so every edit shows up
- * immediately, before the admin clicks Save.
+ * *draft* sections/checkpoints/quick-materials plus a synthesized sample
+ * staff member so the preview always reflects what a typical user sees
+ * throughout the year — independent of whether the current admin has any
+ * active observations of their own.
  *
- * Real observation data + staff doc still come from Firestore so the
- * preview reflects the admin's own dashboard state. Read-only (no
- * Acknowledge button, no outbound email links).
+ * Read-only: no Acknowledge action, no outbound links.
  */
-
-function yearTierLabelFor(year: number): string {
-  if (year >= 4) return `Probationary Y${String(year - 3)}`;
-  return `Year ${String(year)}`;
-}
-
-function currentSchoolYearLabel(now: Date = new Date()): string {
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 7 ? year : year - 1;
-  return `${String(startYear)} — ${String(startYear + 1)}`;
-}
 
 export interface DashboardPreviewProps {
   sections: DashboardSectionsConfig;
@@ -53,115 +34,24 @@ export interface DashboardPreviewProps {
 }
 
 export function DashboardPreview({ sections, checkpoints, quickMaterials }: DashboardPreviewProps) {
-  const { user } = useAuth();
-  const emailLower = user?.email?.toLowerCase() ?? '';
-
-  const staffPath = emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '';
-  const { data: staff } = useFirestoreDoc<Staff>(staffPath);
-  const settingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
-  const { data: appSettings } = useFirestoreDoc<AppSettings>(settingsPath);
-
-  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
-  const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
-
-  const finalizedConstraints = useMemo(
-    () =>
-      emailLower
-        ? [
-            where('observedEmail', '==', emailLower),
-            where('status', '==', OBSERVATION_STATUS.finalized),
-            orderBy('finalizedAt', 'desc'),
-            limit(10),
-          ]
-        : [],
-    [emailLower],
-  );
-  const { data: finalizedObs } = useFirestoreCollection<Observation>(
-    emailLower ? COLLECTIONS.observations : '',
-    finalizedConstraints,
-  );
-  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
-  const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
-  const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
-  const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
-
-  const finalizedStandard = useMemo(
-    () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
-    [finalizedObs],
-  );
-
-  const tasks = useMemo(() => {
-    if (!staff) return [];
-    return deriveCheckpoints(checkpoints, {
-      finalizedStandard,
-      workProductDraft: wpDraft,
-      instructionalRoundDraft: irDraft,
-      finalizedWorkProduct: null,
-      finalizedInstructionalRound: null,
-      workProductQuestionsCount: wpQuestions.data?.length ?? 0,
-      instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
-      appSettings: appSettings ?? null,
-      hasWorkProduct,
-      hasInstructionalRound,
-    });
-  }, [
-    staff,
-    checkpoints,
-    finalizedStandard,
-    wpDraft,
-    irDraft,
-    wpQuestions.data,
-    appSettings,
-    hasWorkProduct,
-    hasInstructionalRound,
-  ]);
-
-  const roleDisplayName = useMemo(() => {
-    if (!staff || !roles) return '';
-    return roles.find((r) => r.roleId === staff.role)?.displayName ?? staff.role;
-  }, [staff, roles]);
-
-  const moduleChips = useMemo<ModuleChip[]>(() => {
-    if (!staff || !modulesData) return [];
-    return staff.modules
-      .map((id) => modulesData.find((m) => m.moduleId === id))
-      .filter((m): m is ModuleDoc & { id: string } => m != null)
-      .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
-  }, [staff, modulesData]);
-
-  if (!staff) {
-    return (
-      <div className="border-border bg-muted/20 flex h-full items-center justify-center rounded-lg border p-8 text-sm">
-        Loading preview…
-      </div>
-    );
-  }
-
-  const peSource = wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
-  const peerEvaluator = peSource
-    ? {
-        name: peSource.observerEmail.split('@')[0] ?? peSource.observerEmail,
-        email: peSource.observerEmail,
-        role: 'Peer Evaluator',
-      }
-    : null;
+  const tasks = useMemo(() => buildSampleCheckpoints(checkpoints), [checkpoints]);
 
   return (
     <PreviewFrame>
       <DashboardView
-        staff={staff}
-        firstName={extractFirstName(staff.name)}
-        yearTierLabel={yearTierLabelFor(staff.year)}
-        cycleYearLabel={currentSchoolYearLabel()}
+        staff={SAMPLE_STAFF}
+        firstName={SAMPLE_FIRST_NAME}
+        yearTierLabel={SAMPLE_YEAR_TIER_LABEL}
+        cycleYearLabel="2025 — 2026"
         cycleCloseLabel="May 15"
         sections={sections}
         tasks={tasks}
         quickMaterials={quickMaterials}
-        peerEvaluator={peerEvaluator}
+        peerEvaluator={SAMPLE_PEER_EVALUATOR}
         readOnly
-        roleDisplayName={roleDisplayName}
-        buildingNames={staff.buildings}
-        moduleChips={moduleChips}
+        roleDisplayName={SAMPLE_ROLE_DISPLAY_NAME}
+        buildingNames={SAMPLE_BUILDING_NAMES}
+        moduleChips={SAMPLE_MODULE_CHIPS}
       />
     </PreviewFrame>
   );
@@ -179,6 +69,9 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
  *
  * Scale is computed from the wrapper's actual rendered width via
  * ResizeObserver so the preview tracks the column as the viewport resizes.
+ * `scrollbar-gutter: stable` reserves the scrollbar's column so toggling
+ * sections doesn't change the wrapper width and trigger a zoom feedback
+ * loop.
  */
 const NATURAL_WIDTH = 1240;
 
@@ -191,12 +84,8 @@ function PreviewFrame({ children }: { children: React.ReactNode }) {
     const target = wrapperRef.current;
     const applyWidth = (w: number) => {
       if (w <= 0) return;
-      // Cap at 1 so we never enlarge on extra-wide monitors.
       setScale(Math.max(0.3, Math.min(1, w / NATURAL_WIDTH)));
     };
-    // Sync initial measurement — ResizeObserver's first fire is async and
-    // can lose to React Strict Mode's double-mount in dev, leaving us
-    // stuck on the useState default.
     applyWidth(target.getBoundingClientRect().width);
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -212,9 +101,7 @@ function PreviewFrame({ children }: { children: React.ReactNode }) {
       <div className="bg-ops-blue-lighter/50 border-border flex items-center gap-2 border-b px-3 py-2 text-xs font-semibold">
         <Eye className="text-ops-blue h-4 w-4" />
         <span className="text-ops-blue-dark">Preview — what staff see</span>
-        <span className="text-muted-foreground ml-auto font-normal">
-          Live, with your unsaved edits
-        </span>
+        <span className="text-muted-foreground ml-auto font-normal">Sample data</span>
       </div>
       <div
         ref={wrapperRef}
