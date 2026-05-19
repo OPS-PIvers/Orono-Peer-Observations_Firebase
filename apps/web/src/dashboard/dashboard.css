@@ -824,12 +824,15 @@
 }
 
 /* ---------- TASK ROW (unified expandable) ---------- */
+/* No `overflow: hidden` on the row itself — the featured card's "NEXT UP"
+ * badge sits at `top: -10px` and must be allowed to escape upward. Inner
+ * elements round their own corners to keep bg colors inside the card. */
 .staff-dashboard .task-row {
   background: var(--bg-1);
   border: 1px solid var(--border-1);
   border-radius: var(--r-md);
   margin-bottom: 8px;
-  overflow: hidden;
+  position: relative;
   transition:
     border-color 160ms var(--ease-out),
     box-shadow 160ms var(--ease-out);
@@ -871,10 +874,14 @@
   width: 100%;
   background: transparent;
   border: 0;
+  border-radius: var(--r-md);
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
+}
+.staff-dashboard .task-row.is-expanded .task-row__header {
+  border-radius: var(--r-md) var(--r-md) 0 0;
 }
 .staff-dashboard .task-row__header:hover {
   background: var(--bg-2);
@@ -985,6 +992,7 @@
   padding: 4px 18px 16px 58px;
   border-top: 1px solid var(--border-1);
   background: var(--bg-2);
+  border-radius: 0 0 var(--r-md) var(--r-md);
 }
 .staff-dashboard .task-row__detail-head {
   display: flex;
