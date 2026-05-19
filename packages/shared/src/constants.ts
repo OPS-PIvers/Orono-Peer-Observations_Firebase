@@ -13,6 +13,7 @@ export const ALLOWED_EMAIL_DOMAIN = 'orono.k12.mn.us';
 export const COLLECTIONS = {
   staff: 'staff',
   roles: 'roles',
+  modules: 'modules',
   buildings: 'buildings',
   rubrics: 'rubrics',
   roleYearMappings: 'roleYearMappings',

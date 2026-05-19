@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { email, isoDate } from './common.js';
+import { email, isoDate, slugId } from './common.js';
 import { OBSERVATION_YEARS } from '../constants.js';
 
 /**
@@ -39,6 +39,7 @@ export const staff = z.object({
   role: z.string().trim().min(1, 'Role is required').max(80),
   year: staffYear,
   buildings: z.array(z.string().trim().min(1).max(80)).default([]),
+  modules: z.array(slugId).default([]),
   summativeYear: z.boolean().default(false),
   isActive: z.boolean().default(true),
   /** Grants admin-console access independent of professional role. */

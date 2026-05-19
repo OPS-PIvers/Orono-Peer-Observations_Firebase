@@ -89,6 +89,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- /modules/{moduleId} -------------------------------------------------
+    // Admin-defined participation tracks. Read: anyone signed-in from the
+    // domain (clients render module chips). Write: admin only.
+    match /modules/{moduleId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
     match /rubrics/{rubricId} {
       allow read: if isFromOronoDomain();
       allow write: if isAdmin();

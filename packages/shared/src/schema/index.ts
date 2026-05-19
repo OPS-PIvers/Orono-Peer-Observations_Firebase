@@ -24,3 +24,4 @@ export * from './emailTemplate.js';
 export * from './auditLog.js';
 export * from './transcriptionJob.js';
 export * from './dashboard.js';
+export * from './module.js';

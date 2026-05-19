@@ -29,6 +29,7 @@ import { db } from '@/lib/firebase';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
+  roleChip: true,
   timeline: true,
   filterBar: true,
   quickMaterials: true,
