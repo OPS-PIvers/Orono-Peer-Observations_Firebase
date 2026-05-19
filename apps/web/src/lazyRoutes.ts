@@ -13,7 +13,7 @@ import { lazy } from 'react';
 
 const importers = {
   StaffDashboardPage: () => import('@/dashboard/StaffDashboardPage'),
-  DashboardConfigPage: () => import('@/dashboard/DashboardConfigPage'),
+  DashboardSettingsPage: () => import('@/admin/dashboard/DashboardSettingsPage'),
   MyRubricPage: () => import('@/routes/MyRubricPage'),
   MyStaffPage: () => import('@/routes/MyStaffPage'),
   ProfilePage: () => import('@/routes/ProfilePage'),
@@ -41,8 +41,8 @@ export type RouteName = keyof typeof importers;
 export const StaffDashboardPage = lazy(() =>
   importers.StaffDashboardPage().then((m) => ({ default: m.StaffDashboardPage })),
 );
-export const DashboardConfigPage = lazy(() =>
-  importers.DashboardConfigPage().then((m) => ({ default: m.DashboardConfigPage })),
+export const DashboardSettingsPage = lazy(() =>
+  importers.DashboardSettingsPage().then((m) => ({ default: m.DashboardSettingsPage })),
 );
 export const MyRubricPage = lazy(() =>
   importers.MyRubricPage().then((m) => ({ default: m.MyRubricPage })),
@@ -109,7 +109,7 @@ export function prefetch(name: RouteName): void {
  *  without hardcoding component names at every NavLink. */
 export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/dashboard': 'StaffDashboardPage',
-  '/dashboard-config': 'DashboardConfigPage',
+  '/admin/dashboard': 'DashboardSettingsPage',
   '/my-rubric': 'MyRubricPage',
   '/my-staff': 'MyStaffPage',
   '/staff': 'StaffDirectoryPage',

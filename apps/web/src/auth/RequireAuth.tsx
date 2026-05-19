@@ -16,18 +16,12 @@ export interface RequireAuthProps {
   children: ReactNode;
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
-  /** Pass when a route should accept either admins OR special-access users.
-   *  Used for shared-config surfaces (e.g. dashboard setup) that PEs and
-   *  admins co-own — and for the dev-admin escape hatch (hasAdminAccess on
-   *  a non-special role) which has isAdmin but not hasSpecialAccess. */
-  requireAdminOrSpecialAccess?: boolean;
 }
 
 export function RequireAuth({
   children,
   requireAdmin = false,
   requireSpecialAccess = false,
-  requireAdminOrSpecialAccess = false,
 }: RequireAuthProps) {
   const { status } = useAuth();
   const claims = useEffectiveClaims();
@@ -46,10 +40,6 @@ export function RequireAuth({
   }
 
   if (requireSpecialAccess && !claims.hasSpecialAccess) {
-    return <Navigate to="/unauthorized" replace />;
-  }
-
-  if (requireAdminOrSpecialAccess && !(claims.isAdmin || claims.hasSpecialAccess)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

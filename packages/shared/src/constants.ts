@@ -23,9 +23,7 @@ export const COLLECTIONS = {
   auditLog: 'auditLog',
   transcriptionJobs: 'transcriptionJobs',
   mail: 'mail',
-  dashboardTemplates: 'dashboardTemplates',
   dashboardQuickMaterials: 'dashboardQuickMaterials',
-  dashboardProgress: 'dashboardProgress',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

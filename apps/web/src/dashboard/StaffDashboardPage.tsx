@@ -1,63 +1,132 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { doc, limit, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
+  DASHBOARD_CONFIG_DOC_ID,
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
-  type DashboardProgress,
+  OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
+  type AppSettings,
+  type DashboardConfig,
   type DashboardQuickMaterial,
   type DashboardQuickMaterialsDoc,
-  type DashboardTemplate,
+  type Observation,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
+import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
+import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
+import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
 import { DashboardIcon } from './DashboardIcon';
 import {
   type CheckpointStatus,
   type CheckpointWithStatus,
-  decorateCheckpoints,
+  deriveCheckpoints,
+  extractFirstName,
   initialsFromName,
-  tierForYear,
-} from './dashboardStatus';
+} from './deriveCheckpoints';
 import './dashboard.css';
 
 type FilterKey = 'all' | 'active' | 'upcoming' | 'completed';
 
+const DEFAULT_SECTIONS = {
+  hero: true,
+  timeline: true,
+  filterBar: true,
+  quickMaterials: true,
+  peerEvaluatorCard: true,
+};
+
+// ─── Data layer ──────────────────────────────────────────────────────────────
+
 interface DashboardData {
   staff: Staff | null;
-  template: DashboardTemplate | null;
-  progress: DashboardProgress | null;
+  config: DashboardConfig | null;
   quickMaterials: DashboardQuickMaterial[];
+  appSettings: AppSettings | null;
+  finalizedStandard: Observation[];
+  workProductDraft: Observation | null;
+  instructionalRoundDraft: Observation | null;
+  workProductQuestionsCount: number;
+  instructionalRoundQuestionsCount: number;
+  hasWorkProduct: boolean;
+  hasInstructionalRound: boolean;
   loading: boolean;
-  error: Error | null;
 }
 
 function useDashboardData(emailLower: string): DashboardData {
+  // Per-staff lookups
   const staffPath = emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '';
-  const {
-    data: staff,
-    loading: staffLoading,
-    error: staffError,
-  } = useFirestoreDoc<Staff>(staffPath);
+  const { data: staff, loading: staffLoading } = useFirestoreDoc<Staff>(staffPath);
 
-  const tier = staff ? tierForYear(staff.year) : null;
-  const templatePath = tier ? `${COLLECTIONS.dashboardTemplates}/${tier}` : '';
-  const { data: template, loading: templateLoading } =
-    useFirestoreDoc<DashboardTemplate>(templatePath);
-
-  const progressPath = emailLower ? `${COLLECTIONS.dashboardProgress}/${emailLower}` : '';
-  const { data: progress } = useFirestoreDoc<DashboardProgress>(progressPath);
+  // App-wide config
+  const configPath = `${COLLECTIONS.appSettings}/${DASHBOARD_CONFIG_DOC_ID}`;
+  const { data: config } = useFirestoreDoc<DashboardConfig>(configPath);
 
   const quickPath = `${COLLECTIONS.dashboardQuickMaterials}/${DASHBOARD_QUICK_MATERIALS_DOC_ID}`;
   const { data: quick } = useFirestoreDoc<DashboardQuickMaterialsDoc>(quickPath);
 
+  const settingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
+  const { data: appSettings } = useFirestoreDoc<AppSettings>(settingsPath);
+
+  // Observations: finalized (any type), ordered by finalizedAt desc.
+  // Rules allow staff to list these via the (observedEmail == me &&
+  // status == 'Finalized') branch.
+  const finalizedConstraints = useMemo(
+    () =>
+      emailLower
+        ? [
+            where('observedEmail', '==', emailLower),
+            where('status', '==', OBSERVATION_STATUS.finalized),
+            orderBy('finalizedAt', 'desc'),
+            limit(10),
+          ]
+        : [],
+    [emailLower],
+  );
+  const { data: finalizedObs } = useFirestoreCollection<Observation>(
+    emailLower ? COLLECTIONS.observations : '',
+    finalizedConstraints,
+  );
+
+  // Draft Work Product / Instructional Round observations (rules allow
+  // observed staff to read drafts of these types).
+  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
+  const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
+
+  // Question banks for the progress bars.
+  const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
+
+  // Whether this staff member's role/year currently has WP / IR active —
+  // shared with the sidebar via the existing context provider.
+  const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
+
+  const finalizedStandard = useMemo(
+    () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
+    [finalizedObs],
+  );
+
   return {
     staff,
-    template,
-    progress,
+    config: config ?? null,
     quickMaterials: quick?.items ?? [],
-    loading: staffLoading || (tier !== null && templateLoading),
-    error: staffError,
+    appSettings: appSettings ?? null,
+    finalizedStandard,
+    workProductDraft: wpDraft,
+    instructionalRoundDraft: irDraft,
+    workProductQuestionsCount: wpQuestions.data?.length ?? 0,
+    // IR uses the same workProductQuestions collection in this schema
+    // (questions are admin-curated and shared across both types).
+    instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
+    hasWorkProduct,
+    hasInstructionalRound,
+    loading: staffLoading,
   };
 }
 
@@ -93,11 +162,13 @@ function ProgressRing({ value, total }: { value: number; total: number }) {
 // ─── Hero ────────────────────────────────────────────────────────────────────
 interface HeroProps {
   firstName: string;
-  template: DashboardTemplate;
+  staff: Staff;
   tasks: CheckpointWithStatus[];
   cycleYearLabel: string;
+  yearTierLabel: string;
+  showTimeline: boolean;
 }
-function Hero({ firstName, template, tasks, cycleYearLabel }: HeroProps) {
+function Hero({ firstName, staff, tasks, cycleYearLabel, yearTierLabel, showTimeline }: HeroProps) {
   const done = tasks.filter((t) => t.status === 'done').length;
   const total = tasks.length;
   const next = tasks.find((t) => t.status === 'inprogress' || t.status === 'soon');
@@ -106,7 +177,9 @@ function Hero({ firstName, template, tasks, cycleYearLabel }: HeroProps) {
     <section className="dash-hero">
       <div className="dash-hero__top">
         <div className="dash-hero__copy">
-          <span className="dash-hero__eyebrow">{template.cycleLabel}</span>
+          <span className="dash-hero__eyebrow">
+            {staff.summativeYear ? 'Summative cycle' : 'Formative cycle'} · {cycleYearLabel}
+          </span>
           <h1 className="dash-hero__title">Welcome back, {firstName}.</h1>
           <p className="dash-hero__lead">
             {next ? (
@@ -118,31 +191,44 @@ function Hero({ firstName, template, tasks, cycleYearLabel }: HeroProps) {
             ) : total > 0 ? (
               <>Cycle complete — nice work, {firstName}.</>
             ) : (
-              <>Your cycle hasn’t been set up yet.</>
+              <>No active checkpoints right now. Check back when an observation is scheduled.</>
             )}
           </p>
           <div className="dash-hero__meta">
             <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{template.yearTierLabel}</span>
+              <span className="dash-hero__meta-num">{yearTierLabel}</span>
               <span className="dash-hero__meta-label">
-                {template.summativeYear ? 'Summative' : 'Formative'}
+                {staff.summativeYear ? 'Summative' : 'Formative'}
               </span>
             </div>
             <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{template.observationsPerYear}</span>
-              <span className="dash-hero__meta-label">Observations / yr</span>
+              <span className="dash-hero__meta-num">{done}</span>
+              <span className="dash-hero__meta-label">Completed</span>
             </div>
             <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{template.cycleCloseLabel}</span>
+              <span className="dash-hero__meta-num">{cycleCloseLabel()}</span>
               <span className="dash-hero__meta-label">Cycle close</span>
             </div>
           </div>
         </div>
         <ProgressRing value={done} total={Math.max(total, 1)} />
       </div>
-      <Timeline tasks={tasks} cycleYearLabel={cycleYearLabel} />
+      {showTimeline ? <Timeline tasks={tasks} cycleYearLabel={cycleYearLabel} /> : null}
     </section>
   );
+}
+
+function cycleCloseLabel(): string {
+  // Cycle nominally closes mid-May for both tiers in OPS.
+  return 'May 15';
+}
+
+function yearTierLabelFor(year: number): string {
+  if (year >= 4) {
+    const p = year - 3;
+    return `Probationary Y${String(p)}`;
+  }
+  return `Year ${String(year)}`;
 }
 
 // ─── Timeline ────────────────────────────────────────────────────────────────
@@ -157,6 +243,8 @@ function Timeline({
   const total = tasks.length;
   const fillPct =
     total > 0 ? Math.max(4, Math.min(96, (done / total) * 100 + (100 / total) * 0.4)) : 0;
+
+  if (total === 0) return null;
 
   return (
     <section className="timeline timeline--embedded">
@@ -180,7 +268,7 @@ function Timeline({
           <div className="timeline__rail-fill" style={{ width: `${String(fillPct)}%` }} />
         </div>
         {tasks.map((t, i) => {
-          const left = total > 0 ? ((i + 0.5) / total) * 100 : 0;
+          const left = ((i + 0.5) / total) * 100;
           const isCurrent = t.status === 'inprogress' || t.status === 'soon';
           const cls = [
             'timeline__dot',
@@ -191,9 +279,11 @@ function Timeline({
             .join(' ');
           return (
             <div key={t.id} className={cls} style={{ left: `${String(left)}%` }}>
-              <span className="timeline__dot-date">{t.monthLabel}</span>
+              {t.monthLabel ? <span className="timeline__dot-date">{t.monthLabel}</span> : null}
               <div className="timeline__dot-pin" />
-              {isCurrent ? <span className="timeline__dot-label">{t.dateLabel}</span> : null}
+              {isCurrent && t.dateLabel ? (
+                <span className="timeline__dot-label">{t.dateLabel}</span>
+              ) : null}
             </div>
           );
         })}
@@ -249,30 +339,20 @@ function FilterBar({
 }
 
 // ─── Task card ───────────────────────────────────────────────────────────────
-function TaskMaterials({ items }: { items: CheckpointWithStatus['materials'] }) {
-  if (!items.length) return null;
-  return (
-    <div className="task__materials">
-      {items.map((m, i) => {
-        const Tag = m.url ? 'a' : 'span';
-        return (
-          <Tag
-            key={`${m.label}-${String(i)}`}
-            className="task__material"
-            {...(m.url ? { href: m.url, target: '_blank', rel: 'noreferrer' } : {})}
-          >
-            <DashboardIcon name={m.icon} size={13} />
-            <span>{m.label}</span>
-          </Tag>
-        );
-      })}
-    </div>
-  );
-}
-
-function TaskCard({ task, featured }: { task: CheckpointWithStatus; featured?: boolean }) {
+function TaskCard({
+  task,
+  featured,
+  onAcknowledge,
+  acknowledging,
+}: {
+  task: CheckpointWithStatus;
+  featured?: boolean;
+  onAcknowledge?: (observationId: string) => void;
+  acknowledging?: boolean;
+}) {
   const statusClass = `is-${task.status}`;
   const typeClass = `task__type-chip--${task.type}`;
+  const isAck = !!task.ackObservationId;
   return (
     <article className={`task ${statusClass} ${featured ? 'task--featured' : ''}`}>
       <div
@@ -297,7 +377,6 @@ function TaskCard({ task, featured }: { task: CheckpointWithStatus; featured?: b
             </span>
           </div>
         ) : null}
-        <TaskMaterials items={task.materials} />
       </div>
       <div className="task__side">
         <div className="task__due">
@@ -308,11 +387,19 @@ function TaskCard({ task, featured }: { task: CheckpointWithStatus; featured?: b
           {task.dueRelative ? <span className="task__due-relative">{task.dueRelative}</span> : null}
         </div>
         {task.status !== 'done' ? (
-          task.ctaUrl ? (
+          isAck && task.ackObservationId && onAcknowledge ? (
+            <button
+              type="button"
+              className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task__cta`}
+              onClick={() => onAcknowledge(task.ackObservationId ?? '')}
+              disabled={acknowledging}
+            >
+              {acknowledging ? 'Acknowledging…' : task.cta}
+            </button>
+          ) : task.ctaUrl ? (
             <a
               href={task.ctaUrl}
-              target="_blank"
-              rel="noreferrer"
+              {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
               className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task__cta`}
             >
               {task.cta}
@@ -388,13 +475,12 @@ function TaskGroup({
   );
 }
 
-// ─── Right column: evaluator + quick materials ───────────────────────────────
-function EvaluatorCard({ pe }: { pe: DashboardProgress['peerEvaluator'] }) {
-  const hasContact = pe.email || pe.phone;
+// ─── Right column ────────────────────────────────────────────────────────────
+function EvaluatorCard({ pe }: { pe: { name: string; email: string; role: string } | null }) {
   return (
     <div className="side-card">
       <div className="side-card__eyebrow">Your peer evaluator</div>
-      {pe.name ? (
+      {pe ? (
         <>
           <div className="evaluator">
             <div className="evaluator__avatar">{initialsFromName(pe.name, pe.email)}</div>
@@ -404,38 +490,23 @@ function EvaluatorCard({ pe }: { pe: DashboardProgress['peerEvaluator'] }) {
             </div>
           </div>
           <div className="evaluator__contacts">
-            {pe.email ? (
-              <div className="evaluator__row">
-                <DashboardIcon name="mail" size={14} />
-                <a href={`mailto:${pe.email}`}>{pe.email}</a>
-              </div>
-            ) : null}
-            {pe.phone ? (
-              <div className="evaluator__row">
-                <DashboardIcon name="phone" size={14} />
-                <span>{pe.phone}</span>
-              </div>
-            ) : null}
-            {pe.hours ? (
-              <div className="evaluator__row">
-                <DashboardIcon name="clock" size={14} />
-                <span>{pe.hours}</span>
-              </div>
-            ) : null}
+            <div className="evaluator__row">
+              <DashboardIcon name="mail" size={14} />
+              <a href={`mailto:${pe.email}`}>{pe.email}</a>
+            </div>
           </div>
-          {hasContact ? (
-            <a
-              href={pe.email ? `mailto:${pe.email}` : undefined}
-              className="ot-btn ot-btn--primary ot-btn--sm"
-              style={{ width: '100%' }}
-            >
-              Send a message
-            </a>
-          ) : null}
+          <a
+            href={`mailto:${pe.email}`}
+            className="ot-btn ot-btn--primary ot-btn--sm"
+            style={{ width: '100%' }}
+          >
+            Send a message
+          </a>
         </>
       ) : (
         <p className="empty-note">
-          You don’t have a peer evaluator assigned yet. An admin will set this up.
+          No active observation in this cycle yet — your assigned peer evaluator will appear here
+          once they create your first observation.
         </p>
       )}
     </div>
@@ -483,13 +554,58 @@ export function StaffDashboardPage() {
   const emailLower = user?.email?.toLowerCase() ?? '';
   const data = useDashboardData(emailLower);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const queryClient = useQueryClient();
+
+  const sections = data.config?.sections ?? DEFAULT_SECTIONS;
 
   const tasks = useMemo<CheckpointWithStatus[]>(() => {
-    if (!data.template) return [];
-    return decorateCheckpoints(data.template.checkpoints, data.progress);
-  }, [data.template, data.progress]);
+    if (!data.staff) return [];
+    return deriveCheckpoints(data.config?.checkpoints ?? {}, {
+      finalizedStandard: data.finalizedStandard,
+      workProductDraft: data.workProductDraft,
+      instructionalRoundDraft: data.instructionalRoundDraft,
+      finalizedWorkProduct: null,
+      finalizedInstructionalRound: null,
+      workProductQuestionsCount: data.workProductQuestionsCount,
+      instructionalRoundQuestionsCount: data.instructionalRoundQuestionsCount,
+      appSettings: data.appSettings,
+      hasWorkProduct: data.hasWorkProduct,
+      hasInstructionalRound: data.hasInstructionalRound,
+    });
+  }, [
+    data.staff,
+    data.config,
+    data.finalizedStandard,
+    data.workProductDraft,
+    data.instructionalRoundDraft,
+    data.workProductQuestionsCount,
+    data.instructionalRoundQuestionsCount,
+    data.appSettings,
+    data.hasWorkProduct,
+    data.hasInstructionalRound,
+  ]);
 
-  if (data.loading && !data.template) {
+  // Acknowledge mutation — used by the Acknowledge checkpoint's button.
+  const ackMutation = useMutation({
+    mutationFn: async (observationId: string) => {
+      await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
+        acknowledgedAt: serverTimestamp(),
+        acknowledgedBy: emailLower,
+        lastModifiedAt: serverTimestamp(),
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        predicate: (q) => {
+          if (!Array.isArray(q.queryKey)) return false;
+          const second: unknown = q.queryKey[1];
+          return typeof second === 'string' && second.includes(COLLECTIONS.observations);
+        },
+      });
+    },
+  });
+
+  if (data.loading && !data.staff) {
     return (
       <div className="staff-dashboard">
         <div className="page">
@@ -511,18 +627,18 @@ export function StaffDashboardPage() {
     );
   }
 
-  if (!data.template) {
-    return (
-      <div className="staff-dashboard">
-        <div className="page">
-          <p className="empty-note">
-            Your dashboard hasn’t been set up yet. A peer evaluator or admin needs to publish a
-            checkpoint template for your year tier.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Peer evaluator: derived from the most recent observation we can see.
+  // Prefers the still-Draft WP/IR (most active touchpoint), falls back to
+  // the most recent finalized Standard.
+  const peSource =
+    data.workProductDraft ?? data.instructionalRoundDraft ?? data.finalizedStandard[0] ?? null;
+  const pe = peSource
+    ? {
+        name: peSource.observerEmail.split('@')[0] ?? peSource.observerEmail,
+        email: peSource.observerEmail,
+        role: 'Peer Evaluator',
+      }
+    : null;
 
   const completed = tasks.filter((t) => t.status === 'done');
   const active = tasks.filter((t) => t.status === 'inprogress' || t.status === 'soon');
@@ -540,24 +656,24 @@ export function StaffDashboardPage() {
 
   const firstName = extractFirstName(data.staff.name);
   const cycleYearLabel = currentSchoolYearLabel();
-  const peerEvaluator = data.progress?.peerEvaluator ?? {
-    name: '',
-    email: '',
-    role: '',
-    phone: '',
-    hours: '',
-  };
+  const yearTierLabel = yearTierLabelFor(data.staff.year);
 
   return (
     <div className="staff-dashboard">
       <div className="page">
-        <Hero
-          firstName={firstName}
-          template={data.template}
-          tasks={tasks}
-          cycleYearLabel={cycleYearLabel}
-        />
-        <FilterBar filter={filter} setFilter={setFilter} counts={counts} />
+        {sections.hero ? (
+          <Hero
+            firstName={firstName}
+            staff={data.staff}
+            tasks={tasks}
+            cycleYearLabel={cycleYearLabel}
+            yearTierLabel={yearTierLabel}
+            showTimeline={sections.timeline}
+          />
+        ) : null}
+        {sections.filterBar ? (
+          <FilterBar filter={filter} setFilter={setFilter} counts={counts} />
+        ) : null}
 
         <div className="page-grid" style={{ marginTop: 20 }}>
           <div>
@@ -565,13 +681,23 @@ export function StaffDashboardPage() {
               <>
                 {featured ? (
                   <section style={{ marginBottom: 8 }}>
-                    <TaskCard task={featured} featured />
+                    <TaskCard
+                      task={featured}
+                      featured
+                      onAcknowledge={(id) => ackMutation.mutate(id)}
+                      acknowledging={ackMutation.isPending}
+                    />
                   </section>
                 ) : null}
                 {restActive.length > 0 ? (
                   <TaskGroup title="In progress" count={restActive.length}>
                     {restActive.map((t) => (
-                      <TaskCard key={t.id} task={t} />
+                      <TaskCard
+                        key={t.id}
+                        task={t}
+                        onAcknowledge={(id) => ackMutation.mutate(id)}
+                        acknowledging={ackMutation.isPending}
+                      />
                     ))}
                   </TaskGroup>
                 ) : null}
@@ -600,7 +726,14 @@ export function StaffDashboardPage() {
             {filter === 'active' ? (
               <TaskGroup title="Active now" count={active.length}>
                 {active.length > 0 ? (
-                  active.map((t) => <TaskCard key={t.id} task={t} />)
+                  active.map((t) => (
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      onAcknowledge={(id) => ackMutation.mutate(id)}
+                      acknowledging={ackMutation.isPending}
+                    />
+                  ))
                 ) : (
                   <p className="empty-note">Nothing active right now.</p>
                 )}
@@ -629,8 +762,8 @@ export function StaffDashboardPage() {
           </div>
 
           <aside className="sidebar">
-            <QuickMaterials items={data.quickMaterials} />
-            <EvaluatorCard pe={peerEvaluator} />
+            {sections.quickMaterials ? <QuickMaterials items={data.quickMaterials} /> : null}
+            {sections.peerEvaluatorCard ? <EvaluatorCard pe={pe} /> : null}
           </aside>
         </div>
       </div>
@@ -638,30 +771,13 @@ export function StaffDashboardPage() {
   );
 }
 
-// Handle both "First Last" and "Last, First" formats — the imported staff
-// directory uses the latter (e.g. "Ivers, Paul"), but auth display names
-// use the former. Returning the staff record's full name as a fallback so
-// the greeting never reads blank.
-function extractFirstName(fullName: string): string {
-  const trimmed = fullName.trim();
-  if (!trimmed) return '';
-  if (trimmed.includes(',')) {
-    const afterComma = trimmed.split(',')[1]?.trim();
-    if (afterComma) return afterComma.split(/\s+/)[0] ?? afterComma;
-  }
-  return trimmed.split(/\s+/)[0] ?? trimmed;
-}
-
 // School-year label: runs Aug → July, so anything before Aug uses the prior
 // Sept→May pair. Mirrors how the rest of the system thinks about cycles.
 function currentSchoolYearLabel(now: Date = new Date()): string {
   const year = now.getFullYear();
-  const month = now.getMonth(); // 0-based
-  // Aug (7) and later = current academic year starts now; before that = prior
+  const month = now.getMonth();
   const startYear = month >= 7 ? year : year - 1;
   return `${String(startYear)} — ${String(startYear + 1)}`;
 }
 
-// Keep the status type exported for tests / callers; the union value
-// itself is implementation-internal to the dashboard module.
 export type { CheckpointStatus };

@@ -61,19 +61,10 @@ function KeyedStaffPersonPage() {
 interface ShellProps {
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
-  requireAdminOrSpecialAccess?: boolean;
 }
-function StandardShell({
-  requireAdmin = false,
-  requireSpecialAccess = false,
-  requireAdminOrSpecialAccess = false,
-}: ShellProps) {
+function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: ShellProps) {
   return (
-    <RequireAuth
-      requireAdmin={requireAdmin}
-      requireSpecialAccess={requireSpecialAccess}
-      requireAdminOrSpecialAccess={requireAdminOrSpecialAccess}
-    >
+    <RequireAuth requireAdmin={requireAdmin} requireSpecialAccess={requireSpecialAccess}>
       <Layout />
     </RequireAuth>
   );
@@ -108,11 +99,6 @@ export function App() {
               <Route path="/my-staff" element={<L.MyStaffPage />} />
             </Route>
 
-            {/* PE + admin shared surface: dashboard setup is co-owned. */}
-            <Route element={<StandardShell requireAdminOrSpecialAccess />}>
-              <Route path="/dashboard-config" element={<L.DashboardConfigPage />} />
-            </Route>
-
             {/* Admin section (gated to Administrator + Full Access) */}
             <Route element={<StandardShell requireAdmin />}>
               <Route path="/admin" element={<L.AdminLayout />}>
@@ -126,6 +112,7 @@ export function App() {
                 <Route path="work-product" element={<L.WorkProductPage />} />
                 <Route path="email-templates" element={<L.EmailTemplatesPage />} />
                 <Route path="branding" element={<L.BrandingPage />} />
+                <Route path="dashboard" element={<L.DashboardSettingsPage />} />
                 <Route path="settings" element={<L.SettingsPage />} />
                 <Route path="audit-log" element={<L.AuditLogPage />} />
               </Route>

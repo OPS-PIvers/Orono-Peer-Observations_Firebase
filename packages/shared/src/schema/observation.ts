@@ -111,6 +111,12 @@ export const observation = z.object({
   createdAt: isoDate,
   lastModifiedAt: isoDate,
   finalizedAt: isoDate.nullable().default(null),
+
+  /** Set when the observed staff member acknowledges the finalized
+   *  observation from their dashboard. Only writable by the observed
+   *  staff member, and only after `status === 'Finalized'`. */
+  acknowledgedAt: isoDate.nullable().default(null),
+  acknowledgedBy: email.optional(),
 });
 export type Observation = z.infer<typeof observation>;
 

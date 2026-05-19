@@ -13,7 +13,6 @@ import {
   LogOut,
   Settings,
   Sparkles,
-  SlidersHorizontal,
   User,
   Users,
 } from 'lucide-react';
@@ -117,11 +116,6 @@ function buildNavItems(
   // so checking `role` ahead of `flags.isAdmin` is what wires up their
   // building-scoped /my-staff link.
   const dashboardItem: NavItem = { icon: Sparkles, label: 'My Dashboard', href: '/dashboard' };
-  const dashboardConfigItem: NavItem = {
-    icon: SlidersHorizontal,
-    label: 'Dashboard Setup',
-    href: '/dashboard-config',
-  };
 
   if (role === SPECIAL_ROLES.administrator) {
     const main: NavItem[] = [
@@ -129,7 +123,6 @@ function buildNavItems(
       myRubricItem,
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-      dashboardConfigItem,
     ];
     if (flags.isAdmin) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
@@ -144,7 +137,6 @@ function buildNavItems(
         myRubricItem,
         { icon: Users, label: 'Staff', href: '/staff' },
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-        dashboardConfigItem,
       ],
       meta: metaItems,
     };
@@ -159,7 +151,6 @@ function buildNavItems(
         dashboardItem,
         myRubricItem,
         { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-        dashboardConfigItem,
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
       meta: metaItems,

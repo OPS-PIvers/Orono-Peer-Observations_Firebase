@@ -181,6 +181,14 @@ service cloud.firestore {
           && resource.data.type in ['Work Product', 'Instructional Round']
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['workProductAnswers', 'lastModifiedAt'])
+        )
+        || (
+          // Observed staff acknowledging their finalized observation — can
+          // only touch the two ack fields plus the audit timestamp.
+          isCurrentUserEmail(resource.data.observedEmail)
+          && resource.data.status == 'Finalized'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         );
 
       allow delete: if isAdmin()
@@ -214,30 +222,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // --- /dashboardTemplates/{tier} -----------------------------------------
-    // One doc per tier ("continuing" | "probationary"). Read: any signed-in
-    // domain user — every staff member's dashboard subscribes. Write: PE
-    // OR admin (peer evaluators co-own checkpoint setup; admins include
-    // the dev-admin escape hatch via the hasAdminAccess flag).
-    match /dashboardTemplates/{tier} {
-      allow read: if isFromOronoDomain();
-      allow write: if hasSpecialAccess() || isAdmin();
-    }
-
     // --- /dashboardQuickMaterials/{id} --------------------------------------
     // Single "global" doc holding the right-rail quick-materials list. Read
-    // for everyone signed-in; write for PE or admin.
+    // for everyone signed-in; write for admin only (Admin Console →
+    // Dashboard surface).
     match /dashboardQuickMaterials/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if hasSpecialAccess() || isAdmin();
+      allow write: if isAdmin();
     }
 
-    // --- /dashboardProgress/{email} -----------------------------------------
-    // Per-staff progress. Staff member: read/write their own doc (e.g., to
-    // mark a checkpoint done from the dashboard). PE/admin: read/write any
-    // (PEs nudge progress on behalf of their observees).
-    match /dashboardProgress/{email} {
-      allow read, write: if isCurrentUserEmail(email) || hasSpecialAccess() || isAdmin();
-    }
+    // The dashboard feature config doc lives at /appSettings/dashboard and
+    // is covered by the /appSettings rule above (everyone reads, admin
+    // writes) — no separate match needed.
   }
 }

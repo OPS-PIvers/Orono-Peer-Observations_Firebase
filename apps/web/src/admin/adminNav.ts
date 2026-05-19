@@ -4,6 +4,7 @@ import {
   CalendarDays,
   FileText,
   History,
+  LayoutDashboard,
   Mail,
   Palette,
   Shield,
@@ -26,6 +27,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   { to: '/admin/work-product', label: 'Work Product', icon: FileText },
   { to: '/admin/email-templates', label: 'Email Templates', icon: Mail },
   { to: '/admin/branding', label: 'Branding', icon: Palette },
+  { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/admin/settings', label: 'Settings', icon: SlidersHorizontal },
   { to: '/admin/audit-log', label: 'Audit Log', icon: History },
 ] as const;
