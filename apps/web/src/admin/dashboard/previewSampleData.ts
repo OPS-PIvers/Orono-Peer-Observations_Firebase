@@ -1,5 +1,5 @@
 import type { CheckpointWithStatus } from '@/dashboard/deriveCheckpoints';
-import type { DashboardCheckpointsConfig, ModuleColor, Staff } from '@ops/shared';
+import type { DashboardCheckpointsConfig, Staff } from '@ops/shared';
 import { CHECKPOINT_TYPE_KEYS, type CheckpointTypeKey } from '@ops/shared';
 import type { ModuleChip } from '@/dashboard/DashboardView';
 
@@ -33,7 +33,7 @@ export const SAMPLE_YEAR_TIER_LABEL = 'Year 2';
 export const SAMPLE_ROLE_DISPLAY_NAME = 'Teacher';
 export const SAMPLE_BUILDING_NAMES = ['High School'];
 export const SAMPLE_MODULE_CHIPS: ModuleChip[] = [
-  { moduleId: 'mentor', displayName: 'Mentor', color: 'indigo' as ModuleColor },
+  { moduleId: 'mentor', displayName: 'Mentor', color: 'indigo' },
 ];
 
 export const SAMPLE_PEER_EVALUATOR = {
