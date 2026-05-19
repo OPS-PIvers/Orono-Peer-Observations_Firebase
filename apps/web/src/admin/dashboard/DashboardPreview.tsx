@@ -216,7 +216,11 @@ function PreviewFrame({ children }: { children: React.ReactNode }) {
           Live, with your unsaved edits
         </span>
       </div>
-      <div ref={wrapperRef} className="flex-1 overflow-x-hidden overflow-y-auto">
+      <div
+        ref={wrapperRef}
+        className="flex-1 overflow-x-hidden overflow-y-auto"
+        style={{ scrollbarGutter: 'stable' }}
+      >
         <div style={{ zoom: scale, width: `${String(NATURAL_WIDTH)}px` }}>{children}</div>
       </div>
     </div>
