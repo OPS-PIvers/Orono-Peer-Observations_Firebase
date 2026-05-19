@@ -1,12 +1,14 @@
-import { Check, X } from 'lucide-react';
 import type { DashboardSectionsConfig } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { SECTION_COPY, ST_BLURB, ST_HEADING, ST_OFF, ST_ON } from './copyStrings';
+import { SECTION_COPY, ST_BLURB, ST_HEADING, ST_ON } from './copyStrings';
 
 /**
- * Visual section toggles — five tiles, one per top-level area of the
- * staff dashboard. Click a tile to flip it. The on/off state is
- * communicated by tile color + a small Check/X badge in the corner.
+ * Section toggle list — one row per top-level area of the staff dashboard,
+ * with a switch on the right. Picked over a tile grid because the 1/3
+ * editor column doesn't have room for cards without ugly title wrapping.
+ *
+ * The whole row is clickable (large click target). The switch is the
+ * visual primary state indicator; row background shifts subtly when on.
  */
 
 export function SectionTilesEditor({
@@ -26,54 +28,64 @@ export function SectionTilesEditor({
     <section>
       <h3 className="text-foreground mb-1 text-base font-semibold">{ST_HEADING}</h3>
       <p className="text-muted-foreground mb-4 text-sm">{ST_BLURB}</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="border-border bg-background divide-border divide-y overflow-hidden rounded-lg border">
         {keys.map((k) => {
           const on = value[k];
           const copy = SECTION_COPY[k];
           return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => toggle(k)}
-              aria-pressed={on}
-              className={cn(
-                'group relative flex flex-col items-start gap-1 rounded-lg border p-4 text-left transition-all',
-                on
-                  ? 'border-ops-blue bg-ops-blue-lighter/40'
-                  : 'border-border bg-background hover:border-ops-blue/40',
-              )}
-            >
-              <span
+            <li key={k}>
+              <button
+                type="button"
+                onClick={() => toggle(k)}
+                aria-pressed={on}
+                aria-label={`${copy.title} — ${on ? 'on' : 'off'}`}
                 className={cn(
-                  'absolute top-3 right-3 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold',
-                  on ? 'bg-ops-blue text-white' : 'bg-muted text-muted-foreground',
+                  'flex w-full items-center gap-4 px-4 py-3 text-left transition-colors',
+                  on ? 'bg-ops-blue-lighter/30' : 'hover:bg-muted/40',
                 )}
               >
-                {on ? (
-                  <>
-                    <Check className="h-3 w-3" /> {ST_ON}
-                  </>
-                ) : (
-                  <>
-                    <X className="h-3 w-3" /> {ST_OFF}
-                  </>
-                )}
-              </span>
-              <span
-                className={cn(
-                  'pr-12 text-sm font-semibold',
-                  on ? 'text-ops-blue-dark' : 'text-foreground',
-                )}
-              >
-                {copy.title}
-              </span>
-              <span className="text-muted-foreground pr-12 text-xs leading-snug">
-                {copy.description}
-              </span>
-            </button>
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      'text-sm font-semibold',
+                      on ? 'text-ops-blue-dark' : 'text-foreground',
+                    )}
+                  >
+                    {copy.title}
+                  </div>
+                  <div className="text-muted-foreground mt-0.5 text-xs leading-snug">
+                    {copy.description}
+                  </div>
+                </div>
+                <Switch on={on} label={ST_ON} />
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </section>
+  );
+}
+
+/** iOS-style switch — same visual primitive as CycleStepsEditor.ShowSwitch.
+ *  Used here as a non-interactive indicator (parent button handles clicks). */
+function Switch({ on, label }: { on: boolean; label: string }) {
+  return (
+    <span
+      role="presentation"
+      aria-hidden="true"
+      title={label}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
+        on ? 'bg-ops-blue' : 'bg-gray-300',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform',
+          on ? 'translate-x-5' : 'translate-x-0.5',
+        )}
+      />
+    </span>
   );
 }
