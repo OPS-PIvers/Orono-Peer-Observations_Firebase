@@ -71,7 +71,7 @@ export function DevModeBar() {
         <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
       </button>
       {open ? (
-        <div className="absolute top-full right-0 z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div className="text-ops-gray-dark absolute top-full right-0 z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white shadow-xl">
           <div className="bg-ops-blue-dark flex items-center justify-between rounded-t-lg px-3 py-2 text-white">
             <span className="font-heading flex items-center gap-1.5 text-sm font-semibold">
               <Wrench className="h-3.5 w-3.5" /> Dev Mode
