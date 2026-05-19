@@ -90,7 +90,8 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         role: existing.role,
         year: existing.year,
         buildings: existing.buildings,
-        modules: existing.modules,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+        modules: existing.modules ?? [],
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
