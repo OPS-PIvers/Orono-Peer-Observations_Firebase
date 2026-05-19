@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   COLLECTIONS,
@@ -89,6 +89,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
+  const inFlightRef = useRef(false);
+
   // Hydrate once both docs have responded (either exists or empty).
   useEffect(() => {
     if (hydrated) return;
@@ -114,6 +116,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   }, []);
 
   const save = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -144,6 +148,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
+      inFlightRef.current = false;
     }
   }, [draft, user?.email]);
 
