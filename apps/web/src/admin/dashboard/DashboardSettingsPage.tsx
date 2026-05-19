@@ -85,6 +85,11 @@ const CHECKPOINT_LABELS: Record<CheckpointTypeKey, { title: string; blurb: strin
 
 const CONFIG_PATH = `${COLLECTIONS.appSettings}/${DASHBOARD_CONFIG_DOC_ID}`;
 const QUICK_PATH = `${COLLECTIONS.dashboardQuickMaterials}/${DASHBOARD_QUICK_MATERIALS_DOC_ID}`;
+// useHydratedDraft compares its id arg against `source.id`, which Firestore
+// populates with the doc id (the last path segment). Pass the bare id so
+// hydration actually fires for these docs.
+const CONFIG_HYDRATE_ID = DASHBOARD_CONFIG_DOC_ID;
+const QUICK_HYDRATE_ID = DASHBOARD_QUICK_MATERIALS_DOC_ID;
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -108,12 +113,15 @@ function defaultCheckpoint(): DashboardCheckpointConfig {
   };
 }
 
-function checkpointsAsList(cfg: DashboardCheckpointsConfig): CheckpointEntryDraft[] {
+function checkpointsAsList(
+  cfg: DashboardCheckpointsConfig | undefined,
+): CheckpointEntryDraft[] {
+  const safe = cfg ?? {};
   return CHECKPOINT_TYPE_KEYS.map((key, idx) => ({
     key,
     ...defaultCheckpoint(),
     order: idx,
-    ...(cfg[key] ?? {}),
+    ...(safe[key] ?? {}),
   })).sort((a, b) => a.order - b.order);
 }
 
@@ -143,8 +151,8 @@ function SectionsEditor() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useHydratedDraft(CONFIG_PATH, data ?? null, (config) => {
-    setSections(config.sections);
+  useHydratedDraft(CONFIG_HYDRATE_ID, data ?? null, (config) => {
+    setSections(config.sections ?? DEFAULT_SECTIONS);
   });
 
   function toggle(key: keyof DashboardSectionsConfig) {
@@ -213,9 +221,11 @@ function CheckpointsEditor() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useHydratedDraft(CONFIG_PATH, data ?? null, (config) => {
+  useHydratedDraft(CONFIG_HYDRATE_ID, data ?? null, (config) => {
     setRows(checkpointsAsList(config.checkpoints));
   });
+  // (checkpointsAsList handles undefined safely — a partially-saved doc that
+  // touched only sections doesn't have a `checkpoints` field yet.)
 
   function updateRow(idx: number, patch: Partial<CheckpointEntryDraft>) {
     setRows((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
@@ -367,7 +377,7 @@ function QuickMaterialsEditor() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useHydratedDraft(QUICK_PATH, data ?? null, (doc) => {
+  useHydratedDraft(QUICK_HYDRATE_ID, data ?? null, (doc) => {
     setItems(doc.items);
   });
 
@@ -417,8 +427,11 @@ function QuickMaterialsEditor() {
       </p>
       <div className="space-y-2">
         {items.map((m, i) => (
+          // Key by index — rows are append-only here (no reorder), so the
+          // index is stable across keystrokes. Including m.label in the key
+          // would remount the row on every keystroke and kill focus.
           <div
-            key={`${m.label}-${String(i)}`}
+            key={i}
             className="border-border bg-background grid items-center gap-2 rounded-md border p-2 md:grid-cols-[1.1fr_1.4fr_120px_1fr_auto]"
           >
             <Input
