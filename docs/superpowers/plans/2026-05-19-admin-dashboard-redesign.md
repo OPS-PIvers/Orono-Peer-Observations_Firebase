@@ -4,7 +4,7 @@
 
 **Goal:** Replace the developer-feeling `/admin/dashboard` page with a modern, non-technical-user-friendly editor: single Save action with unsaved-changes detection, plain-English copy throughout, visual selectable section toggles, drag-and-drop reordering, a visual icon picker for Quick Materials, and a live side-by-side preview of the staff dashboard rendered with the current draft config.
 
-**Architecture:** Two-column page layout — tabbed editor (Layout / Cycle steps / Quick materials) on the left, live `<DashboardView>` preview rendering with in-memory draft state on the right. A single `useDashboardDraft` hook owns the draft snapshot, dirty-state detection, and the Save action. The current `StaffDashboardPage` is refactored: render logic moves into a pure `<DashboardView>` component that takes config + quick materials + observations + staff as props, so the admin preview can pass *draft* values while the live page passes *Firestore* values — same JSX, two callers.
+**Architecture:** Two-column page layout — tabbed editor (Layout / Cycle steps / Quick materials) on the left, live `<DashboardView>` preview rendering with in-memory draft state on the right. A single `useDashboardDraft` hook owns the draft snapshot, dirty-state detection, and the Save action. The current `StaffDashboardPage` is refactored: render logic moves into a pure `<DashboardView>` component that takes config + quick materials + observations + staff as props, so the admin preview can pass _draft_ values while the live page passes _Firestore_ values — same JSX, two callers.
 
 **Tech Stack:** React 19 + TypeScript, shadcn/ui primitives, Tailwind 4, `@dnd-kit/sortable` (drag-and-drop), existing Firestore hooks (`useFirestoreDoc`), lucide-react icons, `DashboardIcon` SVG set.
 
@@ -18,25 +18,25 @@
 
 **New files:**
 
-| File | Responsibility |
-|---|---|
-| `apps/web/src/dashboard/DashboardView.tsx` | Pure render component for the staff dashboard. Takes config + quickMaterials + tasks + sections + staff + pe as props. No Firestore hooks. Used by both the live page and the admin preview. |
-| `apps/web/src/admin/dashboard/copyStrings.ts` | All plain-English labels, blurbs, phase names, tooltips. Single source for the rewrite. |
-| `apps/web/src/admin/dashboard/useDashboardDraft.ts` | Hook managing the draft snapshot of config + quick materials. Tracks dirty state, exposes a single `save()` that writes both Firestore docs in parallel. |
-| `apps/web/src/admin/dashboard/SortableItem.tsx` | Thin wrapper around `useSortable` from `@dnd-kit/sortable`. Forwards transform/transition props to a render-prop child. |
-| `apps/web/src/admin/dashboard/IconPicker.tsx` | Visual icon picker — popover with a grid of icon buttons. Renders `DashboardIcon` glyphs, not text. |
-| `apps/web/src/admin/dashboard/SectionTilesEditor.tsx` | Section toggles as clickable tiles. Each tile shows the section's preview icon + name + status pill. |
-| `apps/web/src/admin/dashboard/CycleStepsEditor.tsx` | Drag-and-drop checkpoint list. Each row: drag handle, visual on/off switch, phase chip, plain-English title and description, click-to-expand label overrides. |
-| `apps/web/src/admin/dashboard/QuickMaterialsEditor.tsx` | Drag-and-drop card list. Each card: drag handle, IconPicker, title input, optional subtitle input, URL input, mini preview of the rendered chip, delete button. |
-| `apps/web/src/admin/dashboard/DashboardPreview.tsx` | Right-column live preview. Renders `<DashboardView>` inside a scrollable scaled-down container with a header banner. |
+| File                                                    | Responsibility                                                                                                                                                                               |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/dashboard/DashboardView.tsx`              | Pure render component for the staff dashboard. Takes config + quickMaterials + tasks + sections + staff + pe as props. No Firestore hooks. Used by both the live page and the admin preview. |
+| `apps/web/src/admin/dashboard/copyStrings.ts`           | All plain-English labels, blurbs, phase names, tooltips. Single source for the rewrite.                                                                                                      |
+| `apps/web/src/admin/dashboard/useDashboardDraft.ts`     | Hook managing the draft snapshot of config + quick materials. Tracks dirty state, exposes a single `save()` that writes both Firestore docs in parallel.                                     |
+| `apps/web/src/admin/dashboard/SortableItem.tsx`         | Thin wrapper around `useSortable` from `@dnd-kit/sortable`. Forwards transform/transition props to a render-prop child.                                                                      |
+| `apps/web/src/admin/dashboard/IconPicker.tsx`           | Visual icon picker — popover with a grid of icon buttons. Renders `DashboardIcon` glyphs, not text.                                                                                          |
+| `apps/web/src/admin/dashboard/SectionTilesEditor.tsx`   | Section toggles as clickable tiles. Each tile shows the section's preview icon + name + status pill.                                                                                         |
+| `apps/web/src/admin/dashboard/CycleStepsEditor.tsx`     | Drag-and-drop checkpoint list. Each row: drag handle, visual on/off switch, phase chip, plain-English title and description, click-to-expand label overrides.                                |
+| `apps/web/src/admin/dashboard/QuickMaterialsEditor.tsx` | Drag-and-drop card list. Each card: drag handle, IconPicker, title input, optional subtitle input, URL input, mini preview of the rendered chip, delete button.                              |
+| `apps/web/src/admin/dashboard/DashboardPreview.tsx`     | Right-column live preview. Renders `<DashboardView>` inside a scrollable scaled-down container with a header banner.                                                                         |
 
 **Modified files:**
 
-| File | Change |
-|---|---|
-| `apps/web/src/admin/dashboard/DashboardSettingsPage.tsx` | Complete rewrite — two-column layout, tabs, single sticky Save action, uses `useDashboardDraft`. |
-| `apps/web/src/dashboard/StaffDashboardPage.tsx` | Refactor — extract rendering into `<DashboardView>`; this file becomes thin (Firestore hooks + ack mutation + `<DashboardView>` invocation). |
-| `apps/web/package.json` | Add `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` deps. |
+| File                                                     | Change                                                                                                                                       |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/admin/dashboard/DashboardSettingsPage.tsx` | Complete rewrite — two-column layout, tabs, single sticky Save action, uses `useDashboardDraft`.                                             |
+| `apps/web/src/dashboard/StaffDashboardPage.tsx`          | Refactor — extract rendering into `<DashboardView>`; this file becomes thin (Firestore hooks + ack mutation + `<DashboardView>` invocation). |
+| `apps/web/package.json`                                  | Add `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` deps.                                                                         |
 
 **Deleted files:** none — the existing page is replaced in place.
 
@@ -71,6 +71,7 @@ pnpm validate
 ### Task 1: Install drag-and-drop dependencies
 
 **Files:**
+
 - Modify: `apps/web/package.json`
 
 - [ ] **Step 1: Install `@dnd-kit` packages**
@@ -115,6 +116,7 @@ git commit -m "chore(web): add @dnd-kit packages for sortable lists"
 ### Task 2: Centralize plain-English copy
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/copyStrings.ts`
 
 - [ ] **Step 1: Write the copy module**
@@ -133,7 +135,7 @@ import type { CheckpointTypeKey, DashboardSectionsConfig } from '@ops/shared';
 
 export const PAGE_TITLE = 'Dashboard';
 export const PAGE_SUBTITLE =
-  "Decide what staff see when they sign in. Toggle pieces on or off, drag steps into order, and post a few helpful links — staff dates and progress come from the system automatically.";
+  'Decide what staff see when they sign in. Toggle pieces on or off, drag steps into order, and post a few helpful links — staff dates and progress come from the system automatically.';
 
 export const SAVE_BUTTON_DEFAULT = 'Saved';
 export const SAVE_BUTTON_DIRTY = 'Save changes';
@@ -192,19 +194,22 @@ export const CHECKPOINT_COPY: Record<CheckpointTypeKey, CheckpointCopy> = {
     phase: 'Schedule',
     title: 'Sign up for an observation window',
     whenItShows: 'Always shown until staff have a peer-evaluator-created observation.',
-    whatItDoes: "Links to the scheduling form you set under Settings → Sign-up link. Marks done once a peer evaluator creates the staff member's observation.",
+    whatItDoes:
+      "Links to the scheduling form you set under Settings → Sign-up link. Marks done once a peer evaluator creates the staff member's observation.",
   },
   preObs: {
     phase: 'Schedule',
     title: 'Pre-observation conversation',
     whenItShows: 'Appears once the observation is finalized.',
-    whatItDoes: 'Shows the meeting date staff had with their peer evaluator before the observation.',
+    whatItDoes:
+      'Shows the meeting date staff had with their peer evaluator before the observation.',
   },
   workProduct: {
     phase: 'Schedule',
     title: 'Work-product responses',
     whenItShows: 'Only when the staff member has an active Work Product observation.',
-    whatItDoes: 'Progress bar showing how many of the work-product questions the staff member has answered.',
+    whatItDoes:
+      'Progress bar showing how many of the work-product questions the staff member has answered.',
   },
   observation: {
     phase: 'Visit',
@@ -283,7 +288,7 @@ export const ST_OFF = 'Off';
 
 export const CS_HEADING = 'Cycle steps';
 export const CS_BLURB =
-  "Each step shows up only when it applies to a staff member — work-product appears only if they have an active work-product observation, and so on. Toggle a step off to hide it for everyone. Drag to reorder within the list.";
+  'Each step shows up only when it applies to a staff member — work-product appears only if they have an active work-product observation, and so on. Toggle a step off to hide it for everyone. Drag to reorder within the list.';
 ```
 
 - [ ] **Step 2: Typecheck**
@@ -314,6 +319,7 @@ git commit -m "feat(admin-dashboard): centralize plain-English copy strings"
 ### Task 3: Extract `<DashboardView>` from StaffDashboardPage
 
 **Files:**
+
 - Create: `apps/web/src/dashboard/DashboardView.tsx`
 - Modify: `apps/web/src/dashboard/StaffDashboardPage.tsx`
 
@@ -323,11 +329,7 @@ Create `apps/web/src/dashboard/DashboardView.tsx`:
 
 ```tsx
 import { useState } from 'react';
-import {
-  type DashboardQuickMaterial,
-  type DashboardSectionsConfig,
-  type Staff,
-} from '@ops/shared';
+import { type DashboardQuickMaterial, type DashboardSectionsConfig, type Staff } from '@ops/shared';
 import { DashboardIcon } from './DashboardIcon';
 import { type CheckpointWithStatus, initialsFromName } from './deriveCheckpoints';
 import './dashboard.css';
@@ -897,7 +899,9 @@ function QuickMaterials({
               <Tag
                 key={i}
                 className="material-list__item"
-                {...(m.url && !readOnly ? { href: m.url, target: '_blank', rel: 'noreferrer' } : {})}
+                {...(m.url && !readOnly
+                  ? { href: m.url, target: '_blank', rel: 'noreferrer' }
+                  : {})}
               >
                 <div className="material-list__icon">
                   <DashboardIcon name={m.icon} size={16} />
@@ -1142,6 +1146,7 @@ git commit -m "refactor(dashboard): extract <DashboardView> for reuse by admin p
 ### Task 4: Draft-state hook (`useDashboardDraft`)
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/useDashboardDraft.ts`
 
 - [ ] **Step 1: Write the hook**
@@ -1341,6 +1346,7 @@ git commit -m "feat(admin-dashboard): add useDashboardDraft hook"
 ### Task 5: Visual icon picker
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/IconPicker.tsx`
 
 - [ ] **Step 1: Write the IconPicker**
@@ -1426,9 +1432,7 @@ export function IconPicker({
                   }}
                   className={cn(
                     'flex h-12 flex-col items-center justify-center gap-0.5 rounded-md text-xs transition-colors',
-                    active
-                      ? 'bg-ops-blue text-white'
-                      : 'hover:bg-accent text-foreground',
+                    active ? 'bg-ops-blue text-white' : 'hover:bg-accent text-foreground',
                   )}
                 >
                   <DashboardIcon name={icn as DashboardIconName} size={18} />
@@ -1465,6 +1469,7 @@ git commit -m "feat(admin-dashboard): visual IconPicker for quick materials"
 ### Task 6: Sortable wrapper for dnd-kit
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/SortableItem.tsx`
 
 - [ ] **Step 1: Write the wrapper**
@@ -1568,6 +1573,7 @@ git commit -m "feat(admin-dashboard): SortableItem + GripHandle dnd-kit wrappers
 ### Task 7: Section tiles editor
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/SectionTilesEditor.tsx`
 
 - [ ] **Step 1: Write the editor**
@@ -1623,9 +1629,7 @@ export function SectionTilesEditor({
               <span
                 className={cn(
                   'absolute top-3 right-3 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold',
-                  on
-                    ? 'bg-ops-blue text-white'
-                    : 'bg-muted text-muted-foreground',
+                  on ? 'bg-ops-blue text-white' : 'bg-muted text-muted-foreground',
                 )}
               >
                 {on ? (
@@ -1679,6 +1683,7 @@ git commit -m "feat(admin-dashboard): visual SectionTilesEditor"
 ### Task 8: Cycle steps editor (drag-and-drop)
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/CycleStepsEditor.tsx`
 
 - [ ] **Step 1: Write the editor**
@@ -1817,10 +1822,7 @@ export function CycleStepsEditor({
       <p className="text-muted-foreground mb-4 text-sm">{CS_BLURB}</p>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext
-          items={rows.map((r) => r.key)}
-          strategy={verticalListSortingStrategy}
-        >
+        <SortableContext items={rows.map((r) => r.key)} strategy={verticalListSortingStrategy}>
           <ul className="space-y-2">
             {rows.map((r) => {
               const copy = CHECKPOINT_COPY[r.key];
@@ -1848,9 +1850,7 @@ export function CycleStepsEditor({
                             {copy.whenItShows}
                           </p>
                           <p className="text-muted-foreground text-xs leading-relaxed">
-                            <strong className="text-foreground font-medium">
-                              What staff see:
-                            </strong>{' '}
+                            <strong className="text-foreground font-medium">What staff see:</strong>{' '}
                             {copy.whatItDoes}
                           </p>
                           <button
@@ -1987,6 +1987,7 @@ git commit -m "feat(admin-dashboard): drag-and-drop CycleStepsEditor with plain-
 ### Task 9: Quick materials editor (card-based, drag-and-drop)
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/QuickMaterialsEditor.tsx`
 
 - [ ] **Step 1: Write the editor**
@@ -2004,10 +2005,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
-import {
-  type DashboardQuickMaterial,
-  type MaterialIcon,
-} from '@ops/shared';
+import { type DashboardQuickMaterial, type MaterialIcon } from '@ops/shared';
 import { DashboardIcon } from '@/dashboard/DashboardIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2044,7 +2042,10 @@ interface Item extends DashboardQuickMaterial {
 }
 
 function withIds(items: DashboardQuickMaterial[]): Item[] {
-  return items.map((m, i) => ({ ...m, _id: `m-${String(i)}-${String(Date.now())}-${String(Math.random())}` }));
+  return items.map((m, i) => ({
+    ...m,
+    _id: `m-${String(i)}-${String(Date.now())}-${String(Math.random())}`,
+  }));
 }
 
 function stripIds(items: Item[]): DashboardQuickMaterial[] {
@@ -2100,10 +2101,7 @@ export function QuickMaterialsEditor({
         </p>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext
-            items={items.map((m) => m._id)}
-            strategy={verticalListSortingStrategy}
-          >
+          <SortableContext items={items.map((m) => m._id)} strategy={verticalListSortingStrategy}>
             <ul className="space-y-3">
               {items.map((m, idx) => (
                 <SortableItem key={m._id} id={m._id}>
@@ -2219,6 +2217,7 @@ git commit -m "feat(admin-dashboard): card-based QuickMaterialsEditor with icon 
 ### Task 10: Live preview pane
 
 **Files:**
+
 - Create: `apps/web/src/admin/dashboard/DashboardPreview.tsx`
 
 - [ ] **Step 1: Write the preview**
@@ -2278,11 +2277,7 @@ export interface DashboardPreviewProps {
   quickMaterials: DashboardQuickMaterial[];
 }
 
-export function DashboardPreview({
-  sections,
-  checkpoints,
-  quickMaterials,
-}: DashboardPreviewProps) {
+export function DashboardPreview({ sections, checkpoints, quickMaterials }: DashboardPreviewProps) {
   const { user } = useAuth();
   const emailLower = user?.email?.toLowerCase() ?? '';
 
@@ -2369,7 +2364,7 @@ export function DashboardPreview({
           Live, with your unsaved edits
         </span>
       </div>
-      <div className="origin-top-left flex-1 overflow-auto">
+      <div className="flex-1 origin-top-left overflow-auto">
         <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%' }}>
           <DashboardView
             staff={staff}
@@ -2411,6 +2406,7 @@ git commit -m "feat(admin-dashboard): live DashboardPreview pane (scaled, read-o
 ### Task 11: Rebuild `DashboardSettingsPage`
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/DashboardSettingsPage.tsx` (full replace)
 
 - [ ] **Step 1: Replace the page**
@@ -2479,7 +2475,7 @@ export function DashboardSettingsPage() {
         </TabButton>
         <div className="ml-auto flex items-center gap-3">
           {draft.isDirty ? (
-            <span className="bg-amber-100 text-amber-800 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
               <AlertCircle className="h-3 w-3" />
               {UNSAVED_PILL}
             </span>
@@ -2527,10 +2523,7 @@ export function DashboardSettingsPage() {
             <SectionTilesEditor value={draft.draft.sections} onChange={draft.setSections} />
           ) : null}
           {tab === 'steps' ? (
-            <CycleStepsEditor
-              value={draft.draft.checkpoints}
-              onChange={draft.setCheckpoints}
-            />
+            <CycleStepsEditor value={draft.draft.checkpoints} onChange={draft.setCheckpoints} />
           ) : null}
           {tab === 'materials' ? (
             <QuickMaterialsEditor
@@ -2539,7 +2532,12 @@ export function DashboardSettingsPage() {
             />
           ) : null}
         </div>
-        <div className={cn(!showPreviewMobile && 'hidden lg:block', 'lg:sticky lg:top-24 lg:h-[calc(100vh-160px)]')}>
+        <div
+          className={cn(
+            !showPreviewMobile && 'hidden lg:block',
+            'lg:sticky lg:top-24 lg:h-[calc(100vh-160px)]',
+          )}
+        >
           <DashboardPreview
             sections={draft.draft.sections}
             checkpoints={draft.draft.checkpoints}
@@ -2568,9 +2566,7 @@ function TabButton({
       role="tab"
       className={cn(
         'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-        active
-          ? 'bg-ops-blue text-white'
-          : 'text-foreground hover:bg-muted',
+        active ? 'bg-ops-blue text-white' : 'text-foreground hover:bg-muted',
       )}
     >
       {children}

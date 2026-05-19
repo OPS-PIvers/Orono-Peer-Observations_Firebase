@@ -211,14 +211,38 @@
 }
 /* Module chip colors driven by `data-module-color` attribute so the
    palette can change without touching JSX. */
-.staff-dashboard .dash-hero__chip[data-module-color='blue']    { background: #dbeafe; color: #1e40af; }
-.staff-dashboard .dash-hero__chip[data-module-color='red']     { background: #fee2e2; color: #991b1b; }
-.staff-dashboard .dash-hero__chip[data-module-color='emerald'] { background: #d1fae5; color: #065f46; }
-.staff-dashboard .dash-hero__chip[data-module-color='amber']   { background: #fef3c7; color: #92400e; }
-.staff-dashboard .dash-hero__chip[data-module-color='purple']  { background: #f3e8ff; color: #6b21a8; }
-.staff-dashboard .dash-hero__chip[data-module-color='indigo']  { background: #e0e7ff; color: #3730a3; }
-.staff-dashboard .dash-hero__chip[data-module-color='pink']    { background: #fce7f3; color: #9d174d; }
-.staff-dashboard .dash-hero__chip[data-module-color='gray']    { background: #f3f4f6; color: #374151; }
+.staff-dashboard .dash-hero__chip[data-module-color='blue'] {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='red'] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='emerald'] {
+  background: #d1fae5;
+  color: #065f46;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='amber'] {
+  background: #fef3c7;
+  color: #92400e;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='purple'] {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='indigo'] {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='pink'] {
+  background: #fce7f3;
+  color: #9d174d;
+}
+.staff-dashboard .dash-hero__chip[data-module-color='gray'] {
+  background: #f3f4f6;
+  color: #374151;
+}
 
 /* Hero progress ring */
 .staff-dashboard .dash-hero__ring {
