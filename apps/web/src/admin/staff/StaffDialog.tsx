@@ -6,10 +6,12 @@ import {
   OBSERVATION_YEARS,
   isStaffYear,
   type Building,
+  type ModuleDoc,
   type Role,
   type Staff,
   type StaffYear,
 } from '@ops/shared';
+import { MODULE_COLOR_CLASSES } from '@/admin/modules/ModulesPage';
 import { db } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
@@ -37,6 +39,7 @@ interface FormState {
   role: string;
   year: StaffYear;
   buildings: string[];
+  modules: string[];
   summativeYear: boolean;
   isActive: boolean;
   hasAdminAccess: boolean;
@@ -48,6 +51,7 @@ const empty: FormState = {
   role: '',
   year: 1,
   buildings: [],
+  modules: [],
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,
@@ -55,6 +59,7 @@ const empty: FormState = {
 
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
 const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
 
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
@@ -72,6 +77,10 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     COLLECTIONS.buildings,
     ACTIVE_BUILDINGS_CONSTRAINTS,
   );
+  const { data: modules, loading: modulesLoading } = useFirestoreCollection<ModuleDoc>(
+    COLLECTIONS.modules,
+    ACTIVE_MODULES_CONSTRAINTS,
+  );
 
   useEffect(() => {
     if (mode === 'edit' && existing) {
@@ -81,6 +90,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         role: existing.role,
         year: existing.year,
         buildings: existing.buildings,
+        modules: existing.modules,
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
@@ -101,6 +111,16 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
   const availableBuildingsToAdd = useMemo(
     () => (buildings ?? []).filter((b) => !form.buildings.includes(b.displayName)),
     [buildings, form.buildings],
+  );
+
+  const knownModuleIds = useMemo(() => new Set((modules ?? []).map((m) => m.moduleId)), [modules]);
+  const availableModulesToAdd = useMemo(
+    () => (modules ?? []).filter((m) => !form.modules.includes(m.moduleId)),
+    [modules, form.modules],
+  );
+  const modulesById = useMemo(
+    () => new Map((modules ?? []).map((m) => [m.moduleId, m])),
+    [modules],
   );
 
   async function save() {
@@ -133,6 +153,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           role: form.role.trim(),
           year: form.year,
           buildings: form.buildings,
+          modules: form.modules,
           summativeYear: form.summativeYear,
           isActive: form.isActive,
           hasAdminAccess: form.hasAdminAccess,
@@ -157,6 +178,16 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
 
   function removeBuilding(b: string) {
     setForm((f) => ({ ...f, buildings: f.buildings.filter((x) => x !== b) }));
+  }
+
+  function addModule(moduleId: string) {
+    setForm((f) =>
+      f.modules.includes(moduleId) ? f : { ...f, modules: [...f.modules, moduleId] },
+    );
+  }
+
+  function removeModule(moduleId: string) {
+    setForm((f) => ({ ...f, modules: f.modules.filter((m) => m !== moduleId) }));
   }
 
   return (
@@ -307,6 +338,77 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
             {(buildings?.length ?? 0) === 0 && !buildingsLoading ? (
               <p className="text-muted-foreground text-xs">
                 Add buildings in Admin → Buildings before assigning.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Modules</Label>
+            <p className="text-muted-foreground -mt-1 text-xs">
+              Participation tracks like Mentor, Mentee, Instructional Leadership. Modules show as
+              colored chips on the staff dashboard.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {form.modules.map((moduleId) => {
+                const mod = modulesById.get(moduleId);
+                const unmapped = !knownModuleIds.has(moduleId);
+                const palette = mod ? MODULE_COLOR_CLASSES[mod.color] : null;
+                return (
+                  <span
+                    key={moduleId}
+                    className={
+                      palette
+                        ? `inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${palette.bg} ${palette.text}`
+                        : 'bg-accent text-accent-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs'
+                    }
+                  >
+                    {mod?.displayName ?? moduleId}
+                    {unmapped ? (
+                      <span className="text-muted-foreground ml-1 text-[10px]">(unmapped)</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removeModule(moduleId)}
+                      className="hover:text-destructive"
+                      aria-label={`Remove ${mod?.displayName ?? moduleId}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+            <select
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) {
+                  addModule(v);
+                  e.currentTarget.selectedIndex = 0;
+                }
+              }}
+              disabled={modulesLoading || availableModulesToAdd.length === 0}
+              className={SELECT_CLASSNAME}
+              aria-label="Add a module"
+            >
+              <option value="">
+                {modulesLoading
+                  ? 'Loading modules…'
+                  : (modules?.length ?? 0) === 0
+                    ? 'No modules configured'
+                    : availableModulesToAdd.length === 0
+                      ? 'All modules added'
+                      : 'Add a module…'}
+              </option>
+              {availableModulesToAdd.map((m) => (
+                <option key={m.moduleId} value={m.moduleId}>
+                  {m.displayName}
+                </option>
+              ))}
+            </select>
+            {(modules?.length ?? 0) === 0 && !modulesLoading ? (
+              <p className="text-muted-foreground text-xs">
+                Add modules in Admin → Modules before assigning.
               </p>
             ) : null}
           </div>
