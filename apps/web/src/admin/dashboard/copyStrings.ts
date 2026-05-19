@@ -37,8 +37,9 @@ export const SECTION_COPY: Record<keyof DashboardSectionsConfig, SectionCopy> = 
     description: "Big greeting, progress ring, and the staff member's year/tier.",
   },
   roleChip: {
-    title: 'Role & module chips',
-    description: "Colored chips showing the staff member's role and any module assignments (Mentor, ILT, etc.).",
+    title: 'Role + module chips',
+    description:
+      "Compact chip row under the greeting showing the staff member's role, building(s), and any modules they're part of.",
   },
   timeline: {
     title: 'Year-at-a-glance bar',

@@ -1,8 +1,19 @@
 import { useState } from 'react';
-import { type DashboardQuickMaterial, type DashboardSectionsConfig, type Staff } from '@ops/shared';
+import {
+  type DashboardQuickMaterial,
+  type DashboardSectionsConfig,
+  type ModuleColor,
+  type Staff,
+} from '@ops/shared';
 import { DashboardIcon } from './DashboardIcon';
 import { type CheckpointWithStatus, initialsFromName } from './deriveCheckpoints';
 import './dashboard.css';
+
+export interface ModuleChip {
+  moduleId: string;
+  displayName: string;
+  color: ModuleColor;
+}
 
 /**
  * Pure rendering of the staff dashboard chrome. No Firestore hooks; all
@@ -33,6 +44,13 @@ export interface DashboardViewProps {
   /** When true, disable interactive CTAs (Send-a-message, Acknowledge,
    *  external links). Used by the admin preview pane. */
   readOnly?: boolean;
+  /** Resolved role display name (the human-readable label, not the slug). */
+  roleDisplayName: string;
+  /** Building display names — usually 1–2 entries. */
+  buildingNames: string[];
+  /** Resolved module chips (id+name+color) for the role chip row. Empty
+   *  array = staff has no modules. */
+  moduleChips: ModuleChip[];
 }
 
 export function DashboardView(props: DashboardViewProps): React.ReactElement {
@@ -65,6 +83,10 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             yearTierLabel={props.yearTierLabel}
             cycleCloseLabel={props.cycleCloseLabel}
             showTimeline={sections.timeline}
+            showRoleChip={sections.roleChip}
+            roleDisplayName={props.roleDisplayName}
+            buildingNames={props.buildingNames}
+            moduleChips={props.moduleChips}
           />
         ) : null}
         {sections.filterBar ? (
@@ -219,6 +241,10 @@ interface HeroProps {
   yearTierLabel: string;
   cycleCloseLabel: string;
   showTimeline: boolean;
+  showRoleChip: boolean;
+  roleDisplayName: string;
+  buildingNames: string[];
+  moduleChips: ModuleChip[];
 }
 function Hero(p: HeroProps) {
   const done = p.tasks.filter((t) => t.status === 'done').length;
@@ -232,6 +258,13 @@ function Hero(p: HeroProps) {
             {p.staff.summativeYear ? 'Summative cycle' : 'Formative cycle'} · {p.cycleYearLabel}
           </span>
           <h1 className="dash-hero__title">Welcome back, {p.firstName}.</h1>
+          {p.showRoleChip ? (
+            <RoleChipRow
+              roleDisplayName={p.roleDisplayName}
+              buildingNames={p.buildingNames}
+              moduleChips={p.moduleChips}
+            />
+          ) : null}
           <p className="dash-hero__lead">
             {next ? (
               <>
@@ -324,6 +357,35 @@ function Timeline({
         })}
       </div>
     </section>
+  );
+}
+
+function RoleChipRow({
+  roleDisplayName,
+  buildingNames,
+  moduleChips,
+}: {
+  roleDisplayName: string;
+  buildingNames: string[];
+  moduleChips: ModuleChip[];
+}) {
+  if (!roleDisplayName && buildingNames.length === 0 && moduleChips.length === 0) return null;
+  return (
+    <div className="dash-hero__chips">
+      {roleDisplayName ? (
+        <span className="dash-hero__chip dash-hero__chip--role">{roleDisplayName}</span>
+      ) : null}
+      {buildingNames.map((b) => (
+        <span key={b} className="dash-hero__chip dash-hero__chip--building">
+          {b}
+        </span>
+      ))}
+      {moduleChips.map((m) => (
+        <span key={m.moduleId} className="dash-hero__chip" data-module-color={m.color}>
+          {m.displayName}
+        </span>
+      ))}
+    </div>
   );
 }
 

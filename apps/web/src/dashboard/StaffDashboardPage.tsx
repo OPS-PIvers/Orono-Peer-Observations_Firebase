@@ -12,7 +12,9 @@ import {
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
+  type ModuleDoc,
   type Observation,
+  type Role,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -23,7 +25,7 @@ import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObs
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
-import { DashboardView } from './DashboardView';
+import { DashboardView, type ModuleChip } from './DashboardView';
 import {
   type CheckpointWithStatus,
   deriveCheckpoints,
@@ -67,6 +69,9 @@ export function StaffDashboardPage() {
 
   const settingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
   const { data: appSettings } = useFirestoreDoc<AppSettings>(settingsPath);
+
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
 
   const finalizedConstraints = useMemo(
     () =>
@@ -140,6 +145,19 @@ export function StaffDashboardPage() {
     },
   });
 
+  const roleDisplayName = useMemo(() => {
+    if (!staff || !roles) return '';
+    return roles.find((r) => r.roleId === staff.role)?.displayName ?? staff.role;
+  }, [staff, roles]);
+
+  const moduleChips = useMemo<ModuleChip[]>(() => {
+    if (!staff || !modulesData) return [];
+    return staff.modules
+      .map((id) => modulesData.find((m) => m.moduleId === id))
+      .filter((m): m is ModuleDoc & { id: string } => m != null)
+      .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
+  }, [staff, modulesData]);
+
   if (staffLoading && !staff) {
     return (
       <div className="staff-dashboard">
@@ -184,6 +202,9 @@ export function StaffDashboardPage() {
       peerEvaluator={peerEvaluator}
       onAcknowledge={(id) => ackMutation.mutate(id)}
       acknowledging={ackMutation.isPending}
+      roleDisplayName={roleDisplayName}
+      buildingNames={staff.buildings}
+      moduleChips={moduleChips}
     />
   );
 }

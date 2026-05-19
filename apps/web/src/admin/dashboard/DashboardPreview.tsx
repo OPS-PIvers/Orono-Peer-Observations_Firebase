@@ -9,7 +9,9 @@ import {
   type DashboardCheckpointsConfig,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
+  type ModuleDoc,
   type Observation,
+  type Role,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -18,7 +20,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
-import { DashboardView } from '@/dashboard/DashboardView';
+import { DashboardView, type ModuleChip } from '@/dashboard/DashboardView';
 import { deriveCheckpoints, extractFirstName } from '@/dashboard/deriveCheckpoints';
 import { Eye } from 'lucide-react';
 
@@ -58,6 +60,9 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
   const { data: staff } = useFirestoreDoc<Staff>(staffPath);
   const settingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
   const { data: appSettings } = useFirestoreDoc<AppSettings>(settingsPath);
+
+  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
 
   const finalizedConstraints = useMemo(
     () =>
@@ -111,6 +116,19 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
     hasInstructionalRound,
   ]);
 
+  const roleDisplayName = useMemo(() => {
+    if (!staff || !roles) return '';
+    return roles.find((r) => r.roleId === staff.role)?.displayName ?? staff.role;
+  }, [staff, roles]);
+
+  const moduleChips = useMemo<ModuleChip[]>(() => {
+    if (!staff || !modulesData) return [];
+    return staff.modules
+      .map((id) => modulesData.find((m) => m.moduleId === id))
+      .filter((m): m is ModuleDoc & { id: string } => m != null)
+      .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
+  }, [staff, modulesData]);
+
   if (!staff) {
     return (
       <div className="border-border bg-muted/20 flex h-full items-center justify-center rounded-lg border p-8 text-sm">
@@ -141,6 +159,9 @@ export function DashboardPreview({ sections, checkpoints, quickMaterials }: Dash
         quickMaterials={quickMaterials}
         peerEvaluator={peerEvaluator}
         readOnly
+        roleDisplayName={roleDisplayName}
+        buildingNames={staff.buildings}
+        moduleChips={moduleChips}
       />
     </PreviewFrame>
   );
