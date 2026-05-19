@@ -93,6 +93,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             cycleCloseLabel={props.cycleCloseLabel}
             showTimeline={sections.timeline}
             showRoleChip={sections.roleChip}
+            showProgressSummary={sections.progressSummary}
             roleDisplayName={props.roleDisplayName}
             buildingNames={props.buildingNames}
             moduleChips={props.moduleChips}
@@ -252,6 +253,7 @@ interface HeroProps {
   cycleCloseLabel: string;
   showTimeline: boolean;
   showRoleChip: boolean;
+  showProgressSummary: boolean;
   roleDisplayName: string;
   buildingNames: string[];
   moduleChips: ModuleChip[];
@@ -275,19 +277,23 @@ function Hero(p: HeroProps) {
               moduleChips={p.moduleChips}
             />
           ) : null}
-          <p className="dash-hero__lead">
-            {next ? (
-              <>
-                {done} of {total} checkpoints done. Next up:{' '}
-                <strong style={{ color: 'var(--ot-blue-dark)' }}>{next.title.toLowerCase()}</strong>
-                .
-              </>
-            ) : total > 0 ? (
-              <>Cycle complete — nice work, {p.firstName}.</>
-            ) : (
-              <>No active checkpoints right now. Check back when an observation is scheduled.</>
-            )}
-          </p>
+          {p.showProgressSummary ? (
+            <p className="dash-hero__lead">
+              {next ? (
+                <>
+                  {done} of {total} checkpoints done. Next up:{' '}
+                  <strong style={{ color: 'var(--ot-blue-dark)' }}>
+                    {next.title.toLowerCase()}
+                  </strong>
+                  .
+                </>
+              ) : total > 0 ? (
+                <>Cycle complete — nice work, {p.firstName}.</>
+              ) : (
+                <>No active checkpoints right now. Check back when an observation is scheduled.</>
+              )}
+            </p>
+          ) : null}
           <div className="dash-hero__meta">
             <div className="dash-hero__meta-item">
               <span className="dash-hero__meta-num">{p.yearTierLabel}</span>

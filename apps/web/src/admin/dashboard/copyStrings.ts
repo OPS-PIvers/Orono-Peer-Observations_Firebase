@@ -41,6 +41,11 @@ export const SECTION_COPY: Record<keyof DashboardSectionsConfig, SectionCopy> = 
     description:
       "Compact chip row under the greeting showing the staff member's role, building(s), and any modules they're part of.",
   },
+  progressSummary: {
+    title: 'Progress summary line',
+    description:
+      'Plain-English sentence in the welcome banner: "X of Y checkpoints done. Next up: …".',
+  },
   timeline: {
     title: 'Year-at-a-glance bar',
     description: 'Horizontal track from fall to spring showing where they are in the cycle.',

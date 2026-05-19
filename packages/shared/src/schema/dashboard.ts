@@ -80,6 +80,7 @@ export type DashboardCheckpointConfig = z.infer<typeof dashboardCheckpointConfig
 export const dashboardSectionsConfig = z.object({
   hero: z.boolean().default(true),
   roleChip: z.boolean().default(true),
+  progressSummary: z.boolean().default(true),
   timeline: z.boolean().default(true),
   filterBar: z.boolean().default(true),
   quickMaterials: z.boolean().default(true),
@@ -107,6 +108,7 @@ export const dashboardConfig = z.object({
   sections: dashboardSectionsConfig.default({
     hero: true,
     roleChip: true,
+    progressSummary: true,
     timeline: true,
     filterBar: true,
     quickMaterials: true,

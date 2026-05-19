@@ -36,6 +36,7 @@ import {
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
   roleChip: true,
+  progressSummary: true,
   timeline: true,
   filterBar: true,
   quickMaterials: true,
