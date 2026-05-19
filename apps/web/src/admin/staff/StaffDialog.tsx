@@ -3,9 +3,9 @@ import { Trash2, X } from 'lucide-react';
 import { doc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
-  OBSERVATION_YEARS,
   isStaffYear,
   type Building,
+  type ModuleColor,
   type ModuleDoc,
   type Role,
   type Staff,
@@ -123,14 +123,67 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
   );
 
   const knownModuleIds = useMemo(() => new Set((modules ?? []).map((m) => m.moduleId)), [modules]);
-  const availableModulesToAdd = useMemo(
-    () => (modules ?? []).filter((m) => !form.modules.includes(m.moduleId)),
-    [modules, form.modules],
-  );
-  const modulesById = useMemo(
-    () => new Map((modules ?? []).map((m) => [m.moduleId, m])),
-    [modules],
-  );
+
+  // Probationary status is derived from the year: 1-3 = continuing, 4-6 =
+  // probationary (P1/P2/P3). The dialog splits this into a 1-3 dropdown
+  // plus a checkbox so the admin can see and toggle each independently;
+  // the canonical `staff.year` field still uses the 1-6 convention every
+  // other consumer (dashboard, derivation logic) relies on.
+  const isProbationary = form.year >= 4;
+  const displayYear = isProbationary ? form.year - 3 : form.year;
+
+  // Unified rows for the Modules picker. System flags (summative, prob,
+  // admin) sit at the top in a fixed order; custom modules follow.
+  // Each row maps the underlying state change back to the appropriate
+  // form field so the rest of the codebase keeps using the existing
+  // schema fields (staff.summativeYear, staff.year, staff.hasAdminAccess,
+  // staff.modules[]) without knowing about this UI grouping.
+  interface ModuleRow {
+    id: string;
+    name: string;
+    description: string;
+    color: ModuleColor;
+    checked: boolean;
+    onToggle: () => void;
+  }
+  const moduleRows: ModuleRow[] = [
+    {
+      id: 'sys-summative',
+      name: 'Summative year',
+      description: 'Marks this cycle as summative (vs formative).',
+      color: 'red',
+      checked: form.summativeYear,
+      onToggle: () => setForm((f) => ({ ...f, summativeYear: !f.summativeYear })),
+    },
+    {
+      id: 'sys-probationary',
+      name: 'Probationary',
+      description: 'Contract status — P1/P2/P3 (year shifts internally to 4–6).',
+      color: 'amber',
+      checked: isProbationary,
+      onToggle: () => {
+        const real = isProbationary ? displayYear : displayYear + 3;
+        if (isStaffYear(real)) setForm((f) => ({ ...f, year: real }));
+      },
+    },
+    {
+      id: 'sys-admin',
+      name: 'Admin access',
+      description: 'Grants access to the Admin Console.',
+      color: 'purple',
+      checked: form.hasAdminAccess,
+      onToggle: () => setForm((f) => ({ ...f, hasAdminAccess: !f.hasAdminAccess })),
+    },
+    ...modules.map((m) => ({
+      id: `mod-${m.moduleId}`,
+      name: m.displayName,
+      description: m.description,
+      color: m.color,
+      checked: form.modules.includes(m.moduleId),
+      onToggle: () =>
+        form.modules.includes(m.moduleId) ? removeModule(m.moduleId) : addModule(m.moduleId),
+    })),
+  ];
 
   async function save() {
     setError(null);
@@ -274,16 +327,17 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
               <Label htmlFor="year">Year</Label>
               <select
                 id="year"
-                value={form.year}
+                value={displayYear}
                 onChange={(e) => {
                   const n = Number(e.target.value);
-                  if (isStaffYear(n)) setForm((f) => ({ ...f, year: n }));
+                  const real = isProbationary ? n + 3 : n;
+                  if (isStaffYear(real)) setForm((f) => ({ ...f, year: real }));
                 }}
                 className={SELECT_CLASSNAME}
               >
-                {OBSERVATION_YEARS.map((y) => (
+                {[1, 2, 3].map((y) => (
                   <option key={y} value={y}>
-                    {y < 4 ? `Year ${String(y)}` : `Probationary ${String(y - 3)}`}
+                    Year {y}
                   </option>
                 ))}
               </select>
@@ -351,105 +405,74 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
             ) : null}
           </div>
 
+          {/* Unified module list — built-in status flags (Summative year,
+              Probationary, Admin access) sit alongside admin-defined
+              custom modules (Mentor, Mentee, ILT, …) so the admin sees one
+              picker, not a fragmented row of checkboxes plus a separate
+              custom-modules list. "Active" is intentionally not here —
+              the Deactivate/Activate button in the dialog footer owns
+              that state to avoid two controls fighting over the same
+              field. */}
           <div className="grid gap-2">
             <Label>Modules</Label>
             <p className="text-muted-foreground -mt-1 text-xs">
-              Participation tracks like Mentor, Mentee, Instructional Leadership. Modules show as
-              colored chips on the staff dashboard.
+              Tracks and status flags for this staff member. Toggle on or off; chips show on the
+              staff dashboard where applicable.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {form.modules.map((moduleId) => {
-                const mod = modulesById.get(moduleId);
-                const unmapped = !knownModuleIds.has(moduleId);
-                const palette = mod ? MODULE_COLOR_CLASSES[mod.color] : null;
+            <ul className="border-border bg-background divide-border divide-y overflow-hidden rounded-md border">
+              {moduleRows.map((row) => {
+                const palette = MODULE_COLOR_CLASSES[row.color];
                 return (
-                  <span
-                    key={moduleId}
-                    className={
-                      palette
-                        ? `inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${palette.bg} ${palette.text}`
-                        : 'bg-accent text-accent-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs'
-                    }
-                  >
-                    {mod?.displayName ?? moduleId}
-                    {unmapped ? (
-                      <span className="text-muted-foreground ml-1 text-[10px]">(unmapped)</span>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => removeModule(moduleId)}
-                      className="hover:text-destructive"
-                      aria-label={`Remove ${mod?.displayName ?? moduleId}`}
+                  <li key={row.id}>
+                    <label
+                      className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors ${
+                        row.checked ? 'bg-muted/40' : 'hover:bg-muted/30'
+                      }`}
                     >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
+                      <input
+                        type="checkbox"
+                        checked={row.checked}
+                        onChange={row.onToggle}
+                        className="h-4 w-4"
+                      />
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${palette.bg} ${palette.text}`}
+                      >
+                        {row.name}
+                      </span>
+                      {row.description ? (
+                        <span className="text-muted-foreground truncate text-xs">
+                          {row.description}
+                        </span>
+                      ) : null}
+                    </label>
+                  </li>
                 );
               })}
-            </div>
-            <select
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) {
-                  addModule(v);
-                  e.currentTarget.selectedIndex = 0;
-                }
-              }}
-              disabled={modulesLoading || availableModulesToAdd.length === 0}
-              className={SELECT_CLASSNAME}
-              aria-label="Add a module"
-            >
-              <option value="">
-                {modulesLoading
-                  ? 'Loading modules…'
-                  : (modules?.length ?? 0) === 0
-                    ? 'No modules configured'
-                    : availableModulesToAdd.length === 0
-                      ? 'All modules added'
-                      : 'Add a module…'}
-              </option>
-              {availableModulesToAdd.map((m) => (
-                <option key={m.moduleId} value={m.moduleId}>
-                  {m.displayName}
-                </option>
-              ))}
-            </select>
-            {(modules?.length ?? 0) === 0 && !modulesLoading ? (
+            </ul>
+            {modules.length === 0 && !modulesLoading ? (
               <p className="text-muted-foreground text-xs">
-                Add modules in Admin → Modules before assigning.
+                No custom modules configured yet. Add them in Admin → Modules to extend this list.
               </p>
             ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.summativeYear}
-                onChange={(e) => setForm((f) => ({ ...f, summativeYear: e.target.checked }))}
-                className="h-4 w-4"
-              />
-              Summative year
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-                className="h-4 w-4"
-              />
-              Active
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.hasAdminAccess}
-                onChange={(e) => setForm((f) => ({ ...f, hasAdminAccess: e.target.checked }))}
-                className="h-4 w-4"
-              />
-              Admin access
-            </label>
+            {/* Surface any unmapped module IDs from staff.modules that don't
+                resolve to a module doc (e.g., a module was deleted while
+                assigned). */}
+            {form.modules
+              .filter((id) => !knownModuleIds.has(id))
+              .map((id) => (
+                <p key={id} className="text-muted-foreground text-xs">
+                  ⚠ Unknown module <code className="text-xs">{id}</code> is assigned but no longer
+                  exists.{' '}
+                  <button
+                    type="button"
+                    className="text-ops-blue underline"
+                    onClick={() => removeModule(id)}
+                  >
+                    Remove
+                  </button>
+                </p>
+              ))}
           </div>
 
           {error ? (
