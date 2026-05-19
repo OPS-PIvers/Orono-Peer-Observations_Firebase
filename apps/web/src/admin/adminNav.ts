@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Mail,
   Palette,
+  Shapes,
   Shield,
   SlidersHorizontal,
   Users,
@@ -21,6 +22,7 @@ export interface AdminNavItem {
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { to: '/admin/staff', label: 'Staff', icon: Users },
   { to: '/admin/roles', label: 'Roles', icon: Shield },
+  { to: '/admin/modules', label: 'Modules', icon: Shapes },
   { to: '/admin/buildings', label: 'Buildings', icon: Building2 },
   { to: '/admin/rubrics', label: 'Rubrics', icon: BookOpen },
   { to: '/admin/role-year-mappings', label: 'Role/Year', icon: CalendarDays },

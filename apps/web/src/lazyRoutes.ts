@@ -14,6 +14,7 @@ import { lazy } from 'react';
 const importers = {
   StaffDashboardPage: () => import('@/dashboard/StaffDashboardPage'),
   DashboardSettingsPage: () => import('@/admin/dashboard/DashboardSettingsPage'),
+  ModulesPage: () => import('@/admin/modules/ModulesPage'),
   MyRubricPage: () => import('@/routes/MyRubricPage'),
   MyStaffPage: () => import('@/routes/MyStaffPage'),
   ProfilePage: () => import('@/routes/ProfilePage'),
@@ -72,6 +73,9 @@ export const AdminLayout = lazy(() =>
   importers.AdminLayout().then((m) => ({ default: m.AdminLayout })),
 );
 export const StaffPage = lazy(() => importers.StaffPage().then((m) => ({ default: m.StaffPage })));
+export const ModulesPage = lazy(() =>
+  importers.ModulesPage().then((m) => ({ default: m.ModulesPage })),
+);
 export const RolesPage = lazy(() => importers.RolesPage().then((m) => ({ default: m.RolesPage })));
 export const BuildingsPage = lazy(() =>
   importers.BuildingsPage().then((m) => ({ default: m.BuildingsPage })),
@@ -118,6 +122,7 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/profile': 'ProfilePage',
   '/admin': 'AdminLayout',
   '/admin/staff': 'StaffPage',
+  '/admin/modules': 'ModulesPage',
   '/admin/roles': 'RolesPage',
   '/admin/buildings': 'BuildingsPage',
   '/admin/rubrics': 'RubricsListPage',

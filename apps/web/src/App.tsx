@@ -105,6 +105,7 @@ export function App() {
                 <Route index element={<Navigate to="staff" replace />} />
                 <Route path="staff" element={<L.StaffPage />} />
                 <Route path="roles" element={<L.RolesPage />} />
+                <Route path="modules" element={<L.ModulesPage />} />
                 <Route path="buildings" element={<L.BuildingsPage />} />
                 <Route path="rubrics" element={<L.RubricsListPage />} />
                 <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
