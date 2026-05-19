@@ -122,7 +122,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     [buildings, form.buildings],
   );
 
-  const knownModuleIds = useMemo(() => new Set((modules ?? []).map((m) => m.moduleId)), [modules]);
+  const knownModuleIds = useMemo(() => new Set(modules.map((m) => m.moduleId)), [modules]);
 
   // Probationary status is derived from the year: 1-3 = continuing, 4-6 =
   // probationary (P1/P2/P3). The dialog splits this into a 1-3 dropdown
