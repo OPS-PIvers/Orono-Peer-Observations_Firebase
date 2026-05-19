@@ -118,7 +118,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     onAction={() => setFilter('completed')}
                   >
                     {completed.slice(0, 3).map((t) => (
-                      <MiniTask key={t.id} task={t} />
+                      <MiniTask key={t.id} task={t} readOnly={readOnly} />
                     ))}
                   </TaskGroup>
                 ) : null}
@@ -158,7 +158,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'completed' ? (
               <TaskGroup title="Completed" count={completed.length}>
                 {completed.length > 0 ? (
-                  completed.map((t) => <MiniTask key={t.id} task={t} />)
+                  completed.map((t) => <MiniTask key={t.id} task={t} readOnly={readOnly} />)
                 ) : (
                   <p className="empty-note">Nothing completed yet.</p>
                 )}
@@ -242,7 +242,7 @@ function Hero(p: HeroProps) {
             ) : total > 0 ? (
               <>Cycle complete — nice work, {p.firstName}.</>
             ) : (
-              <>No active checkpoints right now.</>
+              <>No active checkpoints right now. Check back when an observation is scheduled.</>
             )}
           </p>
           <div className="dash-hero__meta">
@@ -460,7 +460,7 @@ function TaskCard({
   );
 }
 
-function MiniTask({ task }: { task: CheckpointWithStatus }) {
+function MiniTask({ task, readOnly }: { task: CheckpointWithStatus; readOnly?: boolean }) {
   return (
     <article className="task task--mini is-done">
       <div className="task__check" />
@@ -472,7 +472,11 @@ function MiniTask({ task }: { task: CheckpointWithStatus }) {
           {task.completedLabel ?? ''}
         </span>
       </div>
-      <button type="button" className="ot-btn ot-btn--tertiary ot-btn--sm">
+      <button
+        type="button"
+        className="ot-btn ot-btn--tertiary ot-btn--sm"
+        disabled={readOnly === true}
+      >
         View
       </button>
     </article>
@@ -573,7 +577,7 @@ function QuickMaterials({
             const Tag = m.url && !readOnly ? 'a' : 'span';
             return (
               <Tag
-                key={i}
+                key={`${m.label}-${String(i)}`}
                 className="material-list__item"
                 {...(m.url && !readOnly
                   ? { href: m.url, target: '_blank', rel: 'noreferrer' }
