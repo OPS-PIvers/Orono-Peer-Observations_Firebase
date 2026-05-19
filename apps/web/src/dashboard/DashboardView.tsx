@@ -5,9 +5,18 @@ import {
   type ModuleColor,
   type Staff,
 } from '@ops/shared';
-import { DashboardIcon } from './DashboardIcon';
+import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
 import { type CheckpointWithStatus, initialsFromName } from './deriveCheckpoints';
 import './dashboard.css';
+
+/** Icon glyph per visual type — shown in the collapsed row to differentiate
+ *  meetings from forms / observations / reviews at a glance. */
+const TYPE_ICON: Record<CheckpointWithStatus['type'], DashboardIconName> = {
+  meeting: 'calendar',
+  form: 'form',
+  observation: 'rubric',
+  review: 'doc',
+};
 
 export interface ModuleChip {
   moduleId: string;
@@ -99,9 +108,10 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
               <>
                 {featured ? (
                   <section style={{ marginBottom: 8 }}>
-                    <TaskCard
+                    <TaskRow
                       task={featured}
                       featured
+                      defaultExpanded
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
                       {...(props.acknowledging !== undefined
                         ? { acknowledging: props.acknowledging }
@@ -113,7 +123,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                 {restActive.length > 0 ? (
                   <TaskGroup title="In progress" count={restActive.length}>
                     {restActive.map((t) => (
-                      <TaskCard
+                      <TaskRow
                         key={t.id}
                         task={t}
                         {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
@@ -127,7 +137,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                 ) : null}
                 <TaskGroup title="Upcoming" count={restUpcoming.length}>
                   {restUpcoming.length > 0 ? (
-                    restUpcoming.map((t) => <TaskCard key={t.id} task={t} readOnly={readOnly} />)
+                    restUpcoming.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
                   ) : (
                     <p className="empty-note">Nothing else scheduled.</p>
                   )}
@@ -140,7 +150,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     onAction={() => setFilter('completed')}
                   >
                     {completed.slice(0, 3).map((t) => (
-                      <MiniTask key={t.id} task={t} readOnly={readOnly} />
+                      <TaskRow key={t.id} task={t} readOnly={readOnly} />
                     ))}
                   </TaskGroup>
                 ) : null}
@@ -151,7 +161,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
               <TaskGroup title="Active now" count={active.length}>
                 {active.length > 0 ? (
                   active.map((t) => (
-                    <TaskCard
+                    <TaskRow
                       key={t.id}
                       task={t}
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
@@ -170,7 +180,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'upcoming' ? (
               <TaskGroup title="Upcoming" count={upcoming.length}>
                 {upcoming.length > 0 ? (
-                  upcoming.map((t) => <TaskCard key={t.id} task={t} readOnly={readOnly} />)
+                  upcoming.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
                 ) : (
                   <p className="empty-note">No upcoming checkpoints.</p>
                 )}
@@ -180,7 +190,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'completed' ? (
               <TaskGroup title="Completed" count={completed.length}>
                 {completed.length > 0 ? (
-                  completed.map((t) => <MiniTask key={t.id} task={t} readOnly={readOnly} />)
+                  completed.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
                 ) : (
                   <p className="empty-note">Nothing completed yet.</p>
                 )}
@@ -434,113 +444,127 @@ function FilterBar({
   );
 }
 
-function TaskCard({
+/**
+ * Unified expandable checkpoint row. Defaults to a compact single-line
+ * row (icon · title · date · View) — the same shape as the old
+ * "Completed" mini-rows — and expands to show the description, progress
+ * bar, and primary CTA when the user clicks View.
+ *
+ * The Next-Up card is shown expanded by default (`defaultExpanded`).
+ *
+ * Visual differentiation:
+ *  - Icon glyph comes from `task.type` (meeting/form/observation/review)
+ *  - Status color (done/inprogress/soon/upcoming) comes from `is-…`
+ *    class — same vars the old `.task__check` used.
+ */
+function TaskRow({
   task,
+  defaultExpanded,
   featured,
   onAcknowledge,
   acknowledging,
   readOnly,
 }: {
   task: CheckpointWithStatus;
+  defaultExpanded?: boolean;
   featured?: boolean;
   onAcknowledge?: (observationId: string) => void;
   acknowledging?: boolean;
   readOnly?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const statusClass = `is-${task.status}`;
-  const typeClass = `task__type-chip--${task.type}`;
+  const typeClass = `task-row__icon--${task.type}`;
   const isAck = !!task.ackObservationId;
+  const dateLabel = task.status === 'done' ? (task.completedLabel ?? '') : task.dateLabel;
+  const expandedId = `task-row-detail-${task.id}`;
+
   return (
-    <article className={`task ${statusClass} ${featured ? 'task--featured' : ''}`}>
-      <div
-        className="task__check"
-        role="checkbox"
-        aria-checked={task.status === 'done'}
-        tabIndex={0}
-      />
-      <div className="task__body">
-        <div className="task__head">
-          <h3 className="task__title">{task.title}</h3>
-          <span className={`task__type-chip ${typeClass}`}>{task.typeLabel}</span>
-        </div>
-        {task.desc ? <p className="task__desc">{task.desc}</p> : null}
-        {task.status === 'inprogress' && task.percent != null ? (
-          <div className="task__progress">
-            <div className="task__progress-bar">
-              <div className="task__progress-fill" style={{ width: `${String(task.percent)}%` }} />
-            </div>
-            <span className="task__progress-text">
-              {task.percent}%{task.percentLabel ? ` · ${task.percentLabel}` : ''}
+    <article
+      className={`task-row ${statusClass} ${featured ? 'task-row--featured' : ''} ${expanded ? 'is-expanded' : ''}`}
+    >
+      <button
+        type="button"
+        className="task-row__header"
+        aria-expanded={expanded}
+        aria-controls={expandedId}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className={`task-row__icon ${typeClass}`} aria-hidden>
+          <DashboardIcon name={TYPE_ICON[task.type]} size={14} />
+        </span>
+        <span className="task-row__title">{task.title}</span>
+        <span className="task-row__date">{dateLabel}</span>
+        <span className="task-row__toggle">
+          <span className="task-row__toggle-label">{expanded ? 'Hide' : 'View'}</span>
+          <DashboardIcon name="arrow-right" size={12} />
+        </span>
+      </button>
+      {expanded ? (
+        <div id={expandedId} className="task-row__detail">
+          <div className="task-row__detail-head">
+            <span className={`task__type-chip task__type-chip--${task.type}`}>
+              {task.typeLabel}
             </span>
+            {task.dueRelative ? (
+              <span className="task-row__detail-relative">{task.dueRelative}</span>
+            ) : null}
           </div>
-        ) : null}
-      </div>
-      <div className="task__side">
-        <div className="task__due">
-          <span className="task__due-label">{task.status === 'done' ? 'Completed' : 'Due'}</span>
-          <span className="task__due-date">
-            {task.status === 'done' ? (task.completedLabel ?? '') : task.dateLabel}
-          </span>
-          {task.dueRelative ? <span className="task__due-relative">{task.dueRelative}</span> : null}
-        </div>
-        {task.status !== 'done' ? (
-          isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
-            <button
-              type="button"
-              className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task__cta`}
-              onClick={() => onAcknowledge(task.ackObservationId ?? '')}
-              disabled={acknowledging}
-            >
-              {acknowledging ? 'Acknowledging…' : task.cta}
-            </button>
+          {task.desc ? <p className="task-row__detail-desc">{task.desc}</p> : null}
+          {task.status === 'inprogress' && task.percent != null ? (
+            <div className="task__progress">
+              <div className="task__progress-bar">
+                <div
+                  className="task__progress-fill"
+                  style={{ width: `${String(task.percent)}%` }}
+                />
+              </div>
+              <span className="task__progress-text">
+                {task.percent}%{task.percentLabel ? ` · ${task.percentLabel}` : ''}
+              </span>
+            </div>
+          ) : null}
+          {task.status !== 'done' ? (
+            isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
+              <button
+                type="button"
+                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                onClick={() => onAcknowledge(task.ackObservationId ?? '')}
+                disabled={acknowledging}
+              >
+                {acknowledging ? 'Acknowledging…' : task.cta}
+              </button>
+            ) : task.ctaUrl && !readOnly ? (
+              <a
+                href={task.ctaUrl}
+                {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
+                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+              >
+                {task.cta}
+                <DashboardIcon name="arrow-right" size={12} />
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled={readOnly}
+                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+              >
+                {task.cta}
+                <DashboardIcon name="arrow-right" size={12} />
+              </button>
+            )
           ) : task.ctaUrl && !readOnly ? (
             <a
               href={task.ctaUrl}
               {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-              className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task__cta`}
+              className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
             >
-              {task.cta}
+              Open observation
               <DashboardIcon name="arrow-right" size={12} />
             </a>
-          ) : (
-            <button
-              type="button"
-              disabled={readOnly}
-              className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task__cta`}
-            >
-              {task.cta}
-              <DashboardIcon name="arrow-right" size={12} />
-            </button>
-          )
-        ) : (
-          <button type="button" className="ot-btn ot-btn--tertiary ot-btn--sm" disabled={readOnly}>
-            View
-          </button>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function MiniTask({ task, readOnly }: { task: CheckpointWithStatus; readOnly?: boolean }) {
-  return (
-    <article className="task task--mini is-done">
-      <div className="task__check" />
-      <div>
-        <h3 className="task__title">{task.title}</h3>
-      </div>
-      <div className="task__due">
-        <span className="task__due-date" style={{ fontSize: 13, fontWeight: 500 }}>
-          {task.completedLabel ?? ''}
-        </span>
-      </div>
-      <button
-        type="button"
-        className="ot-btn ot-btn--tertiary ot-btn--sm"
-        disabled={readOnly === true}
-      >
-        View
-      </button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
