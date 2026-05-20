@@ -353,7 +353,7 @@ function Timeline({
         </div>
         {tasks.map((t, i) => {
           const left = ((i + 0.5) / total) * 100;
-          const isCurrent = t.status === 'inprogress' || t.status === 'soon';
+          const isCurrent = t.status === 'inprogress';
           const cls = [
             'timeline__dot',
             t.status === 'done' ? 'is-done' : '',
