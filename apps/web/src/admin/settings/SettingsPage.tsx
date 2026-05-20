@@ -15,6 +15,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
@@ -124,7 +125,7 @@ export function SettingsPage() {
         </div>
       ) : null}
 
-      <div className="border-border bg-background max-w-2xl space-y-6 rounded-lg border p-6">
+      <Card className="max-w-2xl space-y-6 p-6">
         <Field
           label="Session duration (hours)"
           help="How long a sign-in session is honored before the user is asked to re-authenticate."
@@ -333,7 +334,7 @@ export function SettingsPage() {
             {saving ? 'Saving…' : 'Save settings'}
           </Button>
         </div>
-      </div>
+      </Card>
 
       <MaintenanceSection />
     </PageHeader>
@@ -361,7 +362,7 @@ function MaintenanceSection() {
   }
 
   return (
-    <div className="border-border bg-background mt-6 max-w-2xl space-y-4 rounded-lg border p-6">
+    <Card className="mt-6 max-w-2xl space-y-4 p-6">
       <header>
         <h2 className="text-lg font-semibold">Maintenance</h2>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -456,7 +457,7 @@ function MaintenanceSection() {
       </div>
 
       <BackfillScriptTagColorsCard />
-    </div>
+    </Card>
   );
 }
 

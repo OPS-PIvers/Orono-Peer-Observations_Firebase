@@ -5,6 +5,7 @@ import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Building } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
@@ -78,13 +79,9 @@ export function BuildingsPage() {
         sortAccessor: (b) => (b.isActive ? 1 : 0),
         cell: (b) =>
           b.isActive ? (
-            <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Active
-            </span>
+            <Badge tone="active">Active</Badge>
           ) : (
-            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Inactive
-            </span>
+            <Badge tone="inactive">Inactive</Badge>
           ),
         mobile: { footer: true },
       },

@@ -8,6 +8,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, storage } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
@@ -76,7 +77,7 @@ export function BrandingPage() {
       ) : null}
 
       <div className="grid max-w-2xl gap-6 md:grid-cols-[minmax(0,1fr)_240px]">
-        <div className="border-border bg-background space-y-6 rounded-lg border p-6">
+        <Card className="space-y-6 p-6">
           <div className="grid gap-2">
             <Label htmlFor="appName">App name</Label>
             <Input
@@ -150,7 +151,7 @@ export function BrandingPage() {
               {saving ? 'Saving…' : 'Save branding'}
             </Button>
           </div>
-        </div>
+        </Card>
 
         <aside className="border-border bg-background rounded-lg border p-4">
           <h2 className="mb-3 text-sm font-medium">Preview</h2>

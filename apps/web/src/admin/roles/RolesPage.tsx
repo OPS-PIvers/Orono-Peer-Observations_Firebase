@@ -4,6 +4,7 @@ import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Role } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { Input } from '@/components/ui/input';
@@ -79,9 +80,7 @@ export function RolesPage() {
         sortAccessor: (r) => (r.isSpecialAccess ? 1 : 0),
         cell: (r) =>
           r.isSpecialAccess ? (
-            <span className="bg-ops-red-lighter text-ops-red-dark inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Special
-            </span>
+            <Badge tone="warning">Special</Badge>
           ) : (
             <span className="text-muted-foreground text-xs">—</span>
           ),
@@ -94,13 +93,9 @@ export function RolesPage() {
         sortAccessor: (r) => (r.isActive ? 1 : 0),
         cell: (r) =>
           r.isActive ? (
-            <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Active
-            </span>
+            <Badge tone="active">Active</Badge>
           ) : (
-            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Inactive
-            </span>
+            <Badge tone="inactive">Inactive</Badge>
           ),
         mobile: { footer: true },
       },

@@ -4,6 +4,7 @@ import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { COLLECTIONS, type Building, type ModuleDoc, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -175,13 +176,9 @@ export function StaffPage() {
         sortAccessor: (r) => (r.isActive ? 1 : 0),
         cell: (r) =>
           r.isActive ? (
-            <span className="bg-accent text-accent-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Active
-            </span>
+            <Badge tone="active">Active</Badge>
           ) : (
-            <span className="bg-muted text-muted-foreground inline-flex items-center rounded px-2 py-0.5 text-xs">
-              Inactive
-            </span>
+            <Badge tone="inactive">Inactive</Badge>
           ),
         editCell: (r) => <StatusCell row={r} onPatch={patchStaff} />,
         mobile: { footer: true },
