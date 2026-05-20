@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 
 export type SortDirection = 'asc' | 'desc';
@@ -117,7 +118,12 @@ function DesktopTable<T>({
   const colSpan = columns.length + (selection ? 1 : 0) + (rowActions ? 1 : 0);
 
   return (
-    <div className={cn('border-border bg-background overflow-hidden rounded-lg border', className)}>
+    <div
+      className={cn(
+        'border-border bg-background overflow-hidden rounded-lg border shadow-[var(--shadow-card)]',
+        className,
+      )}
+    >
       <Table>
         <TableHeader>
           <TableRow>
@@ -179,8 +185,12 @@ function DesktopTable<T>({
             ))
           ) : (rows ?? []).length === 0 ? (
             <TableRow>
-              <TableCell colSpan={colSpan} className="text-muted-foreground py-6 text-center">
-                {empty ?? 'No data.'}
+              <TableCell colSpan={colSpan} className="p-0">
+                {typeof empty === 'string' || empty == null ? (
+                  <EmptyState title={empty ?? 'No data.'} />
+                ) : (
+                  <div className="px-4 py-6 text-center">{empty}</div>
+                )}
               </TableCell>
             </TableRow>
           ) : (
@@ -339,8 +349,12 @@ function MobileCards<T>({
           ))}
         </div>
       ) : (rows ?? []).length === 0 ? (
-        <div className="bg-background border-border text-muted-foreground rounded-lg border px-4 py-8 text-center">
-          {empty ?? 'No data.'}
+        <div className="bg-background border-border rounded-lg border">
+          {typeof empty === 'string' || empty == null ? (
+            <EmptyState title={empty ?? 'No data.'} />
+          ) : (
+            <div className="px-4 py-8 text-center">{empty}</div>
+          )}
         </div>
       ) : (
         (rows ?? []).map((row) => {
