@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Building } from '@ops/shared';
@@ -45,6 +46,7 @@ export function BuildingsPage() {
     loading,
     error,
   } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
+  const navigate = useNavigate();
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<BuildingRow | null>(null);
   const [sort, setSort] = useState<AdminDataViewSort | null>({
@@ -138,6 +140,11 @@ export function BuildingsPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => setEditing(b)}>Edit</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => navigate(`/admin/buildings/${b.buildingId}/schedule`)}
+              >
+                Edit schedule
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

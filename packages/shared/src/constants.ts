@@ -25,9 +25,50 @@ export const COLLECTIONS = {
   transcriptionJobs: 'transcriptionJobs',
   mail: 'mail',
   dashboardQuickMaterials: 'dashboardQuickMaterials',
+  buildingSchedules: 'buildingSchedules',
+  signupFields: 'signupFields',
+  observationWindows: 'observationWindows',
+  userCalendarTokens: 'userCalendarTokens',
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
+
+/** Subcollections under /observationWindows/{windowId}. */
+export const WINDOW_SUBCOLLECTIONS = {
+  slots: 'slots',
+  preferences: 'preferences',
+} as const;
+
+/** Observation window lifecycle states. */
+export const OBSERVATION_WINDOW_STATUS = {
+  open: 'open',
+  partiallyBooked: 'partially-booked',
+  fullyBooked: 'fully-booked',
+  cancelled: 'cancelled',
+  expired: 'expired',
+} as const;
+
+export type ObservationWindowStatus =
+  (typeof OBSERVATION_WINDOW_STATUS)[keyof typeof OBSERVATION_WINDOW_STATUS];
+
+/** Slot states within a window. */
+export const OBSERVATION_SLOT_STATUS = {
+  available: 'available',
+  booked: 'booked',
+  blocked: 'blocked',
+} as const;
+
+export type ObservationSlotStatus =
+  (typeof OBSERVATION_SLOT_STATUS)[keyof typeof OBSERVATION_SLOT_STATUS];
+
+/** Why an otherwise-available slot is blocked. */
+export const SLOT_BLOCKED_REASON = {
+  noSchool: 'no-school',
+  peConflict: 'pe-conflict',
+  windowCancelled: 'window-cancelled',
+} as const;
+
+export type SlotBlockedReason = (typeof SLOT_BLOCKED_REASON)[keyof typeof SLOT_BLOCKED_REASON];
 
 /** Observation lifecycle states. */
 export const OBSERVATION_STATUS = {

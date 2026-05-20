@@ -123,6 +123,61 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // --- /observationWindows/{windowId} -------------------------------------
+    // A scheduling window. Read: special-access (PE/admin) or an invited
+    // staff member (their email is in invitedEmails). Create: special-access,
+    // and the observer must be the caller. Update/delete: admin or the
+    // observer. Staff never write the window (or its peBusyIntervals /
+    // dayCounts) directly — booking + day-preference flow through callable
+    // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
+    // ledger and per-day caps atomic.
+    match /observationWindows/{windowId} {
+      allow get, list: if hasSpecialAccess()
+        || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
+      allow create: if hasSpecialAccess()
+        && request.resource.data.observerEmail == request.auth.token.email;
+      allow update, delete: if isAdmin()
+        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email);
+
+      // Slots: readable by anyone who can read the parent window; never
+      // client-writable (mutated only inside the booking transaction).
+      match /slots/{slotId} {
+        allow read: if hasSpecialAccess()
+          || (isFromOronoDomain()
+              && request.auth.token.email in
+                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.invitedEmails);
+        allow write: if false;
+      }
+
+      // Day-preference submissions: readable by the owner, the observer, or
+      // an admin. Submitted via callable so day-cap accounting stays atomic.
+      match /preferences/{prefEmail} {
+        allow read: if hasSpecialAccess()
+          || isCurrentUserEmail(prefEmail)
+          || (isFromOronoDomain()
+              && request.auth.token.email ==
+                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail);
+        allow write: if false;
+      }
+    }
+
+    // --- /buildingSchedules/{buildingId} ------------------------------------
+    // Bell schedules drive the booking calendar. The booking UI needs to read
+    // period names/times, so anyone signed-in from the domain may read.
+    // Writes are admin-only (Admin Console → Building schedule editor).
+    match /buildingSchedules/{buildingId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
+    // --- /signupFields/{fieldId} --------------------------------------------
+    // Admin-defined detail fields staff fill in when booking. Read for anyone
+    // signed-in (the booking form renders them); write admin-only.
+    match /signupFields/{fieldId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
     // --- /appSettings --------------------------------------------------------
     // Branding and a few public-ish flags need to be readable by everyone
     // signed in (for app name, logo, banner). Writes are admin-only.
@@ -170,6 +225,12 @@ service cloud.firestore {
           && unchanged('observedEmail')
           && unchanged('createdAt')
           && unchanged('finalizedAt')
+          // Scheduling linkage is server-managed; an observer editing a Draft
+          // can't rebind it to another window/slot.
+          && unchanged('windowId')
+          && unchanged('slotId')
+          && unchanged('scheduledStartAt')
+          && unchanged('scheduledEndAt')
         )
         || (
           isCurrentUserEmail(resource.data.observedEmail)
@@ -192,6 +253,14 @@ service cloud.firestore {
           isCurrentUserEmail(resource.data.observerEmail)
           && resource.data.status == 'Draft'
         );
+    }
+
+    // --- /userCalendarTokens/{email} ----------------------------------------
+    // Per-user Google Calendar OAuth credentials. Server-only — refresh
+    // tokens never leave the backend. Cloud Functions use the Admin SDK
+    // (which bypasses rules); clients are denied entirely.
+    match /userCalendarTokens/{email} {
+      allow read, write: if false;
     }
 
     // --- /auditLog -----------------------------------------------------------

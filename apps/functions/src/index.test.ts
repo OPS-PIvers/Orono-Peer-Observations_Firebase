@@ -20,5 +20,17 @@ describe('functions index', () => {
     expect(typeof mod.onRoleYearMappingWritten).not.toBe('undefined');
     expect(typeof mod.scheduledEmailReminders).not.toBe('undefined');
     expect(typeof mod.sendManualEmail).not.toBe('undefined');
+    expect(typeof mod.createObservationWindow).not.toBe('undefined');
+    expect(typeof mod.cancelObservationWindow).not.toBe('undefined');
+    expect(typeof mod.expireObservationWindows).not.toBe('undefined');
+    expect(typeof mod.onBuildingScheduleWritten).not.toBe('undefined');
+    expect(typeof mod.bookObservationSlot).not.toBe('undefined');
+    expect(typeof mod.submitDayPreference).not.toBe('undefined');
+    expect(typeof mod.assignObservationFromPreference).not.toBe('undefined');
+    expect(typeof mod.cancelBooking).not.toBe('undefined');
+    expect(typeof mod.connectGoogleCalendar).not.toBe('undefined');
+    expect(typeof mod.disconnectGoogleCalendar).not.toBe('undefined');
+    expect(typeof mod.getCalendarConnectionStatus).not.toBe('undefined');
+    expect(typeof mod.onObservationBooked).not.toBe('undefined');
   }, 15_000);
 });

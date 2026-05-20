@@ -1,20 +1,24 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, orderBy, where } from 'firebase/firestore';
-import { ChevronRight, Mail } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
+import { AlertCircle, CalendarCheck, CalendarX, ChevronRight, Loader2, Mail } from 'lucide-react';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   SPECIAL_ROLES,
+  type CalendarConnectionStatusResult,
   type Observation,
   type Role,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui/button';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
+import { beginCalendarConnect } from '@/scheduling/connectCalendar';
 import { roleDisplayName } from '@/utils/roleLookup';
 import {
   schoolYearOf,
@@ -29,6 +33,129 @@ const ADMIN_CONSTRAINTS = [
   where('isActive', '==', true),
   orderBy('name', 'asc'),
 ];
+
+const getCalendarConnectionStatusFn = httpsCallable<
+  Record<string, never>,
+  CalendarConnectionStatusResult
+>(functions, 'getCalendarConnectionStatus');
+const disconnectGoogleCalendarFn = httpsCallable<
+  Record<string, never>,
+  CalendarConnectionStatusResult
+>(functions, 'disconnectGoogleCalendar');
+
+/** Calendar integration section: connect/disconnect Google Calendar OAuth. */
+function CalendarIntegrationSection({ email }: { email: string }) {
+  const [status, setStatus] = useState<CalendarConnectionStatusResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await getCalendarConnectionStatusFn({});
+      setStatus(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load calendar status.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const handleConnect = () => {
+    setError(null);
+    try {
+      beginCalendarConnect(email, '/profile');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start the connection.');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data } = await disconnectGoogleCalendarFn({});
+      setStatus(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to disconnect.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isConnected = status?.status === 'connected';
+  const isRevoked = status?.status === 'revoked';
+  const connectedEmail = isConnected ? status.googleAccountEmail : null;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">
+        Calendar integration
+      </h2>
+      <p className="text-ops-gray mt-1 text-sm">
+        Connect your Google Calendar so observation events can be added automatically.
+      </p>
+
+      {loading ? (
+        <div className="mt-4 flex items-center gap-2 text-sm text-gray-700">
+          <Loader2 className="text-ops-blue h-4 w-4 animate-spin" />
+          Checking connection…
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div className="flex items-center gap-2.5">
+            {isConnected ? (
+              <>
+                <CalendarCheck className="h-5 w-5 text-green-600" />
+                <p className="text-sm text-gray-900">
+                  Connected{connectedEmail ? ` as ${connectedEmail}` : ''}
+                </p>
+              </>
+            ) : isRevoked ? (
+              <>
+                <CalendarX className="text-ops-red h-5 w-5" />
+                <p className="text-sm text-gray-900">
+                  Access was revoked — reconnect to keep calendar sync working.
+                </p>
+              </>
+            ) : (
+              <>
+                <CalendarX className="text-ops-gray h-5 w-5" />
+                <p className="text-sm text-gray-900">Not connected</p>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {isConnected ? (
+              <Button variant="outline" onClick={() => void handleDisconnect()} disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Disconnect
+              </Button>
+            ) : (
+              <Button onClick={handleConnect} disabled={!email}>
+                {isRevoked ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error ? (
+        <div className="mt-4 flex items-start gap-2 text-sm">
+          <AlertCircle className="text-ops-red mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-ops-red">{error}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 export function ProfilePage() {
   const { user } = useAuth();
@@ -196,6 +323,9 @@ export function ProfilePage() {
             </ul>
           )}
         </section>
+
+        {/* Calendar integration */}
+        <CalendarIntegrationSection email={email} />
 
         {/* Finalized observations archive */}
         <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">

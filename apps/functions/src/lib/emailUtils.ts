@@ -8,7 +8,7 @@ import {
   type EmailTriggerType,
 } from '@ops/shared';
 
-const APP_URL = 'https://observations.orono.k12.mn.us';
+export const APP_URL = 'https://observations.orono.k12.mn.us';
 const FROM_EMAIL = 'observations@orono.k12.mn.us';
 
 /** Variable bag passed to substituteVariables. Undefined values render as ''. */

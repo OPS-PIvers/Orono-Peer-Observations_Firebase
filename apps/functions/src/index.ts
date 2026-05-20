@@ -29,3 +29,15 @@ export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
+export { createObservationWindow } from './scheduling/createObservationWindow.js';
+export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js';
+export { expireObservationWindows } from './scheduling/expireObservationWindows.js';
+export { onBuildingScheduleWritten } from './scheduling/onBuildingScheduleWritten.js';
+export { bookObservationSlot } from './scheduling/bookObservationSlot.js';
+export { submitDayPreference } from './scheduling/submitDayPreference.js';
+export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
+export { cancelBooking } from './scheduling/cancelBooking.js';
+export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js';
+export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalendar.js';
+export { getCalendarConnectionStatus } from './calendar/auth/getCalendarConnectionStatus.js';
+export { onObservationBooked } from './calendar/onObservationBooked.js';

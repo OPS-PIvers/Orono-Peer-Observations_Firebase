@@ -22,11 +22,18 @@ const importers = {
   StaffPersonPage: () => import('@/routes/StaffPersonPage'),
   ObservationsListPage: () => import('@/observations/ObservationsListPage'),
   NewObservationPage: () => import('@/observations/NewObservationPage'),
+  MyObservationWindowsPage: () => import('@/observations/MyObservationWindowsPage'),
   ObservationEditorPage: () => import('@/observations/ObservationEditorPage'),
+  BookingPage: () => import('@/scheduling/BookingPage'),
+  AssignPreferencesPage: () => import('@/scheduling/AssignPreferencesPage'),
+  CalendarCallbackPage: () => import('@/scheduling/CalendarCallbackPage'),
   AdminLayout: () => import('@/admin/AdminLayout'),
   StaffPage: () => import('@/admin/staff/StaffPage'),
   RolesPage: () => import('@/admin/roles/RolesPage'),
   BuildingsPage: () => import('@/admin/buildings/BuildingsPage'),
+  BuildingSchedulePage: () => import('@/admin/buildings/BuildingSchedulePage'),
+  SignupFieldsPage: () => import('@/admin/signup-fields/SignupFieldsPage'),
+  SchedulingSettingsPage: () => import('@/admin/scheduling/SchedulingSettingsPage'),
   RubricsListPage: () => import('@/admin/rubrics/RubricsListPage'),
   RubricEditorPage: () => import('@/admin/rubrics/RubricEditorPage'),
   RoleYearMappingsPage: () => import('@/admin/role-year-mappings/RoleYearMappingsPage'),
@@ -66,8 +73,20 @@ export const ObservationsListPage = lazy(() =>
 export const NewObservationPage = lazy(() =>
   importers.NewObservationPage().then((m) => ({ default: m.NewObservationPage })),
 );
+export const MyObservationWindowsPage = lazy(() =>
+  importers.MyObservationWindowsPage().then((m) => ({ default: m.MyObservationWindowsPage })),
+);
 export const ObservationEditorPage = lazy(() =>
   importers.ObservationEditorPage().then((m) => ({ default: m.ObservationEditorPage })),
+);
+export const BookingPage = lazy(() =>
+  importers.BookingPage().then((m) => ({ default: m.BookingPage })),
+);
+export const AssignPreferencesPage = lazy(() =>
+  importers.AssignPreferencesPage().then((m) => ({ default: m.AssignPreferencesPage })),
+);
+export const CalendarCallbackPage = lazy(() =>
+  importers.CalendarCallbackPage().then((m) => ({ default: m.CalendarCallbackPage })),
 );
 export const AdminLayout = lazy(() =>
   importers.AdminLayout().then((m) => ({ default: m.AdminLayout })),
@@ -79,6 +98,15 @@ export const ModulesPage = lazy(() =>
 export const RolesPage = lazy(() => importers.RolesPage().then((m) => ({ default: m.RolesPage })));
 export const BuildingsPage = lazy(() =>
   importers.BuildingsPage().then((m) => ({ default: m.BuildingsPage })),
+);
+export const BuildingSchedulePage = lazy(() =>
+  importers.BuildingSchedulePage().then((m) => ({ default: m.BuildingSchedulePage })),
+);
+export const SignupFieldsPage = lazy(() =>
+  importers.SignupFieldsPage().then((m) => ({ default: m.SignupFieldsPage })),
+);
+export const SchedulingSettingsPage = lazy(() =>
+  importers.SchedulingSettingsPage().then((m) => ({ default: m.SchedulingSettingsPage })),
 );
 export const RubricsListPage = lazy(() =>
   importers.RubricsListPage().then((m) => ({ default: m.RubricsListPage })),
@@ -119,12 +147,16 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/staff': 'StaffDirectoryPage',
   '/observations': 'ObservationsListPage',
   '/observations/new': 'NewObservationPage',
+  '/observations/windows': 'MyObservationWindowsPage',
   '/profile': 'ProfilePage',
+  '/oauth/google-calendar/callback': 'CalendarCallbackPage',
   '/admin': 'AdminLayout',
   '/admin/staff': 'StaffPage',
   '/admin/modules': 'ModulesPage',
   '/admin/roles': 'RolesPage',
   '/admin/buildings': 'BuildingsPage',
+  '/admin/signup-fields': 'SignupFieldsPage',
+  '/admin/scheduling-settings': 'SchedulingSettingsPage',
   '/admin/rubrics': 'RubricsListPage',
   '/admin/role-year-mappings': 'RoleYearMappingsPage',
   '/admin/work-product': 'WorkProductPage',

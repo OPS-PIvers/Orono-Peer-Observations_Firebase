@@ -89,15 +89,25 @@ export function NewObservationPage() {
         staff ? ` ${String(filtered.length)} of ${String(staff.length)} match.` : ' Loading staff…'
       }`}
       actions={
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate(-1)}
-          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Back
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void navigate('/observations/windows')}
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            Observation windows
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(-1)}
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">

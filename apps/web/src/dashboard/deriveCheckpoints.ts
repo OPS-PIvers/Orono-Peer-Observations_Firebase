@@ -192,6 +192,9 @@ export interface DeriveContext {
   instructionalRoundQuestionsCount: number;
   /** appSettings/global doc; surfaces signupLink etc. */
   appSettings: AppSettings | null;
+  /** An open observation window the staff member is invited to but hasn't
+   *  booked yet — deep-links the signup checkpoint straight to /book. */
+  openBooking: { windowId: string; token: string } | null;
   /** Whether the staff member's role/year currently has WP / IR feature on. */
   hasWorkProduct: boolean;
   hasInstructionalRound: boolean;
@@ -208,7 +211,13 @@ const BUILDERS: Record<CheckpointTypeKey, Builder> = {
     // member, signup transitions to "Scheduled". Until then the link to the
     // signup form is the action.
     const hasObs = ctx.standardDraft != null || ctx.finalizedStandard.length > 0;
+    // Prefer an in-app booking link when the staff member has an open invite;
+    // otherwise fall back to the external signup link from settings.
+    const bookingUrl = ctx.openBooking
+      ? `/book/${ctx.openBooking.windowId}?token=${ctx.openBooking.token}`
+      : '';
     const signupLink = ctx.appSettings?.signupLink ?? '';
+    const ctaUrl = bookingUrl || signupLink;
     return {
       id: 'signup',
       type: labels.type,
@@ -219,8 +228,8 @@ const BUILDERS: Record<CheckpointTypeKey, Builder> = {
       dateLabel: hasObs ? 'Scheduled' : 'Open',
       dueRelative: '',
       cta: labels.cta,
-      ctaUrl: signupLink,
-      status: hasObs ? 'done' : signupLink ? 'soon' : 'upcoming',
+      ctaUrl,
+      status: hasObs ? 'done' : ctaUrl ? 'soon' : 'upcoming',
       completedLabel: hasObs ? 'Scheduled' : null,
       percent: null,
       percentLabel: '',

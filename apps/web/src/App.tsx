@@ -88,12 +88,19 @@ export function App() {
               <Route path="/profile" element={<L.ProfilePage />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
+              <Route path="/book/:windowId" element={<L.BookingPage />} />
+              <Route path="/oauth/google-calendar/callback" element={<L.CalendarCallbackPage />} />
             </Route>
 
             {/* Special access (PE + Full Access) */}
             <Route element={<StandardShell requireSpecialAccess />}>
               <Route path="/observations" element={<L.ObservationsListPage />} />
               <Route path="/observations/new" element={<L.NewObservationPage />} />
+              <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
+              <Route
+                path="/observations/windows/:windowId/assign"
+                element={<L.AssignPreferencesPage />}
+              />
               <Route path="/staff" element={<L.StaffDirectoryPage />} />
               <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
               <Route path="/my-staff" element={<L.MyStaffPage />} />
@@ -107,6 +114,9 @@ export function App() {
                 <Route path="roles" element={<L.RolesPage />} />
                 <Route path="modules" element={<L.ModulesPage />} />
                 <Route path="buildings" element={<L.BuildingsPage />} />
+                <Route path="buildings/:buildingId/schedule" element={<L.BuildingSchedulePage />} />
+                <Route path="signup-fields" element={<L.SignupFieldsPage />} />
+                <Route path="scheduling-settings" element={<L.SchedulingSettingsPage />} />
                 <Route path="rubrics" element={<L.RubricsListPage />} />
                 <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
                 <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />
