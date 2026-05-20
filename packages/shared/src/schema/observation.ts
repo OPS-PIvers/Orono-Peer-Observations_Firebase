@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { driveFileRef, email, isoDate, tiptapDoc } from './common.js';
 import { staffYear } from './staff.js';
 import { componentId, proficiencyLevel } from './rubric.js';
+import { signupFieldAnswer } from './signupField.js';
 import { OBSERVATION_STATUS, OBSERVATION_TYPES } from '../constants.js';
 
 /**
@@ -117,6 +118,19 @@ export const observation = z.object({
    *  staff member, and only after `status === 'Finalized'`. */
   acknowledgedAt: isoDate.nullable().default(null),
   acknowledgedBy: email.optional(),
+
+  // Scheduling linkage (set server-side when an observation is created from
+  // a booked slot; null/empty for manually-created observations).
+  windowId: z.string().nullable().default(null),
+  slotId: z.string().nullable().default(null),
+  scheduledStartAt: isoDate.nullable().default(null),
+  scheduledEndAt: isoDate.nullable().default(null),
+  /** Google Calendar event ids, per attendee calendar. */
+  gcalEventIds: z
+    .object({ observer: z.string().optional(), observed: z.string().optional() })
+    .default({}),
+  /** Answers to the window's sign-up detail fields, captured at booking. */
+  signupDetails: z.array(signupFieldAnswer).default([]),
 });
 export type Observation = z.infer<typeof observation>;
 

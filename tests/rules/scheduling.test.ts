@@ -114,3 +114,144 @@ describe('signupFields rules', () => {
     );
   });
 });
+
+const PE_EMAIL = 'pe@orono.k12.mn.us';
+const INVITED_EMAIL = 'teacher@orono.k12.mn.us';
+const OTHER_EMAIL = 'other@orono.k12.mn.us';
+
+describe('observationWindows rules', () => {
+  beforeEach(async () => {
+    await seed('observationWindows/w1', {
+      windowId: 'w1',
+      observerEmail: PE_EMAIL,
+      bookingMode: 'direct',
+      invitedEmails: [INVITED_EMAIL],
+      status: 'open',
+    });
+    await seed('observationWindows/w1/slots/high-school-2026-05-20-p1', {
+      slotId: 'high-school-2026-05-20-p1',
+      windowId: 'w1',
+      buildingId: 'high-school',
+      status: 'available',
+    });
+    await seed('observationWindows/w1/preferences/teacher@orono.k12.mn.us', {
+      email: INVITED_EMAIL,
+      buildingId: 'high-school',
+      preferredDateYMD: '2026-05-20',
+    });
+  });
+
+  it('observer (special access) can read their window', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('invited staff can read the window', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('non-invited staff cannot read the window', async () => {
+    const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('PE can create a window they observe', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'observationWindows/w2'), {
+        windowId: 'w2',
+        observerEmail: PE_EMAIL,
+        bookingMode: 'direct',
+        invitedEmails: [],
+        status: 'open',
+      }),
+    );
+  });
+
+  it('PE cannot create a window for a different observer', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w3'), {
+        windowId: 'w3',
+        observerEmail: OTHER_EMAIL,
+        bookingMode: 'direct',
+        invitedEmails: [],
+        status: 'open',
+      }),
+    );
+  });
+
+  it('a different PE cannot update someone else’s window', async () => {
+    const db = testEnv
+      .authenticatedContext('pe2', claims.peerEval('pe2@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+  });
+
+  it('observer can update their window', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+  });
+
+  it('invited staff can read a slot', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')),
+    );
+  });
+
+  it('non-invited staff cannot read a slot', async () => {
+    const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
+    await assertFails(
+      getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')),
+    );
+  });
+
+  it('staff cannot write a slot directly', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1'),
+        { status: 'booked' },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('owner can read their own preference', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us')),
+    );
+  });
+
+  it('observer can read an invitee preference', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us')),
+    );
+  });
+
+  it('unrelated staff cannot read a preference', async () => {
+    const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
+    await assertFails(
+      getDoc(doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us')),
+    );
+  });
+
+  it('staff cannot write a preference directly', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us'),
+        { preferredDateYMD: '2026-05-21' },
+        { merge: true },
+      ),
+    );
+  });
+});

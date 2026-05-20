@@ -16,6 +16,11 @@ export const EMAIL_TRIGGER_TYPES = [
   'roleYearMapping.updated',
   'scheduled.preObservation',
   'scheduled.reminderIncomplete',
+  'scheduling.windowInvite',
+  'scheduling.bookingConfirmation',
+  'scheduling.assignmentNotice',
+  'scheduling.bookingCancelled',
+  'scheduling.windowExpired',
 ] as const;
 export type EmailTriggerType = (typeof EMAIL_TRIGGER_TYPES)[number];
 
@@ -60,6 +65,15 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   'assignedComponentCount',
   // Signup / scheduling
   'signupLink',
+  'bookingLink',
+  'slotDateLocal',
+  'slotStartLocal',
+  'slotEndLocal',
+  'slotPeriodName',
+  'buildingName',
+  'cancellationReason',
+  'windowStartLocal',
+  'windowEndLocal',
 ] as const;
 export type TemplateVariable = (typeof KNOWN_TEMPLATE_VARIABLES)[number];
 
