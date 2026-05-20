@@ -122,6 +122,39 @@ export const geminiFeatures = z.object({
 });
 export type GeminiFeatures = z.infer<typeof geminiFeatures>;
 
+/**
+ * Scheduling behavior knobs. Per-window the PE can override mode/buffer/caps/
+ * event text within the bounds these settings establish.
+ */
+export const BOOKING_MODES = ['direct', 'day-preference'] as const;
+export type BookingMode = (typeof BOOKING_MODES)[number];
+
+export const schedulingSettings = z.object({
+  /** Minutes the PE needs between observations (travel between buildings). */
+  travelBufferMinutes: z.number().int().min(0).max(240).default(15),
+  /** Which booking modes PEs may choose from when creating a window. */
+  allowedBookingModes: z.array(z.enum(BOOKING_MODES)).min(1).default(['direct', 'day-preference']),
+  defaultBookingMode: z.enum(BOOKING_MODES).default('direct'),
+  /** Mode B: default max bookings per day (null = uncapped). */
+  defaultPerDayCap: z.number().int().positive().nullable().default(null),
+  /** Staff cannot book within this many hours of a slot's start. */
+  bookingLeadTimeHours: z.number().int().min(0).max(720).default(0),
+  /** Default weekdays a window covers (0=Sun … 6=Sat). */
+  defaultWeekdays: z.array(z.number().int().min(0).max(6)).default([1, 2, 3, 4, 5]),
+  defaultEarliestMinute: z.number().int().min(0).max(1439).default(0),
+  defaultLatestMinute: z.number().int().min(0).max(1439).default(1439),
+  /** Whether Google should send its own native calendar invites. */
+  gcalSendUpdates: z.enum(['none', 'all']).default('none'),
+  /** Block booking until the staff member connects Google Calendar. */
+  requireCalendarConnect: z.boolean().default(false),
+  inviteEmailEnabled: z.boolean().default(true),
+  confirmationEmailEnabled: z.boolean().default(true),
+  cancellationEmailEnabled: z.boolean().default(true),
+});
+export type SchedulingSettings = z.infer<typeof schedulingSettings>;
+
+export const DEFAULT_SCHEDULING_SETTINGS: SchedulingSettings = schedulingSettings.parse({});
+
 export const appSettings = z.object({
   sessionDurationHours: z.number().int().positive().max(168).default(24),
   auditLogRetentionDays: z.number().int().positive().max(3650).default(365),
@@ -151,6 +184,8 @@ export const appSettings = z.object({
   /** URL used in the observation signup request email template. Point to
    *  a Calendly link, Google Form, or any scheduling URL. */
   signupLink: z.url().nullable().default(null),
+  /** Observation scheduling / booking behavior. */
+  scheduling: schedulingSettings.default(DEFAULT_SCHEDULING_SETTINGS),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });

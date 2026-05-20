@@ -27,6 +27,9 @@ const importers = {
   StaffPage: () => import('@/admin/staff/StaffPage'),
   RolesPage: () => import('@/admin/roles/RolesPage'),
   BuildingsPage: () => import('@/admin/buildings/BuildingsPage'),
+  BuildingSchedulePage: () => import('@/admin/buildings/BuildingSchedulePage'),
+  SignupFieldsPage: () => import('@/admin/signup-fields/SignupFieldsPage'),
+  SchedulingSettingsPage: () => import('@/admin/scheduling/SchedulingSettingsPage'),
   RubricsListPage: () => import('@/admin/rubrics/RubricsListPage'),
   RubricEditorPage: () => import('@/admin/rubrics/RubricEditorPage'),
   RoleYearMappingsPage: () => import('@/admin/role-year-mappings/RoleYearMappingsPage'),
@@ -80,6 +83,15 @@ export const RolesPage = lazy(() => importers.RolesPage().then((m) => ({ default
 export const BuildingsPage = lazy(() =>
   importers.BuildingsPage().then((m) => ({ default: m.BuildingsPage })),
 );
+export const BuildingSchedulePage = lazy(() =>
+  importers.BuildingSchedulePage().then((m) => ({ default: m.BuildingSchedulePage })),
+);
+export const SignupFieldsPage = lazy(() =>
+  importers.SignupFieldsPage().then((m) => ({ default: m.SignupFieldsPage })),
+);
+export const SchedulingSettingsPage = lazy(() =>
+  importers.SchedulingSettingsPage().then((m) => ({ default: m.SchedulingSettingsPage })),
+);
 export const RubricsListPage = lazy(() =>
   importers.RubricsListPage().then((m) => ({ default: m.RubricsListPage })),
 );
@@ -125,6 +137,8 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/admin/modules': 'ModulesPage',
   '/admin/roles': 'RolesPage',
   '/admin/buildings': 'BuildingsPage',
+  '/admin/signup-fields': 'SignupFieldsPage',
+  '/admin/scheduling-settings': 'SchedulingSettingsPage',
   '/admin/rubrics': 'RubricsListPage',
   '/admin/role-year-mappings': 'RoleYearMappingsPage',
   '/admin/work-product': 'WorkProductPage',

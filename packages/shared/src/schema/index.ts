@@ -20,6 +20,8 @@ export * from './rubric.js';
 export * from './settings.js';
 export * from './observation.js';
 export * from './workProductQuestion.js';
+export * from './buildingSchedule.js';
+export * from './signupField.js';
 export * from './emailTemplate.js';
 export * from './auditLog.js';
 export * from './transcriptionJob.js';

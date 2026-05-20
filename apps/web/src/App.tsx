@@ -107,6 +107,9 @@ export function App() {
                 <Route path="roles" element={<L.RolesPage />} />
                 <Route path="modules" element={<L.ModulesPage />} />
                 <Route path="buildings" element={<L.BuildingsPage />} />
+                <Route path="buildings/:buildingId/schedule" element={<L.BuildingSchedulePage />} />
+                <Route path="signup-fields" element={<L.SignupFieldsPage />} />
+                <Route path="scheduling-settings" element={<L.SchedulingSettingsPage />} />
                 <Route path="rubrics" element={<L.RubricsListPage />} />
                 <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
                 <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />

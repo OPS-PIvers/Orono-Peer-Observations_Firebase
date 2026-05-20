@@ -123,6 +123,23 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // --- /buildingSchedules/{buildingId} ------------------------------------
+    // Bell schedules drive the booking calendar. The booking UI needs to read
+    // period names/times, so anyone signed-in from the domain may read.
+    // Writes are admin-only (Admin Console → Building schedule editor).
+    match /buildingSchedules/{buildingId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
+    // --- /signupFields/{fieldId} --------------------------------------------
+    // Admin-defined detail fields staff fill in when booking. Read for anyone
+    // signed-in (the booking form renders them); write admin-only.
+    match /signupFields/{fieldId} {
+      allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
     // --- /appSettings --------------------------------------------------------
     // Branding and a few public-ish flags need to be readable by everyone
     // signed in (for app name, logo, banner). Writes are admin-only.
