@@ -23,7 +23,7 @@ import { useActiveObservationTypes } from '@/observations/ActiveObservationTypes
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { prefetch as prefetchRoute, PREFETCH_BY_PATH } from '@/lazyRoutes';
 import { cn } from '@/lib/utils';
-import { ADMIN_NAV } from '@/admin/adminNav';
+import { ADMIN_NAV_SECTIONS } from '@/admin/adminNav';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -398,29 +398,42 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
                 <ArrowLeft className="h-5 w-5 shrink-0" />
                 {showLabels && <span>Back</span>}
               </button>
-              <ul className={cn('space-y-0.5', showLabels ? 'px-2' : 'px-1')}>
-                {ADMIN_NAV.map(({ to, label, icon: Icon }) => (
-                  <li key={to}>
-                    <NavLink
-                      to={to}
-                      end
-                      {...prefetchHandlersFor(to)}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex w-full items-center rounded-md py-2 text-sm transition-colors',
-                          'text-white/70 hover:bg-white/10 hover:text-white',
-                          showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
-                          isActive && 'bg-white/15 text-white',
-                        )
-                      }
-                      title={label}
-                    >
-                      <Icon className="h-5 w-5 shrink-0" />
-                      {showLabels && <span>{label}</span>}
-                    </NavLink>
-                  </li>
+              <div className={showLabels ? 'px-2' : 'px-1'}>
+                {ADMIN_NAV_SECTIONS.map((section, sectionIndex) => (
+                  <div key={section.label} className="mb-1.5">
+                    {showLabels ? (
+                      <p className="px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase">
+                        {section.label}
+                      </p>
+                    ) : sectionIndex > 0 ? (
+                      <div className="mx-2 my-1.5 border-t border-white/10" aria-hidden="true" />
+                    ) : null}
+                    <ul className="space-y-0.5">
+                      {section.items.map(({ to, label, icon: Icon }) => (
+                        <li key={to}>
+                          <NavLink
+                            to={to}
+                            end
+                            {...prefetchHandlersFor(to)}
+                            className={({ isActive }) =>
+                              cn(
+                                'flex w-full items-center rounded-md py-2 text-sm transition-colors',
+                                'text-white/70 hover:bg-white/10 hover:text-white',
+                                showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+                                isActive && 'bg-white/15 text-white',
+                              )
+                            }
+                            title={label}
+                          >
+                            <Icon className="h-5 w-5 shrink-0" />
+                            {showLabels && <span>{label}</span>}
+                          </NavLink>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
         </div>
