@@ -88,6 +88,7 @@ export function App() {
               <Route path="/profile" element={<L.ProfilePage />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
+              <Route path="/book/:windowId" element={<L.BookingPage />} />
             </Route>
 
             {/* Special access (PE + Full Access) */}
@@ -95,6 +96,10 @@ export function App() {
               <Route path="/observations" element={<L.ObservationsListPage />} />
               <Route path="/observations/new" element={<L.NewObservationPage />} />
               <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
+              <Route
+                path="/observations/windows/:windowId/assign"
+                element={<L.AssignPreferencesPage />}
+              />
               <Route path="/staff" element={<L.StaffDirectoryPage />} />
               <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
               <Route path="/my-staff" element={<L.MyStaffPage />} />

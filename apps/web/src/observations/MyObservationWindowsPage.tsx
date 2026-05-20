@@ -210,6 +210,15 @@ export function MyObservationWindowsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-2">
+                        {w.bookingMode === 'day-preference' ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/observations/windows/${w.windowId}/assign`)}
+                          >
+                            Assign times
+                          </Button>
+                        ) : null}
                         <Button
                           variant="outline"
                           size="sm"

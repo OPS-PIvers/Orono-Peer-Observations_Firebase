@@ -24,6 +24,8 @@ const importers = {
   NewObservationPage: () => import('@/observations/NewObservationPage'),
   MyObservationWindowsPage: () => import('@/observations/MyObservationWindowsPage'),
   ObservationEditorPage: () => import('@/observations/ObservationEditorPage'),
+  BookingPage: () => import('@/scheduling/BookingPage'),
+  AssignPreferencesPage: () => import('@/scheduling/AssignPreferencesPage'),
   AdminLayout: () => import('@/admin/AdminLayout'),
   StaffPage: () => import('@/admin/staff/StaffPage'),
   RolesPage: () => import('@/admin/roles/RolesPage'),
@@ -75,6 +77,12 @@ export const MyObservationWindowsPage = lazy(() =>
 );
 export const ObservationEditorPage = lazy(() =>
   importers.ObservationEditorPage().then((m) => ({ default: m.ObservationEditorPage })),
+);
+export const BookingPage = lazy(() =>
+  importers.BookingPage().then((m) => ({ default: m.BookingPage })),
+);
+export const AssignPreferencesPage = lazy(() =>
+  importers.AssignPreferencesPage().then((m) => ({ default: m.AssignPreferencesPage })),
 );
 export const AdminLayout = lazy(() =>
   importers.AdminLayout().then((m) => ({ default: m.AdminLayout })),
