@@ -15,5 +15,8 @@ export default defineConfig({
     include: ['tests/rules/**/*.test.ts'],
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // All rules files share one emulator project, and each clears Firestore
+    // in beforeEach — so files must run serially or their clears race.
+    fileParallelism: false,
   },
 });

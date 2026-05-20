@@ -1,5 +1,6 @@
 import {
   APP_SETTINGS_DOC_ID,
+  DEFAULT_SCHEDULING_SETTINGS,
   FINALIZED_OBSERVATION_TEMPLATE_ID,
   type AppSettings,
   type EmailTemplate,
@@ -235,6 +236,134 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     isActive: false,
     isSystem: true,
   },
+  {
+    templateId: 'scheduling-window-invite',
+    name: 'Scheduling: Window Invite',
+    description:
+      'Sent to each invited staff member when a peer evaluator opens an observation window. Includes their personal booking link.',
+    subject: 'Schedule your observation — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>{{observerName}} has opened a window to schedule your observation between {{windowStartLocal}} and {{windowEndLocal}}.</p>
+<p>Use your personal link below to pick a time that works for you:</p>
+<p><a href="{{bookingLink}}">Schedule my observation</a></p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'bookingLink',
+      'buildingName',
+      'windowStartLocal',
+      'windowEndLocal',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.windowInvite',
+    recipient: 'observed',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'scheduling-booking-confirmation',
+    name: 'Scheduling: Booking Confirmed',
+    description: 'Sent to the staff member and the evaluator when an observation slot is booked.',
+    subject: 'Observation scheduled for {{slotDateLocal}} — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your observation with {{observerName}} is confirmed for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
+<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'slotEndLocal',
+      'slotPeriodName',
+      'buildingName',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.bookingConfirmation',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'scheduling-assignment-notice',
+    name: 'Scheduling: Time Assigned',
+    description:
+      'Sent when a peer evaluator assigns an exact observation time from a day preference.',
+    subject: 'Your observation time — {{slotDateLocal}} — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>{{observerName}} has assigned your observation for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
+<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'slotEndLocal',
+      'slotPeriodName',
+      'buildingName',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.assignmentNotice',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'scheduling-booking-cancelled',
+    name: 'Scheduling: Booking Cancelled',
+    description: 'Sent to the staff member and evaluator when a booked observation is cancelled.',
+    subject: 'Observation cancelled — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your observation with {{observerName}} on {{slotDateLocal}} ({{slotStartLocal}}) has been cancelled.</p>
+<p>{{cancellationReason}}</p>
+<p><a href="{{signInLink}}">Sign in to {{appName}}</a> to reschedule if needed.</p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'cancellationReason',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.bookingCancelled',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'scheduling-window-expired',
+    name: 'Scheduling: Window Expired',
+    description: 'Sent to invitees who never booked when a scheduling window expires.',
+    subject: 'Observation scheduling window closed — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>The window to schedule your observation with {{observerName}} ({{windowStartLocal}}–{{windowEndLocal}}) has closed. Please reach out to arrange a time.</p>
+<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'windowStartLocal',
+      'windowEndLocal',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.windowExpired',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
 ];
 
 export function defaultAppSettings(securityAdminEmail: string): Omit<AppSettings, 'updatedAt'> {
@@ -256,6 +385,7 @@ export function defaultAppSettings(securityAdminEmail: string): Omit<AppSettings
     globalBannerText: '',
     newObservationsDisabled: false,
     signupLink: null,
+    scheduling: DEFAULT_SCHEDULING_SETTINGS,
   };
 }
 

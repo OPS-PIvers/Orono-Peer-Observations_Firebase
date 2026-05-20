@@ -225,6 +225,12 @@ service cloud.firestore {
           && unchanged('observedEmail')
           && unchanged('createdAt')
           && unchanged('finalizedAt')
+          // Scheduling linkage is server-managed; an observer editing a Draft
+          // can't rebind it to another window/slot.
+          && unchanged('windowId')
+          && unchanged('slotId')
+          && unchanged('scheduledStartAt')
+          && unchanged('scheduledEndAt')
         )
         || (
           isCurrentUserEmail(resource.data.observedEmail)
