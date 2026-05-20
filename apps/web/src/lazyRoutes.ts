@@ -26,6 +26,7 @@ const importers = {
   ObservationEditorPage: () => import('@/observations/ObservationEditorPage'),
   BookingPage: () => import('@/scheduling/BookingPage'),
   AssignPreferencesPage: () => import('@/scheduling/AssignPreferencesPage'),
+  CalendarCallbackPage: () => import('@/scheduling/CalendarCallbackPage'),
   AdminLayout: () => import('@/admin/AdminLayout'),
   StaffPage: () => import('@/admin/staff/StaffPage'),
   RolesPage: () => import('@/admin/roles/RolesPage'),
@@ -83,6 +84,9 @@ export const BookingPage = lazy(() =>
 );
 export const AssignPreferencesPage = lazy(() =>
   importers.AssignPreferencesPage().then((m) => ({ default: m.AssignPreferencesPage })),
+);
+export const CalendarCallbackPage = lazy(() =>
+  importers.CalendarCallbackPage().then((m) => ({ default: m.CalendarCallbackPage })),
 );
 export const AdminLayout = lazy(() =>
   importers.AdminLayout().then((m) => ({ default: m.AdminLayout })),
@@ -145,6 +149,7 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/observations/new': 'NewObservationPage',
   '/observations/windows': 'MyObservationWindowsPage',
   '/profile': 'ProfilePage',
+  '/oauth/google-calendar/callback': 'CalendarCallbackPage',
   '/admin': 'AdminLayout',
   '/admin/staff': 'StaffPage',
   '/admin/modules': 'ModulesPage',

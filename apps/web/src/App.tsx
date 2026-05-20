@@ -89,6 +89,7 @@ export function App() {
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
               <Route path="/book/:windowId" element={<L.BookingPage />} />
+              <Route path="/oauth/google-calendar/callback" element={<L.CalendarCallbackPage />} />
             </Route>
 
             {/* Special access (PE + Full Access) */}

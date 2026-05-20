@@ -14,6 +14,7 @@ import {
   type DashboardSectionsConfig,
   type ModuleDoc,
   type Observation,
+  type ObservationWindow,
   type Role,
   type Staff,
 } from '@ops/shared';
@@ -91,6 +92,28 @@ export function StaffDashboardPage() {
     finalizedConstraints,
   );
 
+  const windowConstraints = useMemo(
+    () =>
+      emailLower
+        ? [
+            where('invitedEmails', 'array-contains', emailLower),
+            where('status', 'in', ['open', 'partially-booked']),
+          ]
+        : [],
+    [emailLower],
+  );
+  const { data: myWindows } = useFirestoreCollection<ObservationWindow>(
+    emailLower ? COLLECTIONS.observationWindows : '',
+    windowConstraints,
+  );
+  const openBooking = useMemo(() => {
+    for (const w of myWindows ?? []) {
+      const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
+      if (inv && !inv.bookedSlotId) return { windowId: w.windowId, token: inv.inviteToken };
+    }
+    return null;
+  }, [myWindows, emailLower]);
+
   const { observation: standardDraft } = useActiveStandardObservation(emailLower);
   const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
   const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
@@ -114,6 +137,7 @@ export function StaffDashboardPage() {
       workProductQuestionsCount: wpQuestions.data?.length ?? 0,
       instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
       appSettings: appSettings ?? null,
+      openBooking,
       hasWorkProduct,
       hasInstructionalRound,
     });
@@ -126,6 +150,7 @@ export function StaffDashboardPage() {
     irDraft,
     wpQuestions.data,
     appSettings,
+    openBooking,
     hasWorkProduct,
     hasInstructionalRound,
   ]);
