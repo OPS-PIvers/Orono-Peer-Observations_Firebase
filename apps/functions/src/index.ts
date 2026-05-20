@@ -29,3 +29,7 @@ export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
+export { createObservationWindow } from './scheduling/createObservationWindow.js';
+export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js';
+export { expireObservationWindows } from './scheduling/expireObservationWindows.js';
+export { onBuildingScheduleWritten } from './scheduling/onBuildingScheduleWritten.js';
