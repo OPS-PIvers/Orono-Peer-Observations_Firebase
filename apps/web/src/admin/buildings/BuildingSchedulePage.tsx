@@ -221,6 +221,8 @@ export function BuildingSchedulePage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Building schedule']}
       title={title}
       subtitle="Define the bell schedule used to generate bookable observation slots. Day types group a set of class periods; the weekly pattern maps each weekday to a day type; overrides replace the pattern for specific dates."
       actions={

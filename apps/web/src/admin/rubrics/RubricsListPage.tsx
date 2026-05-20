@@ -72,10 +72,12 @@ export function RubricsListPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Rubrics']}
       title="Rubrics"
       subtitle="One rubric per role. Each rubric has 4 domains and a variable number of components with proficiency descriptors, best practices, and look-fors."
       actions={
-        <Button asChild className="text-ops-blue-dark bg-white hover:bg-white/90">
+        <Button asChild>
           <Link to="/admin/roles">
             <Plus />
             Add role

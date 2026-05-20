@@ -223,6 +223,8 @@ export function StaffPage() {
   return (
     <PageHeader
       title="Staff"
+      variant="light"
+      breadcrumb={['Admin', 'Staff']}
       subtitle={
         staff ? `${String(sortedRows.length)} of ${String(staff.length)} staff` : 'Loading…'
       }
@@ -234,15 +236,11 @@ export function StaffPage() {
               setEditMode((m) => !m);
               setSelected(new Set());
             }}
-            className={editMode ? undefined : 'bg-white/10 text-white hover:bg-white/20'}
           >
             {editMode ? <Check /> : <Pencil />}
             {editMode ? 'Done' : 'Edit'}
           </Button>
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
+          <Button onClick={() => setShowCreate(true)}>
             <Plus />
             Add staff
           </Button>

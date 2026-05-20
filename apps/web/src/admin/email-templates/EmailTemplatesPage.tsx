@@ -388,11 +388,10 @@ export function EmailTemplatesPage() {
     <PageHeader
       title="Email Templates"
       subtitle="Manage notification templates. System templates can be toggled but not deleted."
+      variant="light"
+      breadcrumb={['Admin', 'Email Templates']}
       actions={
-        <Button
-          onClick={() => void createTemplate()}
-          className="text-ops-blue-dark bg-white hover:bg-white/90"
-        >
+        <Button onClick={() => void createTemplate()}>
           <Plus className="mr-1.5 h-4 w-4" />
           New Template
         </Button>

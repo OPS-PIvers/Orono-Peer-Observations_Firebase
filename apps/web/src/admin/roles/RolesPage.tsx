@@ -112,13 +112,12 @@ export function RolesPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Roles']}
       title="Roles"
       subtitle={`${roles ? `${String(roles.length)} roles` : 'Loading…'} — each role has its own rubric and (role, year) component assignments.`}
       actions={
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="text-ops-blue-dark bg-white hover:bg-white/90"
-        >
+        <Button onClick={() => setShowCreate(true)}>
           <Plus />
           Add role
         </Button>

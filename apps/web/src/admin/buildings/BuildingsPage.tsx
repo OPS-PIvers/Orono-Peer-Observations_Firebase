@@ -99,13 +99,12 @@ export function BuildingsPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Buildings']}
       title="Buildings"
       subtitle={`${buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned to one or more of these locations.`}
       actions={
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="text-ops-blue-dark bg-white hover:bg-white/90"
-        >
+        <Button onClick={() => setShowCreate(true)}>
           <Plus />
           Add building
         </Button>

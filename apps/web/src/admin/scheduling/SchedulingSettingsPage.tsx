@@ -109,6 +109,8 @@ export function SchedulingSettingsPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Scheduling']}
       title="Scheduling Settings"
       subtitle="Defaults and constraints for observation windows. Peer evaluators can override mode, buffer, and caps per window within the bounds you set here."
     >

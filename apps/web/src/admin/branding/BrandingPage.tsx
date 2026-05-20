@@ -64,6 +64,8 @@ export function BrandingPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Branding']}
       title="Branding"
       subtitle="Override the default OPS Tech branding. Defaults pull from DESIGN.md; admin overrides live in /appSettings/global."
     >

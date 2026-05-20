@@ -146,16 +146,14 @@ export function RoleYearMappingsPage() {
     <PageHeader
       title="Role / Year Mappings"
       subtitle="For each role-year combination, choose which rubric components are evaluated. Replaces the legacy Settings sheet's 4-row-per-role block layout."
+      variant="light"
+      breadcrumb={['Admin', 'Role/Year']}
       actions={
         <div className="flex items-center gap-2">
           {savedAt ? (
             <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
           ) : null}
-          <Button
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-            className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
-          >
+          <Button onClick={() => void save()} disabled={!dirty || saving}>
             {saving ? 'Saving…' : 'Save mappings'}
           </Button>
         </div>

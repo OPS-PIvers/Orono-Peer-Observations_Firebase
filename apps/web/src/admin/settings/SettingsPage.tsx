@@ -115,6 +115,8 @@ export function SettingsPage() {
     <PageHeader
       title="App Settings"
       subtitle="System-wide tunables. Changes apply on next page load for users."
+      variant="light"
+      breadcrumb={['Admin', 'Settings']}
     >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">

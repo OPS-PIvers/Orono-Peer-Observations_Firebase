@@ -117,6 +117,8 @@ export function AuditLogPage() {
 
   return (
     <PageHeader
+      variant="light"
+      breadcrumb={['Admin', 'Audit Log']}
       title="Audit Log"
       subtitle="Append-only record of privileged actions (sign-ins, observation lifecycle, admin edits). Pruned daily by a scheduled function based on the retention setting in App Settings."
     >

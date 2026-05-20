@@ -45,7 +45,12 @@ export function DashboardSettingsPage() {
       : SAVE_BUTTON_DEFAULT;
 
   return (
-    <PageHeader title={PAGE_TITLE} subtitle={PAGE_SUBTITLE}>
+    <PageHeader
+      title={PAGE_TITLE}
+      subtitle={PAGE_SUBTITLE}
+      variant="light"
+      breadcrumb={['Admin', 'Dashboard']}
+    >
       {/* Sticky action bar */}
       <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-wrap items-center gap-3 border-b bg-white/95 px-4 py-2 backdrop-blur md:-mx-6 md:px-6">
         <TabButton active={tab === 'layout'} onClick={() => setTab('layout')}>

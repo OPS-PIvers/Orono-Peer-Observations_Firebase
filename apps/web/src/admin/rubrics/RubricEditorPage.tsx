@@ -190,6 +190,7 @@ export function RubricEditorPage() {
 
   return (
     <PageHeader
+      variant="dark"
       title={draft.displayName}
       subtitle={`${String(draft.domains.length)} domain${draft.domains.length === 1 ? '' : 's'}, ${String(componentCount)} component${componentCount === 1 ? '' : 's'}${dirty ? ' • unsaved changes' : ''}`}
       actions={

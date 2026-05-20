@@ -122,11 +122,10 @@ export function ModulesPage() {
     <PageHeader
       title="Modules"
       subtitle={`${modules ? `${String(modules.length)} modules` : 'Loading…'} — participation tracks shown as color chips on staff dashboards.`}
+      variant="light"
+      breadcrumb={['Admin', 'Modules']}
       actions={
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="text-ops-blue-dark bg-white hover:bg-white/90"
-        >
+        <Button onClick={() => setShowCreate(true)}>
           <Plus />
           Add module
         </Button>

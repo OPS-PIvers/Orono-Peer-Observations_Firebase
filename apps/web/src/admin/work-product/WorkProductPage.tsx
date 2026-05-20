@@ -77,6 +77,8 @@ export function WorkProductPage() {
     <PageHeader
       title="Observation Question Bank"
       subtitle="Questions for Work Product and Instructional Round observations. Edit text inline; deactivate to hide a question without deleting its history. Set the type so each question appears in the correct staff-facing form."
+      variant="light"
+      breadcrumb={['Admin', 'Work Product']}
     >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">

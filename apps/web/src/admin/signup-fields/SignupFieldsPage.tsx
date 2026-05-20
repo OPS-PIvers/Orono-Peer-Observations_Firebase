@@ -90,6 +90,8 @@ export function SignupFieldsPage() {
     <PageHeader
       title="Sign-up Detail Fields"
       subtitle="Optional details staff fill in when they book an observation or express a day preference. Period-picker fields list the staff member's own building periods; before/after-school fields offer a fixed choice. Deactivate to hide a field without losing history."
+      variant="light"
+      breadcrumb={['Admin', 'Sign-up Fields']}
     >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
