@@ -183,6 +183,18 @@ export const bookObservationSlot = onCall(
     const scheduling = await loadSchedulingSettings(db);
     const nowMs = Date.now();
 
+    // If admins require it, the staff member must have a connected Google
+    // Calendar before they can book. Checked early so we fail fast.
+    if (scheduling.requireCalendarConnect) {
+      const tokenSnap = await db.collection(COLLECTIONS.userCalendarTokens).doc(userEmail).get();
+      if (!tokenSnap.exists || tokenSnap.data()?.['status'] !== 'connected') {
+        throw new HttpsError(
+          'failed-precondition',
+          'You must connect your Google Calendar before booking an observation.',
+        );
+      }
+    }
+
     const windowRef = db.collection(COLLECTIONS.observationWindows).doc(input.windowId);
     const slotRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.slots).doc(input.slotId);
 

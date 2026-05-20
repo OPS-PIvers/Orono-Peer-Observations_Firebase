@@ -17,6 +17,7 @@ import {
   type Staff,
 } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
+import { deleteObservationEvent } from '../calendar/lib/googleCalendar.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
 import { loadSchedulingSettings, nextWindowStatus } from './bookObservationSlot.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
@@ -139,6 +140,26 @@ export const cancelBooking = onCall(
         const obsRef = db.collection(COLLECTIONS.observations).doc(observationId);
         const obsSnap = await obsRef.get();
         if (obsSnap.exists && obsSnap.data()?.['status'] === OBSERVATION_STATUS.draft) {
+          // Best-effort: tear down any Google Calendar events first so the
+          // deleted booking doesn't linger on the parties' calendars.
+          const obsData = obsSnap.data() ?? {};
+          const gcalEventIds = (obsData['gcalEventIds'] ?? {}) as {
+            observer?: string;
+            observed?: string;
+          };
+          const observerEmail: unknown = obsData['observerEmail'];
+          const observedEmail: unknown = obsData['observedEmail'];
+          const calCleanup: Promise<void>[] = [];
+          if (gcalEventIds.observer && typeof observerEmail === 'string') {
+            calCleanup.push(deleteObservationEvent(observerEmail, gcalEventIds.observer));
+          }
+          if (gcalEventIds.observed && typeof observedEmail === 'string') {
+            calCleanup.push(deleteObservationEvent(observedEmail, gcalEventIds.observed));
+          }
+          await Promise.all(calCleanup).catch((err: unknown) =>
+            logger.warn('cancelBooking: calendar event cleanup failed', err),
+          );
+
           await obsRef.delete();
         }
       } catch (err) {

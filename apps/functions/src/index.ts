@@ -37,3 +37,7 @@ export { bookObservationSlot } from './scheduling/bookObservationSlot.js';
 export { submitDayPreference } from './scheduling/submitDayPreference.js';
 export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
 export { cancelBooking } from './scheduling/cancelBooking.js';
+export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js';
+export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalendar.js';
+export { getCalendarConnectionStatus } from './calendar/auth/getCalendarConnectionStatus.js';
+export { onObservationBooked } from './calendar/onObservationBooked.js';
