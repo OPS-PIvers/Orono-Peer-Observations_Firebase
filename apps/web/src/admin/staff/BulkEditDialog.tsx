@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { orderBy, where } from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_YEARS,
   isStaffYear,
   type Building,
+  type ModuleDoc,
   type Role,
   type Staff,
   type StaffYear,
@@ -23,8 +24,11 @@ import { Label } from '@/components/ui/label';
 import { bulkMerge, bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { yearLabel } from '@/utils/staffFormatting';
 
-const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
-const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+// Equality-only filters (no wire orderBy) so these small collections don't
+// need composite indexes; sorted client-side below.
+const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true)];
+const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true)];
+const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
@@ -34,6 +38,9 @@ export type BulkEditField =
   | 'role'
   | 'addBuilding'
   | 'removeBuilding'
+  | 'addModule'
+  | 'removeModule'
+  | 'hasAdminAccess'
   | 'isActive'
   | 'summativeYear';
 
@@ -62,18 +69,28 @@ export function BulkEditDialog({
   const [year, setYear] = useState<StaffYear>(1);
   const [roleId, setRoleId] = useState('');
   const [building, setBuilding] = useState('');
+  const [moduleId, setModuleId] = useState('');
   const [boolValue, setBoolValue] = useState(true);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: roles, loading: rolesLoading } = useFirestoreCollection<Role>(
+  const { data: rolesRaw, loading: rolesLoading } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
     ACTIVE_ROLES_CONSTRAINTS,
   );
-  const { data: buildings, loading: buildingsLoading } = useFirestoreCollection<Building>(
+  const { data: buildingsRaw, loading: buildingsLoading } = useFirestoreCollection<Building>(
     COLLECTIONS.buildings,
     ACTIVE_BUILDINGS_CONSTRAINTS,
   );
+  const { data: modulesRaw, loading: modulesLoading } = useFirestoreCollection<ModuleDoc>(
+    COLLECTIONS.modules,
+    ACTIVE_MODULES_CONSTRAINTS,
+  );
+  const byName = (a: { displayName: string }, b: { displayName: string }) =>
+    a.displayName.localeCompare(b.displayName);
+  const roles = useMemo(() => (rolesRaw ?? []).slice().sort(byName), [rolesRaw]);
+  const buildings = useMemo(() => (buildingsRaw ?? []).slice().sort(byName), [buildingsRaw]);
+  const modules = useMemo(() => (modulesRaw ?? []).slice().sort(byName), [modulesRaw]);
 
   // Reset form when re-opened or field changes.
   useEffect(() => {
@@ -81,7 +98,8 @@ export function BulkEditDialog({
     setYear(1);
     setRoleId('');
     setBuilding('');
-    setBoolValue(field === 'isActive' ? true : field === 'summativeYear' ? true : true);
+    setModuleId('');
+    setBoolValue(true);
     setProgress(null);
     setError(null);
   }, [open, field]);
@@ -141,6 +159,48 @@ export function BulkEditDialog({
           );
           break;
         }
+        case 'addModule': {
+          if (!moduleId) throw new Error('Pick a module.');
+          const byId = new Map(selectedRows.map((r) => [r.email, r]));
+          await bulkMergePerRow(
+            COLLECTIONS.staff,
+            ids,
+            (id) => {
+              const row = byId.get(id);
+              if (!row) return null;
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+              const current = row.modules ?? [];
+              if (current.includes(moduleId)) return null;
+              return { modules: [...current, moduleId] };
+            },
+            (done, total) => setProgress({ done, total }),
+          );
+          break;
+        }
+        case 'removeModule': {
+          if (!moduleId) throw new Error('Pick a module.');
+          const byId = new Map(selectedRows.map((r) => [r.email, r]));
+          await bulkMergePerRow(
+            COLLECTIONS.staff,
+            ids,
+            (id) => {
+              const row = byId.get(id);
+              if (!row) return null;
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+              const current = row.modules ?? [];
+              if (!current.includes(moduleId)) return null;
+              return { modules: current.filter((m) => m !== moduleId) };
+            },
+            (done, total) => setProgress({ done, total }),
+          );
+          break;
+        }
+        case 'hasAdminAccess': {
+          await bulkMerge(COLLECTIONS.staff, ids, { hasAdminAccess: boolValue }, (done, total) =>
+            setProgress({ done, total }),
+          );
+          break;
+        }
         case 'isActive': {
           await bulkMerge(COLLECTIONS.staff, ids, { isActive: boolValue }, (done, total) =>
             setProgress({ done, total }),
@@ -168,6 +228,9 @@ export function BulkEditDialog({
     role: 'Set role',
     addBuilding: 'Add building',
     removeBuilding: 'Remove building',
+    addModule: 'Add module',
+    removeModule: 'Remove module',
+    hasAdminAccess: 'Set admin access',
     isActive: 'Set active status',
     summativeYear: 'Set summative year',
   };
@@ -219,7 +282,7 @@ export function BulkEditDialog({
                 <option value="" disabled>
                   {rolesLoading ? 'Loading…' : 'Choose a role…'}
                 </option>
-                {(roles ?? []).map((r) => (
+                {roles.map((r) => (
                   <option key={r.roleId} value={r.roleId}>
                     {r.displayName}
                   </option>
@@ -241,7 +304,7 @@ export function BulkEditDialog({
                 <option value="" disabled>
                   {buildingsLoading ? 'Loading…' : 'Choose a building…'}
                 </option>
-                {(buildings ?? []).map((b) => (
+                {buildings.map((b) => (
                   <option key={b.buildingId} value={b.displayName}>
                     {b.displayName}
                   </option>
@@ -255,9 +318,42 @@ export function BulkEditDialog({
             </div>
           ) : null}
 
-          {field === 'isActive' || field === 'summativeYear' ? (
+          {field === 'addModule' || field === 'removeModule' ? (
+            <div className="grid gap-2">
+              <Label htmlFor="bulk-module">Module</Label>
+              <select
+                id="bulk-module"
+                value={moduleId}
+                onChange={(e) => setModuleId(e.target.value)}
+                className={SELECT_CLASSNAME}
+                disabled={modulesLoading}
+              >
+                <option value="" disabled>
+                  {modulesLoading ? 'Loading…' : 'Choose a module…'}
+                </option>
+                {modules.map((m) => (
+                  <option key={m.moduleId} value={m.moduleId}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                {field === 'addModule'
+                  ? 'Adds the module to each selected staff member who doesn’t already have it.'
+                  : 'Removes the module from each selected staff member who has it.'}
+              </p>
+            </div>
+          ) : null}
+
+          {field === 'isActive' || field === 'summativeYear' || field === 'hasAdminAccess' ? (
             <div className="flex flex-col gap-2">
-              <Label>{field === 'isActive' ? 'Active status' : 'Summative year'}</Label>
+              <Label>
+                {field === 'isActive'
+                  ? 'Active status'
+                  : field === 'summativeYear'
+                    ? 'Summative year'
+                    : 'Admin access'}
+              </Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -265,7 +361,11 @@ export function BulkEditDialog({
                   onClick={() => setBoolValue(true)}
                   className="flex-1"
                 >
-                  {field === 'isActive' ? 'Active' : 'Summative'}
+                  {field === 'isActive'
+                    ? 'Active'
+                    : field === 'summativeYear'
+                      ? 'Summative'
+                      : 'Grant'}
                 </Button>
                 <Button
                   type="button"
@@ -273,7 +373,11 @@ export function BulkEditDialog({
                   onClick={() => setBoolValue(false)}
                   className="flex-1"
                 >
-                  {field === 'isActive' ? 'Inactive' : 'Not summative'}
+                  {field === 'isActive'
+                    ? 'Inactive'
+                    : field === 'summativeYear'
+                      ? 'Not summative'
+                      : 'Revoke'}
                 </Button>
               </div>
             </div>

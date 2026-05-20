@@ -3,8 +3,10 @@ import {
   CalendarDays,
   CheckCheck,
   CircleSlash,
+  Layers,
   MoreHorizontal,
   Power,
+  ShieldCheck,
   Star,
   X,
 } from 'lucide-react';
@@ -31,9 +33,15 @@ const ALL_ACTIONS: { field: BulkEditField; label: string; icon: React.ElementTyp
   { field: 'role', label: 'Set role', icon: Star },
   { field: 'addBuilding', label: 'Add building', icon: Building2 },
   { field: 'removeBuilding', label: 'Remove building', icon: CircleSlash },
+  { field: 'addModule', label: 'Add module', icon: Layers },
+  { field: 'removeModule', label: 'Remove module', icon: CircleSlash },
+  { field: 'hasAdminAccess', label: 'Set admin access', icon: ShieldCheck },
   { field: 'isActive', label: 'Set active status', icon: Power },
   { field: 'summativeYear', label: 'Set summative year', icon: CheckCheck },
 ];
+
+/** Actions surfaced in the desktop "More" overflow menu. */
+const DESKTOP_OVERFLOW: BulkEditField[] = ['addModule', 'removeModule', 'hasAdminAccess'];
 
 export function BulkEditBar({ count, onAction, onClear }: BulkEditBarProps) {
   const isDesktop = useIsDesktop();
@@ -54,6 +62,29 @@ export function BulkEditBar({ count, onAction, onClear }: BulkEditBarProps) {
       />
       <ActionButton onClick={() => onAction('isActive')} icon={Power} label="Active" />
       <ActionButton onClick={() => onAction('summativeYear')} icon={CheckCheck} label="Summative" />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 text-white hover:bg-white/15 hover:text-white"
+            aria-label="More bulk actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            More
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {ALL_ACTIONS.filter((a) => DESKTOP_OVERFLOW.includes(a.field)).map(
+            ({ field, label, icon: Icon }) => (
+              <DropdownMenuItem key={field} onSelect={() => onAction(field)}>
+                <Icon className="h-4 w-4" />
+                {label}
+              </DropdownMenuItem>
+            ),
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Button
         variant="ghost"
         size="sm"
