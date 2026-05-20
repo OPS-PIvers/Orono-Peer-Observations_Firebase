@@ -71,8 +71,12 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
-      - name: Deploy Firestore indexes
-        run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only firestore:indexes --non-interactive
+      - name: Deploy Firestore rules + indexes and Storage rules
+        # Rules/indexes/storage are project-wide (not channel-scoped), so a
+        # dev-paul push updates the live peer-evaluator-rubric project. This
+        # keeps the preview channel fully functional instead of running
+        # against stale rules/indexes.
+        run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only firestore,storage --non-interactive
 
       - name: Deploy functions
         run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only functions --non-interactive

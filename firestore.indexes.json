@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "emailTemplates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isSystem", "order": "DESCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
