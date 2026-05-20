@@ -26,9 +26,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
+import { EmailBodyField } from './EmailBodyField';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -367,10 +367,6 @@ export function EmailTemplatesPage() {
     }
   }
 
-  function copyVariable(v: string) {
-    void navigator.clipboard.writeText(`{{${v}}}`);
-  }
-
   function substitutePreview(html: string): string {
     return html.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
       return (
@@ -452,7 +448,6 @@ export function EmailTemplatesPage() {
               onSave={() => void saveTemplate()}
               onOpenTest={() => openTestDialog(t.id)}
               onDelete={() => setDeleteTarget(t)}
-              onCopyVariable={copyVariable}
               substitutePreview={substitutePreview}
             />
           ))
@@ -539,7 +534,6 @@ interface TemplateRowProps {
   onSave: () => void;
   onOpenTest: () => void;
   onDelete: () => void;
-  onCopyVariable: (v: string) => void;
   substitutePreview: (html: string) => string;
 }
 
@@ -555,7 +549,6 @@ function TemplateRow({
   onSave,
   onOpenTest,
   onDelete,
-  onCopyVariable,
   substitutePreview,
 }: TemplateRowProps) {
   const triggerType = editForm.triggerType ?? t.triggerType;
@@ -687,34 +680,12 @@ function TemplateRow({
             ) : null}
           </div>
 
-          {/* Variable chips */}
-          <div className="border-border bg-background rounded-md border p-3">
-            <p className="text-muted-foreground mb-2 text-xs font-medium">
-              Available variables — click to copy
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {relevantVars.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => onCopyVariable(v)}
-                  className="rounded bg-blue-50 px-2 py-0.5 font-mono text-xs text-blue-700 transition-colors hover:bg-blue-100"
-                  title={`Copy {{${v}}}`}
-                >
-                  {`{{${v}}}`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Body HTML editor */}
-          <div className="grid gap-1.5">
-            <Label>Body HTML</Label>
-            <Textarea
-              className="min-h-[300px] font-mono text-xs"
-              value={editForm.bodyHtml ?? ''}
-              onChange={(e) => onFormChange({ ...editForm, bodyHtml: e.target.value })}
-            />
-          </div>
+          {/* Body editor — visual with variable pills, raw-HTML fallback */}
+          <EmailBodyField
+            value={editForm.bodyHtml ?? ''}
+            onChange={(html) => onFormChange({ ...editForm, bodyHtml: html })}
+            variables={relevantVars}
+          />
 
           {/* Preview — sandboxed iframe prevents script execution */}
           {editForm.bodyHtml ? (
