@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
   Bold,
@@ -65,9 +64,12 @@ export function EmailBodyField({ value, onChange, variables }: EmailBodyFieldPro
 function WysiwygBody({ value, onChange, variables }: EmailBodyFieldProps) {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: false, horizontalRule: false }),
+      StarterKit.configure({
+        codeBlock: false,
+        horizontalRule: false,
+        link: { openOnClick: false, autolink: true, linkOnPaste: true },
+      }),
       Placeholder.configure({ placeholder: 'Write the email…' }),
-      Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
       VariableToken.configure({ labels: VARIABLE_LABELS }),
       CtaButton,
     ],
