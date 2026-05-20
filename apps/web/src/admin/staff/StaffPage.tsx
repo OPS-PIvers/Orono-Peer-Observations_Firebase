@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { MoreVertical, Plus } from 'lucide-react';
-import { orderBy, where } from 'firebase/firestore';
-import { COLLECTIONS, type Building, type Role, type Staff } from '@ops/shared';
+import { useCallback, useMemo, useState } from 'react';
+import { Check, MoreVertical, Pencil, Plus } from 'lucide-react';
+import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { COLLECTIONS, type Building, type ModuleDoc, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -23,30 +24,66 @@ import { StaffDialog } from './StaffDialog';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterBar';
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
+import {
+  BuildingsCell,
+  PermissionsCell,
+  PermissionsChips,
+  RoleCell,
+  StatusCell,
+  YearCell,
+  type PatchStaff,
+} from './StaffInlineEditors';
 
 type StaffRow = Staff & { id: string };
 
-const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
-const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
+// Equality-only filters (no orderBy on the wire) so these small admin
+// collections don't need composite indexes; sorted client-side below.
+const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true)];
+const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true)];
+const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
+
+const byDisplayName = <T extends { displayName: string }>(a: T, b: T) =>
+  a.displayName.localeCompare(b.displayName);
 
 export function StaffPage() {
   const { data: staff, loading, error } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
-  const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles, ACTIVE_ROLES_CONSTRAINTS);
-  const { data: buildings } = useFirestoreCollection<Building>(
+  const { data: rolesRaw } = useFirestoreCollection<Role>(
+    COLLECTIONS.roles,
+    ACTIVE_ROLES_CONSTRAINTS,
+  );
+  const { data: buildingsRaw } = useFirestoreCollection<Building>(
     COLLECTIONS.buildings,
     ACTIVE_BUILDINGS_CONSTRAINTS,
   );
+  const { data: modulesRaw } = useFirestoreCollection<ModuleDoc>(
+    COLLECTIONS.modules,
+    ACTIVE_MODULES_CONSTRAINTS,
+  );
+
+  const roles = useMemo(() => (rolesRaw ?? []).slice().sort(byDisplayName), [rolesRaw]);
+  const buildings = useMemo(() => (buildingsRaw ?? []).slice().sort(byDisplayName), [buildingsRaw]);
+  const modules = useMemo(() => (modulesRaw ?? []).slice().sort(byDisplayName), [modulesRaw]);
+  const buildingNames = useMemo(() => buildings.map((b) => b.displayName), [buildings]);
 
   const [filters, setFilters] = useState<StaffFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<AdminDataViewSort | null>({ key: 'name', direction: 'asc' });
   const [editing, setEditing] = useState<StaffRow | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
 
+  const patchStaff = useCallback<PatchStaff>((email, patch) => {
+    void setDoc(
+      doc(db, COLLECTIONS.staff, email),
+      { ...patch, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }, []);
+
   const roleLabelByRoleId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const r of roles ?? []) map.set(r.roleId, r.displayName);
+    for (const r of roles) map.set(r.roleId, r.displayName);
     return map;
   }, [roles]);
 
@@ -96,6 +133,7 @@ export function StaffPage() {
         header: 'Role',
         sortAccessor: (r) => roleLabelByRoleId.get(r.role) ?? r.role,
         cell: (r) => roleLabelByRoleId.get(r.role) ?? r.role,
+        editCell: (r) => <RoleCell row={r} roles={roles} onPatch={patchStaff} />,
       },
       {
         key: 'year',
@@ -103,6 +141,7 @@ export function StaffPage() {
         headClassName: 'w-20',
         sortAccessor: (r) => r.year,
         cell: (r) => yearLabel(r.year),
+        editCell: (r) => <YearCell row={r} onPatch={patchStaff} />,
       },
       {
         key: 'buildings',
@@ -114,6 +153,20 @@ export function StaffPage() {
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
+        editCell: (r) => (
+          <BuildingsCell row={r} buildingNames={buildingNames} onPatch={patchStaff} />
+        ),
+      },
+      {
+        key: 'permissions',
+        header: 'Permissions',
+        sortAccessor: (r) =>
+          (r.hasAdminAccess ? 1 : 0) +
+          (r.summativeYear ? 1 : 0) +
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+          (r.modules ?? []).length,
+        cell: (r) => <PermissionsChips row={r} modules={modules} />,
+        editCell: (r) => <PermissionsCell row={r} modules={modules} onPatch={patchStaff} />,
       },
       {
         key: 'status',
@@ -130,10 +183,11 @@ export function StaffPage() {
               Inactive
             </span>
           ),
+        editCell: (r) => <StatusCell row={r} onPatch={patchStaff} />,
         mobile: { footer: true },
       },
     ],
-    [roleLabelByRoleId],
+    [roleLabelByRoleId, roles, buildingNames, modules, patchStaff],
   );
 
   const sortedRows = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
@@ -173,13 +227,26 @@ export function StaffPage() {
         staff ? `${String(sortedRows.length)} of ${String(staff.length)} staff` : 'Loading…'
       }
       actions={
-        <Button
-          onClick={() => setShowCreate(true)}
-          className="text-ops-blue-dark bg-white hover:bg-white/90"
-        >
-          <Plus />
-          Add staff
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={editMode ? 'default' : 'outline'}
+            onClick={() => {
+              setEditMode((m) => !m);
+              setSelected(new Set());
+            }}
+            className={editMode ? undefined : 'bg-white/10 text-white hover:bg-white/20'}
+          >
+            {editMode ? <Check /> : <Pencil />}
+            {editMode ? 'Done' : 'Edit'}
+          </Button>
+          <Button
+            onClick={() => setShowCreate(true)}
+            className="text-ops-blue-dark bg-white hover:bg-white/90"
+          >
+            <Plus />
+            Add staff
+          </Button>
+        </div>
       }
     >
       <StaffFilterBar filters={filters} onChange={setFilters} roles={roles} buildings={buildings} />
@@ -204,13 +271,11 @@ export function StaffPage() {
           rows={loading && !staff ? null : sortedRows}
           loading={loading}
           rowKey={(r) => r.email}
-          onRowClick={(r) => setEditing(r)}
+          editing={editMode}
           empty={filters.search ? 'No staff match that search.' : 'No staff yet.'}
-          selection={{
-            selected,
-            onToggleRow: toggleRow,
-            onToggleAll: toggleAll,
-          }}
+          {...(editMode
+            ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
+            : { onRowClick: (r: StaffRow) => setEditing(r) })}
           sort={sort}
           onSortChange={setSort}
           rowActions={(r) => <RowActions row={r} onEdit={() => setEditing(r)} />}

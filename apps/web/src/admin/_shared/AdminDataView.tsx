@@ -31,6 +31,9 @@ export interface ColumnDef<T> {
    */
   sortAccessor?: (row: T) => string | number | null | undefined;
   cell: (row: T) => ReactNode;
+  /** Inline editor rendered in place of `cell` when the view is in edit
+   *  mode (`editing` prop). Columns without this keep showing `cell`. */
+  editCell?: (row: T) => ReactNode;
   /** Mobile-card placement overrides. */
   mobile?: {
     /** Become the card title. Only one column should set this. */
@@ -69,6 +72,8 @@ interface AdminDataViewProps<T> {
   selection?: AdminDataViewSelection;
   sort?: AdminDataViewSort | null;
   onSortChange?: (next: AdminDataViewSort | null) => void;
+  /** When true, columns with an `editCell` render their inline editor. */
+  editing?: boolean;
   /** Skeleton row count. */
   skeletonRows?: number;
   /** Extra className on the desktop wrapper. */
@@ -97,6 +102,7 @@ function DesktopTable<T>({
   selection,
   sort,
   onSortChange,
+  editing = false,
   skeletonRows = 6,
   className,
 }: AdminDataViewProps<T>) {
@@ -198,8 +204,12 @@ function DesktopTable<T>({
                     </TableCell>
                   ) : null}
                   {columns.map((col) => (
-                    <TableCell key={col.key} className={col.cellClassName}>
-                      {col.cell(row)}
+                    <TableCell
+                      key={col.key}
+                      className={col.cellClassName}
+                      onClick={editing && col.editCell ? (e) => e.stopPropagation() : undefined}
+                    >
+                      {editing && col.editCell ? col.editCell(row) : col.cell(row)}
                     </TableCell>
                   ))}
                   {rowActions ? (
@@ -259,9 +269,12 @@ function MobileCards<T>({
   selection,
   sort,
   onSortChange,
+  editing = false,
   skeletonRows = 5,
   className,
 }: AdminDataViewProps<T>) {
+  const renderCell = (c: ColumnDef<T>, row: T) =>
+    editing && c.editCell ? c.editCell(row) : c.cell(row);
   const sortableColumns = columns.filter((c) => c.sortAccessor && onSortChange);
 
   const primaryCol = columns.find((c) => c.mobile?.primary) ?? columns[0];
@@ -369,7 +382,7 @@ function MobileCards<T>({
                 <div className="min-w-0 flex-1">
                   {primaryCol ? (
                     <div className="text-base leading-tight font-medium break-words">
-                      {primaryCol.cell(row)}
+                      {renderCell(primaryCol, row)}
                     </div>
                   ) : null}
                   {detailCols.length > 0 ? (
@@ -380,7 +393,7 @@ function MobileCards<T>({
                         return (
                           <Fragment key={c.key}>
                             <dt className="text-muted-foreground">{labelText}</dt>
-                            <dd className="min-w-0 break-words">{c.cell(row)}</dd>
+                            <dd className="min-w-0 break-words">{renderCell(c, row)}</dd>
                           </Fragment>
                         );
                       })}
@@ -389,7 +402,7 @@ function MobileCards<T>({
                   {footerCols.length > 0 ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       {footerCols.map((c) => (
-                        <Fragment key={c.key}>{c.cell(row)}</Fragment>
+                        <Fragment key={c.key}>{renderCell(c, row)}</Fragment>
                       ))}
                     </div>
                   ) : null}
