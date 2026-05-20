@@ -46,6 +46,11 @@ export const SECTION_COPY: Record<keyof DashboardSectionsConfig, SectionCopy> = 
     description:
       'Plain-English sentence in the welcome banner: "X of Y checkpoints done. Next up: …".',
   },
+  statBar: {
+    title: 'Stat row',
+    description:
+      'Year/tier, completed count, and cycle-close date shown as stat tiles in the welcome banner.',
+  },
   timeline: {
     title: 'Year-at-a-glance bar',
     description: 'Horizontal track from fall to spring showing where they are in the cycle.',

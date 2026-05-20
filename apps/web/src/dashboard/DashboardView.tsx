@@ -94,6 +94,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             showTimeline={sections.timeline}
             showRoleChip={sections.roleChip}
             showProgressSummary={sections.progressSummary}
+            showStatBar={sections.statBar}
             roleDisplayName={props.roleDisplayName}
             buildingNames={props.buildingNames}
             moduleChips={props.moduleChips}
@@ -254,6 +255,7 @@ interface HeroProps {
   showTimeline: boolean;
   showRoleChip: boolean;
   showProgressSummary: boolean;
+  showStatBar: boolean;
   roleDisplayName: string;
   buildingNames: string[];
   moduleChips: ModuleChip[];
@@ -294,22 +296,24 @@ function Hero(p: HeroProps) {
               )}
             </p>
           ) : null}
-          <div className="dash-hero__meta">
-            <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{p.yearTierLabel}</span>
-              <span className="dash-hero__meta-label">
-                {p.staff.summativeYear ? 'Summative' : 'Formative'}
-              </span>
+          {p.showStatBar ? (
+            <div className="dash-hero__meta">
+              <div className="dash-hero__meta-item">
+                <span className="dash-hero__meta-num">{p.yearTierLabel}</span>
+                <span className="dash-hero__meta-label">
+                  {p.staff.summativeYear ? 'Summative' : 'Formative'}
+                </span>
+              </div>
+              <div className="dash-hero__meta-item">
+                <span className="dash-hero__meta-num">{done}</span>
+                <span className="dash-hero__meta-label">Completed</span>
+              </div>
+              <div className="dash-hero__meta-item">
+                <span className="dash-hero__meta-num">{p.cycleCloseLabel}</span>
+                <span className="dash-hero__meta-label">Cycle close</span>
+              </div>
             </div>
-            <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{done}</span>
-              <span className="dash-hero__meta-label">Completed</span>
-            </div>
-            <div className="dash-hero__meta-item">
-              <span className="dash-hero__meta-num">{p.cycleCloseLabel}</span>
-              <span className="dash-hero__meta-label">Cycle close</span>
-            </div>
-          </div>
+          ) : null}
         </div>
         <ProgressRing value={done} total={Math.max(total, 1)} />
       </div>
