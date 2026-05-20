@@ -1,5 +1,6 @@
 import { Menu } from 'lucide-react';
 import { DevModeBar } from '@/dev/DevModeBar';
+import { useBranding } from '@/hooks/useBranding';
 
 export interface AppHeaderProps {
   /** True when the desktop sidebar is in expanded (240px) mode. Used only
@@ -24,6 +25,7 @@ export interface AppHeaderProps {
  * inline, not floating). Future profile/avatar UI lives here too.
  */
 export function AppHeader({ pcExpanded, onTogglePc, onOpenMobile }: AppHeaderProps) {
+  const { appName, iconUrl } = useBranding();
   return (
     <header className="bg-ops-blue-dark relative z-50 flex h-[52px] shrink-0 items-center gap-3 px-3 text-white shadow-[0_1px_0_rgba(0,0,0,0.15)]">
       {/* Mobile hamburger — opens the off-canvas drawer. */}
@@ -46,7 +48,7 @@ export function AppHeader({ pcExpanded, onTogglePc, onOpenMobile }: AppHeaderPro
       </button>
 
       <img
-        src="/brand/torch-icon.png"
+        src={iconUrl ?? '/brand/torch-icon.png'}
         alt=""
         className="h-8 w-8 shrink-0 object-contain"
         onError={(e) => {
@@ -54,7 +56,7 @@ export function AppHeader({ pcExpanded, onTogglePc, onOpenMobile }: AppHeaderPro
         }}
       />
       <span className="font-heading text-base font-semibold tracking-wide select-none">
-        Peer Observations
+        {appName}
       </span>
 
       <div className="ml-auto flex items-center gap-2">

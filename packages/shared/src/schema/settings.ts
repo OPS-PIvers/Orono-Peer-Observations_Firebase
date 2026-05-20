@@ -49,8 +49,16 @@ export const branding = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a 6-digit hex color')
     .default('#2d3f89'),
-  /** Drive file ID of the active app logo. Null = use packaged default. */
-  logoDriveFileId: z.string().nullable().default(null),
+  /**
+   * Public URL of the uploaded primary (horizontal) logo — used in the top
+   * nav, sign-in screen, and email header. Null = use packaged default.
+   */
+  logoUrl: z.url().nullable().default(null),
+  /**
+   * Public URL of the uploaded square icon/mark — used in compact spots and
+   * as a favicon-style mark. Null = use packaged default.
+   */
+  iconUrl: z.url().nullable().default(null),
 });
 export type Branding = z.infer<typeof branding>;
 
@@ -166,7 +174,8 @@ export const appSettings = z.object({
   branding: branding.default({
     appName: 'Orono Peer Observations',
     primaryColor: '#2d3f89',
-    logoDriveFileId: null,
+    logoUrl: null,
+    iconUrl: null,
   }),
   /** Per-feature Gemini config: enable/disable + model selection. */
   gemini: geminiFeatures.default({
