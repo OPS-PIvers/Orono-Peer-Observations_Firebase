@@ -32,6 +32,7 @@
     "import:dry-run": "tsx scripts/import/import.ts --target=dry-run",
     "import:emulator": "tsx scripts/import/import.ts --target=emulator",
     "import:prod": "tsx scripts/import/import.ts --target=prod",
+    "seed:templates": "tsx scripts/import/seed-templates.ts",
     "prepare": "husky"
   },
   "devDependencies": {
