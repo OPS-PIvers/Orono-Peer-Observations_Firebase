@@ -26,7 +26,7 @@ stay visually consistent.
 
 - Tailwind v4 with `@theme` tokens in `apps/web/src/index.css` — full OPS
   palette, semantic tokens (background/primary/accent/border/ring), `--radius:
-  0.375rem`, Lexend/Roboto.
+0.375rem`, Lexend/Roboto.
 - shadcn-style primitives in `apps/web/src/components/ui/` (button, input,
   dialog, dropdown-menu, checkbox, label, table, textarea, sheet, tiptap).
 - Shared admin building blocks: `PageHeader` (dark-blue sticky strip, default),

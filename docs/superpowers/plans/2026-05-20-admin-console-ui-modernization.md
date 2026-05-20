@@ -9,6 +9,7 @@
 **Tech Stack:** React + TypeScript, Tailwind v4 (`@theme`), shadcn-style primitives, OPS brand tokens, Vite. Verification per task = `pnpm --filter @ops/web typecheck`, `eslint`, `prettier`, and the Claude preview browser (no unit tests for visual changes).
 
 **Verification baseline (run after each task that changes web code):**
+
 - `pnpm --filter @ops/web typecheck` → exit 0
 - `npx eslint <changed files> --max-warnings 0` → exit 0
 - `npx prettier --check <changed files>` → clean
@@ -45,6 +46,7 @@ Critical path: `1 → (2·3·4·5·7) → 6 → 8(parallel) → 9`.
 ### Task 1: Foundation tokens
 
 **Files:**
+
 - Modify: `apps/web/src/index.css` (the `@theme` block, ~lines 15–70)
 
 - [ ] **Step 1: Soften radius and add shadow tokens**
@@ -52,18 +54,18 @@ Critical path: `1 → (2·3·4·5·7) → 6 → 8(parallel) → 9`.
 In the `@theme` block, change the radius and add shadow + a soft border token. Find:
 
 ```css
-  --radius: 0.375rem;
+--radius: 0.375rem;
 ```
 
 Replace with:
 
 ```css
-  --radius: 0.5rem;
+--radius: 0.5rem;
 
-  /* Soft surfaces for the "clean & airy" admin look. */
-  --color-border-soft: #e5e7eb;
-  --shadow-card: 0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 1px 3px 0 rgba(16, 24, 40, 0.06);
-  --shadow-popover: 0 4px 12px -2px rgba(16, 24, 40, 0.1), 0 2px 6px -2px rgba(16, 24, 40, 0.06);
+/* Soft surfaces for the "clean & airy" admin look. */
+--color-border-soft: #e5e7eb;
+--shadow-card: 0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 1px 3px 0 rgba(16, 24, 40, 0.06);
+--shadow-popover: 0 4px 12px -2px rgba(16, 24, 40, 0.1), 0 2px 6px -2px rgba(16, 24, 40, 0.06);
 ```
 
 - [ ] **Step 2: Point the default border token at the softer gray**
@@ -71,13 +73,13 @@ Replace with:
 Find:
 
 ```css
-  --color-border: var(--color-ops-gray-lighter);
+--color-border: var(--color-ops-gray-lighter);
 ```
 
 Replace with:
 
 ```css
-  --color-border: var(--color-border-soft);
+--color-border: var(--color-border-soft);
 ```
 
 (Leaves `--color-ops-gray-lighter` available for places that want a stronger rule.)
@@ -98,6 +100,7 @@ git commit -m "feat(ui): soften radius + add card/popover shadow tokens"
 ### Task 2: `Card` primitive
 
 **Files:**
+
 - Create: `apps/web/src/components/ui/card.tsx`
 
 - [ ] **Step 1: Create the Card primitive**
@@ -148,9 +151,7 @@ export const CardDescription = forwardRef<
 CardDescription.displayName = 'CardDescription';
 
 export const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-5', className)} {...props} />
-  ),
+  ({ className, ...props }, ref) => <div ref={ref} className={cn('p-5', className)} {...props} />,
 );
 CardContent.displayName = 'CardContent';
 ```
@@ -169,6 +170,7 @@ git commit -m "feat(ui): add Card primitive"
 ### Task 3: `Badge` primitive
 
 **Files:**
+
 - Create: `apps/web/src/components/ui/badge.tsx`
 
 - [ ] **Step 1: Create the Badge primitive**
@@ -220,6 +222,7 @@ git commit -m "feat(ui): add Badge primitive"
 ### Task 4: `EmptyState` primitive
 
 **Files:**
+
 - Create: `apps/web/src/components/ui/empty-state.tsx`
 
 - [ ] **Step 1: Create the EmptyState primitive**
@@ -268,6 +271,7 @@ git commit -m "feat(ui): add EmptyState primitive"
 ### Task 5: Light `PageHeader` default + breadcrumb
 
 **Files:**
+
 - Modify: `apps/web/src/components/PageHeader.tsx`
 
 - [ ] **Step 1: Add a `breadcrumb` prop and a new light default treatment**
@@ -290,35 +294,35 @@ Change the default: `variant = 'light'`.
 Add this branch (before the existing `dark` return). It mirrors the sticky/`chromeRef`/`belowBar` structure already used:
 
 ```tsx
-  if (variant === 'light') {
-    return (
-      <>
-        <div ref={chromeRef} className="bg-background sticky top-0 z-20 w-full border-b">
-          <div
-            className={cn(
-              'mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 md:px-6',
-              subtitle ? 'py-4' : 'py-3',
-            )}
-          >
-            <div className="min-w-0">
-              {breadcrumb && breadcrumb.length > 0 ? (
-                <nav className="text-muted-foreground mb-1 text-xs" aria-label="Breadcrumb">
-                  {breadcrumb.join(' › ')}
-                </nav>
-              ) : null}
-              <h1 className="font-heading text-ops-blue-dark text-xl font-semibold sm:text-2xl">
-                {title}
-              </h1>
-              {subtitle ? <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p> : null}
-            </div>
-            {actions ? <div className="shrink-0">{actions}</div> : null}
+if (variant === 'light') {
+  return (
+    <>
+      <div ref={chromeRef} className="bg-background sticky top-0 z-20 w-full border-b">
+        <div
+          className={cn(
+            'mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 md:px-6',
+            subtitle ? 'py-4' : 'py-3',
+          )}
+        >
+          <div className="min-w-0">
+            {breadcrumb && breadcrumb.length > 0 ? (
+              <nav className="text-muted-foreground mb-1 text-xs" aria-label="Breadcrumb">
+                {breadcrumb.join(' › ')}
+              </nav>
+            ) : null}
+            <h1 className="font-heading text-ops-blue-dark text-xl font-semibold sm:text-2xl">
+              {title}
+            </h1>
+            {subtitle ? <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p> : null}
           </div>
-          {belowBar ? <div className="w-full">{belowBar}</div> : null}
+          {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
-        <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
-      </>
-    );
-  }
+        {belowBar ? <div className="w-full">{belowBar}</div> : null}
+      </div>
+      <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">{children}</div>
+    </>
+  );
+}
 ```
 
 Keep the existing `plain` and `dark` branches unchanged.
@@ -345,6 +349,7 @@ git commit -m "feat(ui): light PageHeader default with optional breadcrumb"
 ### Task 6: Polish `AdminDataView` (tables)
 
 **Files:**
+
 - Modify: `apps/web/src/admin/_shared/AdminDataView.tsx`
 - Modify: `apps/web/src/components/ui/table.tsx` (header/row classes, if needed)
 
@@ -369,27 +374,27 @@ In `AdminDataView.tsx`, import `EmptyState` and replace the desktop empty `<Tabl
 Desktop empty branch becomes:
 
 ```tsx
-            <TableRow>
-              <TableCell colSpan={colSpan} className="p-0">
-                {typeof empty === 'string' || empty == null ? (
-                  <EmptyState title={(empty as string) ?? 'No data.'} />
-                ) : (
-                  <div className="px-4 py-6 text-center">{empty}</div>
-                )}
-              </TableCell>
-            </TableRow>
+<TableRow>
+  <TableCell colSpan={colSpan} className="p-0">
+    {typeof empty === 'string' || empty == null ? (
+      <EmptyState title={(empty as string) ?? 'No data.'} />
+    ) : (
+      <div className="px-4 py-6 text-center">{empty}</div>
+    )}
+  </TableCell>
+</TableRow>
 ```
 
 Mobile empty branch:
 
 ```tsx
-        <div className="bg-background border-border rounded-lg border">
-          {typeof empty === 'string' || empty == null ? (
-            <EmptyState title={(empty as string) ?? 'No data.'} />
-          ) : (
-            <div className="px-4 py-8 text-center">{empty}</div>
-          )}
-        </div>
+<div className="bg-background border-border rounded-lg border">
+  {typeof empty === 'string' || empty == null ? (
+    <EmptyState title={(empty as string) ?? 'No data.'} />
+  ) : (
+    <div className="px-4 py-8 text-center">{empty}</div>
+  )}
+</div>
 ```
 
 - [ ] **Step 4: Soften the card container**
@@ -412,6 +417,7 @@ git commit -m "feat(ui): polish AdminDataView table header/rows/empty state"
 ### Task 7: Dialog + Button + Input consistency
 
 **Files:**
+
 - Modify: `apps/web/src/components/ui/dialog.tsx`
 - Modify: `apps/web/src/components/ui/button.tsx` (verify variants only)
 - Modify: `apps/web/src/components/ui/input.tsx` (verify focus ring/height only)
@@ -466,6 +472,7 @@ In `admin/branding/BrandingPage.tsx` and `admin/settings/*`, replace ad-hoc `cla
 For every page you edited, load it in the preview. Confirm: light header + breadcrumb renders, action button visible, status badges render, no console errors, behavior unchanged (open a dialog, toggle a filter).
 
 Run across the app:
+
 - `pnpm --filter @ops/web typecheck` → 0
 - `npx eslint apps/web/src --max-warnings 0` → 0 (or lint changed files)
 - `npx prettier --check "apps/web/src/**/*.{ts,tsx}"` → clean (or `--write` then re-check)
@@ -484,6 +491,7 @@ git commit -m "feat(ui): adopt Card/Badge/light headers across admin pages"
 - [ ] **Step 1: Full checks**
 
 Run:
+
 - `pnpm --filter @ops/shared build` → 0 (if any shared types touched; otherwise skip)
 - `pnpm --filter @ops/web typecheck` → 0
 - `npx eslint apps/web/src --max-warnings 0` → 0
