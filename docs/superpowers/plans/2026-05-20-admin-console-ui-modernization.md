@@ -14,6 +14,32 @@
 - `npx prettier --check <changed files>` → clean
 - Browser: load the affected admin page in the preview, confirm no console errors and the intended visual change.
 
+## Parallelization (execution waves)
+
+Most tasks touch separate files, so they parallelize. Dispatch in waves; each
+wave's agents run concurrently, then review before the next wave.
+
+- **Wave 0 (solo):** Task 1 (tokens). Tiny; land first so later primitives
+  resolve `--shadow-card` / `--color-border-soft` correctly.
+- **Wave 1 (parallel):** Task 2 (Card), Task 3 (Badge), Task 4 (EmptyState),
+  Task 5 (PageHeader), Task 7 (dialog/button/input). All distinct files — no
+  conflicts.
+- **Wave 2 (solo-ish):** Task 6 (AdminDataView) — depends on Task 4's
+  `EmptyState` import; otherwise independent.
+- **Wave 3 (parallel per page):** Task 8 — needs Card/Badge/PageHeader from
+  Wave 1. Split by page (Staff, Buildings, Email Templates, Branding,
+  Settings, …); each page is its own file → safe to parallelize. The shared
+  grep-driven edits (header buttons, breadcrumbs) are applied per page within
+  each agent's scope.
+- **Wave 4 (solo):** Task 9 — full verification + push. Must run alone after
+  everything merges.
+
+**Conflict rule:** parallel agents must edit disjoint files. The only shared
+files (`index.css`, `PageHeader.tsx`, `AdminDataView.tsx`, the `ui/` primitives)
+are each owned by exactly one task, so waves are conflict-free by construction.
+
+Critical path: `1 → (2·3·4·5·7) → 6 → 8(parallel) → 9`.
+
 ---
 
 ### Task 1: Foundation tokens
