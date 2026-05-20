@@ -58,11 +58,11 @@ const empty: FormState = {
 };
 
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
-const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
-// Modules: no orderBy on the wire. The collection is small (a handful of
-// modules per district) and dropping the orderBy means new deployments
-// don't need to wait for the composite index to finish building before
-// the dropdown is usable. We sort client-side below.
+// Buildings + modules: equality filter only, no orderBy on the wire. These are
+// small admin collections, and `where(isActive) + orderBy(displayName)` needs a
+// composite index that isn't deployed — without it the query fails and the
+// dropdown silently shows "No buildings configured". Sort client-side instead.
+const ACTIVE_BUILDINGS_CONSTRAINTS = [where('isActive', '==', true)];
 const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 
 const SELECT_CLASSNAME =
@@ -77,9 +77,13 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     COLLECTIONS.roles,
     ACTIVE_ROLES_CONSTRAINTS,
   );
-  const { data: buildings, loading: buildingsLoading } = useFirestoreCollection<Building>(
+  const { data: buildingsRaw, loading: buildingsLoading } = useFirestoreCollection<Building>(
     COLLECTIONS.buildings,
     ACTIVE_BUILDINGS_CONSTRAINTS,
+  );
+  const buildings = useMemo(
+    () => (buildingsRaw ?? []).slice().sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [buildingsRaw],
   );
   const { data: modulesRaw, loading: modulesLoading } = useFirestoreCollection<ModuleDoc>(
     COLLECTIONS.modules,
@@ -114,11 +118,11 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     form.role !== '' && (roles?.length ?? 0) > 0 && !roles?.some((r) => r.roleId === form.role);
 
   const knownBuildingNames = useMemo(
-    () => new Set((buildings ?? []).map((b) => b.displayName)),
+    () => new Set(buildings.map((b) => b.displayName)),
     [buildings],
   );
   const availableBuildingsToAdd = useMemo(
-    () => (buildings ?? []).filter((b) => !form.buildings.includes(b.displayName)),
+    () => buildings.filter((b) => !form.buildings.includes(b.displayName)),
     [buildings, form.buildings],
   );
 
@@ -386,7 +390,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
               <option value="">
                 {buildingsLoading
                   ? 'Loading buildings…'
-                  : (buildings?.length ?? 0) === 0
+                  : buildings.length === 0
                     ? 'No buildings configured'
                     : availableBuildingsToAdd.length === 0
                       ? 'All buildings added'
@@ -398,7 +402,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
                 </option>
               ))}
             </select>
-            {(buildings?.length ?? 0) === 0 && !buildingsLoading ? (
+            {buildings.length === 0 && !buildingsLoading ? (
               <p className="text-muted-foreground text-xs">
                 Add buildings in Admin → Buildings before assigning.
               </p>
