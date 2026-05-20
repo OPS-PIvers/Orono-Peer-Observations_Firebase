@@ -22,6 +22,7 @@ const importers = {
   StaffPersonPage: () => import('@/routes/StaffPersonPage'),
   ObservationsListPage: () => import('@/observations/ObservationsListPage'),
   NewObservationPage: () => import('@/observations/NewObservationPage'),
+  MyObservationWindowsPage: () => import('@/observations/MyObservationWindowsPage'),
   ObservationEditorPage: () => import('@/observations/ObservationEditorPage'),
   AdminLayout: () => import('@/admin/AdminLayout'),
   StaffPage: () => import('@/admin/staff/StaffPage'),
@@ -68,6 +69,9 @@ export const ObservationsListPage = lazy(() =>
 );
 export const NewObservationPage = lazy(() =>
   importers.NewObservationPage().then((m) => ({ default: m.NewObservationPage })),
+);
+export const MyObservationWindowsPage = lazy(() =>
+  importers.MyObservationWindowsPage().then((m) => ({ default: m.MyObservationWindowsPage })),
 );
 export const ObservationEditorPage = lazy(() =>
   importers.ObservationEditorPage().then((m) => ({ default: m.ObservationEditorPage })),
@@ -131,6 +135,7 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/staff': 'StaffDirectoryPage',
   '/observations': 'ObservationsListPage',
   '/observations/new': 'NewObservationPage',
+  '/observations/windows': 'MyObservationWindowsPage',
   '/profile': 'ProfilePage',
   '/admin': 'AdminLayout',
   '/admin/staff': 'StaffPage',

@@ -94,6 +94,7 @@ export function App() {
             <Route element={<StandardShell requireSpecialAccess />}>
               <Route path="/observations" element={<L.ObservationsListPage />} />
               <Route path="/observations/new" element={<L.NewObservationPage />} />
+              <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
               <Route path="/staff" element={<L.StaffDirectoryPage />} />
               <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
               <Route path="/my-staff" element={<L.MyStaffPage />} />
