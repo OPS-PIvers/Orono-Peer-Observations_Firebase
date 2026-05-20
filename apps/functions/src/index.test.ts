@@ -24,5 +24,9 @@ describe('functions index', () => {
     expect(typeof mod.cancelObservationWindow).not.toBe('undefined');
     expect(typeof mod.expireObservationWindows).not.toBe('undefined');
     expect(typeof mod.onBuildingScheduleWritten).not.toBe('undefined');
+    expect(typeof mod.bookObservationSlot).not.toBe('undefined');
+    expect(typeof mod.submitDayPreference).not.toBe('undefined');
+    expect(typeof mod.assignObservationFromPreference).not.toBe('undefined');
+    expect(typeof mod.cancelBooking).not.toBe('undefined');
   }, 15_000);
 });

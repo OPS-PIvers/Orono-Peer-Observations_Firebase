@@ -1,20 +1,27 @@
 import { randomBytes } from 'node:crypto';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
+  DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
   createObservationWindowInput,
   isAdminRole,
   isSpecialRole,
+  type Building,
   type BuildingSchedule,
   type ObservationWindow,
+  type SchedulingSettings,
   type Staff,
   type WindowInvitee,
 } from '@ops/shared';
+import { APP_URL, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow } from './engine/slotGeneration.js';
+import { formatYMD } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -188,6 +195,80 @@ export const createObservationWindow = onCall(
         slotCount: slotInputs.length,
       },
     });
+
+    // Best-effort invite emails. One failure must not fail the whole call.
+    const settingsSnap = await db
+      .collection(COLLECTIONS.appSettings)
+      .doc(APP_SETTINGS_DOC_ID)
+      .get();
+    const scheduling: SchedulingSettings = {
+      ...DEFAULT_SCHEDULING_SETTINGS,
+      ...((settingsSnap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined) ?? {}),
+    };
+
+    if (scheduling.inviteEmailEnabled) {
+      const buildingNames = new Map<string, string>();
+      for (const buildingId of buildingIds) {
+        try {
+          const bSnap = await db.collection(COLLECTIONS.buildings).doc(buildingId).get();
+          buildingNames.set(
+            buildingId,
+            bSnap.exists ? (bSnap.data() as Building).displayName : buildingId,
+          );
+        } catch {
+          buildingNames.set(buildingId, buildingId);
+        }
+      }
+
+      const sentEmails = new Set<string>();
+      for (const invitee of invitees) {
+        try {
+          const bookingLink = `${APP_URL}/book/${windowId}?token=${invitee.inviteToken}`;
+          await sendTemplatedEmail({
+            db,
+            triggerType: 'scheduling.windowInvite',
+            to: invitee.email,
+            vars: {
+              observerName,
+              observerEmail: userEmail,
+              observedName: invitee.name,
+              observedEmail: invitee.email,
+              staffName: invitee.name,
+              staffEmail: invitee.email,
+              staffRole: invitee.role,
+              bookingLink,
+              buildingName: buildingNames.get(invitee.buildingId) ?? invitee.buildingId,
+              windowStartLocal: formatYMD(input.startDate),
+              windowEndLocal: formatYMD(input.endDate),
+            },
+            mailDocId: `scheduling.windowInvite-${windowId}-${invitee.email}`,
+            auditDetails: {
+              windowId,
+              inviteeEmail: invitee.email,
+              triggerType: 'scheduling.windowInvite',
+            },
+          });
+          sentEmails.add(invitee.email);
+        } catch (err) {
+          logger.error('createObservationWindow: invite send failed', {
+            email: invitee.email,
+            err,
+          });
+        }
+      }
+
+      // Stamp inviteSentAt for invitees we successfully emailed.
+      if (sentEmails.size > 0) {
+        const stamped = invitees.map((inv) =>
+          sentEmails.has(inv.email) ? { ...inv, inviteSentAt: new Date() } : inv,
+        );
+        await windowRef
+          .update({ invitees: stamped, updatedAt: FieldValue.serverTimestamp() })
+          .catch((err: unknown) =>
+            logger.error('createObservationWindow: inviteSentAt update failed', err),
+          );
+      }
+    }
 
     return { windowId, slotCount: slotInputs.length, inviteeCount: invitees.length };
   },

@@ -2,7 +2,16 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_WINDOW_STATUS, type ObservationWindow } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  DEFAULT_SCHEDULING_SETTINGS,
+  OBSERVATION_WINDOW_STATUS,
+  type ObservationWindow,
+  type SchedulingSettings,
+} from '@ops/shared';
+import { sendTemplatedEmail } from '../lib/emailUtils.js';
+import { formatYMD } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -40,12 +49,59 @@ export const expireObservationWindows = onSchedule(
 
     const now = FieldValue.serverTimestamp();
     const expired: string[] = [];
+    const expiredWindows: ObservationWindow[] = [];
 
     for (const docSnap of snap.docs) {
       const window = docSnap.data() as ObservationWindow;
       if (window.endDate < today) {
         await docSnap.ref.update({ status: OBSERVATION_WINDOW_STATUS.expired, updatedAt: now });
         expired.push(docSnap.id);
+        expiredWindows.push(window);
+      }
+    }
+
+    // Best-effort expiry notices to invitees who never booked.
+    const settingsSnap = await db
+      .collection(COLLECTIONS.appSettings)
+      .doc(APP_SETTINGS_DOC_ID)
+      .get();
+    const scheduling: SchedulingSettings = {
+      ...DEFAULT_SCHEDULING_SETTINGS,
+      ...((settingsSnap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined) ?? {}),
+    };
+    if (scheduling.inviteEmailEnabled) {
+      for (const window of expiredWindows) {
+        for (const invitee of window.invitees) {
+          try {
+            await sendTemplatedEmail({
+              db,
+              triggerType: 'scheduling.windowExpired',
+              to: invitee.email,
+              vars: {
+                observerName: window.observerName,
+                observerEmail: window.observerEmail,
+                observedName: invitee.name,
+                observedEmail: invitee.email,
+                staffName: invitee.name,
+                staffEmail: invitee.email,
+                windowStartLocal: formatYMD(window.startDate),
+                windowEndLocal: formatYMD(window.endDate),
+              },
+              mailDocId: `scheduling.windowExpired-${window.windowId}-${invitee.email}`,
+              auditDetails: {
+                windowId: window.windowId,
+                inviteeEmail: invitee.email,
+                triggerType: 'scheduling.windowExpired',
+              },
+            });
+          } catch (err) {
+            logger.error('expireObservationWindows: expiry send failed', {
+              windowId: window.windowId,
+              email: invitee.email,
+              err,
+            });
+          }
+        }
       }
     }
 

@@ -33,3 +33,7 @@ export { createObservationWindow } from './scheduling/createObservationWindow.js
 export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js';
 export { expireObservationWindows } from './scheduling/expireObservationWindows.js';
 export { onBuildingScheduleWritten } from './scheduling/onBuildingScheduleWritten.js';
+export { bookObservationSlot } from './scheduling/bookObservationSlot.js';
+export { submitDayPreference } from './scheduling/submitDayPreference.js';
+export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
+export { cancelBooking } from './scheduling/cancelBooking.js';
