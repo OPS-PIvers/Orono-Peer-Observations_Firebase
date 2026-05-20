@@ -3,11 +3,21 @@ import { type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Bold, Code2, Italic, Link as LinkIcon, List, ListOrdered, PenLine } from 'lucide-react';
+import {
+  Bold,
+  Code2,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  MousePointerClick,
+  PenLine,
+} from 'lucide-react';
 import type { TemplateVariable } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { CtaButton } from './CtaButton';
 import { VariableToken } from './VariableToken';
 import { VARIABLE_LABELS, variableLabel } from './variableLabels';
 import { pillsToTokenHtml, tokensToPillHtml } from './emailBodyHtml';
@@ -59,6 +69,7 @@ function WysiwygBody({ value, onChange, variables }: EmailBodyFieldProps) {
       Placeholder.configure({ placeholder: 'Write the email…' }),
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
       VariableToken.configure({ labels: VARIABLE_LABELS }),
+      CtaButton,
     ],
     content: tokensToPillHtml(value),
     onUpdate: ({ editor: ed }) => {
@@ -117,8 +128,25 @@ function Toolbar({ editor }: { editor: Editor }) {
         title="Add/edit link"
         icon={<LinkIcon className="h-4 w-4" />}
       />
+      <ToolbarButton
+        onClick={() => insertCtaButton(editor)}
+        title="Insert button"
+        icon={<MousePointerClick className="h-4 w-4" />}
+      />
     </div>
   );
+}
+
+function insertCtaButton(editor: Editor) {
+  const label = window.prompt('Button label', 'Sign in');
+  if (label === null || label.trim() === '') return;
+  const href = window.prompt('Button link (URL or {{variable}})', '{{signInLink}}');
+  if (href === null || href.trim() === '') return;
+  editor
+    .chain()
+    .focus()
+    .insertContent({ type: 'ctaButton', attrs: { href: href.trim(), label: label.trim() } })
+    .run();
 }
 
 function ToolbarButton({

@@ -7,11 +7,13 @@ import {
   EMAIL_RECIPIENT_TYPES,
   EMAIL_TRIGGER_TYPES,
   KNOWN_TEMPLATE_VARIABLES,
+  renderEmailShell,
   type EmailRecipientType,
   type EmailTemplate,
   type EmailTriggerType,
   type TemplateVariable,
 } from '@ops/shared';
+import { useBranding } from '@/hooks/useBranding';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
@@ -235,6 +237,7 @@ type TemplateDoc = EmailTemplate & { id: string };
 
 export function EmailTemplatesPage() {
   const { user } = useAuth();
+  const branding = useBranding();
   const constraints = useMemo(() => [orderBy('isSystem', 'desc'), orderBy('name', 'asc')], []);
   const {
     data: templates,
@@ -368,11 +371,16 @@ export function EmailTemplatesPage() {
   }
 
   function substitutePreview(html: string): string {
-    return html.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    const content = html.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
       return (
         (SAMPLE_VARS as Partial<Record<TemplateVariable, string>>)[key as TemplateVariable] ??
         `[${key}]`
       );
+    });
+    return renderEmailShell(content, {
+      appName: branding.appName,
+      logoUrl: branding.logoUrl,
+      signInLink: SAMPLE_VARS.signInLink,
     });
   }
 
@@ -696,7 +704,7 @@ function TemplateRow({
               <iframe
                 sandbox=""
                 srcDoc={substitutePreview(editForm.bodyHtml)}
-                className="min-h-[160px] w-full border-0"
+                className="min-h-[440px] w-full border-0"
                 title="Email preview"
               />
             </div>

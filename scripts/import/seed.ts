@@ -2,9 +2,14 @@ import {
   APP_SETTINGS_DOC_ID,
   DEFAULT_SCHEDULING_SETTINGS,
   FINALIZED_OBSERVATION_TEMPLATE_ID,
+  emailButtonHtml,
   type AppSettings,
   type EmailTemplate,
 } from '@ops/shared';
+
+/** Wrap a CTA button anchor in a centered paragraph for the template body. */
+const ctaRow = (href: string, label: string): string =>
+  `<p style="text-align:center;margin:26px 0;">${emailButtonHtml(href, label)}</p>`;
 
 /**
  * Default seed data for the entities that don't exist in the GAS sheet —
@@ -23,8 +28,8 @@ export const DEFAULT_FINALIZED_OBSERVATION_TEMPLATE: Omit<
   bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer observation conducted by {{observerName}} on {{observationDate}} has been finalized.</p>
 <p>You can view your complete observation report in your Drive folder:</p>
-<p><a href="{{driveFolderLink}}">Open Observation Folder</a></p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{driveFolderLink}}', 'Open observation folder')}
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
   variables: [
     'observedName',
@@ -51,7 +56,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     subject: 'Schedule Your Observation — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer evaluator would like to schedule an observation with you. Please use the link below to sign up for a timeslot that works for your schedule.</p>
-<p><a href="{{signupLink}}">Sign Up for an Observation Timeslot</a></p>
+${ctaRow('{{signupLink}}', 'Sign up for a timeslot')}
 <p>If you have any questions, feel free to reach out.</p>
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'signupLink', 'appName'],
@@ -69,7 +74,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>This is a reminder that you have an observation scheduled for <strong>{{observationDate}}</strong> with {{observerName}}.</p>
 <p>You can sign in to {{appName}} to review your rubric and assigned areas ahead of time:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'observerName', 'observationDate', 'signInLink', 'appName'],
     triggerType: 'scheduled.preObservation',
@@ -86,7 +91,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>{{observerName}} has started a standard observation for you.</p>
 <p>You can sign in to view your rubric and assigned areas:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'observerName', 'observationDate', 'signInLink', 'appName'],
     triggerType: 'observation.created.standard',
@@ -103,9 +108,9 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer observation conducted by {{observerName}} on {{observationDate}} has been finalized.</p>
 <p>You can view your complete observation report, including ratings, look-fors, notes, and any media files, in your Drive folder:</p>
-<p><a href="{{driveFolderLink}}">Open Observation Folder</a></p>
+${ctaRow('{{driveFolderLink}}', 'Open observation folder')}
 <p>Sign in to {{appName}} to see your rubric and all finalized observations:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -131,7 +136,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{staffName}},</p>
 <p>Your assigned observation focus areas have been updated for the current cycle. You have <strong>{{assignedComponentCount}} component(s)</strong> assigned to your rubric.</p>
 <p>Sign in to {{appName}} to view your assigned areas and full rubric:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: ['staffName', 'assignedComponentCount', 'signInLink', 'appName'],
     triggerType: 'roleYearMapping.updated',
@@ -148,7 +153,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer evaluator has started a Work Product observation and has questions for you to respond to. Your responses help inform the observation process.</p>
 <p>Sign in to {{appName}} to view and respond to your Work Product questions:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>Please complete your responses at your earliest convenience.</p>
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'signInLink', 'appName'],
@@ -166,7 +171,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your peer evaluator has initiated an Instructional Round observation and has reflection questions for you to respond to.</p>
 <p>Sign in to {{appName}} to view and complete your Instructional Round questions:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'signInLink', 'appName'],
     triggerType: 'observation.created.instructionalRound',
@@ -184,7 +189,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>This is a friendly reminder that you have unanswered questions for your <strong>{{observationType}}</strong> observation in {{appName}}.</p>
 <p>Your peer evaluator is waiting on your responses to proceed. Please sign in and complete them when you have a moment:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: ['observedName', 'observationType', 'signInLink', 'appName'],
     triggerType: 'scheduled.reminderIncomplete',
@@ -201,7 +206,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{staffName}},</p>
 <p>You've been added to <strong>{{appName}}</strong>, Orono Public Schools' peer observation platform.</p>
 <p>You can sign in using your Orono Google account to view your rubric, assigned focus areas, and any finalized observations:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>If you have any questions, please contact your peer evaluator or administrator.</p>
 <p>— {{appName}}</p>`,
     variables: ['staffName', 'staffRole', 'signInLink', 'appName'],
@@ -220,7 +225,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observerName}},</p>
 <p>This confirms that you have created a new <strong>{{observationType}}</strong> observation for <strong>{{observedName}}</strong>.</p>
 <p>Sign in to continue working on this observation:</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observerName',
@@ -245,7 +250,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>{{observerName}} has opened a window to schedule your observation between {{windowStartLocal}} and {{windowEndLocal}}.</p>
 <p>Use your personal link below to pick a time that works for you:</p>
-<p><a href="{{bookingLink}}">Schedule my observation</a></p>
+${ctaRow('{{bookingLink}}', 'Schedule my observation')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -270,7 +275,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     subject: 'Observation scheduled for {{slotDateLocal}} — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your observation with {{observerName}} is confirmed for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -297,7 +302,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     subject: 'Your observation time — {{slotDateLocal}} — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>{{observerName}} has assigned your observation for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -324,7 +329,8 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>Your observation with {{observerName}} on {{slotDateLocal}} ({{slotStartLocal}}) has been cancelled.</p>
 <p>{{cancellationReason}}</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a> to reschedule if needed.</p>
+<p>You can reschedule if needed:</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -348,7 +354,7 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     subject: 'Observation scheduling window closed — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
 <p>The window to schedule your observation with {{observerName}} ({{windowStartLocal}}–{{windowEndLocal}}) has closed. Please reach out to arrange a time.</p>
-<p><a href="{{signInLink}}">Sign in to {{appName}}</a></p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
 <p>— {{appName}}</p>`,
     variables: [
       'observedName',
@@ -378,7 +384,8 @@ export function defaultAppSettings(securityAdminEmail: string): Omit<AppSettings
     branding: {
       appName: 'Orono Peer Observations',
       primaryColor: '#2d3f89',
-      logoDriveFileId: null,
+      logoUrl: null,
+      iconUrl: null,
     },
     securityAdminEmail,
     outboundEmailAddress: 'observations@orono.k12.mn.us',

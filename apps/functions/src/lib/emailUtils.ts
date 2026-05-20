@@ -4,6 +4,7 @@ import {
   APP_SETTINGS_DOC_ID,
   AUDIT_ACTIONS,
   COLLECTIONS,
+  renderEmailShell,
   type EmailTemplate,
   type EmailTriggerType,
 } from '@ops/shared';
@@ -39,9 +40,25 @@ export async function loadActiveTemplate(
   return { id: doc.id, ...(doc.data() as EmailTemplate) };
 }
 
+/** Load branding bits needed to render the email shell. */
+async function loadEmailBranding(
+  db: Firestore,
+): Promise<{ appName: string; logoUrl: string | null }> {
+  const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+  const branding = snap.data()?.['branding'] as
+    | { appName?: string; logoUrl?: string | null }
+    | undefined;
+  return {
+    appName: branding?.appName ?? 'Orono Peer Observations',
+    logoUrl: branding?.logoUrl ?? null,
+  };
+}
+
 /**
- * Core send: writes a document to /mail which the Trigger Email extension
- * picks up and sends immediately. Also writes an audit log entry.
+ * Core send: wraps the content HTML in the branded email shell, writes a
+ * document to /mail which the Trigger Email extension picks up and sends
+ * immediately, and writes an audit log entry. Every templated/manual/
+ * scheduled email funnels through here, so the shell is applied uniformly.
  */
 export async function sendEmail(args: {
   db: Firestore;
@@ -54,10 +71,17 @@ export async function sendEmail(args: {
   const { db, to, subject, html, mailDocId, auditDetails } = args;
   const recipients = Array.isArray(to) ? to : [to];
 
+  const branding = await loadEmailBranding(db);
+  const wrappedHtml = renderEmailShell(html, {
+    appName: branding.appName,
+    logoUrl: branding.logoUrl,
+    signInLink: APP_URL,
+  });
+
   await db.collection(COLLECTIONS.mail).doc(mailDocId).set({
     to: recipients,
     from: FROM_EMAIL,
-    message: { subject, html },
+    message: { subject, html: wrappedHtml },
     createdAt: FieldValue.serverTimestamp(),
   });
 
