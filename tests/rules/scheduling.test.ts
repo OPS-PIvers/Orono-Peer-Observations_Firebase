@@ -113,6 +113,33 @@ describe('signupFields rules', () => {
   });
 });
 
+describe('userCalendarTokens rules (server-only)', () => {
+  beforeEach(async () => {
+    await seed('userCalendarTokens/pe@orono.k12.mn.us', {
+      email: 'pe@orono.k12.mn.us',
+      refreshToken: 'secret',
+      status: 'connected',
+    });
+  });
+
+  it('the owner cannot read their own token doc', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval('pe@orono.k12.mn.us')).firestore();
+    await assertFails(getDoc(doc(db, 'userCalendarTokens/pe@orono.k12.mn.us')));
+  });
+
+  it('an admin cannot read token docs', async () => {
+    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    await assertFails(getDoc(doc(db, 'userCalendarTokens/pe@orono.k12.mn.us')));
+  });
+
+  it('no client can write a token doc', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval('pe@orono.k12.mn.us')).firestore();
+    await assertFails(
+      setDoc(doc(db, 'userCalendarTokens/pe@orono.k12.mn.us'), { refreshToken: 'x' }),
+    );
+  });
+});
+
 const PE_EMAIL = 'pe@orono.k12.mn.us';
 const INVITED_EMAIL = 'teacher@orono.k12.mn.us';
 const OTHER_EMAIL = 'other@orono.k12.mn.us';

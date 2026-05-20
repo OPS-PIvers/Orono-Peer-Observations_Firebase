@@ -25,6 +25,7 @@ export * from './signupField.js';
 export * from './observationWindow.js';
 export * from './observationSlot.js';
 export * from './observationPreference.js';
+export * from './userCalendarTokens.js';
 export * from './emailTemplate.js';
 export * from './auditLog.js';
 export * from './transcriptionJob.js';

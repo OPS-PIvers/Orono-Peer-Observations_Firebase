@@ -255,6 +255,14 @@ service cloud.firestore {
         );
     }
 
+    // --- /userCalendarTokens/{email} ----------------------------------------
+    // Per-user Google Calendar OAuth credentials. Server-only — refresh
+    // tokens never leave the backend. Cloud Functions use the Admin SDK
+    // (which bypasses rules); clients are denied entirely.
+    match /userCalendarTokens/{email} {
+      allow read, write: if false;
+    }
+
     // --- /auditLog -----------------------------------------------------------
     // Read: admin only. No client ever writes — Cloud Functions use admin SDK.
     match /auditLog/{id} {
