@@ -109,9 +109,7 @@ describe('signupFields rules', () => {
 
   it('teacher cannot write a field', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher()).firestore();
-    await assertFails(
-      setDoc(doc(db, 'signupFields/f-1'), { isActive: false }, { merge: true }),
-    );
+    await assertFails(setDoc(doc(db, 'signupFields/f-1'), { isActive: false }, { merge: true }));
   });
 });
 
@@ -200,16 +198,12 @@ describe('observationWindows rules', () => {
 
   it('invited staff can read a slot', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
-    await assertSucceeds(
-      getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')),
-    );
+    await assertSucceeds(getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')));
   });
 
   it('non-invited staff cannot read a slot', async () => {
     const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
-    await assertFails(
-      getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')),
-    );
+    await assertFails(getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')));
   });
 
   it('staff cannot write a slot directly', async () => {
@@ -239,9 +233,7 @@ describe('observationWindows rules', () => {
 
   it('unrelated staff cannot read a preference', async () => {
     const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
-    await assertFails(
-      getDoc(doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us')),
-    );
+    await assertFails(getDoc(doc(db, 'observationWindows/w1/preferences/teacher@orono.k12.mn.us')));
   });
 
   it('staff cannot write a preference directly', async () => {
