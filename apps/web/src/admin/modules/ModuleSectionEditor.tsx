@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
@@ -6,7 +6,6 @@ import {
   MODULE_SUBCOLLECTIONS,
   type ModuleItem,
   type ModuleSection,
-  type TiptapDoc,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { db } from '@/lib/firebase';
@@ -15,6 +14,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
+import { parseTiptapBody } from '@/modules/moduleBody';
 
 interface Props {
   moduleId: string;
@@ -29,20 +29,6 @@ interface Props {
 
 function newItemId() {
   return `itm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-/** Parse body string → TiptapDoc for the editor. */
-function parseBodyDoc(body: string): TiptapDoc | undefined {
-  if (!body.trim()) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
-      return parsed as TiptapDoc;
-    }
-  } catch {
-    // not JSON — return undefined so editor starts fresh
-  }
-  return undefined;
 }
 
 export function ModuleSectionEditor({
@@ -105,7 +91,37 @@ export function ModuleSectionEditor({
     }
   }
 
-  const bodyDoc = parseBodyDoc(section.body);
+  const bodyDoc = parseTiptapBody(section.body);
+
+  // Debounce rich-text body saves (~400 ms) so every keystroke doesn't
+  // rewrite the whole sections array. Title/item field writes stay immediate.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingBodyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // Flush any pending rich-text write on unmount so the last edit isn't lost.
+      if (debounceRef.current !== null) {
+        clearTimeout(debounceRef.current);
+        if (pendingBodyRef.current !== null) {
+          onPatchSection(section.id, { body: pendingBodyRef.current });
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleBodyChange(serialized: string) {
+    pendingBodyRef.current = serialized;
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      if (pendingBodyRef.current !== null) {
+        onPatchSection(section.id, { body: pendingBodyRef.current });
+        pendingBodyRef.current = null;
+      }
+    }, 400);
+  }
 
   return (
     <Card>
@@ -151,7 +167,7 @@ export function ModuleSectionEditor({
         {section.type === 'richtext' ? (
           <TiptapEditor
             value={bodyDoc}
-            onChange={(doc) => onPatchSection(section.id, { body: JSON.stringify(doc) })}
+            onChange={(doc) => handleBodyChange(JSON.stringify(doc))}
             variant="full"
             placeholder="Write content for this section…"
           />
@@ -160,16 +176,18 @@ export function ModuleSectionEditor({
             {sectionItems.map((item) => (
               <div key={item.itemId} className="grid gap-2 rounded-md border p-3 sm:grid-cols-2">
                 <div className="grid gap-1">
-                  <Label>Title</Label>
+                  <Label htmlFor={`mod-item-title-${item.itemId}`}>Title</Label>
                   <Input
+                    id={`mod-item-title-${item.itemId}`}
                     value={item.title}
                     onChange={(e) => patchItem(item.itemId, { title: e.target.value })}
                   />
                 </div>
                 {item.kind === 'resource' ? (
                   <div className="grid gap-1">
-                    <Label>Link URL</Label>
+                    <Label htmlFor={`mod-item-link-${item.itemId}`}>Link URL</Label>
                     <Input
+                      id={`mod-item-link-${item.itemId}`}
                       value={item.linkUrl ?? ''}
                       placeholder="https://…"
                       onChange={(e) => patchItem(item.itemId, { linkUrl: e.target.value })}
@@ -177,8 +195,9 @@ export function ModuleSectionEditor({
                   </div>
                 ) : (
                   <div className="grid gap-1">
-                    <Label>Due date (optional)</Label>
+                    <Label htmlFor={`mod-item-due-${item.itemId}`}>Due date (optional)</Label>
                     <Input
+                      id={`mod-item-due-${item.itemId}`}
                       type="date"
                       value={item.dueDate ?? ''}
                       onChange={(e) => patchItem(item.itemId, { dueDate: e.target.value })}
@@ -187,8 +206,9 @@ export function ModuleSectionEditor({
                 )}
                 {item.kind === 'material' ? (
                   <div className="grid gap-1 sm:col-span-2">
-                    <Label>Description</Label>
+                    <Label htmlFor={`mod-item-desc-${item.itemId}`}>Description</Label>
                     <Input
+                      id={`mod-item-desc-${item.itemId}`}
                       value={item.description}
                       onChange={(e) => patchItem(item.itemId, { description: e.target.value })}
                     />

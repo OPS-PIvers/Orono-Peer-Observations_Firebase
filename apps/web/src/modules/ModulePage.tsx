@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   COLLECTIONS,
+  MODULE_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
   type ModuleDoc,
   type ModuleItem,
@@ -17,7 +18,6 @@ import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/Skeleton';
-import { MODULE_SUBCOLLECTIONS } from '@ops/shared';
 import { MaterialsSection, ResourceListSection, RichTextSection } from './moduleSections';
 
 export function ModulePage() {
@@ -29,7 +29,7 @@ export function ModulePage() {
   const { data: module, loading: moduleLoading } = useFirestoreDoc<ModuleDoc>(
     moduleId ? `${COLLECTIONS.modules}/${moduleId}` : '',
   );
-  const { data: myStaff } = useFirestoreDoc<Staff>(
+  const { data: myStaff, loading: staffLoading } = useFirestoreDoc<Staff>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '',
   );
   const { data: items } = useFirestoreCollection<ModuleItem>(
@@ -66,7 +66,7 @@ export function ModulePage() {
     }
   }
 
-  if (moduleLoading && !module) {
+  if ((moduleLoading && !module) || (staffLoading && !myStaff && !claims.isAdmin)) {
     return (
       <PageHeader title="Loading…" variant="plain">
         <Skeleton className="h-40 w-full" />

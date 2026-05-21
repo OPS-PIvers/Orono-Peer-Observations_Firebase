@@ -1,11 +1,11 @@
 import { ExternalLink, FileText } from 'lucide-react';
-import type { TiptapDoc } from '@ops/shared';
 import type { ModuleItem, ModuleSection } from '@ops/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
+import { parseTiptapBody } from './moduleBody';
 
 function sectionItems(items: ModuleItem[], sectionId: string, kind: ModuleItem['kind']) {
   return items
@@ -14,22 +14,8 @@ function sectionItems(items: ModuleItem[], sectionId: string, kind: ModuleItem['
     .sort((a, b) => a.order - b.order);
 }
 
-/** Parse the body string → TiptapDoc. Returns undefined on empty/invalid. */
-function parseBody(body: string): TiptapDoc | undefined {
-  if (!body.trim()) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed === 'object' && parsed !== null && 'type' in parsed) {
-      return parsed as TiptapDoc;
-    }
-  } catch {
-    // not JSON — treat as empty
-  }
-  return undefined;
-}
-
 export function RichTextSection({ section }: { section: ModuleSection }) {
-  const doc = parseBody(section.body);
+  const doc = parseTiptapBody(section.body);
   return (
     <Card>
       {section.title ? (
@@ -39,7 +25,13 @@ export function RichTextSection({ section }: { section: ModuleSection }) {
       ) : null}
       <CardContent>
         {doc ? (
-          <TiptapEditor value={doc} onChange={() => undefined} readOnly variant="full" />
+          <TiptapEditor
+            value={doc}
+            onChange={() => undefined}
+            readOnly
+            variant="full"
+            className="opacity-100"
+          />
         ) : (
           <p className="text-muted-foreground text-sm">Nothing here yet.</p>
         )}

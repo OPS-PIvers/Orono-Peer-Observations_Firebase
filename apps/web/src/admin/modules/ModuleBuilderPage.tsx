@@ -113,8 +113,9 @@ export function ModuleBuilderPage() {
         </label>
 
         <div className="grid gap-1">
-          <Label>Sidebar icon</Label>
+          <Label htmlFor="mod-icon">Sidebar icon</Label>
           <select
+            id="mod-icon"
             value={module.icon}
             onChange={(e) => patchModule({ icon: e.target.value as ModuleDoc['icon'] })}
             className="border-input bg-background h-9 rounded-md border px-2 text-sm"

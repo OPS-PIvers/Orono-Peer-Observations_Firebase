@@ -52,16 +52,17 @@ export type ModuleSectionType = (typeof MODULE_SECTION_TYPES)[number];
 export const moduleSectionType = z.enum(MODULE_SECTION_TYPES);
 
 /**
- * One ordered section on a module page. `body` carries rich-text HTML and is
- * only meaningful when `type === 'richtext'`; resources/materials sections pull
- * their content from the `/modules/{id}/items` subcollection by `sectionId`.
+ * One ordered section on a module page. `body` carries Tiptap document JSON
+ * (the `JSON.stringify` of a TiptapDoc), only meaningful for
+ * `type === 'richtext'`; resources/materials sections pull their content from
+ * the `/modules/{id}/items` subcollection by `sectionId`.
  */
 export const moduleSection = z.object({
   /** Generated section slug (e.g. "sec-abc12"); not a domain slugId. */
   id: z.string().min(1).max(64),
   type: moduleSectionType,
   title: z.string().trim().max(120).default(''),
-  /** Rich-text HTML (richtext sections only). Intentionally not trimmed —
+  /** Tiptap document JSON (richtext sections only). Intentionally not trimmed —
    *  the editor manages its own whitespace/markup. */
   body: z.string().default(''),
 });
