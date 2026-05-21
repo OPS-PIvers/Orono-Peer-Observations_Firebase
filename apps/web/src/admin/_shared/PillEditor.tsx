@@ -90,9 +90,9 @@ export function MultiPillEditor({
           type="button"
           aria-label={ariaLabel}
           onClick={(e) => e.stopPropagation()}
-          className={cn(PILL_TRIGGER, 'flex-wrap')}
+          className={PILL_TRIGGER}
         >
-          <span className="flex flex-wrap items-center gap-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-1">
             {selectedValues.size > 0 ? (
               pills
             ) : (
