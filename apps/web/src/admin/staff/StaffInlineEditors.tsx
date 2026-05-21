@@ -1,5 +1,11 @@
 import type { ModuleDoc, Role, Staff } from '@ops/shared';
-import { SinglePillEditor, MultiPillEditor, type PillOption } from '@/admin/_shared/PillEditor';
+import { PillSelect, PillMultiSelect, type PillOption } from '@/admin/_shared/PillEditor';
+import {
+  ADMIN_PILL_COLOR,
+  STATUS_PILL_COLOR,
+  YEAR_PILL_COLOR,
+  paletteFor,
+} from '@/admin/_shared/pillColors';
 import { MODULE_COLOR_CLASSES } from '@/admin/modules/ModulesPage';
 import {
   CYCLE_STATUSES,
@@ -36,10 +42,14 @@ export function RolePill({
   onPatch: PatchStaff;
 }) {
   const known = roles.some((r) => r.roleId === row.role);
-  const options: PillOption[] = roles.map((r) => ({ value: r.roleId, label: r.displayName }));
+  const options: PillOption[] = roles.map((r) => ({
+    value: r.roleId,
+    label: r.displayName,
+    color: paletteFor(r.roleId),
+  }));
   if (!known && row.role) options.unshift({ value: row.role, label: `⚠ ${row.role} (unmapped)` });
   return (
-    <SinglePillEditor
+    <PillSelect
       value={row.role}
       options={options}
       onChange={(v) => onPatch(row.email, { role: v })}
@@ -54,9 +64,10 @@ export function StatusPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaf
   const options: PillOption[] = CYCLE_STATUSES.map((s) => ({
     value: s,
     label: cycleStatusLabel(s),
+    color: STATUS_PILL_COLOR[s],
   }));
   return (
-    <SinglePillEditor
+    <PillSelect
       value={current}
       options={options}
       onChange={(v) =>
@@ -72,15 +83,15 @@ export function StatusPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaf
 }
 
 export function YearPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaff }) {
-  const current = String(displayYear(row.year));
-  const options: PillOption[] = [
-    { value: '1', label: '1' },
-    { value: '2', label: '2' },
-    { value: '3', label: '3' },
-  ];
+  const current = displayYear(row.year);
+  const options: PillOption[] = [1, 2, 3].map((y) => ({
+    value: String(y),
+    label: String(y),
+    color: YEAR_PILL_COLOR[y as 1 | 2 | 3],
+  }));
   return (
-    <SinglePillEditor
-      value={current}
+    <PillSelect
+      value={String(current)}
       options={options}
       onChange={(v) =>
         onPatch(
@@ -106,23 +117,22 @@ export function BuildingsPill({
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const assigned = row.buildings ?? [];
   const selected = new Set(assigned);
-  const options: PillOption[] = buildingNames.map((n) => ({ value: n, label: n }));
+  const options: PillOption[] = buildingNames.map((n) => ({
+    value: n,
+    label: n,
+    color: paletteFor(n),
+  }));
   function toggle(name: string) {
     const next = selected.has(name) ? assigned.filter((b) => b !== name) : [...assigned, name];
     onPatch(row.email, { buildings: next });
   }
   return (
-    <MultiPillEditor
-      selectedValues={selected}
+    <PillMultiSelect
+      selected={selected}
       options={options}
       onToggle={toggle}
       ariaLabel={`Buildings for ${row.name}`}
       menuLabel="Buildings"
-      pills={assigned.map((b) => (
-        <span key={b} className="bg-accent text-accent-foreground rounded-full px-2 py-0.5 text-xs">
-          {b}
-        </span>
-      ))}
     />
   );
 }
@@ -138,14 +148,20 @@ export function ModuleAccessPill({
 }) {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const assignedModules = row.modules ?? [];
-  const moduleById = new Map(modules.map((m) => [m.moduleId, m]));
 
   const selected = new Set<string>(assignedModules);
   if (row.hasAdminAccess) selected.add(ADMIN_ACCESS);
 
   const options: PillOption[] = [
-    { value: ADMIN_ACCESS, label: 'Admin Console Access' },
-    ...modules.map((m) => ({ value: m.moduleId, label: m.displayName })),
+    { value: ADMIN_ACCESS, label: 'Admin Console Access', color: ADMIN_PILL_COLOR },
+    ...modules.map((m) => {
+      const cls = MODULE_COLOR_CLASSES[m.color];
+      return {
+        value: m.moduleId,
+        label: m.displayName,
+        color: { bg: cls.bg, text: cls.text },
+      };
+    }),
   ];
 
   function toggle(value: string) {
@@ -159,36 +175,13 @@ export function ModuleAccessPill({
     onPatch(row.email, { modules: next });
   }
 
-  const pills = (
-    <>
-      {row.hasAdminAccess ? (
-        <span className="bg-ops-blue text-primary-foreground rounded-full px-2 py-0.5 text-xs">
-          Admin
-        </span>
-      ) : null}
-      {assignedModules.map((id) => {
-        const mod = moduleById.get(id);
-        const cls = mod ? MODULE_COLOR_CLASSES[mod.color] : undefined;
-        return (
-          <span
-            key={id}
-            className={`rounded-full px-2 py-0.5 text-xs ${cls ? `${cls.bg} ${cls.text}` : 'bg-accent text-accent-foreground'}`}
-          >
-            {mod?.displayName ?? id}
-          </span>
-        );
-      })}
-    </>
-  );
-
   return (
-    <MultiPillEditor
-      selectedValues={selected}
+    <PillMultiSelect
+      selected={selected}
       options={options}
       onToggle={toggle}
       ariaLabel={`Module access for ${row.name}`}
       menuLabel="Module access"
-      pills={pills}
     />
   );
 }
