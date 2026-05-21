@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collectionGroup, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -117,5 +117,74 @@ describe('/staff/{email}/moduleProgress — own progress only', () => {
     });
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
     await assertSucceeds(getDoc(doc(db, 'staff/me@orono.k12.mn.us/moduleProgress/i1')));
+  });
+});
+
+// The dashboard reads module materials with a collectionGroup query, NOT direct
+// gets — `collectionGroup('items')` filtered by `kind == 'material'` and
+// `moduleId in <assignedIds>`. This exercises the recursive
+// `match /{path=**}/items/{itemId}` rule on the query path: the rule passes only
+// when every returned doc's moduleId is in the requester's assigned modules, so
+// the client's own `moduleId in [...]` filter is what makes the query authorized.
+describe('module items — collectionGroup query (the dashboard access path)', () => {
+  beforeEach(async () => {
+    await seed('staff/assigned@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('modules/mentor/items/m1', {
+      itemId: 'm1',
+      moduleId: 'mentor',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'Mentor task',
+    });
+    await seed('modules/ilt/items/m2', {
+      itemId: 'm2',
+      moduleId: 'ilt',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'ILT task',
+    });
+  });
+
+  it('assigned staff can query materials scoped to their assigned module', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collectionGroup(db, 'items'),
+          where('kind', '==', 'material'),
+          where('moduleId', 'in', ['mentor']),
+        ),
+      ),
+    );
+  });
+
+  it('staff cannot query materials of a module they are not assigned', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      getDocs(
+        query(
+          collectionGroup(db, 'items'),
+          where('kind', '==', 'material'),
+          where('moduleId', 'in', ['ilt']),
+        ),
+      ),
+    );
+  });
+
+  it('admin can query materials across modules', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collectionGroup(db, 'items'),
+          where('kind', '==', 'material'),
+          where('moduleId', 'in', ['mentor', 'ilt']),
+        ),
+      ),
+    );
   });
 });
