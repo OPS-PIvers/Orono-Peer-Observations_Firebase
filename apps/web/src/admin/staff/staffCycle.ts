@@ -1,7 +1,10 @@
 import type { StaffYear } from '@ops/shared';
+import { CYCLE_STATUSES, type CycleStatus, cycleStatus, displayYear } from '@ops/shared';
 
-export const CYCLE_STATUSES = ['low', 'high', 'probationary'] as const;
-export type CycleStatus = (typeof CYCLE_STATUSES)[number];
+// Cycle status/year logic now lives in @ops/shared; re-exported here so existing
+// web imports keep working. Labels + the table-pill encoding stay web-local.
+export { CYCLE_STATUSES, cycleStatus, displayYear };
+export type { CycleStatus };
 
 const LABELS: Record<CycleStatus, string> = {
   low: 'Low Cycle',
@@ -11,17 +14,6 @@ const LABELS: Record<CycleStatus, string> = {
 
 export function cycleStatusLabel(status: CycleStatus): string {
   return LABELS[status];
-}
-
-/** Stored years 1-3 are continuing; 4-6 are probationary P1-P3. Both display as 1-3. */
-export function displayYear(year: number): 1 | 2 | 3 {
-  const d = year >= 4 ? year - 3 : year;
-  return (d < 1 ? 1 : d > 3 ? 3 : d) as 1 | 2 | 3;
-}
-
-export function cycleStatus(year: number, summativeYear: boolean): CycleStatus {
-  if (year >= 4) return 'probationary';
-  return summativeYear ? 'high' : 'low';
 }
 
 /** Encode a chosen display-year (1-3) + status back into stored fields. */
