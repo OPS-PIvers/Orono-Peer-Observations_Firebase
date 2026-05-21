@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_YEARS,
+  PILL_COLORS,
+  type AppSettings,
+  type PillColorName,
   type Role,
   type RoleYearMapping,
   type Rubric,
@@ -11,10 +15,12 @@ import {
   roleYearMappingDocId,
 } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/PageHeader';
+import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
 
 const YEAR_LABELS: Record<StaffYear, string> = {
   1: 'Y1',
@@ -32,6 +38,9 @@ export function RoleYearMappingsPage() {
   );
   const { data: mappings, loading: mappingsLoading } = useFirestoreCollection<RoleYearMapping>(
     COLLECTIONS.roleYearMappings,
+  );
+  const { data: appSettings } = useFirestoreDoc<AppSettings>(
+    `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
   );
 
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -140,6 +149,15 @@ export function RoleYearMappingsPage() {
     }
   }
 
+  async function saveYearColor(year: 1 | 2 | 3, color: PillColorName) {
+    const currentYearColors = appSettings?.yearColors ?? {};
+    await setDoc(
+      doc(db, COLLECTIONS.appSettings, APP_SETTINGS_DOC_ID),
+      { yearColors: { ...currentYearColors, [year]: color }, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  }
+
   const loading = rolesLoading || rubricsLoading || mappingsLoading;
 
   return (
@@ -212,6 +230,47 @@ export function RoleYearMappingsPage() {
           onToggleRow={toggleRow}
         />
       )}
+
+      <div className="border-border mt-8 rounded-lg border p-4">
+        <h2 className="mb-1 text-sm font-semibold">Year pill colors</h2>
+        <p className="text-muted-foreground mb-4 text-xs">
+          Choose the pill color for each display year in the Staff table. Unset years fall back to
+          built-in defaults.
+        </p>
+        <div className="grid gap-4">
+          {([1, 2, 3] as const).map((year) => {
+            const selected = appSettings?.yearColors[year];
+            return (
+              <div key={year}>
+                <p className="mb-1.5 text-xs font-medium">Year {year}</p>
+                <div className="flex flex-wrap gap-2">
+                  {PILL_COLORS.map((color) => {
+                    const cls = PILL_COLOR_CLASSES[color];
+                    const isSelected = selected === color;
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => void saveYearColor(year, color)}
+                        aria-label={color}
+                        aria-pressed={isSelected}
+                        className={cn(
+                          'inline-flex items-center rounded px-3 py-1 text-xs capitalize ring-2 ring-offset-1 transition-all',
+                          cls.bg,
+                          cls.text,
+                          isSelected ? cls.ring : 'ring-transparent',
+                        )}
+                      >
+                        {color}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </PageHeader>
   );
 }

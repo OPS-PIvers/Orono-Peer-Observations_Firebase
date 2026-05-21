@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Building } from '@ops/shared';
+import { COLLECTIONS, PILL_COLORS, type Building, type PillColorName } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,7 @@ import {
   type ColumnDef,
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
+import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
 
 function slugify(s: string): string {
   return s
@@ -174,12 +175,14 @@ interface BuildingDialogProps {
 interface BuildingFormState {
   displayName: string;
   buildingId: string;
+  color: PillColorName | undefined;
   isActive: boolean;
 }
 
 const empty: BuildingFormState = {
   displayName: '',
   buildingId: '',
+  color: undefined,
   isActive: true,
 };
 
@@ -188,6 +191,7 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
     ? {
         displayName: existing.displayName,
         buildingId: existing.buildingId,
+        color: existing.color,
         isActive: existing.isActive,
       }
     : empty;
@@ -200,6 +204,7 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
     setForm({
       displayName: existing.displayName,
       buildingId: existing.buildingId,
+      color: existing.color,
       isActive: existing.isActive,
     });
     setError(null);
@@ -237,6 +242,7 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
         {
           buildingId: form.buildingId,
           displayName: form.displayName.trim(),
+          ...(form.color !== undefined ? { color: form.color } : {}),
           isActive: form.isActive,
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
@@ -298,6 +304,28 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
               autoComplete="off"
               className="font-mono text-xs"
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Color (optional)</Label>
+            <div className="flex flex-wrap gap-2">
+              {PILL_COLORS.map((c) => {
+                const cls = PILL_COLOR_CLASSES[c];
+                const isSelected = form.color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, color: f.color === c ? undefined : c }))}
+                    aria-label={c}
+                    aria-pressed={isSelected}
+                    className={`inline-flex items-center rounded px-3 py-1 text-xs capitalize ring-2 ring-offset-1 transition-all ${cls.bg} ${cls.text} ${isSelected ? cls.ring : 'ring-transparent'}`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

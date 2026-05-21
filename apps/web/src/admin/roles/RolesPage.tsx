@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Role } from '@ops/shared';
+import { COLLECTIONS, PILL_COLORS, type PillColorName, type Role } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ import {
   type ColumnDef,
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
+import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
 
 function slugify(s: string): string {
   return s
@@ -178,6 +179,7 @@ interface RoleFormState {
   rubricId: string;
   isSpecialAccess: boolean;
   isActive: boolean;
+  color: PillColorName | undefined;
 }
 
 const empty: RoleFormState = {
@@ -186,6 +188,7 @@ const empty: RoleFormState = {
   rubricId: '',
   isSpecialAccess: false,
   isActive: true,
+  color: undefined,
 };
 
 function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
@@ -196,6 +199,7 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
         rubricId: existing.rubricId,
         isSpecialAccess: existing.isSpecialAccess,
         isActive: existing.isActive,
+        color: existing.color,
       }
     : empty;
   const [form, setForm] = useState<RoleFormState>(initial);
@@ -210,6 +214,7 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
       rubricId: existing.rubricId,
       isSpecialAccess: existing.isSpecialAccess,
       isActive: existing.isActive,
+      color: existing.color,
     });
     setError(null);
     setConfirmingDelete(false);
@@ -250,6 +255,7 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
           rubricId: form.rubricId.trim() || form.roleId,
           isSpecialAccess: form.isSpecialAccess,
           isActive: form.isActive,
+          ...(form.color !== undefined ? { color: form.color } : {}),
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
         },
@@ -324,6 +330,37 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
                 placeholder="(defaults to role ID)"
               />
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Color (optional)</Label>
+            <div className="flex flex-wrap gap-2">
+              {PILL_COLORS.map((c) => {
+                const cls = PILL_COLOR_CLASSES[c];
+                const isSelected = form.color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, color: f.color === c ? undefined : c }))}
+                    aria-label={c}
+                    aria-pressed={isSelected}
+                    className={`inline-flex items-center rounded px-3 py-1 text-xs capitalize ring-2 ring-offset-1 transition-all ${cls.bg} ${cls.text} ${isSelected ? cls.ring : 'ring-transparent'}`}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
+            </div>
+            {form.color ? (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, color: undefined }))}
+                className="text-muted-foreground w-fit text-xs underline-offset-2 hover:underline"
+              >
+                Clear color
+              </button>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-6">
