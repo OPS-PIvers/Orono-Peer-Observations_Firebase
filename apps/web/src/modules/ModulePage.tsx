@@ -5,6 +5,7 @@ import {
   COLLECTIONS,
   MODULE_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
+  staffMatchesAutoEnable,
   type ModuleDoc,
   type ModuleItem,
   type ModuleProgress,
@@ -43,8 +44,12 @@ export function ModulePage() {
 
   const isAssigned = useMemo(() => {
     if (claims.isAdmin) return true;
-    return (myStaff?.modules ?? []).includes(moduleId);
-  }, [claims.isAdmin, myStaff, moduleId]);
+    if (!myStaff) return false;
+    return (
+      (myStaff.modules ?? []).includes(moduleId) ||
+      staffMatchesAutoEnable(myStaff, module?.autoEnable ?? null)
+    );
+  }, [claims.isAdmin, myStaff, moduleId, module]);
 
   function toggleDone(item: ModuleItem, done: boolean) {
     const ref = doc(
