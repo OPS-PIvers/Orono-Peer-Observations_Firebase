@@ -202,7 +202,7 @@ function DesktopTable<T>({
                   key={id}
                   className={cn(
                     // Zebra striping + a softer divider between rows.
-                    'odd:bg-muted/25 border-b-black/[0.04]',
+                    'odd:bg-muted/60 border-b-black/[0.04]',
                     onRowClick && 'cursor-pointer',
                   )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}

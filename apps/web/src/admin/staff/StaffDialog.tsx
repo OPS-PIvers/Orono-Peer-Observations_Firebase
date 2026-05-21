@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { Archive, X } from 'lucide-react';
 import { doc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   isStaffYear,
   type Building,
-  type ModuleColor,
   type ModuleDoc,
   type Role,
   type Staff,
   type StaffYear,
 } from '@ops/shared';
 import { MODULE_COLOR_CLASSES } from '@/admin/modules/ModulesPage';
+import { PillChip } from '@/admin/_shared/PillEditor';
+import { ADMIN_PILL_COLOR } from '@/admin/_shared/pillColors';
 import { db } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  CYCLE_STATUSES,
+  type CycleStatus,
+  cycleStatus,
+  cycleStatusLabel,
+  displayYear as toDisplayYear,
+  encodeYearStatus,
+} from './staffCycle';
 
 interface StaffDialogProps {
   open: boolean;
@@ -128,65 +138,52 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
 
   const knownModuleIds = useMemo(() => new Set(modules.map((m) => m.moduleId)), [modules]);
 
-  // Probationary status is derived from the year: 1-3 = continuing, 4-6 =
-  // probationary (P1/P2/P3). The dialog splits this into a 1-3 dropdown
-  // plus a checkbox so the admin can see and toggle each independently;
-  // the canonical `staff.year` field still uses the 1-6 convention every
-  // other consumer (dashboard, derivation logic) relies on.
-  const isProbationary = form.year >= 4;
-  const displayYear = isProbationary ? form.year - 3 : form.year;
+  // Year + Status mirror the Staff table: the canonical `staff.year` (1-6) +
+  // `summativeYear` are presented as a 1-3 Year plus a Low/High/Probationary
+  // Status, encoded back via the shared staffCycle helpers so every other
+  // consumer keeps working unchanged.
+  const dYear = toDisplayYear(form.year);
+  const status = cycleStatus(form.year, form.summativeYear);
+  function setYear(n: 1 | 2 | 3) {
+    const enc = encodeYearStatus(n, status);
+    setForm((f) => ({ ...f, year: enc.year, summativeYear: enc.summativeYear }));
+  }
+  function setStatus(s: CycleStatus) {
+    const enc = encodeYearStatus(dYear, s);
+    setForm((f) => ({ ...f, year: enc.year, summativeYear: enc.summativeYear }));
+  }
 
-  // Unified rows for the Modules picker. System flags (summative, prob,
-  // admin) sit at the top in a fixed order; custom modules follow.
-  // Each row maps the underlying state change back to the appropriate
-  // form field so the rest of the codebase keeps using the existing
-  // schema fields (staff.summativeYear, staff.year, staff.hasAdminAccess,
-  // staff.modules[]) without knowing about this UI grouping.
-  interface ModuleRow {
+  // Module Access rows — Admin Console Access first, then admin-defined
+  // modules. (Cycle status lives in the Status field above, not here.)
+  interface AccessRow {
     id: string;
     name: string;
     description: string;
-    color: ModuleColor;
+    color: { bg: string; text: string };
     checked: boolean;
     onToggle: () => void;
   }
-  const moduleRows: ModuleRow[] = [
+  const accessRows: AccessRow[] = [
     {
-      id: 'sys-summative',
-      name: 'Summative year',
-      description: 'Marks this cycle as summative (vs formative).',
-      color: 'red',
-      checked: form.summativeYear,
-      onToggle: () => setForm((f) => ({ ...f, summativeYear: !f.summativeYear })),
-    },
-    {
-      id: 'sys-probationary',
-      name: 'Probationary',
-      description: 'Contract status — P1/P2/P3 (year shifts internally to 4–6).',
-      color: 'amber',
-      checked: isProbationary,
-      onToggle: () => {
-        const real = isProbationary ? displayYear : displayYear + 3;
-        if (isStaffYear(real)) setForm((f) => ({ ...f, year: real }));
-      },
-    },
-    {
-      id: 'sys-admin',
-      name: 'Admin access',
+      id: 'admin-console-access',
+      name: 'Admin Console Access',
       description: 'Grants access to the Admin Console.',
-      color: 'purple',
+      color: ADMIN_PILL_COLOR,
       checked: form.hasAdminAccess,
       onToggle: () => setForm((f) => ({ ...f, hasAdminAccess: !f.hasAdminAccess })),
     },
-    ...modules.map((m) => ({
-      id: `mod-${m.moduleId}`,
-      name: m.displayName,
-      description: m.description,
-      color: m.color,
-      checked: form.modules.includes(m.moduleId),
-      onToggle: () =>
-        form.modules.includes(m.moduleId) ? removeModule(m.moduleId) : addModule(m.moduleId),
-    })),
+    ...modules.map((m) => {
+      const cls = MODULE_COLOR_CLASSES[m.color];
+      return {
+        id: `mod-${m.moduleId}`,
+        name: m.displayName,
+        description: m.description,
+        color: { bg: cls.bg, text: cls.text },
+        checked: form.modules.includes(m.moduleId),
+        onToggle: () =>
+          form.modules.includes(m.moduleId) ? removeModule(m.moduleId) : addModule(m.moduleId),
+      };
+    }),
   ];
 
   async function save() {
@@ -291,52 +288,62 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
             />
           </div>
 
+          <div className="grid gap-2">
+            <Label htmlFor="role">Role</Label>
+            <select
+              id="role"
+              value={form.role}
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              disabled={rolesLoading || (roles?.length ?? 0) === 0}
+              className={SELECT_CLASSNAME}
+            >
+              <option value="" disabled>
+                {rolesLoading
+                  ? 'Loading roles…'
+                  : (roles?.length ?? 0) === 0
+                    ? 'No roles configured'
+                    : 'Choose a role…'}
+              </option>
+              {isUnmappedRole ? <option value={form.role}>⚠ {form.role} (unmapped)</option> : null}
+              {roles?.map((r) => (
+                <option key={r.roleId} value={r.roleId}>
+                  {r.displayName}
+                </option>
+              ))}
+            </select>
+            {isUnmappedRole ? (
+              <p className="text-muted-foreground text-xs">
+                This role is not in the configured list. Pick a valid role to update.
+              </p>
+            ) : (roles?.length ?? 0) === 0 && !rolesLoading ? (
+              <p className="text-muted-foreground text-xs">
+                Add roles in Admin → Roles before assigning.
+              </p>
+            ) : null}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="role">Role</Label>
+              <Label htmlFor="status">Status</Label>
               <select
-                id="role"
-                value={form.role}
-                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                disabled={rolesLoading || (roles?.length ?? 0) === 0}
+                id="status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as CycleStatus)}
                 className={SELECT_CLASSNAME}
               >
-                <option value="" disabled>
-                  {rolesLoading
-                    ? 'Loading roles…'
-                    : (roles?.length ?? 0) === 0
-                      ? 'No roles configured'
-                      : 'Choose a role…'}
-                </option>
-                {isUnmappedRole ? (
-                  <option value={form.role}>⚠ {form.role} (unmapped)</option>
-                ) : null}
-                {roles?.map((r) => (
-                  <option key={r.roleId} value={r.roleId}>
-                    {r.displayName}
+                {CYCLE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {cycleStatusLabel(s)}
                   </option>
                 ))}
               </select>
-              {isUnmappedRole ? (
-                <p className="text-muted-foreground text-xs">
-                  This role is not in the configured list. Pick a valid role to update.
-                </p>
-              ) : (roles?.length ?? 0) === 0 && !rolesLoading ? (
-                <p className="text-muted-foreground text-xs">
-                  Add roles in Admin → Roles before assigning.
-                </p>
-              ) : null}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="year">Year</Label>
               <select
                 id="year"
-                value={displayYear}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  const real = isProbationary ? n + 3 : n;
-                  if (isStaffYear(real)) setForm((f) => ({ ...f, year: real }));
-                }}
+                value={dYear}
+                onChange={(e) => setYear(Number(e.target.value) as 1 | 2 | 3)}
                 className={SELECT_CLASSNAME}
               >
                 {[1, 2, 3].map((y) => (
@@ -409,54 +416,34 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
             ) : null}
           </div>
 
-          {/* Unified module list — built-in status flags (Summative year,
-              Probationary, Admin access) sit alongside admin-defined
-              custom modules (Mentor, Mentee, ILT, …) so the admin sees one
-              picker, not a fragmented row of checkboxes plus a separate
-              custom-modules list. "Active" is intentionally not here —
-              the Deactivate/Activate button in the dialog footer owns
-              that state to avoid two controls fighting over the same
-              field. */}
+          {/* Module Access — Admin Console Access + admin-defined modules,
+              each a toggle with its colored chip, mirroring the table's
+              Module Access popover. Cycle status lives in the Status field. */}
           <div className="grid gap-2">
-            <Label>Modules</Label>
+            <Label>Module Access</Label>
             <p className="text-muted-foreground -mt-1 text-xs">
-              Tracks and status flags for this staff member. Toggle on or off; chips show on the
-              staff dashboard where applicable.
+              Toggle admin-console access and the modules this staff member can see.
             </p>
             <ul className="border-border bg-background divide-border divide-y overflow-hidden rounded-md border">
-              {moduleRows.map((row) => {
-                const palette = MODULE_COLOR_CLASSES[row.color];
-                return (
-                  <li key={row.id}>
-                    <label
-                      className={`flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition-colors ${
-                        row.checked ? 'bg-muted/40' : 'hover:bg-muted/30'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={row.checked}
-                        onChange={row.onToggle}
-                        className="h-4 w-4"
-                      />
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${palette.bg} ${palette.text}`}
-                      >
-                        {row.name}
-                      </span>
-                      {row.description ? (
-                        <span className="text-muted-foreground truncate text-xs">
-                          {row.description}
-                        </span>
-                      ) : null}
-                    </label>
-                  </li>
-                );
-              })}
+              {accessRows.map((row) => (
+                <li key={row.id}>
+                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm">
+                    <PillChip color={row.color}>{row.name}</PillChip>
+                    <span className="text-muted-foreground flex-1 truncate text-xs">
+                      {row.description}
+                    </span>
+                    <Switch
+                      checked={row.checked}
+                      onCheckedChange={row.onToggle}
+                      aria-label={row.name}
+                    />
+                  </label>
+                </li>
+              ))}
             </ul>
             {modules.length === 0 && !modulesLoading ? (
               <p className="text-muted-foreground text-xs">
-                No custom modules configured yet. Add them in Admin → Modules to extend this list.
+                No modules configured yet. Add them in Admin → Modules to extend this list.
               </p>
             ) : null}
             {/* Surface any unmapped module IDs from staff.modules that don't
@@ -494,8 +481,8 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
               type="button"
               className="mr-auto"
             >
-              <Trash2 />
-              {form.isActive ? 'Deactivate' : 'Reactivate'}
+              <Archive />
+              {form.isActive ? 'Archive' : 'Restore'}
             </Button>
           ) : null}
           <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
