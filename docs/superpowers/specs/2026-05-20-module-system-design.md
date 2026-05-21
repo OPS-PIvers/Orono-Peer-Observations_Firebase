@@ -141,14 +141,37 @@ A generic renderer walks `module.sections` in order and renders each by type:
   each with title, description, optional due date, and a **Mark done** control
   that writes/deletes `/staff/{email}/moduleProgress/{itemId}`.
 
-Uses the existing admin/page primitives: `PageHeader` (light variant), `Card`,
-`EmptyState`, `Badge`.
+**Chrome:** this is a staff-facing content page, so it follows the
+staff-facing convention — `PageHeader variant="plain"` (the same treatment
+`MyRubricPage` uses), NOT the admin `light` variant + "Admin" breadcrumb. The
+module's `displayName` is the title and its `description` the subtitle. It
+reuses the shared primitives that the modernization introduced (`Card`,
+`CardHeader`/`Title`/`Content`, `EmptyState`, `Badge`) for section surfaces and
+status, so it stays visually consistent with the rest of the app without
+adopting admin-only chrome.
 
 ## Admin module builder
 
 Extends the existing Modules admin area
-(`apps/web/src/admin/modules/ModulesPage.tsx`). The module edit dialog/screen
-grows:
+(`apps/web/src/admin/modules/ModulesPage.tsx`), which already conforms to the
+modernized admin console (light `PageHeader` + breadcrumb, `AdminDataView`
+table, `Badge` status chips, `Card` surfaces, the standardized `Dialog` with a
+sticky `DialogFooter`). All new builder UI MUST follow those same patterns —
+see `docs/superpowers/specs/2026-05-20-admin-console-ui-modernization-design.md`
+— so there is no per-page drift:
+
+- The module **list** stays on `AdminDataView` with the light `PageHeader` +
+  `['Admin', 'Modules']` breadcrumb it has now.
+- The builder uses the standardized `Dialog` (rounded-lg, `--shadow-popover`,
+  sticky `DialogFooter` with secondary/Cancel left and primary right) and the
+  `Button` hierarchy (primary / outline / ghost / destructive).
+- Grouped builder content (each section's editor) is wrapped in the `Card`
+  primitive; status/flags use `Badge` tones; empty section lists use
+  `EmptyState`.
+- Inputs/labels follow the standardized field spacing and the `Label` +
+  helper-text pattern already used in the Module dialog.
+
+The module edit dialog/screen grows:
 
 - Existing fields (display name, id, description, color, active) plus the new
   `hasPage` toggle and an **icon picker** (curated lucide allow-list).
