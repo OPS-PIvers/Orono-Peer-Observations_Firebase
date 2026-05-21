@@ -1,4 +1,11 @@
-import type { Building, ModuleDoc, PillColorName, Role, Staff } from '@ops/shared';
+import {
+  type Building,
+  type ModuleDoc,
+  type PillColorName,
+  type Role,
+  type Staff,
+  staffMatchesAutoEnable,
+} from '@ops/shared';
 import { PillSelect, PillMultiSelect, type PillOption } from '@/admin/_shared/PillEditor';
 import {
   ADMIN_PILL_COLOR,
@@ -172,15 +179,20 @@ export function ModuleAccessPill({
 
   const selected = new Set<string>(assignedModules);
   if (row.hasAdminAccess) selected.add(ADMIN_ACCESS);
+  for (const m of modules) {
+    if (staffMatchesAutoEnable(row, m.autoEnable ?? null)) selected.add(m.moduleId);
+  }
 
   const options: PillOption[] = [
     { value: ADMIN_ACCESS, label: 'Admin Console Access', color: ADMIN_PILL_COLOR },
     ...modules.map((m) => {
       const cls = MODULE_COLOR_CLASSES[m.color];
+      const auto = staffMatchesAutoEnable(row, m.autoEnable ?? null);
       return {
         value: m.moduleId,
         label: m.displayName,
         color: { bg: cls.bg, text: cls.text },
+        ...(auto ? { locked: true } : {}),
       };
     }),
   ];
@@ -190,6 +202,9 @@ export function ModuleAccessPill({
       onPatch(row.email, { hasAdminAccess: !row.hasAdminAccess });
       return;
     }
+    // Rule-matched (auto) modules can't be manually removed — the rule wins.
+    const mod = modules.find((m) => m.moduleId === value);
+    if (mod && staffMatchesAutoEnable(row, mod.autoEnable ?? null)) return;
     const next = assignedModules.includes(value)
       ? assignedModules.filter((m) => m !== value)
       : [...assignedModules, value];
