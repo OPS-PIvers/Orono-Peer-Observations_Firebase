@@ -46,6 +46,7 @@ export function ModulePage() {
     if (claims.isAdmin) return true;
     if (!myStaff) return false;
     return (
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
       (myStaff.modules ?? []).includes(moduleId) ||
       staffMatchesAutoEnable(myStaff, module?.autoEnable ?? null)
     );

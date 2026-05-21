@@ -100,6 +100,7 @@ export function StaffDashboardPage() {
   // Assigned module IDs (max 30 for the `in` query — staff never have that many).
   const assignedModuleIds = useMemo(() => {
     if (!staff) return [];
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
     const ids = new Set(staff.modules ?? []);
     for (const m of modulesData ?? []) {
       if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
@@ -247,6 +248,7 @@ export function StaffDashboardPage() {
     return modulesData
       .filter(
         (m) =>
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
           (staff.modules ?? []).includes(m.moduleId) ||
           staffMatchesAutoEnable(staff, m.autoEnable ?? null),
       )
