@@ -20,6 +20,7 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
+  staffMatchesAutoEnable,
   type AppSettings,
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
@@ -97,7 +98,14 @@ export function StaffDashboardPage() {
   );
 
   // Assigned module IDs (max 30 for the `in` query — staff never have that many).
-  const assignedModuleIds = useMemo(() => (staff?.modules ?? []).slice(0, 30), [staff]);
+  const assignedModuleIds = useMemo(() => {
+    if (!staff) return [];
+    const ids = new Set(staff.modules ?? []);
+    for (const m of modulesData ?? []) {
+      if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
+    }
+    return [...ids].slice(0, 30);
+  }, [staff, modulesData]);
 
   const materialsConstraints = useMemo(
     () =>
@@ -236,9 +244,12 @@ export function StaffDashboardPage() {
 
   const moduleChips = useMemo<ModuleChip[]>(() => {
     if (!staff || !modulesData) return [];
-    return staff.modules
-      .map((id) => modulesData.find((m) => m.moduleId === id))
-      .filter((m): m is ModuleDoc & { id: string } => m != null)
+    return modulesData
+      .filter(
+        (m) =>
+          (staff.modules ?? []).includes(m.moduleId) ||
+          staffMatchesAutoEnable(staff, m.autoEnable ?? null),
+      )
       .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
   }, [staff, modulesData]);
 
