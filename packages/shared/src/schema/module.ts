@@ -57,9 +57,12 @@ export const moduleSectionType = z.enum(MODULE_SECTION_TYPES);
  * their content from the `/modules/{id}/items` subcollection by `sectionId`.
  */
 export const moduleSection = z.object({
+  /** Generated section slug (e.g. "sec-abc12"); not a domain slugId. */
   id: z.string().min(1).max(64),
   type: moduleSectionType,
   title: z.string().trim().max(120).default(''),
+  /** Rich-text HTML (richtext sections only). Intentionally not trimmed —
+   *  the editor manages its own whitespace/markup. */
   body: z.string().default(''),
 });
 export type ModuleSection = z.infer<typeof moduleSection>;

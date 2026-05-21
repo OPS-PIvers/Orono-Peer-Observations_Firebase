@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDate } from './buildingSchedule.js';
 import { email, isoDate, slugId } from './common.js';
 
 /**
@@ -15,7 +16,8 @@ export const moduleItem = z.object({
   itemId: z.string().min(1).max(64),
   moduleId: slugId,
   kind: moduleItemKind,
-  /** Which moduleSection.id this item renders under. */
+  /** Which moduleSection.id this item renders under (a generated section
+   *  slug, not a domain slugId). */
   sectionId: z.string().min(1).max(64),
   order: z.number().int().nonnegative().default(0),
   title: z.string().trim().min(1).max(200),
@@ -25,8 +27,9 @@ export const moduleItem = z.object({
   // material-only:
   description: z.string().trim().max(2000).default(''),
   /** ISO calendar date (yyyy-mm-dd); optional. */
-  dueDate: z.string().trim().optional(),
-  /** Optional deep link for the material's CTA. */
+  dueDate: localDate.optional(),
+  /** Optional deep link for the material's CTA. Kept a plain string (not
+   *  z.url()) because it may be an in-app route like "/book/123". */
   ctaUrl: z.string().trim().optional(),
   createdAt: isoDate,
   updatedAt: isoDate,

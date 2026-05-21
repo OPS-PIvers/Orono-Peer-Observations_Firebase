@@ -69,6 +69,36 @@ describe('moduleItem', () => {
     expect(item.kind).toBe('material');
     expect(item.description).toBe('');
   });
+
+  it('rejects a malformed resource URL', () => {
+    expect(() =>
+      moduleItem.parse({
+        itemId: 'i3',
+        moduleId: 'mentor',
+        kind: 'resource',
+        sectionId: 's2',
+        title: 'Bad link',
+        linkUrl: 'not a url',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects a due date that is not yyyy-mm-dd', () => {
+    expect(() =>
+      moduleItem.parse({
+        itemId: 'i4',
+        moduleId: 'mentor',
+        kind: 'material',
+        sectionId: 's3',
+        title: 'Bad due date',
+        dueDate: '06/01/2026',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).toThrow();
+  });
 });
 
 describe('moduleProgress', () => {
