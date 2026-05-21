@@ -16,11 +16,20 @@ import {
   User,
   Users,
 } from 'lucide-react';
-import { COLLECTIONS, SPECIAL_ROLES, type Role, type Rubric } from '@ops/shared';
+import {
+  COLLECTIONS,
+  SPECIAL_ROLES,
+  type ModuleDoc,
+  type Role,
+  type Rubric,
+  type Staff,
+} from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { moduleIconComponent } from '@/modules/moduleIcons';
 import { prefetch as prefetchRoute, PREFETCH_BY_PATH } from '@/lazyRoutes';
 import { cn } from '@/lib/utils';
 import { ADMIN_NAV_SECTIONS } from '@/admin/adminNav';
@@ -250,6 +259,29 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   // under "My Rubric". Mirrors the role → rubric chain used by MyRubricPage.
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
+
+  const emailLower = user?.email?.toLowerCase() ?? '';
+  const { data: myStaff } = useFirestoreDoc<Staff>(
+    emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '',
+  );
+  const { data: allModules } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
+
+  // Modules this user is assigned that have a staff-facing page → sidebar items.
+  const moduleNavItems: NavItem[] = (() => {
+    if (!myStaff || !allModules) return [];
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older staff docs may lack `modules`
+    const assigned = new Set(myStaff.modules ?? []);
+    return allModules
+      .filter((m) => m.hasPage && m.isActive && assigned.has(m.moduleId))
+      .slice()
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .map((m) => ({
+        icon: moduleIconComponent(m.icon),
+        label: m.displayName,
+        href: `/m/${m.moduleId}`,
+      }));
+  })();
+
   const rubricDomainItems = (() => {
     if (!claims.role || !roles || !rubrics) return [] as NavSubItem[];
     const role = roles.find((r) => r.roleId === claims.role);
@@ -288,6 +320,9 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
     },
     rubricDomainItems,
   );
+  if (moduleNavItems.length > 0) {
+    navConfig.main = [...navConfig.main, ...moduleNavItems];
+  }
   const showLabels = pcExpanded || mobileOpen;
 
   function isSectionVisible(item: NavItem): boolean {
