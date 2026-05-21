@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDate, slugId } from './common.js';
+import { pillColor } from './pillColor.js';
 
 /**
  * /buildings/{buildingId} — building (location) definitions.
@@ -17,6 +18,8 @@ import { isoDate, slugId } from './common.js';
 export const building = z.object({
   buildingId: slugId,
   displayName: z.string().trim().min(1).max(80),
+  /** Pill color for this building in the Staff table. Unset = auto-assigned. */
+  color: pillColor.optional(),
   isActive: z.boolean().default(true),
   createdAt: isoDate,
   updatedAt: isoDate,

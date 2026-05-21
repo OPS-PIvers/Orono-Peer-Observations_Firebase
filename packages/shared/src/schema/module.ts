@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
+import { PILL_COLORS, pillColor, type PillColorName } from './pillColor.js';
 
 /**
  * /modules/{moduleId} — admin-defined participation tracks (e.g. Mentor,
@@ -12,20 +13,11 @@ import { email, isoDate, slugId } from './common.js';
  * scoped display + future unlock surface.
  */
 
-/** Fixed color palette so chips stay on-brand. New colors go here, not in
- *  per-module hex codes. */
-export const MODULE_COLORS = [
-  'blue',
-  'red',
-  'emerald',
-  'amber',
-  'purple',
-  'indigo',
-  'pink',
-  'gray',
-] as const;
-export type ModuleColor = (typeof MODULE_COLORS)[number];
-export const moduleColor = z.enum(MODULE_COLORS);
+/** Module chips use the shared pill-color palette (see pillColor.ts) so colors
+ *  stay consistent and on-brand across modules, roles, buildings, etc. */
+export const MODULE_COLORS = PILL_COLORS;
+export type ModuleColor = PillColorName;
+export const moduleColor = pillColor;
 
 /** Curated lucide icon slugs an admin can pick for a module's sidebar entry.
  *  Keep in sync with apps/web/src/modules/moduleIcons.ts. */

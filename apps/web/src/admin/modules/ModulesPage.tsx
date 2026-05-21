@@ -31,6 +31,7 @@ import {
   type ColumnDef,
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
+import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
 
 function slugify(s: string): string {
   return s
@@ -40,17 +41,10 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export const MODULE_COLOR_CLASSES: Record<ModuleColor, { bg: string; text: string; ring: string }> =
-  {
-    blue: { bg: 'bg-blue-100', text: 'text-blue-800', ring: 'ring-blue-500' },
-    red: { bg: 'bg-red-100', text: 'text-red-800', ring: 'ring-red-500' },
-    emerald: { bg: 'bg-emerald-100', text: 'text-emerald-800', ring: 'ring-emerald-500' },
-    amber: { bg: 'bg-amber-100', text: 'text-amber-800', ring: 'ring-amber-500' },
-    purple: { bg: 'bg-purple-100', text: 'text-purple-800', ring: 'ring-purple-500' },
-    indigo: { bg: 'bg-indigo-100', text: 'text-indigo-800', ring: 'ring-indigo-500' },
-    pink: { bg: 'bg-pink-100', text: 'text-pink-800', ring: 'ring-pink-500' },
-    gray: { bg: 'bg-gray-100', text: 'text-gray-800', ring: 'ring-gray-500' },
-  };
+/** Sourced from the shared pill palette so module chips, the color picker, and
+ *  every other pill use the same (now expanded) color set. Re-exported under
+ *  the old name so existing importers keep working. */
+export const MODULE_COLOR_CLASSES = PILL_COLOR_CLASSES;
 
 type ModuleRow = ModuleDoc & { id: string };
 

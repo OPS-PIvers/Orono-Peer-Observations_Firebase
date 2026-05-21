@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDate, slugId } from './common.js';
+import { pillColor } from './pillColor.js';
 
 /**
  * /roles/{roleId} — role definitions.
@@ -20,6 +21,8 @@ export const role = z.object({
   displayName: z.string().trim().min(1).max(80),
   isSpecialAccess: z.boolean().default(false),
   rubricId: slugId,
+  /** Pill color for this role in the Staff table. Unset = auto-assigned. */
+  color: pillColor.optional(),
   isActive: z.boolean().default(true),
   createdAt: isoDate,
   updatedAt: isoDate,

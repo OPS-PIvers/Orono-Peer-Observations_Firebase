@@ -1,9 +1,10 @@
-import type { ModuleDoc, Role, Staff } from '@ops/shared';
+import type { Building, ModuleDoc, PillColorName, Role, Staff } from '@ops/shared';
 import { PillSelect, PillMultiSelect, type PillOption } from '@/admin/_shared/PillEditor';
 import {
   ADMIN_PILL_COLOR,
   STATUS_PILL_COLOR,
   YEAR_PILL_COLOR,
+  colorClasses,
   paletteFor,
 } from '@/admin/_shared/pillColors';
 import { MODULE_COLOR_CLASSES } from '@/admin/modules/ModulesPage';
@@ -45,7 +46,7 @@ export function RolePill({
   const options: PillOption[] = roles.map((r) => ({
     value: r.roleId,
     label: r.displayName,
-    color: paletteFor(r.roleId),
+    color: colorClasses(r.color) ?? paletteFor(r.roleId),
   }));
   if (!known && row.role) options.unshift({ value: row.role, label: `⚠ ${row.role} (unmapped)` });
   return (
@@ -82,13 +83,24 @@ export function StatusPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaf
   );
 }
 
-export function YearPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaff }) {
+export function YearPill({
+  row,
+  onPatch,
+  yearColors,
+}: {
+  row: StaffRow;
+  onPatch: PatchStaff;
+  yearColors?: Partial<Record<1 | 2 | 3, PillColorName | undefined>>;
+}) {
   const current = displayYear(row.year);
-  const options: PillOption[] = [1, 2, 3].map((y) => ({
-    value: String(y),
-    label: String(y),
-    color: YEAR_PILL_COLOR[y as 1 | 2 | 3],
-  }));
+  const options: PillOption[] = [1, 2, 3].map((y) => {
+    const yy = y as 1 | 2 | 3;
+    return {
+      value: String(y),
+      label: String(y),
+      color: colorClasses(yearColors?.[yy]) ?? YEAR_PILL_COLOR[yy],
+    };
+  });
   return (
     <PillSelect
       value={String(current)}
@@ -107,21 +119,29 @@ export function YearPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaff 
 
 export function BuildingsPill({
   row,
-  buildingNames,
+  buildings,
   onPatch,
 }: {
   row: StaffRow;
-  buildingNames: string[];
+  buildings: Pick<Building, 'displayName' | 'color'>[];
   onPatch: PatchStaff;
 }) {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const assigned = row.buildings ?? [];
   const selected = new Set(assigned);
-  const options: PillOption[] = buildingNames.map((n) => ({
-    value: n,
-    label: n,
-    color: paletteFor(n),
-  }));
+  const configuredNames = new Set(buildings.map((b) => b.displayName));
+  const options: PillOption[] = [
+    ...buildings.map((b) => ({
+      value: b.displayName,
+      label: b.displayName,
+      color: colorClasses(b.color) ?? paletteFor(b.displayName),
+    })),
+    // Assigned-but-unconfigured (legacy/unmapped) names still get a chip + a
+    // toggle row so they can be removed.
+    ...assigned
+      .filter((n) => !configuredNames.has(n))
+      .map((n) => ({ value: n, label: n, color: paletteFor(n) })),
+  ];
   function toggle(name: string) {
     const next = selected.has(name) ? assigned.filter((b) => b !== name) : [...assigned, name];
     onPatch(row.email, { buildings: next });

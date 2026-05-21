@@ -1,8 +1,17 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Check, ListChecks, MoreVertical, Plus } from 'lucide-react';
 import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
-import { COLLECTIONS, type Building, type ModuleDoc, type Role, type Staff } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  type AppSettings,
+  type Building,
+  type ModuleDoc,
+  type Role,
+  type Staff,
+} from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
@@ -59,10 +68,14 @@ export function StaffPage() {
     ACTIVE_MODULES_CONSTRAINTS,
   );
 
+  const { data: appSettings } = useFirestoreDoc<AppSettings>(
+    `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
+  );
+
   const roles = useMemo(() => (rolesRaw ?? []).slice().sort(byDisplayName), [rolesRaw]);
   const buildings = useMemo(() => (buildingsRaw ?? []).slice().sort(byDisplayName), [buildingsRaw]);
   const modules = useMemo(() => (modulesRaw ?? []).slice().sort(byDisplayName), [modulesRaw]);
-  const buildingNames = useMemo(() => buildings.map((b) => b.displayName), [buildings]);
+  const yearColors = useMemo(() => appSettings?.yearColors ?? {}, [appSettings]);
 
   const [filters, setFilters] = useState<StaffFilters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<AdminDataViewSort | null>({ key: 'name', direction: 'asc' });
@@ -130,7 +143,7 @@ export function StaffPage() {
         header: 'Buildings',
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
         sortAccessor: (r) => (r.buildings ?? []).join(', '),
-        cell: (r) => <BuildingsPill row={r} buildingNames={buildingNames} onPatch={patchStaff} />,
+        cell: (r) => <BuildingsPill row={r} buildings={buildings} onPatch={patchStaff} />,
       },
       {
         key: 'status',
@@ -144,7 +157,7 @@ export function StaffPage() {
         header: 'Year',
         headClassName: 'w-20',
         sortAccessor: (r) => r.year,
-        cell: (r) => <YearPill row={r} onPatch={patchStaff} />,
+        cell: (r) => <YearPill row={r} onPatch={patchStaff} yearColors={yearColors} />,
       },
       {
         key: 'moduleAccess',
@@ -156,7 +169,7 @@ export function StaffPage() {
         cell: (r) => <ModuleAccessPill row={r} modules={modules} onPatch={patchStaff} />,
       },
     ],
-    [roleLabelByRoleId, roles, buildingNames, modules, patchStaff],
+    [roleLabelByRoleId, roles, buildings, modules, patchStaff, yearColors],
   );
 
   const sortedRows = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { email, isoDate } from './common.js';
 import { staffYear } from './staff.js';
 import { componentId } from './rubric.js';
+import { pillColor } from './pillColor.js';
 
 /**
  * /settings/roleYearMappings/{roleId}_{year} — which components a given
@@ -195,6 +196,9 @@ export const appSettings = z.object({
   signupLink: z.url().nullable().default(null),
   /** Observation scheduling / booking behavior. */
   scheduling: schedulingSettings.default(DEFAULT_SCHEDULING_SETTINGS),
+  /** Pill colors for the Year column in the Staff table (display years 1-3).
+   *  Unset entries fall back to built-in defaults. Set on the Role/Year page. */
+  yearColors: z.object({ 1: pillColor, 2: pillColor, 3: pillColor }).partial().default({}),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });

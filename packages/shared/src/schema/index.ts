@@ -13,6 +13,7 @@
  */
 
 export * from './common.js';
+export * from './pillColor.js';
 export * from './staff.js';
 export * from './role.js';
 export * from './building.js';
