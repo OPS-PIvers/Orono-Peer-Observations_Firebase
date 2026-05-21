@@ -9,6 +9,9 @@ export interface PillOption {
   value: string;
   label: string;
   color?: PillColor;
+  /** Forced-on by a rule (e.g. module auto-enable): rendered checked + disabled
+   *  with an "Auto" tag; toggling is suppressed by the caller. */
+  locked?: boolean;
 }
 
 /** A colored chip. Presentational only. */
@@ -185,10 +188,15 @@ function ToggleRow({
   const id = useId();
   return (
     <div className="hover:bg-accent flex items-center justify-between gap-3 rounded-md px-2 py-1.5">
-      <label htmlFor={id} className="cursor-pointer">
+      <label htmlFor={id} className="flex cursor-pointer items-center gap-2">
         <PillChip color={option.color}>{option.label}</PillChip>
+        {option.locked ? (
+          <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+            Auto
+          </span>
+        ) : null}
       </label>
-      <Switch id={id} checked={checked} onCheckedChange={onToggle} />
+      <Switch id={id} checked={checked} onCheckedChange={onToggle} disabled={option.locked} />
     </div>
   );
 }
