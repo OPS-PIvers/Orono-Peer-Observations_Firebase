@@ -60,6 +60,7 @@ export function ModulesPage() {
   const { data: modules, loading, error } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ModuleRow | null>(null);
+  const [deleting, setDeleting] = useState<ModuleRow | null>(null);
   const [sort, setSort] = useState<AdminDataViewSort | null>({
     key: 'displayName',
     direction: 'asc',
@@ -118,6 +119,12 @@ export function ModulesPage() {
 
   const sorted = useMemo(() => sortRows(modules ?? [], columns, sort), [modules, columns, sort]);
 
+  async function confirmDelete() {
+    if (!deleting) return;
+    await deleteDoc(doc(db, COLLECTIONS.modules, deleting.moduleId));
+    setDeleting(null);
+  }
+
   return (
     <PageHeader
       title="Modules"
@@ -162,6 +169,9 @@ export function ModulesPage() {
               <DropdownMenuItem onSelect={() => void navigate(`/admin/modules/${r.moduleId}`)}>
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(r)}>
+                Delete
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -176,6 +186,26 @@ export function ModulesPage() {
         mode="edit"
         existing={editing}
       />
+
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete module</DialogTitle>
+            <DialogDescription>
+              Permanently delete <strong>{deleting?.displayName}</strong>? Staff currently assigned
+              keep the ID, but the module doc will be gone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)} type="button">
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmDelete()} type="button">
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageHeader>
   );
 }
