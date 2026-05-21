@@ -108,6 +108,14 @@ service cloud.firestore {
     // its `modules` array. Recursive ({path=**}) so the same rule authorizes
     // both direct gets and the dashboard's collectionGroup('items') query.
     // Write: admin only.
+    //
+    // Scope note: the only `items` subcollection today is /modules/{id}/items;
+    // {path=**} is required for collection-group support. Any future `items`
+    // subcollection elsewhere would also match this rule — keep that in mind.
+    // Casing note: staff doc IDs are lowercased emails. This get() keys off
+    // request.auth.token.email, which Google Workspace returns lowercase; if a
+    // token ever carried a mixed-case email the get() would 404 and access
+    // would be (safely) denied via the .get('modules', []) default.
     match /{path=**}/items/{itemId} {
       allow read: if isAdmin()
         || (isFromOronoDomain()
