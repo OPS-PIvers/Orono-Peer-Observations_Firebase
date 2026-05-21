@@ -50,6 +50,7 @@ export interface DashboardViewProps {
   peerEvaluator: { name: string; email: string; role: string } | null;
   onAcknowledge?: (observationId: string) => void;
   acknowledging?: boolean;
+  onCompleteModuleItem?: (moduleId: string, itemId: string) => void;
   /** When true, disable interactive CTAs (Send-a-message, Acknowledge,
    *  external links). Used by the admin preview pane. */
   readOnly?: boolean;
@@ -63,7 +64,14 @@ export interface DashboardViewProps {
 }
 
 export function DashboardView(props: DashboardViewProps): React.ReactElement {
-  const { sections, tasks, quickMaterials, peerEvaluator, readOnly = false } = props;
+  const {
+    sections,
+    tasks,
+    quickMaterials,
+    peerEvaluator,
+    readOnly = false,
+    onCompleteModuleItem,
+  } = props;
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const completed = tasks.filter((t) => t.status === 'done');
@@ -118,6 +126,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       {...(props.acknowledging !== undefined
                         ? { acknowledging: props.acknowledging }
                         : {})}
+                      {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                       readOnly={readOnly}
                     />
                   </section>
@@ -132,6 +141,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                         {...(props.acknowledging !== undefined
                           ? { acknowledging: props.acknowledging }
                           : {})}
+                        {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                         readOnly={readOnly}
                       />
                     ))}
@@ -139,7 +149,14 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                 ) : null}
                 <TaskGroup title="Upcoming" count={restUpcoming.length}>
                   {restUpcoming.length > 0 ? (
-                    restUpcoming.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
+                    restUpcoming.map((t) => (
+                      <TaskRow
+                        key={t.id}
+                        task={t}
+                        {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                        readOnly={readOnly}
+                      />
+                    ))
                   ) : (
                     <p className="empty-note">Nothing else scheduled.</p>
                   )}
@@ -170,6 +187,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       {...(props.acknowledging !== undefined
                         ? { acknowledging: props.acknowledging }
                         : {})}
+                      {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                       readOnly={readOnly}
                     />
                   ))
@@ -182,7 +200,14 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'upcoming' ? (
               <TaskGroup title="Upcoming" count={upcoming.length}>
                 {upcoming.length > 0 ? (
-                  upcoming.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
+                  upcoming.map((t) => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                      readOnly={readOnly}
+                    />
+                  ))
                 ) : (
                   <p className="empty-note">No upcoming checkpoints.</p>
                 )}
@@ -473,6 +498,7 @@ function TaskRow({
   featured,
   onAcknowledge,
   acknowledging,
+  onCompleteModuleItem,
   readOnly,
 }: {
   task: CheckpointWithStatus;
@@ -480,6 +506,7 @@ function TaskRow({
   featured?: boolean;
   onAcknowledge?: (observationId: string) => void;
   acknowledging?: boolean;
+  onCompleteModuleItem?: (moduleId: string, itemId: string) => void;
   readOnly?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -543,6 +570,14 @@ function TaskRow({
                 disabled={acknowledging}
               >
                 {acknowledging ? 'Acknowledging…' : task.cta}
+              </button>
+            ) : task.moduleItemId && task.moduleId && onCompleteModuleItem && !readOnly ? (
+              <button
+                type="button"
+                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                onClick={() => onCompleteModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
+              >
+                Mark done
               </button>
             ) : task.ctaUrl && !readOnly ? (
               <a

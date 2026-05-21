@@ -1,6 +1,17 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { doc, limit, orderBy, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import {
+  collectionGroup,
+  doc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
@@ -8,11 +19,14 @@ import {
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  STAFF_SUBCOLLECTIONS,
   type AppSettings,
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
   type ModuleDoc,
+  type ModuleItem,
+  type ModuleProgress,
   type Observation,
   type ObservationWindow,
   type Role,
@@ -33,6 +47,7 @@ import {
   deriveCheckpoints,
   extractFirstName,
 } from './deriveCheckpoints';
+import { deriveModuleTasks } from './deriveModuleTasks';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -76,6 +91,37 @@ export function StaffDashboardPage() {
 
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
+
+  const { data: moduleProgress } = useFirestoreCollection<ModuleProgress>(
+    emailLower ? `${COLLECTIONS.staff}/${emailLower}/${STAFF_SUBCOLLECTIONS.moduleProgress}` : '',
+  );
+
+  // Assigned module IDs (max 30 for the `in` query — staff never have that many).
+  const assignedModuleIds = useMemo(() => (staff?.modules ?? []).slice(0, 30), [staff]);
+
+  const materialsConstraints = useMemo(
+    () =>
+      assignedModuleIds.length > 0
+        ? [where('kind', '==', 'material'), where('moduleId', 'in', assignedModuleIds)]
+        : null,
+    [assignedModuleIds],
+  );
+
+  const [moduleMaterials, setModuleMaterials] = useState<ModuleItem[]>([]);
+  useEffect(() => {
+    if (!materialsConstraints) {
+      setModuleMaterials([]);
+      return;
+    }
+    let cancelled = false;
+    void getDocs(query(collectionGroup(db, 'items'), ...materialsConstraints)).then((snap) => {
+      if (cancelled) return;
+      setModuleMaterials(snap.docs.map((d) => d.data() as ModuleItem));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [materialsConstraints]);
 
   const finalizedConstraints = useMemo(
     () =>
@@ -157,6 +203,13 @@ export function StaffDashboardPage() {
     hasInstructionalRound,
   ]);
 
+  const moduleTasks = useMemo(() => {
+    const done = new Set((moduleProgress ?? []).map((p) => p.itemId));
+    return deriveModuleTasks({ materials: moduleMaterials, doneItemIds: done });
+  }, [moduleMaterials, moduleProgress]);
+
+  const allTasks = useMemo(() => [...tasks, ...moduleTasks], [tasks, moduleTasks]);
+
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
@@ -228,11 +281,26 @@ export function StaffDashboardPage() {
       cycleYearLabel={currentSchoolYearLabel()}
       cycleCloseLabel="May 15"
       sections={{ ...DEFAULT_SECTIONS, ...config?.sections }}
-      tasks={tasks}
+      tasks={allTasks}
       quickMaterials={quick?.items ?? []}
       peerEvaluator={peerEvaluator}
       onAcknowledge={(id) => ackMutation.mutate(id)}
       acknowledging={ackMutation.isPending}
+      onCompleteModuleItem={(moduleId, itemId) => {
+        const ref = doc(
+          db,
+          COLLECTIONS.staff,
+          emailLower,
+          STAFF_SUBCOLLECTIONS.moduleProgress,
+          itemId,
+        );
+        void setDoc(ref, {
+          itemId,
+          moduleId,
+          status: 'done',
+          completedAt: serverTimestamp(),
+        });
+      }}
       roleDisplayName={roleDisplayName}
       buildingNames={staff.buildings}
       moduleChips={moduleChips}

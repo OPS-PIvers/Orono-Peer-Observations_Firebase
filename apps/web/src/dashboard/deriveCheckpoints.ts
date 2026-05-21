@@ -29,9 +29,9 @@ export type CheckpointStatus = 'done' | 'inprogress' | 'soon' | 'upcoming';
 export interface CheckpointWithStatus {
   /** Stable id used as React key and for the timeline. */
   id: string;
-  /** Which built-in type generated this entry — surfaces to the type chip
-   *  color and to admins reading logs. */
-  key: CheckpointTypeKey;
+  /** Which built-in type generated this entry, or 'module' for a module
+   *  material surfaced from an assigned module. */
+  key: CheckpointTypeKey | 'module';
   /** Visual chip variant (drives `.task__type-chip--<x>` class). */
   type: CheckpointVisualType;
   /** Small uppercase label inside the chip. */
@@ -60,6 +60,11 @@ export interface CheckpointWithStatus {
   percentLabel: string;
   /** Optional Acknowledge action — present only on the acknowledge card. */
   ackObservationId?: string;
+  /** Set for module-material tasks; identifies the /modules/{id}/items doc so
+   *  the dashboard's Mark-done writes the right moduleProgress record. */
+  moduleItemId?: string;
+  /** moduleId for a module-material task (used by the Mark-done write). */
+  moduleId?: string;
 }
 
 // ─── Built-in defaults per checkpoint type ───────────────────────────────────
