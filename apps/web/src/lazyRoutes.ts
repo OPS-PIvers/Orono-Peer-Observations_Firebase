@@ -15,6 +15,8 @@ const importers = {
   StaffDashboardPage: () => import('@/dashboard/StaffDashboardPage'),
   DashboardSettingsPage: () => import('@/admin/dashboard/DashboardSettingsPage'),
   ModulesPage: () => import('@/admin/modules/ModulesPage'),
+  ModulePage: () => import('@/modules/ModulePage'),
+  ModuleBuilderPage: () => import('@/admin/modules/ModuleBuilderPage'),
   MyRubricPage: () => import('@/routes/MyRubricPage'),
   MyStaffPage: () => import('@/routes/MyStaffPage'),
   ProfilePage: () => import('@/routes/ProfilePage'),
@@ -94,6 +96,12 @@ export const AdminLayout = lazy(() =>
 export const StaffPage = lazy(() => importers.StaffPage().then((m) => ({ default: m.StaffPage })));
 export const ModulesPage = lazy(() =>
   importers.ModulesPage().then((m) => ({ default: m.ModulesPage })),
+);
+export const ModulePage = lazy(() =>
+  importers.ModulePage().then((m) => ({ default: m.ModulePage })),
+);
+export const ModuleBuilderPage = lazy(() =>
+  importers.ModuleBuilderPage().then((m) => ({ default: m.ModuleBuilderPage })),
 );
 export const RolesPage = lazy(() => importers.RolesPage().then((m) => ({ default: m.RolesPage })));
 export const BuildingsPage = lazy(() =>

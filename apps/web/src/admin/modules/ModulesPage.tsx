@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, MODULE_COLORS, type ModuleColor, type ModuleDoc } from '@ops/shared';
@@ -54,6 +55,7 @@ export const MODULE_COLOR_CLASSES: Record<ModuleColor, { bg: string; text: strin
 type ModuleRow = ModuleDoc & { id: string };
 
 export function ModulesPage() {
+  const navigate = useNavigate();
   const { data: modules, loading, error } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ModuleRow | null>(null);
@@ -139,7 +141,7 @@ export function ModulesPage() {
         rows={loading && !modules ? null : sorted}
         loading={loading}
         rowKey={(r) => r.id}
-        onRowClick={(r) => setEditing(r)}
+        onRowClick={(r) => void navigate(`/admin/modules/${r.moduleId}`)}
         empty="No modules yet. Add one to get started."
         sort={sort}
         onSortChange={setSort}
@@ -156,7 +158,9 @@ export function ModulesPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setEditing(r)}>Edit</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void navigate(`/admin/modules/${r.moduleId}`)}>
+                Edit
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}

@@ -90,6 +90,7 @@ export function App() {
               <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
               <Route path="/book/:windowId" element={<L.BookingPage />} />
               <Route path="/oauth/google-calendar/callback" element={<L.CalendarCallbackPage />} />
+              <Route path="/m/:moduleId" element={<L.ModulePage />} />
             </Route>
 
             {/* Special access (PE + Full Access) */}
@@ -113,6 +114,7 @@ export function App() {
                 <Route path="staff" element={<L.StaffPage />} />
                 <Route path="roles" element={<L.RolesPage />} />
                 <Route path="modules" element={<L.ModulesPage />} />
+                <Route path="modules/:moduleId" element={<L.ModuleBuilderPage />} />
                 <Route path="buildings" element={<L.BuildingsPage />} />
                 <Route path="buildings/:buildingId/schedule" element={<L.BuildingSchedulePage />} />
                 <Route path="signup-fields" element={<L.SignupFieldsPage />} />
