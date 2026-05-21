@@ -1,10 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Check, MoreVertical, Pencil, Plus } from 'lucide-react';
+import { Check, ListChecks, MoreVertical, Plus } from 'lucide-react';
 import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { COLLECTIONS, type Building, type ModuleDoc, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -14,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { yearLabel } from '@/utils/staffFormatting';
 import {
   AdminDataView,
   type AdminDataViewSort,
@@ -26,12 +24,12 @@ import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterB
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
 import {
-  BuildingsCell,
-  PermissionsCell,
-  PermissionsChips,
-  RoleCell,
-  StatusCell,
-  YearCell,
+  BuildingsPill,
+  ModuleAccessPill,
+  NameEmailCell,
+  RolePill,
+  StatusPill,
+  YearPill,
   type PatchStaff,
 } from './StaffInlineEditors';
 
@@ -70,7 +68,7 @@ export function StaffPage() {
   const [sort, setSort] = useState<AdminDataViewSort | null>({ key: 'name', direction: 'asc' });
   const [editing, setEditing] = useState<StaffRow | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
 
@@ -107,7 +105,7 @@ export function StaffPage() {
         if (!overlap) return false;
       }
       if (filters.status === 'active' && !s.isActive) return false;
-      if (filters.status === 'inactive' && s.isActive) return false;
+      if (filters.status === 'archived' && s.isActive) return false;
       return true;
     });
   }, [staff, filters]);
@@ -117,71 +115,45 @@ export function StaffPage() {
       {
         key: 'name',
         header: 'Name',
-        cellClassName: 'font-medium',
         sortAccessor: (r) => r.name,
-        cell: (r) => r.name,
+        cell: (r) => <NameEmailCell row={r} />,
         mobile: { primary: true },
-      },
-      {
-        key: 'email',
-        header: 'Email',
-        cellClassName: 'text-muted-foreground',
-        sortAccessor: (r) => r.email,
-        cell: (r) => r.email,
       },
       {
         key: 'role',
         header: 'Role',
         sortAccessor: (r) => roleLabelByRoleId.get(r.role) ?? r.role,
-        cell: (r) => roleLabelByRoleId.get(r.role) ?? r.role,
-        editCell: (r) => <RoleCell row={r} roles={roles} onPatch={patchStaff} />,
+        cell: (r) => <RolePill row={r} roles={roles} onPatch={patchStaff} />,
+      },
+      {
+        key: 'buildings',
+        header: 'Buildings',
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+        sortAccessor: (r) => (r.buildings ?? []).join(', '),
+        cell: (r) => <BuildingsPill row={r} buildingNames={buildingNames} onPatch={patchStaff} />,
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        headClassName: 'w-36',
+        sortAccessor: (r) => (r.summativeYear ? 1 : 0),
+        cell: (r) => <StatusPill row={r} onPatch={patchStaff} />,
       },
       {
         key: 'year',
         header: 'Year',
         headClassName: 'w-20',
         sortAccessor: (r) => r.year,
-        cell: (r) => yearLabel(r.year),
-        editCell: (r) => <YearCell row={r} onPatch={patchStaff} />,
+        cell: (r) => <YearPill row={r} onPatch={patchStaff} />,
       },
       {
-        key: 'buildings',
-        header: 'Buildings',
-        sortAccessor: (r) => r.buildings.join(', '),
-        cell: (r) =>
-          r.buildings.length > 0 ? (
-            r.buildings.join(', ')
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-        editCell: (r) => (
-          <BuildingsCell row={r} buildingNames={buildingNames} onPatch={patchStaff} />
-        ),
-      },
-      {
-        key: 'permissions',
-        header: 'Permissions',
+        key: 'moduleAccess',
+        header: 'Module Access',
         sortAccessor: (r) =>
           (r.hasAdminAccess ? 1 : 0) +
-          (r.summativeYear ? 1 : 0) +
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults
           (r.modules ?? []).length,
-        cell: (r) => <PermissionsChips row={r} modules={modules} />,
-        editCell: (r) => <PermissionsCell row={r} modules={modules} onPatch={patchStaff} />,
-      },
-      {
-        key: 'status',
-        header: 'Status',
-        headClassName: 'w-24',
-        sortAccessor: (r) => (r.isActive ? 1 : 0),
-        cell: (r) =>
-          r.isActive ? (
-            <Badge tone="active">Active</Badge>
-          ) : (
-            <Badge tone="inactive">Inactive</Badge>
-          ),
-        editCell: (r) => <StatusCell row={r} onPatch={patchStaff} />,
-        mobile: { footer: true },
+        cell: (r) => <ModuleAccessPill row={r} modules={modules} onPatch={patchStaff} />,
       },
     ],
     [roleLabelByRoleId, roles, buildingNames, modules, patchStaff],
@@ -228,14 +200,14 @@ export function StaffPage() {
       actions={
         <div className="flex items-center gap-2">
           <Button
-            variant={editMode ? 'default' : 'outline'}
+            variant={selectMode ? 'default' : 'outline'}
             onClick={() => {
-              setEditMode((m) => !m);
+              setSelectMode((m) => !m);
               setSelected(new Set());
             }}
           >
-            {editMode ? <Check /> : <Pencil />}
-            {editMode ? 'Done' : 'Edit'}
+            {selectMode ? <Check /> : <ListChecks />}
+            {selectMode ? 'Done' : 'Select'}
           </Button>
           <Button onClick={() => setShowCreate(true)}>
             <Plus />
@@ -266,14 +238,15 @@ export function StaffPage() {
           rows={loading && !staff ? null : sortedRows}
           loading={loading}
           rowKey={(r) => r.email}
-          editing={editMode}
           empty={filters.search ? 'No staff match that search.' : 'No staff yet.'}
-          {...(editMode
+          {...(selectMode
             ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
             : { onRowClick: (r: StaffRow) => setEditing(r) })}
           sort={sort}
           onSortChange={setSort}
-          rowActions={(r) => <RowActions row={r} onEdit={() => setEditing(r)} />}
+          rowActions={(r) => (
+            <RowActions row={r} onEdit={() => setEditing(r)} onPatch={patchStaff} />
+          )}
         />
       </div>
 
@@ -300,7 +273,15 @@ export function StaffPage() {
   );
 }
 
-function RowActions({ row, onEdit }: { row: StaffRow; onEdit: () => void }) {
+function RowActions({
+  row,
+  onEdit,
+  onPatch,
+}: {
+  row: StaffRow;
+  onEdit: () => void;
+  onPatch: PatchStaff;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -314,7 +295,7 @@ function RowActions({ row, onEdit }: { row: StaffRow; onEdit: () => void }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onEdit}>Edit</DropdownMenuItem>
+        <DropdownMenuItem onSelect={onEdit}>Edit staff member</DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
             void navigator.clipboard.writeText(row.email);
@@ -323,9 +304,18 @@ function RowActions({ row, onEdit }: { row: StaffRow; onEdit: () => void }) {
           Copy email
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onEdit}>
-          {row.isActive ? 'Deactivate…' : 'Reactivate…'}
-        </DropdownMenuItem>
+        {row.isActive ? (
+          <DropdownMenuItem
+            className="text-destructive"
+            onSelect={() => onPatch(row.email, { isActive: false })}
+          >
+            Archive staff member
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => onPatch(row.email, { isActive: true })}>
+            Restore staff member
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

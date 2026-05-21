@@ -14,7 +14,7 @@ import {
 import { yearLabel } from '@/utils/staffFormatting';
 import { cn } from '@/lib/utils';
 
-export type StatusFilter = 'all' | 'active' | 'inactive';
+export type StatusFilter = 'all' | 'active' | 'archived';
 
 export interface StaffFilters {
   search: string;
@@ -182,25 +182,21 @@ export function StaffFilterBar({ filters, onChange, roles, buildings }: StaffFil
               label="Status"
               count={filters.status !== 'active' ? 1 : 0}
               activeSummary={
-                filters.status === 'all'
-                  ? 'All'
-                  : filters.status === 'inactive'
-                    ? 'Inactive only'
-                    : null
+                filters.status === 'all' ? 'All' : filters.status === 'archived' ? 'Archived' : null
               }
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuLabel>Status</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {(['active', 'inactive', 'all'] as const).map((s) => (
+            {(['active', 'archived', 'all'] as const).map((s) => (
               <DropdownMenuCheckboxItem
                 key={s}
                 checked={filters.status === s}
                 onCheckedChange={() => update('status', s)}
                 onSelect={(e) => e.preventDefault()}
               >
-                {s === 'active' ? 'Active only' : s === 'inactive' ? 'Inactive only' : 'All'}
+                {s === 'active' ? 'Active' : s === 'archived' ? 'Archived' : 'All'}
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuContent>

@@ -174,7 +174,7 @@ export function CreateObservationWindowDialog({
     const q = filters.search.trim().toLowerCase();
     return (staff ?? []).filter((s) => {
       if (filters.status === 'active' && !s.isActive) return false;
-      if (filters.status === 'inactive' && s.isActive) return false;
+      if (filters.status === 'archived' && s.isActive) return false;
       if (filters.roles.size > 0 && !filters.roles.has(s.role)) return false;
       if (filters.years.size > 0 && !filters.years.has(s.year)) return false;
       if (filters.buildings.size > 0 && !s.buildings.some((b) => filters.buildings.has(b)))
