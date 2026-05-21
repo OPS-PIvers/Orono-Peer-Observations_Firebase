@@ -116,6 +116,10 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
     await seed('staff/low1@orono.k12.mn.us', { year: 1, summativeYear: false, modules: [] });
     // probationary staff stored as year 5 (displays as year 2)
     await seed('staff/prob@orono.k12.mn.us', { year: 5, summativeYear: false, modules: [] });
+    // year 2 but LOW cycle — matches the year rule, must NOT match the status rule
+    await seed('staff/y2low@orono.k12.mn.us', { year: 2, summativeYear: false, modules: [] });
+    // year 1 but HIGH cycle — matches the status rule, must NOT match the year rule
+    await seed('staff/y1high@orono.k12.mn.us', { year: 1, summativeYear: true, modules: [] });
   });
 
   it('high-cycle staff reads a status-matched module item (not in their array)', async () => {
@@ -140,6 +144,24 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
   it('non-matching staff is denied a status-only module item', async () => {
     const db = testEnv.authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us')).firestore();
     await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+
+  it('cross-dimension isolation: a year match does not grant a status-rule module', async () => {
+    const db = testEnv
+      .authenticatedContext('y2l', claims.teacher('y2low@orono.k12.mn.us'))
+      .firestore();
+    // year 2 (matches the year2 module) but low cycle — denied the status=high module
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+    await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
+  });
+
+  it('cross-dimension isolation: a status match does not grant a year-rule module', async () => {
+    const db = testEnv
+      .authenticatedContext('y1h', claims.teacher('y1high@orono.k12.mn.us'))
+      .firestore();
+    // high cycle (matches the high-cycle module) but year 1 — denied the year=2 module
+    await assertFails(getDoc(doc(db, 'modules/year2/items/i2')));
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/items/i1')));
   });
 
   it('a matching staff can run the dashboard collectionGroup query for the auto module', async () => {
