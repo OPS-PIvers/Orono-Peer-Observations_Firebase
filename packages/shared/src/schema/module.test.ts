@@ -150,10 +150,16 @@ describe('staffMatchesAutoEnable', () => {
   });
   it('matches on status', () => {
     expect(
-      staffMatchesAutoEnable({ year: 2, summativeYear: true }, { dimension: 'status', value: 'high' }),
+      staffMatchesAutoEnable(
+        { year: 2, summativeYear: true },
+        { dimension: 'status', value: 'high' },
+      ),
     ).toBe(true);
     expect(
-      staffMatchesAutoEnable({ year: 2, summativeYear: false }, { dimension: 'status', value: 'high' }),
+      staffMatchesAutoEnable(
+        { year: 2, summativeYear: false },
+        { dimension: 'status', value: 'high' },
+      ),
     ).toBe(false);
   });
   it('matches probationary on status for year >= 4', () => {

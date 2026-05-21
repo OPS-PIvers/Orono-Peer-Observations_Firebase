@@ -137,12 +137,16 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
   });
 
   it('probationary year-5 staff matches display year 2', async () => {
-    const db = testEnv.authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us')).firestore();
+    const db = testEnv
+      .authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us'))
+      .firestore();
     await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
   });
 
   it('non-matching staff is denied a status-only module item', async () => {
-    const db = testEnv.authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us')).firestore();
+    const db = testEnv
+      .authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us'))
+      .firestore();
     await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
   });
 
