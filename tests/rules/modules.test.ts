@@ -82,6 +82,82 @@ describe('/modules/{id}/items — read gated by assignment, write admin-only', (
   });
 });
 
+describe('/modules/{id}/items — auto-enable grants access by status/year', () => {
+  beforeEach(async () => {
+    // high-cycle module: auto-enables for cycle status 'high'
+    await seed('modules/high-cycle', {
+      moduleId: 'high-cycle',
+      displayName: 'High Cycle',
+      autoEnable: { dimension: 'status', value: 'high' },
+    });
+    await seed('modules/high-cycle/items/i1', {
+      itemId: 'i1',
+      moduleId: 'high-cycle',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'High cycle packet',
+    });
+    // year2 module: auto-enables for display year 2
+    await seed('modules/year2', {
+      moduleId: 'year2',
+      displayName: 'Year 2',
+      autoEnable: { dimension: 'year', value: 2 },
+    });
+    await seed('modules/year2/items/i2', {
+      itemId: 'i2',
+      moduleId: 'year2',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'Year 2 task',
+    });
+    // staff who is high cycle (summative), year 2 — matches both
+    await seed('staff/high2@orono.k12.mn.us', { year: 2, summativeYear: true, modules: [] });
+    // staff who is low cycle, year 1 — matches neither
+    await seed('staff/low1@orono.k12.mn.us', { year: 1, summativeYear: false, modules: [] });
+    // probationary staff stored as year 5 (displays as year 2)
+    await seed('staff/prob@orono.k12.mn.us', { year: 5, summativeYear: false, modules: [] });
+  });
+
+  it('high-cycle staff reads a status-matched module item (not in their array)', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+
+  it('year-2 staff reads a year-matched module item', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
+  });
+
+  it('probationary year-5 staff matches display year 2', async () => {
+    const db = testEnv.authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us')).firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
+  });
+
+  it('non-matching staff is denied a status-only module item', async () => {
+    const db = testEnv.authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us')).firestore();
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+
+  it('a matching staff can run the dashboard collectionGroup query for the auto module', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collectionGroup(db, 'items'),
+          where('kind', '==', 'material'),
+          where('moduleId', 'in', ['high-cycle']),
+        ),
+      ),
+    );
+  });
+});
+
 describe('/staff/{email}/moduleProgress — own progress only', () => {
   beforeEach(async () => {
     await seed('staff/me@orono.k12.mn.us', { modules: ['mentor'] });

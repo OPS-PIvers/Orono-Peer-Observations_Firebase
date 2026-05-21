@@ -51,6 +51,24 @@ service cloud.firestore {
       return isFromOronoDomain() && request.auth.token.email == email;
     }
 
+    // The requesting staff doc (lowercased-email key matches the token email).
+    function staffDocData() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data;
+    }
+
+    // Does the requester satisfy the given module's autoEnable rule? Mirrors
+    // staffMatchesAutoEnable in @ops/shared — keep the two in sync.
+    function matchesModuleAutoEnable(moduleId) {
+      let auto = get(/databases/$(database)/documents/modules/$(moduleId)).data.get('autoEnable', null);
+      let y = staffDocData().get('year', 1);
+      let summ = staffDocData().get('summativeYear', false);
+      let status = y >= 4 ? 'probationary' : (summ ? 'high' : 'low');
+      let dy = y >= 4 ? y - 3 : y;
+      return auto != null
+        && ((auto.dimension == 'status' && auto.value == status)
+            || (auto.dimension == 'year' && auto.value == dy));
+    }
+
     function unchanged(field) {
       // Use .get(field, null) so this works even when the field is absent
       // on either side of the update (e.g., finalizedAt on a Draft).
@@ -119,9 +137,8 @@ service cloud.firestore {
     match /{path=**}/items/{itemId} {
       allow read: if isAdmin()
         || (isFromOronoDomain()
-            && resource.data.moduleId in
-               get(/databases/$(database)/documents/staff/$(request.auth.token.email))
-                 .data.get('modules', []));
+            && (resource.data.moduleId in staffDocData().get('modules', [])
+                || matchesModuleAutoEnable(resource.data.moduleId)));
       allow write: if isAdmin();
     }
 
