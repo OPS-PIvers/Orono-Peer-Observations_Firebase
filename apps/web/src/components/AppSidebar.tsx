@@ -300,6 +300,21 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   // collapse the section even while on a child route).
   const [explicitOpen, setExplicitOpen] = useState<Map<string, boolean>>(new Map());
 
+  // Admin sub-nav is an accordion: one section open at a time so the panel
+  // never needs to scroll. The section containing the current route opens
+  // automatically; the user can still toggle freely from there.
+  const activeAdminSection =
+    ADMIN_NAV_SECTIONS.find((s) =>
+      s.items.some(
+        (it) => location.pathname === it.to || location.pathname.startsWith(it.to + '/'),
+      ),
+    )?.label ?? null;
+  const [openAdminSection, setOpenAdminSection] = useState<string | null>(activeAdminSection);
+
+  useEffect(() => {
+    if (activeAdminSection) setOpenAdminSection(activeAdminSection);
+  }, [activeAdminSection]);
+
   const onCloseMobileRef = useRef(onCloseMobile);
   useLayoutEffect(() => {
     onCloseMobileRef.current = onCloseMobile;
@@ -434,40 +449,59 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
                 {showLabels && <span>Back</span>}
               </button>
               <div className={showLabels ? 'px-2' : 'px-1'}>
-                {ADMIN_NAV_SECTIONS.map((section, sectionIndex) => (
-                  <div key={section.label} className="mb-1.5">
-                    {showLabels ? (
-                      <p className="px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase">
-                        {section.label}
-                      </p>
-                    ) : sectionIndex > 0 ? (
-                      <div className="mx-2 my-1.5 border-t border-white/10" aria-hidden="true" />
-                    ) : null}
-                    <ul className="space-y-0.5">
-                      {section.items.map(({ to, label, icon: Icon }) => (
-                        <li key={to}>
-                          <NavLink
-                            to={to}
-                            end
-                            {...prefetchHandlersFor(to)}
-                            className={({ isActive }) =>
-                              cn(
-                                'flex w-full items-center rounded-md py-2 text-sm transition-colors',
-                                'text-white/70 hover:bg-white/10 hover:text-white',
-                                showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
-                                isActive && 'bg-white/15 text-white',
-                              )
-                            }
-                            title={label}
-                          >
-                            <Icon className="h-5 w-5 shrink-0" />
-                            {showLabels && <span>{label}</span>}
-                          </NavLink>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                {ADMIN_NAV_SECTIONS.map((section, sectionIndex) => {
+                  const sectionOpen = openAdminSection === section.label;
+                  return (
+                    <div key={section.label} className="mb-1.5">
+                      {showLabels ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenAdminSection((prev) =>
+                              prev === section.label ? null : section.label,
+                            )
+                          }
+                          aria-expanded={sectionOpen}
+                          className="flex w-full items-center gap-1 rounded-md px-2 pt-2 pb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase transition-colors hover:text-white/70"
+                        >
+                          <span className="flex-1 text-left">{section.label}</span>
+                          {sectionOpen ? (
+                            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                          )}
+                        </button>
+                      ) : sectionIndex > 0 ? (
+                        <div className="mx-2 my-1.5 border-t border-white/10" aria-hidden="true" />
+                      ) : null}
+                      {(!showLabels || sectionOpen) && (
+                        <ul className="space-y-0.5">
+                          {section.items.map(({ to, label, icon: Icon }) => (
+                            <li key={to}>
+                              <NavLink
+                                to={to}
+                                end
+                                {...prefetchHandlersFor(to)}
+                                className={({ isActive }) =>
+                                  cn(
+                                    'flex w-full items-center rounded-md py-2 text-sm transition-colors',
+                                    'text-white/70 hover:bg-white/10 hover:text-white',
+                                    showLabels ? 'gap-2.5 px-2' : 'justify-center px-0',
+                                    isActive && 'bg-white/15 text-white',
+                                  )
+                                }
+                                title={label}
+                              >
+                                <Icon className="h-5 w-5 shrink-0" />
+                                {showLabels && <span>{label}</span>}
+                              </NavLink>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

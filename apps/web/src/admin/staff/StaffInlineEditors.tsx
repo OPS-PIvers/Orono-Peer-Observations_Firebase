@@ -153,6 +153,7 @@ export function BuildingsPill({
       onToggle={toggle}
       ariaLabel={`Buildings for ${row.name}`}
       menuLabel="Buildings"
+      stack
     />
   );
 }

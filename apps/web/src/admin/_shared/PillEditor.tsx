@@ -115,6 +115,7 @@ export function PillMultiSelect({
   ariaLabel,
   emptyLabel = 'None',
   menuLabel,
+  stack = false,
 }: {
   options: PillOption[];
   selected: ReadonlySet<string>;
@@ -122,6 +123,9 @@ export function PillMultiSelect({
   ariaLabel: string;
   emptyLabel?: string;
   menuLabel?: string;
+  /** Stack the chosen chips vertically instead of wrapping them inline. Keeps
+   *  multi-select columns narrow when values rarely exceed a couple of chips. */
+  stack?: boolean;
 }) {
   const chosen = options.filter((o) => selected.has(o.value));
   return (
@@ -131,7 +135,7 @@ export function PillMultiSelect({
           type="button"
           aria-label={ariaLabel}
           onClick={(e) => e.stopPropagation()}
-          className={cn(TRIGGER, 'flex-wrap')}
+          className={cn(TRIGGER, stack ? 'flex-col items-start gap-0.5' : 'flex-wrap')}
         >
           {chosen.length > 0 ? (
             chosen.map((o) => (
