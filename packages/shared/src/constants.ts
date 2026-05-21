@@ -39,6 +39,16 @@ export const WINDOW_SUBCOLLECTIONS = {
   preferences: 'preferences',
 } as const;
 
+/** Subcollections under /modules/{moduleId}. */
+export const MODULE_SUBCOLLECTIONS = {
+  items: 'items',
+} as const;
+
+/** Subcollections under /staff/{email}. */
+export const STAFF_SUBCOLLECTIONS = {
+  moduleProgress: 'moduleProgress',
+} as const;
+
 /** Observation window lifecycle states. */
 export const OBSERVATION_WINDOW_STATUS = {
   open: 'open',

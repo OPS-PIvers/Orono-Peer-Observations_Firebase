@@ -31,3 +31,4 @@ export * from './auditLog.js';
 export * from './transcriptionJob.js';
 export * from './dashboard.js';
 export * from './module.js';
+export * from './moduleItem.js';
