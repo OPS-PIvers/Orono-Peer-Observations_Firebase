@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
 import { PILL_COLORS, pillColor, type PillColorName } from './pillColor.js';
+import { CYCLE_STATUSES, cycleStatus, displayYear } from '../cycle.js';
+import type { Staff } from './staff.js';
 
 /**
  * /modules/{moduleId} — admin-defined participation tracks (e.g. Mentor,
@@ -60,6 +62,20 @@ export const moduleSection = z.object({
 });
 export type ModuleSection = z.infer<typeof moduleSection>;
 
+/**
+ * Auto-enable rule: a module can automatically apply to every staff member
+ * matching ONE criterion — a cycle status OR a display year (never both, never
+ * multiple values). `null` (the default) means manual assignment only.
+ */
+export const autoEnable = z.discriminatedUnion('dimension', [
+  z.object({ dimension: z.literal('status'), value: z.enum(CYCLE_STATUSES) }),
+  z.object({
+    dimension: z.literal('year'),
+    value: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  }),
+]);
+export type AutoEnable = z.infer<typeof autoEnable>;
+
 export const moduleDoc = z.object({
   moduleId: slugId,
   displayName: z.string().trim().min(1).max(80),
@@ -74,6 +90,9 @@ export const moduleDoc = z.object({
   /** Ordered page layout. Content for resources/materials sections lives in
    *  the items subcollection; rich-text content lives inline on the section. */
   sections: z.array(moduleSection).default([]),
+  /** When set, the module auto-applies to staff matching this single
+   *  criterion, on top of any manual assignments. null = manual-only. */
+  autoEnable: autoEnable.nullable().default(null),
   createdAt: isoDate,
   updatedAt: isoDate,
   updatedBy: email.optional(),
@@ -82,3 +101,19 @@ export type ModuleDoc = z.infer<typeof moduleDoc>;
 
 export const moduleInput = moduleDoc.omit({ createdAt: true, updatedAt: true });
 export type ModuleInput = z.infer<typeof moduleInput>;
+
+/**
+ * Does this staff member satisfy a module's auto-enable rule? Mirrors the
+ * inline cycle math in firestore.rules — keep the two in sync (rules tests
+ * guard the rules side).
+ */
+export function staffMatchesAutoEnable(
+  staff: Pick<Staff, 'year' | 'summativeYear'>,
+  rule: AutoEnable | null | undefined,
+): boolean {
+  if (!rule) return false;
+  if (rule.dimension === 'status') {
+    return cycleStatus(staff.year, staff.summativeYear) === rule.value;
+  }
+  return displayYear(staff.year) === rule.value;
+}

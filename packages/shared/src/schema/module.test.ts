@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moduleDoc, moduleSection } from './module.js';
+import { moduleDoc, moduleSection, autoEnable, staffMatchesAutoEnable } from './module.js';
 import { moduleItem, moduleProgress } from './moduleItem.js';
 
 const now = new Date('2026-05-20T00:00:00Z');
@@ -110,5 +110,69 @@ describe('moduleProgress', () => {
       completedAt: now,
     });
     expect(p.status).toBe('done');
+  });
+});
+
+describe('autoEnable schema', () => {
+  it('parses a status rule', () => {
+    expect(autoEnable.parse({ dimension: 'status', value: 'high' })).toEqual({
+      dimension: 'status',
+      value: 'high',
+    });
+  });
+  it('parses a year rule', () => {
+    expect(autoEnable.parse({ dimension: 'year', value: 2 })).toEqual({
+      dimension: 'year',
+      value: 2,
+    });
+  });
+  it('rejects an unknown status value', () => {
+    expect(() => autoEnable.parse({ dimension: 'status', value: 'medium' })).toThrow();
+  });
+  it('rejects a year outside 1-3', () => {
+    expect(() => autoEnable.parse({ dimension: 'year', value: 4 })).toThrow();
+  });
+  it('defaults moduleDoc.autoEnable to null', () => {
+    const parsed = moduleDoc.parse({
+      moduleId: 'mentor',
+      displayName: 'Mentor',
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect(parsed.autoEnable).toBeNull();
+  });
+});
+
+describe('staffMatchesAutoEnable', () => {
+  it('returns false for a null/undefined rule', () => {
+    expect(staffMatchesAutoEnable({ year: 2, summativeYear: true }, null)).toBe(false);
+    expect(staffMatchesAutoEnable({ year: 2, summativeYear: true }, undefined)).toBe(false);
+  });
+  it('matches on status', () => {
+    expect(
+      staffMatchesAutoEnable({ year: 2, summativeYear: true }, { dimension: 'status', value: 'high' }),
+    ).toBe(true);
+    expect(
+      staffMatchesAutoEnable({ year: 2, summativeYear: false }, { dimension: 'status', value: 'high' }),
+    ).toBe(false);
+  });
+  it('matches probationary on status for year >= 4', () => {
+    expect(
+      staffMatchesAutoEnable(
+        { year: 5, summativeYear: false },
+        { dimension: 'status', value: 'probationary' },
+      ),
+    ).toBe(true);
+  });
+  it('matches on display year, including probationary 4-6 -> 1-3', () => {
+    expect(
+      staffMatchesAutoEnable({ year: 2, summativeYear: false }, { dimension: 'year', value: 2 }),
+    ).toBe(true);
+    expect(
+      staffMatchesAutoEnable({ year: 5, summativeYear: false }, { dimension: 'year', value: 2 }),
+    ).toBe(true);
+    expect(
+      staffMatchesAutoEnable({ year: 1, summativeYear: false }, { dimension: 'year', value: 2 }),
+    ).toBe(false);
   });
 });
