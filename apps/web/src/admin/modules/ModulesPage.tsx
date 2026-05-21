@@ -2,7 +2,14 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, MODULE_COLORS, type ModuleColor, type ModuleDoc } from '@ops/shared';
+import {
+  COLLECTIONS,
+  MODULE_COLORS,
+  type AutoEnable,
+  type ModuleColor,
+  type ModuleDoc,
+} from '@ops/shared';
+import { CYCLE_STATUSES, cycleStatusLabel } from '@/admin/staff/staffCycle';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
@@ -186,6 +193,7 @@ interface ModuleFormState {
   description: string;
   color: ModuleColor;
   isActive: boolean;
+  autoEnable: AutoEnable | null;
 }
 
 const emptyForm: ModuleFormState = {
@@ -194,6 +202,7 @@ const emptyForm: ModuleFormState = {
   description: '',
   color: 'blue',
   isActive: true,
+  autoEnable: null,
 };
 
 function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps) {
@@ -206,6 +215,7 @@ function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps)
         description: existing.description,
         color: existing.color,
         isActive: existing.isActive,
+        autoEnable: existing.autoEnable ?? null,
       }
     : emptyForm;
 
@@ -221,6 +231,7 @@ function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps)
       description: existing.description,
       color: existing.color,
       isActive: existing.isActive,
+      autoEnable: existing.autoEnable ?? null,
     });
     setError(null);
     setConfirmingDelete(false);
@@ -260,6 +271,7 @@ function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps)
           description: form.description.trim(),
           color: form.color,
           isActive: form.isActive,
+          autoEnable: form.autoEnable,
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
@@ -371,6 +383,77 @@ function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps)
               />
               Active
             </label>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Auto-enable</Label>
+            <p className="text-muted-foreground text-xs">
+              Staff matching this rule get the module automatically. You can still add others by
+              hand from the Staff table.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={form.autoEnable?.dimension ?? 'off'}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    autoEnable:
+                      mode === 'status'
+                        ? { dimension: 'status', value: 'high' }
+                        : mode === 'year'
+                          ? { dimension: 'year', value: 1 }
+                          : null,
+                  }));
+                }}
+                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+              >
+                <option value="off">Off (manual only)</option>
+                <option value="status">By status</option>
+                <option value="year">By year</option>
+              </select>
+
+              {form.autoEnable?.dimension === 'status' ? (
+                <select
+                  value={form.autoEnable.value}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      autoEnable: {
+                        dimension: 'status',
+                        value: e.target.value as (typeof CYCLE_STATUSES)[number],
+                      },
+                    }))
+                  }
+                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                >
+                  {CYCLE_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {cycleStatusLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              {form.autoEnable?.dimension === 'year' ? (
+                <select
+                  value={form.autoEnable.value}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      autoEnable: { dimension: 'year', value: Number(e.target.value) as 1 | 2 | 3 },
+                    }))
+                  }
+                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+                >
+                  {[1, 2, 3].map((y) => (
+                    <option key={y} value={y}>
+                      Year {y}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
           </div>
 
           {error ? (
