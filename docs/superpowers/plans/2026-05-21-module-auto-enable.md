@@ -34,6 +34,7 @@
 ## Task 1: Move cycle logic into @ops/shared
 
 **Files:**
+
 - Create: `packages/shared/src/cycle.ts`
 - Create: `packages/shared/src/cycle.test.ts`
 - Modify: `packages/shared/src/index.ts`
@@ -126,6 +127,7 @@ git commit -m "refactor(shared): move cycle status/year logic into @ops/shared"
 ## Task 2: Add autoEnable schema + staffMatchesAutoEnable helper
 
 **Files:**
+
 - Modify: `packages/shared/src/schema/module.ts`
 - Modify: `packages/shared/src/schema/module.test.ts`
 
@@ -173,10 +175,16 @@ describe('staffMatchesAutoEnable', () => {
   });
   it('matches on status', () => {
     expect(
-      staffMatchesAutoEnable({ year: 2, summativeYear: true }, { dimension: 'status', value: 'high' }),
+      staffMatchesAutoEnable(
+        { year: 2, summativeYear: true },
+        { dimension: 'status', value: 'high' },
+      ),
     ).toBe(true);
     expect(
-      staffMatchesAutoEnable({ year: 2, summativeYear: false }, { dimension: 'status', value: 'high' }),
+      staffMatchesAutoEnable(
+        { year: 2, summativeYear: false },
+        { dimension: 'status', value: 'high' },
+      ),
     ).toBe(false);
   });
   it('matches probationary on status for year >= 4', () => {
@@ -286,6 +294,7 @@ git commit -m "feat(shared): module autoEnable schema + staffMatchesAutoEnable h
 ## Task 3: Re-point web staffCycle.ts at shared
 
 **Files:**
+
 - Modify: `apps/web/src/admin/staff/staffCycle.ts`
 
 - [ ] **Step 1: Replace the moved logic with re-exports**
@@ -343,6 +352,7 @@ git commit -m "refactor(web): re-export cycle logic from @ops/shared"
 ## Task 4: Firestore rules — grant item access on auto-enable match
 
 **Files:**
+
 - Modify: `firestore.rules`
 - Modify: `tests/rules/modules.test.ts`
 
@@ -403,12 +413,16 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
   });
 
   it('probationary year-5 staff matches display year 2', async () => {
-    const db = testEnv.authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us')).firestore();
+    const db = testEnv
+      .authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us'))
+      .firestore();
     await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
   });
 
   it('non-matching staff is denied a status-only module item', async () => {
-    const db = testEnv.authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us')).firestore();
+    const db = testEnv
+      .authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us'))
+      .firestore();
     await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
   });
 
@@ -490,6 +504,7 @@ git commit -m "feat(rules): grant module-item access when staff matches autoEnab
 ## Task 5: Auto-enable control in the module dialog
 
 **Files:**
+
 - Modify: `apps/web/src/admin/modules/ModulesPage.tsx`
 
 - [ ] **Step 1: Update imports + form state**
@@ -557,14 +572,14 @@ to include `autoEnable`. The `initial` ternary's truthy branch becomes:
 And the reset block inside `if (open && form.moduleId !== (existing?.moduleId ?? '') && existing)`:
 
 ```ts
-    setForm({
-      displayName: existing.displayName,
-      moduleId: existing.moduleId,
-      description: existing.description,
-      color: existing.color,
-      isActive: existing.isActive,
-      autoEnable: existing.autoEnable ?? null,
-    });
+setForm({
+  displayName: existing.displayName,
+  moduleId: existing.moduleId,
+  description: existing.description,
+  color: existing.color,
+  isActive: existing.isActive,
+  autoEnable: existing.autoEnable ?? null,
+});
 ```
 
 - [ ] **Step 3: Persist autoEnable on save**
@@ -583,76 +598,76 @@ In the dialog body, insert this block immediately after the "Active" checkbox
 block:
 
 ```tsx
-          <div className="grid gap-2">
-            <Label>Auto-enable</Label>
-            <p className="text-muted-foreground text-xs">
-              Staff matching this rule get the module automatically. You can still add others by
-              hand from the Staff table.
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={form.autoEnable?.dimension ?? 'off'}
-                onChange={(e) => {
-                  const mode = e.target.value;
-                  setForm((f) => ({
-                    ...f,
-                    autoEnable:
-                      mode === 'status'
-                        ? { dimension: 'status', value: 'high' }
-                        : mode === 'year'
-                          ? { dimension: 'year', value: 1 }
-                          : null,
-                  }));
-                }}
-                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
-              >
-                <option value="off">Off (manual only)</option>
-                <option value="status">By status</option>
-                <option value="year">By year</option>
-              </select>
+<div className="grid gap-2">
+  <Label>Auto-enable</Label>
+  <p className="text-muted-foreground text-xs">
+    Staff matching this rule get the module automatically. You can still add others by hand from the
+    Staff table.
+  </p>
+  <div className="flex flex-wrap items-center gap-2">
+    <select
+      value={form.autoEnable?.dimension ?? 'off'}
+      onChange={(e) => {
+        const mode = e.target.value;
+        setForm((f) => ({
+          ...f,
+          autoEnable:
+            mode === 'status'
+              ? { dimension: 'status', value: 'high' }
+              : mode === 'year'
+                ? { dimension: 'year', value: 1 }
+                : null,
+        }));
+      }}
+      className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+    >
+      <option value="off">Off (manual only)</option>
+      <option value="status">By status</option>
+      <option value="year">By year</option>
+    </select>
 
-              {form.autoEnable?.dimension === 'status' ? (
-                <select
-                  value={form.autoEnable.value}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      autoEnable: {
-                        dimension: 'status',
-                        value: e.target.value as (typeof CYCLE_STATUSES)[number],
-                      },
-                    }))
-                  }
-                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
-                >
-                  {CYCLE_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {cycleStatusLabel(s)}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
+    {form.autoEnable?.dimension === 'status' ? (
+      <select
+        value={form.autoEnable.value}
+        onChange={(e) =>
+          setForm((f) => ({
+            ...f,
+            autoEnable: {
+              dimension: 'status',
+              value: e.target.value as (typeof CYCLE_STATUSES)[number],
+            },
+          }))
+        }
+        className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      >
+        {CYCLE_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {cycleStatusLabel(s)}
+          </option>
+        ))}
+      </select>
+    ) : null}
 
-              {form.autoEnable?.dimension === 'year' ? (
-                <select
-                  value={form.autoEnable.value}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      autoEnable: { dimension: 'year', value: Number(e.target.value) as 1 | 2 | 3 },
-                    }))
-                  }
-                  className="border-input bg-background h-9 rounded-md border px-2 text-sm"
-                >
-                  {[1, 2, 3].map((y) => (
-                    <option key={y} value={y}>
-                      Year {y}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-          </div>
+    {form.autoEnable?.dimension === 'year' ? (
+      <select
+        value={form.autoEnable.value}
+        onChange={(e) =>
+          setForm((f) => ({
+            ...f,
+            autoEnable: { dimension: 'year', value: Number(e.target.value) as 1 | 2 | 3 },
+          }))
+        }
+        className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      >
+        {[1, 2, 3].map((y) => (
+          <option key={y} value={y}>
+            Year {y}
+          </option>
+        ))}
+      </select>
+    ) : null}
+  </div>
+</div>
 ```
 
 - [ ] **Step 5: Typecheck**
@@ -672,6 +687,7 @@ git commit -m "feat(modules): auto-enable control (by status or year) in module 
 ## Task 6: Locked option support in PillMultiSelect
 
 **Files:**
+
 - Modify: `apps/web/src/admin/_shared/PillEditor.tsx`
 
 - [ ] **Step 1: Add `locked` to PillOption**
@@ -694,19 +710,19 @@ export interface PillOption {
 Replace the `ToggleRow` function body's returned JSX with:
 
 ```tsx
-  return (
-    <div className="hover:bg-accent flex items-center justify-between gap-3 rounded-md px-2 py-1.5">
-      <label htmlFor={id} className="flex cursor-pointer items-center gap-2">
-        <PillChip color={option.color}>{option.label}</PillChip>
-        {option.locked ? (
-          <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
-            Auto
-          </span>
-        ) : null}
-      </label>
-      <Switch id={id} checked={checked} onCheckedChange={onToggle} disabled={option.locked} />
-    </div>
-  );
+return (
+  <div className="hover:bg-accent flex items-center justify-between gap-3 rounded-md px-2 py-1.5">
+    <label htmlFor={id} className="flex cursor-pointer items-center gap-2">
+      <PillChip color={option.color}>{option.label}</PillChip>
+      {option.locked ? (
+        <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+          Auto
+        </span>
+      ) : null}
+    </label>
+    <Switch id={id} checked={checked} onCheckedChange={onToggle} disabled={option.locked} />
+  </div>
+);
 ```
 
 - [ ] **Step 3: Typecheck**
@@ -726,6 +742,7 @@ git commit -m "feat(admin): PillMultiSelect supports locked (auto) options"
 ## Task 7: Auto-match + lock in the Module Access pill
 
 **Files:**
+
 - Modify: `apps/web/src/admin/staff/StaffInlineEditors.tsx`
 
 - [ ] **Step 1: Import the helper**
@@ -814,6 +831,7 @@ git commit -m "feat(staff): show auto-enabled modules as locked in Module Access
 ## Task 8: Effective membership in the sidebar module nav
 
 **Files:**
+
 - Modify: `apps/web/src/components/AppSidebar.tsx`
 
 - [ ] **Step 1: Import the helper**
@@ -838,16 +856,16 @@ import {
 In the `moduleNavItems` IIFE (around line 270), replace:
 
 ```ts
-    const assigned = new Set(myStaff.modules ?? []);
+const assigned = new Set(myStaff.modules ?? []);
 ```
 
 with:
 
 ```ts
-    const assigned = new Set(myStaff.modules ?? []);
-    for (const m of allModules) {
-      if (staffMatchesAutoEnable(myStaff, m.autoEnable ?? null)) assigned.add(m.moduleId);
-    }
+const assigned = new Set(myStaff.modules ?? []);
+for (const m of allModules) {
+  if (staffMatchesAutoEnable(myStaff, m.autoEnable ?? null)) assigned.add(m.moduleId);
+}
 ```
 
 (The `eslint-disable` comment above the original line stays; the `.filter(...hasPage && isActive && assigned.has...)` chain is unchanged.)
@@ -869,6 +887,7 @@ git commit -m "feat(nav): include auto-enabled modules in the sidebar nav"
 ## Task 9: Effective membership in the staff dashboard
 
 **Files:**
+
 - Modify: `apps/web/src/dashboard/StaffDashboardPage.tsx`
 
 - [ ] **Step 1: Import the helper**
@@ -888,20 +907,20 @@ that existing import instead of adding a second statement.)
 Replace the `assignedModuleIds` memo (around line 100):
 
 ```ts
-  const assignedModuleIds = useMemo(() => (staff?.modules ?? []).slice(0, 30), [staff]);
+const assignedModuleIds = useMemo(() => (staff?.modules ?? []).slice(0, 30), [staff]);
 ```
 
 with:
 
 ```ts
-  const assignedModuleIds = useMemo(() => {
-    if (!staff) return [];
-    const ids = new Set(staff.modules ?? []);
-    for (const m of modulesData ?? []) {
-      if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
-    }
-    return [...ids].slice(0, 30);
-  }, [staff, modulesData]);
+const assignedModuleIds = useMemo(() => {
+  if (!staff) return [];
+  const ids = new Set(staff.modules ?? []);
+  for (const m of modulesData ?? []) {
+    if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
+  }
+  return [...ids].slice(0, 30);
+}, [staff, modulesData]);
 ```
 
 - [ ] **Step 3: Union into moduleChips**
@@ -909,16 +928,16 @@ with:
 Replace the `moduleChips` memo (around line 237):
 
 ```ts
-  const moduleChips = useMemo<ModuleChip[]>(() => {
-    if (!staff || !modulesData) return [];
-    return modulesData
-      .filter(
-        (m) =>
-          (staff.modules ?? []).includes(m.moduleId) ||
-          staffMatchesAutoEnable(staff, m.autoEnable ?? null),
-      )
-      .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
-  }, [staff, modulesData]);
+const moduleChips = useMemo<ModuleChip[]>(() => {
+  if (!staff || !modulesData) return [];
+  return modulesData
+    .filter(
+      (m) =>
+        (staff.modules ?? []).includes(m.moduleId) ||
+        staffMatchesAutoEnable(staff, m.autoEnable ?? null),
+    )
+    .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
+}, [staff, modulesData]);
 ```
 
 - [ ] **Step 4: Typecheck**
@@ -938,6 +957,7 @@ git commit -m "feat(dashboard): include auto-enabled modules in chips + material
 ## Task 10: Effective membership in the module page guard
 
 **Files:**
+
 - Modify: `apps/web/src/modules/ModulePage.tsx`
 
 - [ ] **Step 1: Import the helper**
@@ -955,23 +975,23 @@ import { staffMatchesAutoEnable } from '@ops/shared';
 Replace the `isAssigned` memo (lines ~44-47):
 
 ```ts
-  const isAssigned = useMemo(() => {
-    if (claims.isAdmin) return true;
-    return (myStaff?.modules ?? []).includes(moduleId);
-  }, [claims.isAdmin, myStaff, moduleId]);
+const isAssigned = useMemo(() => {
+  if (claims.isAdmin) return true;
+  return (myStaff?.modules ?? []).includes(moduleId);
+}, [claims.isAdmin, myStaff, moduleId]);
 ```
 
 with:
 
 ```ts
-  const isAssigned = useMemo(() => {
-    if (claims.isAdmin) return true;
-    if (!myStaff) return false;
-    return (
-      (myStaff.modules ?? []).includes(moduleId) ||
-      staffMatchesAutoEnable(myStaff, module?.autoEnable ?? null)
-    );
-  }, [claims.isAdmin, myStaff, moduleId, module]);
+const isAssigned = useMemo(() => {
+  if (claims.isAdmin) return true;
+  if (!myStaff) return false;
+  return (
+    (myStaff.modules ?? []).includes(moduleId) ||
+    staffMatchesAutoEnable(myStaff, module?.autoEnable ?? null)
+  );
+}, [claims.isAdmin, myStaff, moduleId, module]);
 ```
 
 - [ ] **Step 3: Typecheck**
@@ -991,6 +1011,7 @@ git commit -m "feat(modules): auto-enabled staff pass the module page guard"
 ## Task 11: Surface Delete in the Modules row menu
 
 **Files:**
+
 - Modify: `apps/web/src/admin/modules/ModulesPage.tsx`
 
 - [ ] **Step 1: Add row-delete state + handler**
@@ -999,17 +1020,17 @@ In `ModulesPage` (the list component), add state next to the existing
 `useState` calls:
 
 ```ts
-  const [deleting, setDeleting] = useState<ModuleRow | null>(null);
+const [deleting, setDeleting] = useState<ModuleRow | null>(null);
 ```
 
 Add a delete handler inside `ModulesPage` (above the `return`):
 
 ```ts
-  async function confirmDelete() {
-    if (!deleting) return;
-    await deleteDoc(doc(db, COLLECTIONS.modules, deleting.moduleId));
-    setDeleting(null);
-  }
+async function confirmDelete() {
+  if (!deleting) return;
+  await deleteDoc(doc(db, COLLECTIONS.modules, deleting.moduleId));
+  setDeleting(null);
+}
 ```
 
 `deleteDoc`, `doc`, `db`, and `COLLECTIONS` are already imported in this file.
@@ -1019,12 +1040,9 @@ Add a delete handler inside `ModulesPage` (above the `return`):
 In the `rowActions` `DropdownMenuContent`, add below the existing "Edit" item:
 
 ```tsx
-              <DropdownMenuItem
-                className="text-destructive"
-                onSelect={() => setDeleting(r)}
-              >
-                Delete
-              </DropdownMenuItem>
+<DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(r)}>
+  Delete
+</DropdownMenuItem>
 ```
 
 - [ ] **Step 3: Add the confirmation dialog**
@@ -1033,25 +1051,25 @@ Add this dialog right after the two existing `<ModuleDialog … />` elements
 (before the closing `</PageHeader>`):
 
 ```tsx
-      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete module</DialogTitle>
-            <DialogDescription>
-              Permanently delete <strong>{deleting?.displayName}</strong>? Staff currently assigned
-              keep the ID, but the module doc will be gone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)} type="button">
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => void confirmDelete()} type="button">
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+<Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Delete module</DialogTitle>
+      <DialogDescription>
+        Permanently delete <strong>{deleting?.displayName}</strong>? Staff currently assigned keep
+        the ID, but the module doc will be gone.
+      </DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setDeleting(null)} type="button">
+        Cancel
+      </Button>
+      <Button variant="destructive" onClick={() => void confirmDelete()} type="button">
+        Delete
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 ```
 
 The `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`,
@@ -1095,6 +1113,7 @@ Expected: 0 errors.
 - [ ] **Step 2: Manual QA in the preview**
 
 Using the dev preview:
+
 1. Modules → create/edit a module → set Auto-enable = By status → High Cycle. Save.
 2. Staff table → Module Access for a High-Cycle staff member shows that module on + "Auto" + the toggle disabled. A Low-Cycle staff member shows it off and toggleable.
 3. Change that staff member's Status pill to Low Cycle → the module's chip drops off their Module Access.
