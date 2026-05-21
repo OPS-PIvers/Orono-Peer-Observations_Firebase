@@ -50,6 +50,14 @@
       ]
     },
     {
+      "collectionGroup": "items",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "moduleId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "observationWindows",
       "queryScope": "COLLECTION",
       "fields": [

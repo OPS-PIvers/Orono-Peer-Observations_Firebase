@@ -74,6 +74,11 @@ service cloud.firestore {
       allow get: if isCurrentUserEmail(email) || hasSpecialAccess();
       allow list: if hasSpecialAccess();
       allow create, update, delete: if isAdmin();
+
+      // Per-staff module completion. Only the owner (or admin) reads/writes.
+      match /moduleProgress/{itemId} {
+        allow read, write: if isCurrentUserEmail(email) || isAdmin();
+      }
     }
 
     // --- /roles, /rubrics ----------------------------------------------------
@@ -91,9 +96,24 @@ service cloud.firestore {
 
     // --- /modules/{moduleId} -------------------------------------------------
     // Admin-defined participation tracks. Read: anyone signed-in from the
-    // domain (clients render module chips). Write: admin only.
+    // domain (clients render module chips + nav). Write: admin only.
     match /modules/{moduleId} {
       allow read: if isFromOronoDomain();
+      allow write: if isAdmin();
+    }
+
+    // --- module items (collection-group rule) --------------------------------
+    // Resource/material content under /modules/{id}/items. Read: admin, OR a
+    // signed-in staff member whose /staff doc lists this item's moduleId in
+    // its `modules` array. Recursive ({path=**}) so the same rule authorizes
+    // both direct gets and the dashboard's collectionGroup('items') query.
+    // Write: admin only.
+    match /{path=**}/items/{itemId} {
+      allow read: if isAdmin()
+        || (isFromOronoDomain()
+            && resource.data.moduleId in
+               get(/databases/$(database)/documents/staff/$(request.auth.token.email))
+                 .data.get('modules', []));
       allow write: if isAdmin();
     }
 
