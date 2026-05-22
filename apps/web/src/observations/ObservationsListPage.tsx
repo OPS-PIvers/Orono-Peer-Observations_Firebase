@@ -45,7 +45,7 @@ export function ObservationsListPage() {
   // In-progress / Finalized / All observations links land on the right view.
   // The enum values are capitalised ("Draft"/"Finalized"), so match the
   // lowercase URL param case-insensitively.
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const statusParam = (searchParams.get('status') ?? '').toLowerCase();
   const statusFilter: StatusFilter =
     statusParam === OBSERVATION_STATUS.draft.toLowerCase()
@@ -53,9 +53,6 @@ export function ObservationsListPage() {
       : statusParam === OBSERVATION_STATUS.finalized.toLowerCase()
         ? OBSERVATION_STATUS.finalized
         : 'all';
-  const setStatusFilter = (next: StatusFilter) => {
-    setSearchParams(next === 'all' ? {} : { status: next.toLowerCase() }, { replace: true });
-  };
   const [search, setSearch] = useState('');
   const [showAllPEs, setShowAllPEs] = useState(false);
 
@@ -76,7 +73,12 @@ export function ObservationsListPage() {
     data: observations,
     loading,
     error,
-  } = useFirestoreCollection<Observation>(COLLECTIONS.observations, constraints);
+  } = useFirestoreCollection<Observation>(COLLECTIONS.observations, constraints, [
+    statusFilter,
+    showAllPEs,
+    isAdmin,
+    user?.email?.toLowerCase() ?? '',
+  ]);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const filtered = useMemo(() => {
@@ -123,15 +125,6 @@ export function ObservationsListPage() {
             className="pl-9"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="border-input bg-background h-11 rounded-md border px-3 text-sm"
-        >
-          <option value="all">All statuses</option>
-          <option value={OBSERVATION_STATUS.draft}>Draft only</option>
-          <option value={OBSERVATION_STATUS.finalized}>Finalized only</option>
-        </select>
         {!isAdmin ? (
           <label className="text-muted-foreground flex items-center gap-2 text-sm">
             <input

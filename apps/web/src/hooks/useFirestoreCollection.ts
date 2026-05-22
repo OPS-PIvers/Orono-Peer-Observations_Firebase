@@ -29,12 +29,16 @@ export interface UseFirestoreCollectionResult<T> {
 export function useFirestoreCollection<T = DocumentData>(
   collectionPath: string,
   constraints: QueryConstraint[] = [],
+  keyParts: readonly (string | number | boolean)[] = [],
 ): UseFirestoreCollectionResult<T> {
   const queryClient = useQueryClient();
   // Stable key so callers can pass `constraints` inline without forcing a
-  // resubscribe per render. Equivalent constraint *types* are treated as
-  // equal — callers needing finer-grained keying should memoize.
-  const constraintsKey = constraints.map((c) => c.type).join('|');
+  // resubscribe per render. Firestore constraints only expose their *type*
+  // (`where`/`orderBy`/…), not their values, so two filters that differ only
+  // by value (e.g. status == "Draft" vs "Finalized") would otherwise collide
+  // on the same cache key and never resubscribe. Callers whose constraint
+  // *values* vary must pass those values via `keyParts` to disambiguate.
+  const constraintsKey = [constraints.map((c) => c.type).join('|'), ...keyParts].join('::');
   const queryKey: QueryKey = ['firestore-collection', collectionPath, constraintsKey];
 
   const cached = queryClient.getQueryData<(T & { id: string })[]>(queryKey);
