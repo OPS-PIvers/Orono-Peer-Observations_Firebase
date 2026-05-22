@@ -105,6 +105,79 @@ export const dashboardCheckpointsConfig = z.object({
 });
 export type DashboardCheckpointsConfig = z.infer<typeof dashboardCheckpointsConfig>;
 
+// ─── Composed step model (replaces per-type checkpoint config) ───────────────
+
+/** Boolean trackable events evaluated against the watched observation. */
+export const BOOLEAN_EVENTS = [
+  'observationCreated',
+  'signupWindowOpened',
+  'signupSlotBooked',
+  'preObsDateSet',
+  'preObsDatePassed',
+  'observationDateSet',
+  'observationDatePassed',
+  'postObsDateSet',
+  'postObsDatePassed',
+  'finalized',
+  'acknowledged',
+] as const;
+export type BooleanEvent = (typeof BOOLEAN_EVENTS)[number];
+
+export const SHOW_WHEN_OPTIONS = [...BOOLEAN_EVENTS, 'always', 'previousStepDone'] as const;
+export type ShowWhen = (typeof SHOW_WHEN_OPTIONS)[number];
+
+export const DONE_WHEN_OPTIONS = [...BOOLEAN_EVENTS, 'never'] as const;
+export type DoneWhen = (typeof DONE_WHEN_OPTIONS)[number];
+
+export const DATE_SOURCES = [
+  'none',
+  'preObsDate',
+  'observationDate',
+  'postObsDate',
+  'finalizedAt',
+  'createdAt',
+  'lastModifiedAt',
+] as const;
+export type DateSource = (typeof DATE_SOURCES)[number];
+
+export const IN_PROGRESS_SOURCES = ['none', 'responseProgress'] as const;
+export type InProgressSource = (typeof IN_PROGRESS_SOURCES)[number];
+
+export const WATCHED_KINDS = ['standard', 'workProduct', 'instructionalRound', 'any'] as const;
+export type WatchedKind = (typeof WATCHED_KINDS)[number];
+
+export const STEP_BUTTON_TARGETS = [
+  'observation',
+  'booking',
+  'acknowledge',
+  'fixedUrl',
+  'none',
+] as const;
+export type StepButtonTarget = (typeof STEP_BUTTON_TARGETS)[number];
+
+export const STEP_CHIP_STYLES = ['form', 'meeting', 'observation', 'review'] as const;
+export type StepChipStyle = (typeof STEP_CHIP_STYLES)[number];
+
+export const dashboardStep = z.object({
+  id: z.string().min(1),
+  enabled: z.boolean().default(true),
+  order: z.number().int().nonnegative().default(0),
+  watchedKind: z.enum(WATCHED_KINDS).default('standard'),
+  chipStyle: z.enum(STEP_CHIP_STYLES).default('meeting'),
+  chipLabel: z.string().trim().max(40).default(''),
+  title: z.string().trim().max(160).default(''),
+  description: z.string().trim().max(400).default(''),
+  buttonLabel: z.string().trim().max(40).default(''),
+  showWhen: z.enum(SHOW_WHEN_OPTIONS).default('always'),
+  doneWhen: z.enum(DONE_WHEN_OPTIONS).default('never'),
+  dateFrom: z.enum(DATE_SOURCES).default('none'),
+  inProgress: z.enum(IN_PROGRESS_SOURCES).default('none'),
+  hideWhenDone: z.boolean().default(false),
+  buttonTarget: z.enum(STEP_BUTTON_TARGETS).default('observation'),
+  buttonUrl: z.string().trim().max(2048).default(''),
+});
+export type DashboardStep = z.infer<typeof dashboardStep>;
+
 export const dashboardConfig = z.object({
   sections: dashboardSectionsConfig.default({
     hero: true,
