@@ -41,11 +41,11 @@ describe('DEFAULT_STEPS', () => {
 
   it('marks meetings/visit done when their date passes', () => {
     const byId = Object.fromEntries(DEFAULT_STEPS.map((s) => [s.id, s]));
-    expect(byId.preObs.doneWhen).toBe('preObsDatePassed');
-    expect(byId.observation.doneWhen).toBe('observationDatePassed');
-    expect(byId.postObs.doneWhen).toBe('postObsDatePassed');
-    expect(byId.acknowledge.doneWhen).toBe('acknowledged');
-    expect(byId.reviewDraft.hideWhenDone).toBe(true);
+    expect(byId['preObs']?.doneWhen).toBe('preObsDatePassed');
+    expect(byId['observation']?.doneWhen).toBe('observationDatePassed');
+    expect(byId['postObs']?.doneWhen).toBe('postObsDatePassed');
+    expect(byId['acknowledge']?.doneWhen).toBe('acknowledged');
+    expect(byId['reviewDraft']?.hideWhenDone).toBe(true);
   });
 });
 
