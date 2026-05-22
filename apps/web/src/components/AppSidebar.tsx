@@ -92,7 +92,7 @@ export function useSidebar() {
 // ─── Nav item builder ────────────────────────────────────────────────────────
 
 const OBS_CHILDREN: NavSubItem[] = [
-  { label: 'Active drafts', href: '/observations?status=draft' },
+  { label: 'In-progress', href: '/observations?status=draft' },
   { label: 'Finalized', href: '/observations?status=finalized' },
   { label: 'All observations', href: '/observations' },
 ];

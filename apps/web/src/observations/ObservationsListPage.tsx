@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { type QueryConstraint, orderBy, where } from 'firebase/firestore';
 import {
@@ -41,7 +41,21 @@ export function ObservationsListPage() {
   const { user, claims } = useAuth();
   const isAdmin = isAdminRole(claims.role);
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // Status comes from the URL (?status=draft|finalized) so the sidebar's
+  // In-progress / Finalized / All observations links land on the right view.
+  // The enum values are capitalised ("Draft"/"Finalized"), so match the
+  // lowercase URL param case-insensitively.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusParam = (searchParams.get('status') ?? '').toLowerCase();
+  const statusFilter: StatusFilter =
+    statusParam === OBSERVATION_STATUS.draft.toLowerCase()
+      ? OBSERVATION_STATUS.draft
+      : statusParam === OBSERVATION_STATUS.finalized.toLowerCase()
+        ? OBSERVATION_STATUS.finalized
+        : 'all';
+  const setStatusFilter = (next: StatusFilter) => {
+    setSearchParams(next === 'all' ? {} : { status: next.toLowerCase() }, { replace: true });
+  };
   const [search, setSearch] = useState('');
   const [showAllPEs, setShowAllPEs] = useState(false);
 
