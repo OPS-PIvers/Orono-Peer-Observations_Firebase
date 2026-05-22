@@ -22,8 +22,9 @@ export function RecentObservationsStrip({ observedEmail }: RecentObservationsStr
   const [expanded, setExpanded] = useState(false);
 
   // Two separate queries: a small preview (limit 5) and an expanded list.
-  // Keep both stable across renders; see the constraintsKey caveat in
-  // `useFirestoreCollection`.
+  // They differ by the limit constraint (distinct type signatures) and both
+  // pass observedEmail as a keyPart, since the hook keys on constraint types
+  // only — see the constraintsKey caveat in `useFirestoreCollection`.
   const previewConstraints = useMemo(
     () => [
       where('observedEmail', '==', observedEmail),
@@ -45,12 +46,14 @@ export function RecentObservationsStrip({ observedEmail }: RecentObservationsStr
   const { data: previewData, loading: previewLoading } = useFirestoreCollection<Observation>(
     COLLECTIONS.observations,
     previewConstraints,
+    [observedEmail],
   );
   // Only mount the second listener when the user clicks "View all" — the
   // useFirestoreCollection hook subscribes immediately on mount.
   const { data: fullData, loading: fullLoading } = useFirestoreCollection<Observation>(
     expanded ? COLLECTIONS.observations : '',
     expanded ? expandedConstraints : [],
+    [observedEmail],
   );
 
   if (previewLoading) {

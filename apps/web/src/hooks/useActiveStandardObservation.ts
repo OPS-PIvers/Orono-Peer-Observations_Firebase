@@ -26,6 +26,9 @@ export function useActiveStandardObservation(observedEmail: string) {
   const { data, loading, error } = useFirestoreCollection<Observation>(
     observedEmail ? COLLECTIONS.observations : '',
     constraints,
+    // Disambiguate by email: the hook keys on constraint types only, so a
+    // different observedEmail would otherwise collide on the same cache key.
+    [observedEmail],
   );
 
   return { observation: data?.[0] ?? null, loading, error };

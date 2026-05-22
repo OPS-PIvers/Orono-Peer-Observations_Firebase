@@ -147,6 +147,7 @@ export function StaffDashboardPage() {
   const { data: finalizedObs } = useFirestoreCollection<Observation>(
     emailLower ? COLLECTIONS.observations : '',
     finalizedConstraints,
+    [emailLower],
   );
 
   const windowConstraints = useMemo(
@@ -162,6 +163,7 @@ export function StaffDashboardPage() {
   const { data: myWindows } = useFirestoreCollection<ObservationWindow>(
     emailLower ? COLLECTIONS.observationWindows : '',
     windowConstraints,
+    [emailLower],
   );
   const openBooking = useMemo(() => {
     for (const w of myWindows ?? []) {

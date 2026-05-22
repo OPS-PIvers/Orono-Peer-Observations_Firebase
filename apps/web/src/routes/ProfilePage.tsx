@@ -179,6 +179,7 @@ export function ProfilePage() {
   const { data: observations } = useFirestoreCollection<Observation>(
     COLLECTIONS.observations,
     obsConstraints,
+    [email],
   );
 
   const myAdmins = useMemo(() => {
