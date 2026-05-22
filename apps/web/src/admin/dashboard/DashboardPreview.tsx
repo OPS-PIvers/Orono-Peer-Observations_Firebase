@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  type DashboardCheckpointsConfig,
-  type DashboardQuickMaterial,
-  type DashboardSectionsConfig,
-} from '@ops/shared';
+import { type DashboardQuickMaterial, type DashboardSectionsConfig, type DashboardStep } from '@ops/shared';
 import { DashboardView } from '@/dashboard/DashboardView';
 import { Eye } from 'lucide-react';
 import {
@@ -29,12 +25,12 @@ import {
 
 export interface DashboardPreviewProps {
   sections: DashboardSectionsConfig;
-  checkpoints: DashboardCheckpointsConfig;
+  steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
 }
 
-export function DashboardPreview({ sections, checkpoints, quickMaterials }: DashboardPreviewProps) {
-  const tasks = useMemo(() => buildSampleCheckpoints(checkpoints), [checkpoints]);
+export function DashboardPreview({ sections, steps, quickMaterials }: DashboardPreviewProps) {
+  const tasks = useMemo(() => buildSampleCheckpoints(steps), [steps]);
 
   return (
     <PreviewFrame>
