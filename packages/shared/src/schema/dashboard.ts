@@ -190,6 +190,7 @@ export const dashboardConfig = z.object({
     peerEvaluatorCard: true,
   }),
   checkpoints: dashboardCheckpointsConfig.default({}),
+  steps: z.array(dashboardStep).default([]),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });
@@ -216,3 +217,155 @@ export const dashboardQuickMaterialsDoc = z.object({
 export type DashboardQuickMaterialsDoc = z.infer<typeof dashboardQuickMaterialsDoc>;
 
 export const DASHBOARD_QUICK_MATERIALS_DOC_ID = 'global';
+
+// ─── Seed steps + legacy migration ───────────────────────────────────────────
+
+/** The 8 built-ins as editable seed steps. Reproduces today's behavior, with
+ *  meetings/visit completing when their date passes (not on finalize). */
+export const DEFAULT_STEPS: DashboardStep[] = [
+  dashboardStep.parse({
+    id: 'signup',
+    order: 0,
+    watchedKind: 'standard',
+    chipStyle: 'meeting',
+    chipLabel: 'Scheduling',
+    title: 'Sign up for an observation window',
+    description:
+      'Pick a window that works for your class. Your peer evaluator confirms within 2 school days.',
+    buttonLabel: 'Choose a window',
+    showWhen: 'signupWindowOpened',
+    doneWhen: 'observationCreated',
+    dateFrom: 'none',
+    buttonTarget: 'booking',
+  }),
+  dashboardStep.parse({
+    id: 'preObs',
+    order: 1,
+    watchedKind: 'standard',
+    chipStyle: 'meeting',
+    chipLabel: 'Meeting',
+    title: 'Pre-observation conversation',
+    description:
+      '20-minute conversation with your peer evaluator. Lesson plan, focus components, context.',
+    buttonLabel: 'View meeting',
+    showWhen: 'observationCreated',
+    doneWhen: 'preObsDatePassed',
+    dateFrom: 'preObsDate',
+    buttonTarget: 'observation',
+  }),
+  dashboardStep.parse({
+    id: 'workProduct',
+    order: 2,
+    watchedKind: 'workProduct',
+    chipStyle: 'form',
+    chipLabel: 'Evidence',
+    title: 'Submit work-product responses',
+    description:
+      'Short prompts about your planning, family communication, and growth. Save and resume any time.',
+    buttonLabel: 'Continue answering',
+    showWhen: 'observationCreated',
+    doneWhen: 'finalized',
+    dateFrom: 'lastModifiedAt',
+    inProgress: 'responseProgress',
+    buttonTarget: 'fixedUrl',
+    buttonUrl: '/my-rubric',
+  }),
+  dashboardStep.parse({
+    id: 'observation',
+    order: 3,
+    watchedKind: 'standard',
+    chipStyle: 'observation',
+    chipLabel: 'Observation',
+    title: 'Classroom observation',
+    description: 'Your peer evaluator joins your room during the window you selected.',
+    buttonLabel: 'View details',
+    showWhen: 'observationCreated',
+    doneWhen: 'observationDatePassed',
+    dateFrom: 'observationDate',
+    buttonTarget: 'observation',
+  }),
+  dashboardStep.parse({
+    id: 'reviewDraft',
+    order: 4,
+    watchedKind: 'any',
+    chipStyle: 'review',
+    chipLabel: 'Review',
+    title: 'Review the draft observation',
+    description: 'Your peer evaluator is drafting your observation. You can view and comment now.',
+    buttonLabel: 'Open draft',
+    showWhen: 'observationCreated',
+    doneWhen: 'finalized',
+    dateFrom: 'lastModifiedAt',
+    hideWhenDone: true,
+    buttonTarget: 'observation',
+  }),
+  dashboardStep.parse({
+    id: 'postObs',
+    order: 5,
+    watchedKind: 'standard',
+    chipStyle: 'meeting',
+    chipLabel: 'Meeting',
+    title: 'Post-observation conversation',
+    description: '30 minutes to talk through proficiency ratings and where to focus next.',
+    buttonLabel: 'View meeting',
+    showWhen: 'observationCreated',
+    doneWhen: 'postObsDatePassed',
+    dateFrom: 'postObsDate',
+    buttonTarget: 'observation',
+  }),
+  dashboardStep.parse({
+    id: 'acknowledge',
+    order: 6,
+    watchedKind: 'standard',
+    chipStyle: 'review',
+    chipLabel: 'Sign-off',
+    title: 'Acknowledge the finalized observation',
+    description: 'Acknowledging stores your sign-off on the finalized observation record.',
+    buttonLabel: 'Acknowledge',
+    showWhen: 'finalized',
+    doneWhen: 'acknowledged',
+    dateFrom: 'finalizedAt',
+    buttonTarget: 'acknowledge',
+  }),
+  dashboardStep.parse({
+    id: 'instructionalRound',
+    order: 7,
+    watchedKind: 'instructionalRound',
+    chipStyle: 'observation',
+    chipLabel: 'Round',
+    title: 'Instructional Round',
+    description: 'Reflective responses for this instructional round.',
+    buttonLabel: 'View details',
+    showWhen: 'observationCreated',
+    doneWhen: 'finalized',
+    dateFrom: 'createdAt',
+    inProgress: 'responseProgress',
+    buttonTarget: 'fixedUrl',
+    buttonUrl: '/my-rubric',
+  }),
+];
+
+/** Merge a legacy per-type checkpoint override onto a seed step by id. */
+export function applyLegacyOverride(
+  seed: DashboardStep,
+  legacy: DashboardCheckpointConfig | undefined,
+): DashboardStep {
+  if (!legacy) return seed;
+  return {
+    ...seed,
+    enabled: legacy.enabled,
+    order: legacy.order,
+    chipLabel: (legacy.typeLabelOverride ?? '').trim() || seed.chipLabel,
+    title: (legacy.titleOverride ?? '').trim() || seed.title,
+    buttonLabel: (legacy.ctaLabelOverride ?? '').trim() || seed.buttonLabel,
+  };
+}
+
+/** Resolve the effective step list from a (possibly legacy) config doc. */
+export function resolveSteps(config: DashboardConfig | null | undefined): DashboardStep[] {
+  if (config?.steps && config.steps.length > 0) return config.steps;
+  const legacy = config?.checkpoints;
+  return DEFAULT_STEPS.map((seed) =>
+    applyLegacyOverride(seed, legacy?.[seed.id as CheckpointTypeKey]),
+  );
+}
