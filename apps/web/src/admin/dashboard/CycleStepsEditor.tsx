@@ -8,153 +8,160 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import {
-  CHECKPOINT_TYPE_KEYS,
-  type CheckpointTypeKey,
-  type DashboardCheckpointConfig,
-  type DashboardCheckpointsConfig,
+  DATE_SOURCES,
+  DONE_WHEN_OPTIONS,
+  IN_PROGRESS_SOURCES,
+  SHOW_WHEN_OPTIONS,
+  STEP_BUTTON_TARGETS,
+  STEP_CHIP_STYLES,
+  WATCHED_KINDS,
+  dashboardStep,
+  type DashboardStep,
 } from '@ops/shared';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import {
-  CHECKPOINT_COPY,
+  BUTTON_TARGET_LABELS,
+  CHIP_STYLE_LABELS,
+  CS_ADD_STEP,
   CS_BLURB,
-  CS_CUSTOMIZE_HIDE,
-  CS_CUSTOMIZE_TOGGLE,
+  CS_DELETE_STEP,
+  CS_EDIT_HIDE,
+  CS_EDIT_TOGGLE,
+  CS_FIELD_BUTTON,
+  CS_FIELD_BUTTON_TARGET,
+  CS_FIELD_BUTTON_URL,
+  CS_FIELD_CHIP,
+  CS_FIELD_CHIP_STYLE,
+  CS_FIELD_DATE,
+  CS_FIELD_DESC,
+  CS_FIELD_DONE,
+  CS_FIELD_HIDE_DONE,
+  CS_FIELD_PROGRESS,
+  CS_FIELD_SHOW,
+  CS_FIELD_TITLE,
+  CS_FIELD_WATCHES,
   CS_HEADING,
-  CS_LABEL_CHIP,
-  CS_LABEL_CTA,
-  CS_LABEL_TITLE,
   CS_PLACEHOLDER_DEFAULT,
   CS_SHOW_LABEL,
+  DATE_SOURCE_LABELS,
+  DONE_WHEN_LABELS,
+  IN_PROGRESS_LABELS,
+  SHOW_WHEN_LABELS,
+  WATCHED_KIND_LABELS,
 } from './copyStrings';
 import { GripHandle, SortableItem } from './SortableItem';
 
 /**
- * Cycle-steps editor. Renders the 8 checkpoint types as a vertical,
- * drag-reorderable list. Each row has:
- *   - drag handle
- *   - phase chip (Schedule / Visit / Reflect / Sign-off)
- *   - plain-English title + description
- *   - a visual "Show this step to staff" switch
- *   - collapsed-by-default "Rename" expander revealing 3 label-override
- *     fields
+ * Step builder. Renders the composed `DashboardStep[]` as a drag-reorderable
+ * list. Each row toggles enable, shows the title, and expands to edit labels
+ * and the logic slots via plain-language dropdowns.
  */
-
-interface Row extends DashboardCheckpointConfig {
-  key: CheckpointTypeKey;
-}
-
-function configToRows(cfg: DashboardCheckpointsConfig | undefined): Row[] {
-  const safe = cfg ?? {};
-  return CHECKPOINT_TYPE_KEYS.map((key, idx) => {
-    const c = safe[key];
-    return {
-      key,
-      enabled: c?.enabled ?? true,
-      order: c?.order ?? idx,
-      typeLabelOverride: c?.typeLabelOverride ?? '',
-      titleOverride: c?.titleOverride ?? '',
-      ctaLabelOverride: c?.ctaLabelOverride ?? '',
-    };
-  }).sort((a, b) => a.order - b.order);
-}
-
-function rowsToConfig(rows: Row[]): DashboardCheckpointsConfig {
-  const out: DashboardCheckpointsConfig = {};
-  rows.forEach((r, idx) => {
-    out[r.key] = {
-      enabled: r.enabled,
-      order: idx,
-      typeLabelOverride: r.typeLabelOverride.trim(),
-      titleOverride: r.titleOverride.trim(),
-      ctaLabelOverride: r.ctaLabelOverride.trim(),
-    };
-  });
-  return out;
-}
 
 export function CycleStepsEditor({
   value,
   onChange,
 }: {
-  value: DashboardCheckpointsConfig;
-  onChange: (next: DashboardCheckpointsConfig) => void;
+  value: DashboardStep[];
+  onChange: (next: DashboardStep[]) => void;
 }) {
-  const rows = configToRows(value);
-  const [expanded, setExpanded] = useState<Set<CheckpointTypeKey>>(new Set());
+  const steps = [...value].sort((a, b) => a.order - b.order);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  function commit(next: Row[]) {
-    onChange(rowsToConfig(next));
+  function commit(next: DashboardStep[]) {
+    onChange(next.map((s, idx) => ({ ...s, order: idx })));
   }
 
-  function updateRow(key: CheckpointTypeKey, patch: Partial<Row>) {
-    commit(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  function updateStep(id: string, patch: Partial<DashboardStep>) {
+    commit(steps.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  function addStep() {
+    const id = `step-${String(Date.now())}`;
+    const created = dashboardStep.parse({
+      id,
+      order: steps.length,
+      title: 'New step',
+      chipLabel: 'Step',
+      showWhen: 'always',
+      doneWhen: 'never',
+      buttonTarget: 'none',
+    });
+    commit([...steps, created]);
+    setExpanded((s) => new Set(s).add(id));
+  }
+
+  function deleteStep(id: string) {
+    commit(steps.filter((s) => s.id !== id));
   }
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
-    const oldIndex = rows.findIndex((r) => r.key === e.active.id);
-    const newIndex = rows.findIndex((r) => r.key === e.over!.id); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const oldIndex = steps.findIndex((s) => s.id === e.active.id);
+    const newIndex = steps.findIndex((s) => s.id === e.over!.id); // eslint-disable-line @typescript-eslint/no-non-null-assertion
     if (oldIndex === -1 || newIndex === -1) return;
-    commit(arrayMove(rows, oldIndex, newIndex));
+    commit(arrayMove(steps, oldIndex, newIndex));
   }
 
-  function toggleExpand(key: CheckpointTypeKey) {
+  function toggleExpand(id: string) {
     setExpanded((s) => {
       const next = new Set(s);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
   return (
     <section>
-      <h3 className="text-foreground mb-1 text-base font-semibold">{CS_HEADING}</h3>
-      <p className="text-muted-foreground mb-4 text-sm">{CS_BLURB}</p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-foreground mb-1 text-base font-semibold">{CS_HEADING}</h3>
+          <p className="text-muted-foreground text-sm">{CS_BLURB}</p>
+        </div>
+        <button
+          type="button"
+          onClick={addStep}
+          className="bg-ops-blue inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+        >
+          <Plus className="h-4 w-4" />
+          {CS_ADD_STEP}
+        </button>
+      </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext items={rows.map((r) => r.key)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <ul className="space-y-2">
-            {rows.map((r) => {
-              const copy = CHECKPOINT_COPY[r.key];
-              const isExpanded = expanded.has(r.key);
+            {steps.map((step) => {
+              const isExpanded = expanded.has(step.id);
               return (
-                <SortableItem key={r.key} id={r.key}>
+                <SortableItem key={step.id} id={step.id}>
                   {({ dragHandleProps }) => (
                     <li className="border-border bg-background rounded-lg border">
                       <div className="flex items-start gap-2 p-3">
                         <GripHandle dragHandleProps={dragHandleProps} />
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex items-center gap-2">
-                            <PhaseChip phase={copy.phase} />
-                            <span
-                              className={cn(
-                                'text-sm font-semibold',
-                                r.enabled ? 'text-foreground' : 'text-muted-foreground',
-                              )}
-                            >
-                              {copy.title}
-                            </span>
-                          </div>
-                          <p className="text-muted-foreground text-xs leading-relaxed">
-                            <strong className="text-foreground font-medium">When it shows:</strong>{' '}
-                            {copy.whenItShows}
-                          </p>
-                          <p className="text-muted-foreground text-xs leading-relaxed">
-                            <strong className="text-foreground font-medium">What staff see:</strong>{' '}
-                            {copy.whatItDoes}
+                          <span
+                            className={cn(
+                              'text-sm font-semibold',
+                              step.enabled ? 'text-foreground' : 'text-muted-foreground',
+                            )}
+                          >
+                            {step.title || '(untitled step)'}
+                          </span>
+                          <p className="text-muted-foreground mt-0.5 text-xs">
+                            {SHOW_WHEN_LABELS[step.showWhen]} · {DONE_WHEN_LABELS[step.doneWhen]}
                           </p>
                           <button
                             type="button"
-                            onClick={() => toggleExpand(r.key)}
+                            onClick={() => toggleExpand(step.id)}
                             className="text-ops-blue hover:bg-ops-blue-lighter/40 mt-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
                           >
-                            {isExpanded ? CS_CUSTOMIZE_HIDE : CS_CUSTOMIZE_TOGGLE}
+                            {isExpanded ? CS_EDIT_HIDE : CS_EDIT_TOGGLE}
                             {isExpanded ? (
                               <ChevronUp className="h-3 w-3" />
                             ) : (
@@ -163,27 +170,107 @@ export function CycleStepsEditor({
                           </button>
                         </div>
                         <ShowSwitch
-                          on={r.enabled}
-                          onChange={() => updateRow(r.key, { enabled: !r.enabled })}
+                          on={step.enabled}
+                          onChange={() => updateStep(step.id, { enabled: !step.enabled })}
                         />
                       </div>
+
                       {isExpanded ? (
-                        <div className="bg-muted/30 grid gap-3 px-3 pb-3 md:grid-cols-3">
-                          <LabelField
-                            label={CS_LABEL_CHIP}
-                            value={r.typeLabelOverride}
-                            onChange={(v) => updateRow(r.key, { typeLabelOverride: v })}
+                        <div className="bg-muted/30 grid gap-3 px-3 pb-3 md:grid-cols-2">
+                          <TextField
+                            label={CS_FIELD_TITLE}
+                            value={step.title}
+                            onChange={(v) => updateStep(step.id, { title: v })}
                           />
-                          <LabelField
-                            label={CS_LABEL_TITLE}
-                            value={r.titleOverride}
-                            onChange={(v) => updateRow(r.key, { titleOverride: v })}
+                          <TextField
+                            label={CS_FIELD_CHIP}
+                            value={step.chipLabel}
+                            onChange={(v) => updateStep(step.id, { chipLabel: v })}
                           />
-                          <LabelField
-                            label={CS_LABEL_CTA}
-                            value={r.ctaLabelOverride}
-                            onChange={(v) => updateRow(r.key, { ctaLabelOverride: v })}
+                          <TextField
+                            label={CS_FIELD_DESC}
+                            value={step.description}
+                            onChange={(v) => updateStep(step.id, { description: v })}
                           />
+                          <TextField
+                            label={CS_FIELD_BUTTON}
+                            value={step.buttonLabel}
+                            onChange={(v) => updateStep(step.id, { buttonLabel: v })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_CHIP_STYLE}
+                            value={step.chipStyle}
+                            options={STEP_CHIP_STYLES}
+                            labels={CHIP_STYLE_LABELS}
+                            onChange={(v) => updateStep(step.id, { chipStyle: v as DashboardStep['chipStyle'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_WATCHES}
+                            value={step.watchedKind}
+                            options={WATCHED_KINDS}
+                            labels={WATCHED_KIND_LABELS}
+                            onChange={(v) => updateStep(step.id, { watchedKind: v as DashboardStep['watchedKind'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_SHOW}
+                            value={step.showWhen}
+                            options={SHOW_WHEN_OPTIONS}
+                            labels={SHOW_WHEN_LABELS}
+                            onChange={(v) => updateStep(step.id, { showWhen: v as DashboardStep['showWhen'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_DONE}
+                            value={step.doneWhen}
+                            options={DONE_WHEN_OPTIONS}
+                            labels={DONE_WHEN_LABELS}
+                            onChange={(v) => updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_DATE}
+                            value={step.dateFrom}
+                            options={DATE_SOURCES}
+                            labels={DATE_SOURCE_LABELS}
+                            onChange={(v) => updateStep(step.id, { dateFrom: v as DashboardStep['dateFrom'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_PROGRESS}
+                            value={step.inProgress}
+                            options={IN_PROGRESS_SOURCES}
+                            labels={IN_PROGRESS_LABELS}
+                            onChange={(v) => updateStep(step.id, { inProgress: v as DashboardStep['inProgress'] })}
+                          />
+                          <SelectField
+                            label={CS_FIELD_BUTTON_TARGET}
+                            value={step.buttonTarget}
+                            options={STEP_BUTTON_TARGETS}
+                            labels={BUTTON_TARGET_LABELS}
+                            onChange={(v) =>
+                              updateStep(step.id, { buttonTarget: v as DashboardStep['buttonTarget'] })
+                            }
+                          />
+                          {step.buttonTarget === 'fixedUrl' ? (
+                            <TextField
+                              label={CS_FIELD_BUTTON_URL}
+                              value={step.buttonUrl}
+                              onChange={(v) => updateStep(step.id, { buttonUrl: v })}
+                            />
+                          ) : null}
+                          <label className="flex items-center gap-2 text-xs font-medium">
+                            <input
+                              type="checkbox"
+                              checked={step.hideWhenDone}
+                              onChange={() => updateStep(step.id, { hideWhenDone: !step.hideWhenDone })}
+                            />
+                            {CS_FIELD_HIDE_DONE}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => deleteStep(step.id)}
+                            className="text-ops-red-dark hover:bg-ops-red-lighter/40 inline-flex items-center gap-1 justify-self-start rounded px-1.5 py-0.5 text-xs font-medium"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            {CS_DELETE_STEP}
+                          </button>
                         </div>
                       ) : null}
                     </li>
@@ -195,25 +282,6 @@ export function CycleStepsEditor({
         </SortableContext>
       </DndContext>
     </section>
-  );
-}
-
-function PhaseChip({ phase }: { phase: 'Schedule' | 'Visit' | 'Reflect' | 'Sign-off' }) {
-  const palette: Record<typeof phase, string> = {
-    Schedule: 'bg-blue-100 text-blue-800',
-    Visit: 'bg-emerald-100 text-emerald-800',
-    Reflect: 'bg-amber-100 text-amber-800',
-    'Sign-off': 'bg-red-100 text-red-800',
-  };
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase',
-        palette[phase],
-      )}
-    >
-      {phase}
-    </span>
   );
 }
 
@@ -240,7 +308,7 @@ function ShowSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
   );
 }
 
-function LabelField({
+function TextField({
   label,
   value,
   onChange,
@@ -257,6 +325,37 @@ function LabelField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={CS_PLACEHOLDER_DEFAULT}
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  labels: Record<string, string>;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="grid gap-1">
+      <Label className="text-xs">{label}</Label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+      >
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {labels[opt] ?? opt}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
