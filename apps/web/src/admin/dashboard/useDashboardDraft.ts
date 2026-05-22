@@ -4,11 +4,12 @@ import {
   COLLECTIONS,
   DASHBOARD_CONFIG_DOC_ID,
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
-  type DashboardCheckpointsConfig,
   type DashboardConfig,
   type DashboardQuickMaterial,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
+  type DashboardStep,
+  resolveSteps,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -40,7 +41,7 @@ const DEFAULT_SECTIONS: DashboardSectionsConfig = {
 
 export interface DashboardDraft {
   sections: DashboardSectionsConfig;
-  checkpoints: DashboardCheckpointsConfig;
+  steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
 }
 
@@ -48,7 +49,7 @@ export interface UseDashboardDraftResult {
   draft: DashboardDraft;
   savedSnapshot: DashboardDraft | null;
   setSections: (next: DashboardSectionsConfig) => void;
-  setCheckpoints: (next: DashboardCheckpointsConfig) => void;
+  setSteps: (next: DashboardStep[]) => void;
   setQuickMaterials: (next: DashboardQuickMaterial[]) => void;
   isDirty: boolean;
   saving: boolean;
@@ -71,7 +72,7 @@ function stripIds<T extends { id?: string } | null>(d: T): T {
 }
 
 function freshDraft(): DashboardDraft {
-  return { sections: { ...DEFAULT_SECTIONS }, checkpoints: {}, quickMaterials: [] };
+  return { sections: { ...DEFAULT_SECTIONS }, steps: [], quickMaterials: [] };
 }
 
 function snapshotsEqual(a: DashboardDraft, b: DashboardDraft | null): boolean {
@@ -102,7 +103,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
       // Merge over defaults so older saved docs (missing newer toggles
       // like `roleChip`) still get a complete sections object.
       sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
-      checkpoints: stripIds(configDoc)?.checkpoints ?? {},
+      steps: resolveSteps(stripIds(configDoc)),
       quickMaterials: stripIds(quickDoc)?.items ?? [],
     };
     setDraft(next);
@@ -113,8 +114,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const setSections = useCallback((next: DashboardSectionsConfig) => {
     setDraft((d) => ({ ...d, sections: next }));
   }, []);
-  const setCheckpoints = useCallback((next: DashboardCheckpointsConfig) => {
-    setDraft((d) => ({ ...d, checkpoints: next }));
+  const setSteps = useCallback((next: DashboardStep[]) => {
+    setDraft((d) => ({ ...d, steps: next }));
   }, []);
   const setQuickMaterials = useCallback((next: DashboardQuickMaterial[]) => {
     setDraft((d) => ({ ...d, quickMaterials: next }));
@@ -131,7 +132,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
           doc(db, CONFIG_PATH),
           {
             sections: draft.sections,
-            checkpoints: draft.checkpoints,
+            steps: draft.steps,
             updatedAt: serverTimestamp(),
             ...(user?.email ? { updatedBy: user.email } : {}),
           },
@@ -167,7 +168,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     draft,
     savedSnapshot,
     setSections,
-    setCheckpoints,
+    setSteps,
     setQuickMaterials,
     isDirty,
     saving,
