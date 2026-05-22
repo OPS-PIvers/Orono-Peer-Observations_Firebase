@@ -119,7 +119,7 @@ export function DashboardSettingsPage() {
             <SectionTilesEditor value={draft.draft.sections} onChange={draft.setSections} />
           ) : null}
           {tab === 'steps' ? (
-            <CycleStepsEditor value={draft.draft.checkpoints} onChange={draft.setCheckpoints} />
+            <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} />
           ) : null}
           {tab === 'materials' ? (
             <QuickMaterialsEditor
@@ -136,7 +136,7 @@ export function DashboardSettingsPage() {
         >
           <DashboardPreview
             sections={draft.draft.sections}
-            checkpoints={draft.draft.checkpoints}
+            steps={draft.draft.steps}
             quickMaterials={draft.draft.quickMaterials}
           />
         </div>
