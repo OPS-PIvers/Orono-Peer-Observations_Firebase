@@ -90,15 +90,16 @@ export function StaffPersonPage() {
 
   const obsConstraints = useMemo(
     () => (email ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')] : []),
-    // The hook keys on constraint types only; email is captured in closure.
-    // KeyedStaffPersonPage (App.tsx) remounts this component when email changes,
-    // so the subscription always reflects the correct person.
-
     [email],
   );
+  // The hook keys on constraint *types* only, so passing `email` as a keyPart
+  // is what disambiguates one person's observations from another's. This makes
+  // the subscription self-correcting on email change even without the
+  // KeyedStaffPersonPage remount in App.tsx (which remains as defence in depth).
   const { data: observations } = useFirestoreCollection<Observation>(
     COLLECTIONS.observations,
     obsConstraints,
+    [email ?? ''],
   );
 
   const { data: manualTemplates } = useFirestoreCollection<EmailTemplate>(
