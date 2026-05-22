@@ -216,6 +216,10 @@ const BUILDERS: Record<CheckpointTypeKey, Builder> = {
     // member, signup transitions to "Scheduled". Until then the link to the
     // signup form is the action.
     const hasObs = ctx.standardDraft != null || ctx.finalizedStandard.length > 0;
+    // Hide the card entirely until the peer evaluator has opened a window for
+    // this staff member (openBooking) — there is nothing to sign up for
+    // otherwise. Once an observation exists it stays visible as "Scheduled".
+    if (!hasObs && ctx.openBooking == null) return null;
     // Prefer an in-app booking link when the staff member has an open invite;
     // otherwise fall back to the external signup link from settings.
     const bookingUrl = ctx.openBooking
