@@ -107,6 +107,12 @@ describe('deriveCheckpoints (generic slots)', () => {
     expect(deriveCheckpoints([a, b, c], ctx({}), NOW).map((x) => x.id)).toEqual(['b', 'a']);
   });
 
+  it('falls back to "Awaiting date" when shown with no concrete date', () => {
+    // pre-obs is shown (observation created) but has no pre-obs date yet
+    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW);
+    expect(cards.find((c) => c.id === 'preObs')?.dateLabel).toBe('Awaiting date');
+  });
+
   it('fixedUrl button uses buttonUrl; none renders inert', () => {
     const link = dashboardStep.parse({ id: 'l', showWhen: 'always', buttonTarget: 'fixedUrl', buttonUrl: '/x' });
     const inert = dashboardStep.parse({ id: 'i', showWhen: 'always', buttonTarget: 'none' });

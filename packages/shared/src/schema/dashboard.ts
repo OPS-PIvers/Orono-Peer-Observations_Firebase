@@ -353,8 +353,8 @@ export function applyLegacyOverride(
   if (!legacy) return seed;
   return {
     ...seed,
-    enabled: legacy.enabled,
-    order: legacy.order,
+    enabled: legacy.enabled ?? true,
+    order: legacy.order ?? seed.order,
     chipLabel: (legacy.typeLabelOverride ?? '').trim() || seed.chipLabel,
     title: (legacy.titleOverride ?? '').trim() || seed.title,
     buttonLabel: (legacy.ctaLabelOverride ?? '').trim() || seed.buttonLabel,

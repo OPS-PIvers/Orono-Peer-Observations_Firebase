@@ -103,6 +103,14 @@ function resolveButton(
   }
 }
 
+/** Contextual placeholder shown when a step has no concrete date to display,
+ *  mirroring the old per-type builders ("Awaiting date" / "In progress"). */
+function fallbackDateLabel(status: CheckpointStatus): string {
+  if (status === 'inprogress') return 'In progress';
+  if (status === 'soon' || status === 'upcoming') return 'Awaiting date';
+  return '';
+}
+
 export function deriveCheckpoints(
   steps: DashboardStep[],
   ctx: DeriveContext,
@@ -151,7 +159,7 @@ export function deriveCheckpoints(
       title: step.title,
       desc: step.description,
       monthLabel: stepDate ? monthLabel(stepDate) : '',
-      dateLabel: stepDate ? dateLabel(stepDate) : '',
+      dateLabel: stepDate ? dateLabel(stepDate) : fallbackDateLabel(status),
       dueRelative: isAck && !done ? 'Action required' : '',
       cta: step.buttonLabel,
       ctaUrl,
