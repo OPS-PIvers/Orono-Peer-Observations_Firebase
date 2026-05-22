@@ -1,4 +1,4 @@
-import type { CheckpointTypeKey, DashboardSectionsConfig } from '@ops/shared';
+import type { DashboardSectionsConfig } from '@ops/shared';
 
 /**
  * Single source for every human-facing string on the admin Dashboard
@@ -69,79 +69,6 @@ export const SECTION_COPY: Record<keyof DashboardSectionsConfig, SectionCopy> = 
   },
 };
 
-// ── Cycle steps (checkpoints) ───────────────────────────────────────────────
-
-interface CheckpointCopy {
-  phase: 'Schedule' | 'Visit' | 'Reflect' | 'Sign-off';
-  title: string;
-  whenItShows: string;
-  whatItDoes: string;
-}
-
-export const CHECKPOINT_COPY: Record<CheckpointTypeKey, CheckpointCopy> = {
-  signup: {
-    phase: 'Schedule',
-    title: 'Sign up for an observation window',
-    whenItShows: 'Always shown until staff have a peer-evaluator-created observation.',
-    whatItDoes:
-      "Links to the scheduling form you set under Settings → Sign-up link. Marks done once a peer evaluator creates the staff member's observation.",
-  },
-  preObs: {
-    phase: 'Schedule',
-    title: 'Pre-observation conversation',
-    whenItShows: 'Appears once the observation is finalized.',
-    whatItDoes:
-      'Shows the meeting date staff had with their peer evaluator before the observation.',
-  },
-  workProduct: {
-    phase: 'Schedule',
-    title: 'Work-product responses',
-    whenItShows: 'Only when the staff member has an active Work Product observation.',
-    whatItDoes:
-      'Progress bar showing how many of the work-product questions the staff member has answered.',
-  },
-  observation: {
-    phase: 'Visit',
-    title: 'Classroom observation',
-    whenItShows: 'Appears once the observation is finalized.',
-    whatItDoes: 'Shows the date the peer evaluator visited the classroom.',
-  },
-  instructionalRound: {
-    phase: 'Visit',
-    title: 'Instructional round',
-    whenItShows: 'Only when the staff member has an active Instructional Round.',
-    whatItDoes: 'Progress bar tied to the instructional-round response form.',
-  },
-  reviewDraft: {
-    phase: 'Reflect',
-    title: 'Review the draft observation',
-    whenItShows: 'While a Work Product or Instructional Round draft is open.',
-    whatItDoes: 'Lets staff jump into the in-progress observation to read and comment.',
-  },
-  postObs: {
-    phase: 'Reflect',
-    title: 'Post-observation conversation',
-    whenItShows: 'Appears once the observation is finalized.',
-    whatItDoes: 'Shows the meeting date staff had with their peer evaluator after the observation.',
-  },
-  acknowledge: {
-    phase: 'Sign-off',
-    title: 'Acknowledge the finalized observation',
-    whenItShows: 'Once the observation is finalized.',
-    whatItDoes: 'Adds an Acknowledge button staff click to sign off on their record.',
-  },
-};
-
-export const PHASE_ORDER = ['Schedule', 'Visit', 'Reflect', 'Sign-off'] as const;
-export type PhaseKey = (typeof PHASE_ORDER)[number];
-
-export const PHASE_DESCRIPTION: Record<PhaseKey, string> = {
-  Schedule: 'Before the observation.',
-  Visit: 'The observation itself.',
-  Reflect: 'Right after the visit.',
-  'Sign-off': 'Closing out the cycle.',
-};
-
 // ── Quick materials editor ──────────────────────────────────────────────────
 
 export const QM_HEADING = 'Quick materials sidebar';
@@ -155,16 +82,6 @@ export const QM_FIELD_URL = 'URL';
 export const QM_ICON_PICKER = 'Icon';
 export const QM_REMOVE = 'Remove material';
 
-// ── Cycle step editor row ───────────────────────────────────────────────────
-
-export const CS_SHOW_LABEL = 'Show this step to staff';
-export const CS_CUSTOMIZE_TOGGLE = 'Rename';
-export const CS_CUSTOMIZE_HIDE = 'Hide rename';
-export const CS_LABEL_CHIP = 'Chip text';
-export const CS_LABEL_TITLE = 'Card title';
-export const CS_LABEL_CTA = 'Button text';
-export const CS_PLACEHOLDER_DEFAULT = '(use default)';
-
 // ── Section tiles ───────────────────────────────────────────────────────────
 
 export const ST_HEADING = 'Page layout';
@@ -173,8 +90,97 @@ export const ST_BLURB =
 export const ST_ON = 'On';
 export const ST_OFF = 'Off';
 
-// ── Cycle steps section ─────────────────────────────────────────────────────
+// ── Step builder ─────────────────────────────────────────────────────────────
 
-export const CS_HEADING = 'Cycle steps';
+export const CS_HEADING = 'Dashboard steps';
 export const CS_BLURB =
-  'Each step shows up only when it applies to a staff member — work-product appears only if they have an active work-product observation, and so on. Toggle a step off to hide it for everyone. Drag to reorder within the list.';
+  'Each card on the staff dashboard is a step. A step appears when its "Show" event happens, turns complete when its "Done" event happens, and shows the date you choose. Drag to reorder; add or remove steps as your process changes.';
+export const CS_ADD_STEP = 'Add step';
+export const CS_DELETE_STEP = 'Delete step';
+export const CS_SHOW_LABEL = 'Show this step to staff';
+export const CS_EDIT_TOGGLE = 'Edit';
+export const CS_EDIT_HIDE = 'Done editing';
+
+export const CS_FIELD_CHIP_STYLE = 'Tag color';
+export const CS_FIELD_CHIP = 'Tag text';
+export const CS_FIELD_TITLE = 'Title';
+export const CS_FIELD_DESC = 'Description';
+export const CS_FIELD_BUTTON = 'Button text';
+export const CS_FIELD_WATCHES = 'Watches which observation';
+export const CS_FIELD_SHOW = 'Show this step';
+export const CS_FIELD_DONE = 'Mark it done';
+export const CS_FIELD_DATE = 'Show date from';
+export const CS_FIELD_PROGRESS = 'Progress bar';
+export const CS_FIELD_BUTTON_TARGET = 'Button goes to';
+export const CS_FIELD_BUTTON_URL = 'Link address';
+export const CS_FIELD_HIDE_DONE = 'Hide once done';
+
+export const CS_PLACEHOLDER_DEFAULT = '(optional)';
+
+export const WATCHED_KIND_LABELS: Record<string, string> = {
+  standard: 'Standard observation',
+  workProduct: 'Work Product',
+  instructionalRound: 'Instructional Round',
+  any: 'Any observation',
+};
+
+export const SHOW_WHEN_LABELS: Record<string, string> = {
+  always: 'Always',
+  previousStepDone: 'After the previous step is done',
+  observationCreated: 'When the observation is created',
+  signupWindowOpened: 'When a sign-up window opens',
+  signupSlotBooked: 'When the staff member books a slot',
+  preObsDateSet: 'When the pre-observation date is set',
+  preObsDatePassed: 'When the pre-observation date passes',
+  observationDateSet: 'When the observation date is set',
+  observationDatePassed: 'When the observation date passes',
+  postObsDateSet: 'When the post-observation date is set',
+  postObsDatePassed: 'When the post-observation date passes',
+  finalized: 'When the observation is finalized',
+  acknowledged: 'When the staff member acknowledges',
+};
+
+export const DONE_WHEN_LABELS: Record<string, string> = {
+  never: 'Never (info only)',
+  observationCreated: 'When the observation is created',
+  signupWindowOpened: 'When a sign-up window opens',
+  signupSlotBooked: 'When the staff member books a slot',
+  preObsDateSet: 'When the pre-observation date is set',
+  preObsDatePassed: 'When the pre-observation date passes',
+  observationDateSet: 'When the observation date is set',
+  observationDatePassed: 'When the observation date passes',
+  postObsDateSet: 'When the post-observation date is set',
+  postObsDatePassed: 'When the post-observation date passes',
+  finalized: 'When the observation is finalized',
+  acknowledged: 'When the staff member acknowledges',
+};
+
+export const DATE_SOURCE_LABELS: Record<string, string> = {
+  none: 'No date',
+  preObsDate: 'Pre-observation date',
+  observationDate: 'Observation date',
+  postObsDate: 'Post-observation date',
+  finalizedAt: 'Finalized date',
+  createdAt: 'Created date',
+  lastModifiedAt: 'Last updated date',
+};
+
+export const IN_PROGRESS_LABELS: Record<string, string> = {
+  none: 'No progress bar',
+  responseProgress: 'Response form progress (answered ÷ total)',
+};
+
+export const BUTTON_TARGET_LABELS: Record<string, string> = {
+  observation: 'The observation page',
+  booking: 'The sign-up / booking page',
+  acknowledge: 'The Acknowledge action',
+  fixedUrl: 'A fixed link',
+  none: 'No button',
+};
+
+export const CHIP_STYLE_LABELS: Record<string, string> = {
+  form: 'Form (blue)',
+  meeting: 'Meeting (blue)',
+  observation: 'Observation (green)',
+  review: 'Review (amber)',
+};
