@@ -20,6 +20,7 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
+  resolveSteps,
   staffMatchesAutoEnable,
   type AppSettings,
   type DashboardConfig,
@@ -173,6 +174,14 @@ export function StaffDashboardPage() {
     return null;
   }, [myWindows, emailLower]);
 
+  const hasBookedSlot = useMemo(() => {
+    for (const w of myWindows ?? []) {
+      const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
+      if (inv?.bookedSlotId) return true;
+    }
+    return false;
+  }, [myWindows, emailLower]);
+
   const { observation: standardDraft } = useActiveStandardObservation(emailLower);
   const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
   const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
@@ -186,8 +195,8 @@ export function StaffDashboardPage() {
 
   const tasks = useMemo<CheckpointWithStatus[]>(() => {
     if (!staff) return [];
-    return deriveCheckpoints(config?.checkpoints ?? {}, {
-      finalizedStandard,
+    return deriveCheckpoints(resolveSteps(config), {
+      finalizedStandard: finalizedStandard,
       standardDraft,
       workProductDraft: wpDraft,
       instructionalRoundDraft: irDraft,
@@ -197,6 +206,7 @@ export function StaffDashboardPage() {
       instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
       appSettings: appSettings ?? null,
       openBooking,
+      hasBookedSlot,
       hasWorkProduct,
       hasInstructionalRound,
     });
@@ -210,6 +220,7 @@ export function StaffDashboardPage() {
     wpQuestions.data,
     appSettings,
     openBooking,
+    hasBookedSlot,
     hasWorkProduct,
     hasInstructionalRound,
   ]);
