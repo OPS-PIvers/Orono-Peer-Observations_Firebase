@@ -9,8 +9,8 @@
 
 The staff dashboard shows a fixed set of 8 built-in checkpoint types (signup,
 pre-obs, observation, review-draft, post-obs, acknowledge, work-product,
-instructional-round). Each type's logic — *when it appears*, *when it's done*,
-*what date it shows*, *where its button goes* — is hardcoded in
+instructional-round). Each type's logic — _when it appears_, _when it's done_,
+_what date it shows_, _where its button goes_ — is hardcoded in
 `apps/web/src/dashboard/deriveCheckpoints.ts`. Admins can only enable/disable,
 reorder, and rename them.
 
@@ -52,7 +52,7 @@ Two consequences:
 4. **Meetings/visit complete when their date passes** — pre-obs done when the
    pre-obs date passes, post-obs when the post-obs date passes, the classroom
    observation when the observation date passes. Finalization drives only the
-   *later* cards (review-draft, work-product, instructional-round done on
+   _later_ cards (review-draft, work-product, instructional-round done on
    finalize; acknowledge on sign-off).
 5. **Approach A** — declarative config + event registry interpreter, **one
    event per slot**.
@@ -79,7 +79,9 @@ ShowWhen = BOOLEAN_EVENTS ∪ { 'always', 'previousStepDone' }
 DoneWhen = BOOLEAN_EVENTS ∪ { 'never' }
 DateSource = { 'none','preObsDate','observationDate','postObsDate','finalizedAt','createdAt','lastModifiedAt' }
 InProgressSource = { 'none', 'responseProgress' }   // responseProgress => answered / total bar
-WatchedKind = { 'standard', 'workProduct', 'instructionalRound', 'any' }
+WatchedKind = { 'standard', 'workProduct', 'instructionalRound', 'any', 'anyDraft' }
+  // 'anyDraft' = first active draft across kinds; never falls through to a finalized obs.
+  // Used by reviewDraft so a new draft surfaces even when a prior cycle is finalized.
 ButtonTarget = { 'observation', 'booking', 'acknowledge', 'fixedUrl', 'none' }
 ChipStyle = { 'form', 'meeting', 'observation', 'review' }
 ```
@@ -88,7 +90,7 @@ ChipStyle = { 'form', 'meeting', 'observation', 'review' }
 
 ```ts
 const dashboardStep = z.object({
-  id: z.string().min(1),                 // stable; seeds reuse the built-in key
+  id: z.string().min(1), // stable; seeds reuse the built-in key
   enabled: z.boolean().default(true),
   order: z.number().int().nonnegative().default(0),
   watchedKind: z.enum(WATCHED_KINDS).default('standard'),
@@ -143,7 +145,9 @@ Per step, in sorted order:
 1. Resolve the watched observation.
 2. Evaluate `doneWhen` → `done` (+ completion date).
 3. Evaluate `showWhen` → `shown`. `'always'` ⇒ true; `'previousStepDone'` ⇒ the
-   previously **emitted** step's done flag.
+   previous step's done flag — including a step that was done but hidden via
+   `hideWhenDone`. (Reason: a hidden-done step IS done; chains should reflect
+   that rather than silently break when an admin enables `hideWhenDone`.)
 4. If `!shown && !done` ⇒ skip. If `done && hideWhenDone` ⇒ skip.
 5. Status: `done` ⇒ `done`; else if `inProgress==='responseProgress'` and
    `answered>0 && total>0` ⇒ `inprogress` (with percent); else if `shown` ⇒
@@ -163,16 +167,16 @@ by `StaffDashboardPage`, unchanged.
 
 ## Seed steps (the 8 built-ins as config)
 
-| id | watches | showWhen | doneWhen | dateFrom | inProgress | button | hideWhenDone |
-|----|---------|----------|----------|----------|------------|--------|--------------|
-| signup | standard | signupWindowOpened | observationCreated | none | none | booking | no |
-| preObs | standard | observationCreated | preObsDatePassed | preObsDate | none | observation | no |
-| workProduct | workProduct | observationCreated | finalized | lastModifiedAt | responseProgress | fixedUrl `/my-rubric` | no |
-| observation | standard | observationCreated | observationDatePassed | observationDate | none | observation | no |
-| reviewDraft | any | observationCreated | finalized | lastModifiedAt | none | observation | yes |
-| postObs | standard | observationCreated | postObsDatePassed | postObsDate | none | observation | no |
-| acknowledge | standard | finalized | acknowledged | finalizedAt | none | acknowledge | no |
-| instructionalRound | instructionalRound | observationCreated | finalized | createdAt | responseProgress | fixedUrl `/my-rubric` | no |
+| id                 | watches            | showWhen           | doneWhen              | dateFrom        | inProgress       | button                | hideWhenDone |
+| ------------------ | ------------------ | ------------------ | --------------------- | --------------- | ---------------- | --------------------- | ------------ |
+| signup             | standard           | signupWindowOpened | observationCreated    | none            | none             | booking               | no           |
+| preObs             | standard           | observationCreated | preObsDatePassed      | preObsDate      | none             | observation           | no           |
+| workProduct        | workProduct        | observationCreated | finalized             | lastModifiedAt  | responseProgress | fixedUrl `/my-rubric` | no           |
+| observation        | standard           | observationCreated | observationDatePassed | observationDate | none             | observation           | no           |
+| reviewDraft        | anyDraft           | observationCreated | finalized             | lastModifiedAt  | none             | observation           | no           |
+| postObs            | standard           | observationCreated | postObsDatePassed     | postObsDate     | none             | observation           | no           |
+| acknowledge        | standard           | finalized          | acknowledged          | finalizedAt     | none             | acknowledge           | no           |
+| instructionalRound | instructionalRound | observationCreated | finalized             | createdAt       | responseProgress | fixedUrl `/my-rubric` | no           |
 
 Chip styles/labels and descriptions carry over from the current
 `BUILTIN_DEFAULTS`. This reproduces today's behavior, with the **improvement**
@@ -203,13 +207,13 @@ loss; no manual migration script needed (single config doc).
   chip + title, and an **Edit** expander.
 - Expanded editor: chip style, chip/title/description/button-label inputs, and
   **plain-language dropdowns** for each slot. Examples:
-  - *Show this step:* "Always" · "After the previous step is done" · "When the
+  - _Show this step:_ "Always" · "After the previous step is done" · "When the
     observation is created" · "When a sign-up window opens" · "When the pre-obs
     date passes" · …
-  - *Mark it done:* "When the observation date passes" · "When it's finalized" ·
+  - _Mark it done:_ "When the observation date passes" · "When it's finalized" ·
     "When the staff member acknowledges" · "Never (info only)" · …
-  - *Show date from*, *In-progress bar*, *Button goes to* (+ URL field when
-    "a fixed link"), *Watches which observation*, *Hide once done*.
+  - _Show date from_, _In-progress bar_, _Button goes to_ (+ URL field when
+    "a fixed link"), _Watches which observation_, _Hide once done_.
 - **Add step** (blank step) and **Delete step**.
 - The dropdown option labels live in `copyStrings.ts` — this is where the
   confusing language gets rewritten.

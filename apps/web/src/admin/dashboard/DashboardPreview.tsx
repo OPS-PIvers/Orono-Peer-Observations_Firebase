@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type DashboardQuickMaterial, type DashboardSectionsConfig, type DashboardStep } from '@ops/shared';
+import {
+  type DashboardQuickMaterial,
+  type DashboardSectionsConfig,
+  type DashboardStep,
+} from '@ops/shared';
 import { DashboardView } from '@/dashboard/DashboardView';
 import { Eye } from 'lucide-react';
 import {

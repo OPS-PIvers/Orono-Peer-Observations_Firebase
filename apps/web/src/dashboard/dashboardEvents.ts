@@ -69,6 +69,10 @@ export function resolveObservation(ctx: DeriveContext, kind: WatchedKind): Obser
         ctx.finalizedInstructionalRound ??
         null
       );
+    case 'anyDraft':
+      // Never falls through to a finalized observation — used by reviewDraft
+      // so a new draft surfaces even when a prior cycle's obs is finalized.
+      return ctx.standardDraft ?? ctx.workProductDraft ?? ctx.instructionalRoundDraft ?? null;
   }
 }
 
@@ -80,7 +84,10 @@ function dateSetResult(d: Date | null, now: Date, mustBePast: boolean): EventRes
 type Evaluator = (ctx: DeriveContext, obs: Observation | null, now: Date) => EventResult;
 
 export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
-  observationCreated: (_ctx, obs) => ({ satisfied: obs != null, date: obs ? toDate(obs.createdAt) : null }),
+  observationCreated: (_ctx, obs) => ({
+    satisfied: obs != null,
+    date: obs ? toDate(obs.createdAt) : null,
+  }),
   signupWindowOpened: (ctx) => ({ satisfied: ctx.openBooking != null, date: null }),
   signupSlotBooked: (ctx) => ({ satisfied: ctx.hasBookedSlot, date: null }),
   preObsDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, false),

@@ -45,7 +45,7 @@ describe('DEFAULT_STEPS', () => {
     expect(byId['observation']?.doneWhen).toBe('observationDatePassed');
     expect(byId['postObs']?.doneWhen).toBe('postObsDatePassed');
     expect(byId['acknowledge']?.doneWhen).toBe('acknowledged');
-    expect(byId['reviewDraft']?.hideWhenDone).toBe(true);
+    expect(byId['reviewDraft']?.watchedKind).toBe('anyDraft');
   });
 });
 

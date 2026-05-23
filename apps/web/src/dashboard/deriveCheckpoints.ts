@@ -1,9 +1,4 @@
-import {
-  type DashboardStep,
-  type DoneWhen,
-  type Observation,
-  type ShowWhen,
-} from '@ops/shared';
+import { type DashboardStep, type DoneWhen, type Observation, type ShowWhen } from '@ops/shared';
 import {
   DATE_SOURCE_FN,
   EVENT_EVALUATORS,
@@ -116,7 +111,10 @@ export function deriveCheckpoints(
   ctx: DeriveContext,
   now: Date = new Date(),
 ): CheckpointWithStatus[] {
-  const ordered = steps.filter((s) => s.enabled).slice().sort((a, b) => a.order - b.order);
+  const ordered = steps
+    .filter((s) => s.enabled)
+    .slice()
+    .sort((a, b) => a.order - b.order);
   const out: CheckpointWithStatus[] = [];
   let prevDone = false;
 

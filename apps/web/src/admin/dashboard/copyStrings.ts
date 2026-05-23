@@ -122,6 +122,7 @@ export const WATCHED_KIND_LABELS: Record<string, string> = {
   workProduct: 'Work Product',
   instructionalRound: 'Instructional Round',
   any: 'Any observation',
+  anyDraft: 'Any active draft (skip finalized)',
 };
 
 export const SHOW_WHEN_LABELS: Record<string, string> = {

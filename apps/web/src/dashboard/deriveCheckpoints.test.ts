@@ -64,10 +64,25 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(cards.find((c) => c.id === 'observation')?.status).toBe('soon');
   });
 
-  it('reviewDraft vanishes once finalized (hideWhenDone)', () => {
+  it('reviewDraft vanishes once finalized (no active draft)', () => {
     const finalized = obs({ status: 'Finalized', finalizedAt: PAST });
     const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ finalizedStandard: [finalized] }), NOW);
     expect(cards.find((c) => c.id === 'reviewDraft')).toBeUndefined();
+  });
+
+  it('reviewDraft re-shows for a fresh draft even when a prior cycle is finalized', () => {
+    // Overlapping cycles: an old finalized standard obs + a new active draft.
+    // anyDraft must surface the draft so the card reappears.
+    const oldFinalized = obs({ observationId: 'old', status: 'Finalized', finalizedAt: PAST });
+    const newDraft = obs({ observationId: 'new', lastModifiedAt: PAST });
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ finalizedStandard: [oldFinalized], standardDraft: newDraft }),
+      NOW,
+    );
+    const review = cards.find((c) => c.id === 'reviewDraft');
+    expect(review).toBeDefined();
+    expect(review?.status).toBe('soon');
   });
 
   it('drives the work-product progress bar from answers', () => {
@@ -92,10 +107,37 @@ describe('deriveCheckpoints (seed behavior)', () => {
 });
 
 describe('deriveCheckpoints (generic slots)', () => {
+  it('a done + hideWhenDone step still gates the next previousStepDone step', () => {
+    // A hidden-but-done step's done state propagates to the next chained step.
+    // (Without this, a hide-when-done step would silently break chains.)
+    const a = dashboardStep.parse({
+      id: 'a',
+      order: 0,
+      showWhen: 'always',
+      doneWhen: 'finalized',
+      hideWhenDone: true,
+    });
+    const b = dashboardStep.parse({
+      id: 'b',
+      order: 1,
+      showWhen: 'previousStepDone',
+      doneWhen: 'never',
+    });
+    const finCtx = ctx({ finalizedStandard: [obs({ status: 'Finalized', finalizedAt: PAST })] });
+    expect(deriveCheckpoints([a, b], finCtx, NOW).map((c) => c.id)).toEqual(['b']);
+  });
+
   it('previousStepDone gates a step until the prior one is done', () => {
     const a = dashboardStep.parse({ id: 'a', order: 0, showWhen: 'always', doneWhen: 'finalized' });
-    const b = dashboardStep.parse({ id: 'b', order: 1, showWhen: 'previousStepDone', doneWhen: 'never' });
-    expect(deriveCheckpoints([a, b], ctx({ standardDraft: obs({}) }), NOW).map((c) => c.id)).toEqual(['a']);
+    const b = dashboardStep.parse({
+      id: 'b',
+      order: 1,
+      showWhen: 'previousStepDone',
+      doneWhen: 'never',
+    });
+    expect(
+      deriveCheckpoints([a, b], ctx({ standardDraft: obs({}) }), NOW).map((c) => c.id),
+    ).toEqual(['a']);
     const fin = ctx({ finalizedStandard: [obs({ status: 'Finalized', finalizedAt: PAST })] });
     expect(deriveCheckpoints([a, b], fin, NOW).map((c) => c.id)).toEqual(['a', 'b']);
   });
@@ -114,7 +156,12 @@ describe('deriveCheckpoints (generic slots)', () => {
   });
 
   it('fixedUrl button uses buttonUrl; none renders inert', () => {
-    const link = dashboardStep.parse({ id: 'l', showWhen: 'always', buttonTarget: 'fixedUrl', buttonUrl: '/x' });
+    const link = dashboardStep.parse({
+      id: 'l',
+      showWhen: 'always',
+      buttonTarget: 'fixedUrl',
+      buttonUrl: '/x',
+    });
     const inert = dashboardStep.parse({ id: 'i', showWhen: 'always', buttonTarget: 'none' });
     const cards = deriveCheckpoints([link, inert], ctx({}), NOW);
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');

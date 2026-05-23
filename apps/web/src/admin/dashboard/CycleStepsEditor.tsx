@@ -202,42 +202,56 @@ export function CycleStepsEditor({
                             value={step.chipStyle}
                             options={STEP_CHIP_STYLES}
                             labels={CHIP_STYLE_LABELS}
-                            onChange={(v) => updateStep(step.id, { chipStyle: v as DashboardStep['chipStyle'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { chipStyle: v as DashboardStep['chipStyle'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_WATCHES}
                             value={step.watchedKind}
                             options={WATCHED_KINDS}
                             labels={WATCHED_KIND_LABELS}
-                            onChange={(v) => updateStep(step.id, { watchedKind: v as DashboardStep['watchedKind'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, {
+                                watchedKind: v as DashboardStep['watchedKind'],
+                              })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_SHOW}
                             value={step.showWhen}
                             options={SHOW_WHEN_OPTIONS}
                             labels={SHOW_WHEN_LABELS}
-                            onChange={(v) => updateStep(step.id, { showWhen: v as DashboardStep['showWhen'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { showWhen: v as DashboardStep['showWhen'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_DONE}
                             value={step.doneWhen}
                             options={DONE_WHEN_OPTIONS}
                             labels={DONE_WHEN_LABELS}
-                            onChange={(v) => updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_DATE}
                             value={step.dateFrom}
                             options={DATE_SOURCES}
                             labels={DATE_SOURCE_LABELS}
-                            onChange={(v) => updateStep(step.id, { dateFrom: v as DashboardStep['dateFrom'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { dateFrom: v as DashboardStep['dateFrom'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_PROGRESS}
                             value={step.inProgress}
                             options={IN_PROGRESS_SOURCES}
                             labels={IN_PROGRESS_LABELS}
-                            onChange={(v) => updateStep(step.id, { inProgress: v as DashboardStep['inProgress'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { inProgress: v as DashboardStep['inProgress'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_BUTTON_TARGET}
@@ -245,7 +259,9 @@ export function CycleStepsEditor({
                             options={STEP_BUTTON_TARGETS}
                             labels={BUTTON_TARGET_LABELS}
                             onChange={(v) =>
-                              updateStep(step.id, { buttonTarget: v as DashboardStep['buttonTarget'] })
+                              updateStep(step.id, {
+                                buttonTarget: v as DashboardStep['buttonTarget'],
+                              })
                             }
                           />
                           {step.buttonTarget === 'fixedUrl' ? (
@@ -259,7 +275,9 @@ export function CycleStepsEditor({
                             <input
                               type="checkbox"
                               checked={step.hideWhenDone}
-                              onChange={() => updateStep(step.id, { hideWhenDone: !step.hideWhenDone })}
+                              onChange={() =>
+                                updateStep(step.id, { hideWhenDone: !step.hideWhenDone })
+                              }
                             />
                             {CS_FIELD_HIDE_DONE}
                           </label>

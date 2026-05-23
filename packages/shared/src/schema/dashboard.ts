@@ -143,7 +143,16 @@ export type DateSource = (typeof DATE_SOURCES)[number];
 export const IN_PROGRESS_SOURCES = ['none', 'responseProgress'] as const;
 export type InProgressSource = (typeof IN_PROGRESS_SOURCES)[number];
 
-export const WATCHED_KINDS = ['standard', 'workProduct', 'instructionalRound', 'any'] as const;
+export const WATCHED_KINDS = [
+  'standard',
+  'workProduct',
+  'instructionalRound',
+  'any',
+  /** First active draft across kinds; never resolves to a finalized observation.
+   *  Use for "review the draft"-style cards that should re-show when a new
+   *  draft is opened even if a prior cycle's observation has been finalized. */
+  'anyDraft',
+] as const;
 export type WatchedKind = (typeof WATCHED_KINDS)[number];
 
 export const STEP_BUTTON_TARGETS = [
@@ -287,7 +296,9 @@ export const DEFAULT_STEPS: DashboardStep[] = [
   dashboardStep.parse({
     id: 'reviewDraft',
     order: 4,
-    watchedKind: 'any',
+    // anyDraft (never finalized) makes the step re-show for a fresh draft even
+    // if a prior cycle's observation is already finalized.
+    watchedKind: 'anyDraft',
     chipStyle: 'review',
     chipLabel: 'Review',
     title: 'Review the draft observation',
@@ -296,7 +307,8 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     showWhen: 'observationCreated',
     doneWhen: 'finalized',
     dateFrom: 'lastModifiedAt',
-    hideWhenDone: true,
+    // hideWhenDone is unnecessary here: anyDraft resolves to null when no draft
+    // exists, so the card simply skips emission once finalization happens.
     buttonTarget: 'observation',
   }),
   dashboardStep.parse({
@@ -351,6 +363,11 @@ export function applyLegacyOverride(
   legacy: DashboardCheckpointConfig | undefined,
 ): DashboardStep {
   if (!legacy) return seed;
+  // Zod's `.default(...)` makes every field on DashboardCheckpointConfig
+  // non-nullable in the output type, but Firestore reads bypass Zod defaults —
+  // older or partial docs may lack any of these fields. The `??` fallbacks
+  // are runtime safety despite what the types claim.
+  /* eslint-disable @typescript-eslint/no-unnecessary-condition */
   return {
     ...seed,
     enabled: legacy.enabled ?? true,
@@ -359,6 +376,7 @@ export function applyLegacyOverride(
     title: (legacy.titleOverride ?? '').trim() || seed.title,
     buttonLabel: (legacy.ctaLabelOverride ?? '').trim() || seed.buttonLabel,
   };
+  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 }
 
 /** Resolve the effective step list from a (possibly legacy) config doc. */

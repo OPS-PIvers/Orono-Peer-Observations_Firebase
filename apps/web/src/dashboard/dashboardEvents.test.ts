@@ -41,8 +41,21 @@ describe('resolveObservation', () => {
   it('prefers finalized standard then draft', () => {
     const f = obs({ observationId: 'fin' });
     const d = obs({ observationId: 'draft' });
-    expect(resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standard')?.observationId).toBe('fin');
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standard')
+        ?.observationId,
+    ).toBe('fin');
     expect(resolveObservation(ctx({ standardDraft: d }), 'standard')?.observationId).toBe('draft');
+  });
+
+  it("'anyDraft' prefers any active draft and ignores finalized observations", () => {
+    const fin = obs({ observationId: 'fin', status: 'Finalized', finalizedAt: PAST });
+    const draft = obs({ observationId: 'new-draft' });
+    expect(resolveObservation(ctx({ finalizedStandard: [fin] }), 'anyDraft')).toBeNull();
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [fin], workProductDraft: draft }), 'anyDraft')
+        ?.observationId,
+    ).toBe('new-draft');
   });
 });
 
@@ -61,7 +74,11 @@ describe('EVENT_EVALUATORS', () => {
   });
 
   it('finalized reads status + finalizedAt date', () => {
-    const r = EVENT_EVALUATORS.finalized(ctx({}), obs({ status: 'Finalized', finalizedAt: PAST }), NOW);
+    const r = EVENT_EVALUATORS.finalized(
+      ctx({}),
+      obs({ status: 'Finalized', finalizedAt: PAST }),
+      NOW,
+    );
     expect(r.satisfied).toBe(true);
     expect(r.date).toEqual(PAST);
   });
@@ -69,7 +86,11 @@ describe('EVENT_EVALUATORS', () => {
   it('signupWindowOpened follows openBooking', () => {
     expect(EVENT_EVALUATORS.signupWindowOpened(ctx({}), null, NOW).satisfied).toBe(false);
     expect(
-      EVENT_EVALUATORS.signupWindowOpened(ctx({ openBooking: { windowId: 'w', token: 't' } }), null, NOW).satisfied,
+      EVENT_EVALUATORS.signupWindowOpened(
+        ctx({ openBooking: { windowId: 'w', token: 't' } }),
+        null,
+        NOW,
+      ).satisfied,
     ).toBe(true);
   });
 });
