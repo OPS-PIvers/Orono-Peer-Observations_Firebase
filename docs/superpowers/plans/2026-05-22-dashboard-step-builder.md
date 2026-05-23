@@ -15,12 +15,14 @@
 ## File Structure
 
 **Create:**
+
 - `apps/web/src/dashboard/dashboardEvents.ts` — pure event registry + helpers (`resolveObservation`, `EVENT_EVALUATORS`, `DATE_SOURCE_FN`, `responseProgress`, `toDate`).
 - `apps/web/src/dashboard/dashboardEvents.test.ts` — event-registry unit tests.
 - `apps/web/src/dashboard/deriveCheckpoints.test.ts` — interpreter unit tests.
 - `packages/shared/src/schema/dashboard.test.ts` — schema + migration tests.
 
 **Modify:**
+
 - `packages/shared/src/schema/dashboard.ts` — slot enums, `dashboardStep`, `steps[]` on config, `DEFAULT_STEPS`, `resolveSteps`, `applyLegacyOverride`.
 - `apps/web/src/dashboard/deriveCheckpoints.ts` — interpreter rewrite; relax `key` to `string`; add `hasBookedSlot` to `DeriveContext`.
 - `apps/web/src/dashboard/StaffDashboardPage.tsx` — call `resolveSteps(config)`, compute `hasBookedSlot`.
@@ -36,6 +38,7 @@
 ## Task 1: Slot vocabularies + `dashboardStep` schema
 
 **Files:**
+
 - Modify: `packages/shared/src/schema/dashboard.ts`
 - Test: `packages/shared/src/schema/dashboard.test.ts` (create)
 
@@ -173,6 +176,7 @@ git commit -m "feat(shared): add composed dashboardStep schema + slot vocabulari
 ## Task 2: Seed steps + migration helpers
 
 **Files:**
+
 - Modify: `packages/shared/src/schema/dashboard.ts`
 - Test: `packages/shared/src/schema/dashboard.test.ts`
 
@@ -447,6 +451,7 @@ git commit -m "chore(shared): rebuild dist for dashboard step schema" || echo "n
 ## Task 4: Event registry (`dashboardEvents.ts`)
 
 **Files:**
+
 - Create: `apps/web/src/dashboard/dashboardEvents.ts`
 - Create: `apps/web/src/dashboard/dashboardEvents.test.ts`
 
@@ -500,7 +505,10 @@ describe('resolveObservation', () => {
   it('prefers finalized standard then draft', () => {
     const f = obs({ observationId: 'fin' });
     const d = obs({ observationId: 'draft' });
-    expect(resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standard')?.observationId).toBe('fin');
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standard')
+        ?.observationId,
+    ).toBe('fin');
     expect(resolveObservation(ctx({ standardDraft: d }), 'standard')?.observationId).toBe('draft');
   });
 });
@@ -520,7 +528,11 @@ describe('EVENT_EVALUATORS', () => {
   });
 
   it('finalized reads status + finalizedAt date', () => {
-    const r = EVENT_EVALUATORS.finalized(ctx({}), obs({ status: 'Finalized', finalizedAt: PAST }), NOW);
+    const r = EVENT_EVALUATORS.finalized(
+      ctx({}),
+      obs({ status: 'Finalized', finalizedAt: PAST }),
+      NOW,
+    );
     expect(r.satisfied).toBe(true);
     expect(r.date).toEqual(PAST);
   });
@@ -528,7 +540,11 @@ describe('EVENT_EVALUATORS', () => {
   it('signupWindowOpened follows openBooking', () => {
     expect(EVENT_EVALUATORS.signupWindowOpened(ctx({}), null, NOW).satisfied).toBe(false);
     expect(
-      EVENT_EVALUATORS.signupWindowOpened(ctx({ openBooking: { windowId: 'w', token: 't' } }), null, NOW).satisfied,
+      EVENT_EVALUATORS.signupWindowOpened(
+        ctx({ openBooking: { windowId: 'w', token: 't' } }),
+        null,
+        NOW,
+      ).satisfied,
     ).toBe(true);
   });
 });
@@ -626,7 +642,10 @@ function dateSetResult(d: Date | null, now: Date, mustBePast: boolean): EventRes
 type Evaluator = (ctx: DeriveContext, obs: Observation | null, now: Date) => EventResult;
 
 export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
-  observationCreated: (_ctx, obs) => ({ satisfied: obs != null, date: obs ? toDate(obs.createdAt) : null }),
+  observationCreated: (_ctx, obs) => ({
+    satisfied: obs != null,
+    date: obs ? toDate(obs.createdAt) : null,
+  }),
   signupWindowOpened: (ctx) => ({ satisfied: ctx.openBooking != null, date: null }),
   signupSlotBooked: (ctx) => ({ satisfied: ctx.hasBookedSlot, date: null }),
   preObsDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, false),
@@ -687,6 +706,7 @@ git commit -m "feat(dashboard): pure event registry for composed steps"
 ## Task 5: Interpreter rewrite (`deriveCheckpoints.ts`)
 
 **Files:**
+
 - Modify: `apps/web/src/dashboard/deriveCheckpoints.ts`
 - Create: `apps/web/src/dashboard/deriveCheckpoints.test.ts`
 
@@ -791,8 +811,15 @@ describe('deriveCheckpoints (seed behavior)', () => {
 describe('deriveCheckpoints (generic slots)', () => {
   it('previousStepDone gates a step until the prior one is done', () => {
     const a = dashboardStep.parse({ id: 'a', order: 0, showWhen: 'always', doneWhen: 'finalized' });
-    const b = dashboardStep.parse({ id: 'b', order: 1, showWhen: 'previousStepDone', doneWhen: 'never' });
-    expect(deriveCheckpoints([a, b], ctx({ standardDraft: obs({}) }), NOW).map((c) => c.id)).toEqual(['a']);
+    const b = dashboardStep.parse({
+      id: 'b',
+      order: 1,
+      showWhen: 'previousStepDone',
+      doneWhen: 'never',
+    });
+    expect(
+      deriveCheckpoints([a, b], ctx({ standardDraft: obs({}) }), NOW).map((c) => c.id),
+    ).toEqual(['a']);
     const fin = ctx({ finalizedStandard: [obs({ status: 'Finalized', finalizedAt: PAST })] });
     expect(deriveCheckpoints([a, b], fin, NOW).map((c) => c.id)).toEqual(['a', 'b']);
   });
@@ -805,7 +832,12 @@ describe('deriveCheckpoints (generic slots)', () => {
   });
 
   it('fixedUrl button uses buttonUrl; none renders inert', () => {
-    const link = dashboardStep.parse({ id: 'l', showWhen: 'always', buttonTarget: 'fixedUrl', buttonUrl: '/x' });
+    const link = dashboardStep.parse({
+      id: 'l',
+      showWhen: 'always',
+      buttonTarget: 'fixedUrl',
+      buttonUrl: '/x',
+    });
     const inert = dashboardStep.parse({ id: 'i', showWhen: 'always', buttonTarget: 'none' });
     const cards = deriveCheckpoints([link, inert], ctx({}), NOW);
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');
@@ -824,12 +856,7 @@ Expected: FAIL — `deriveCheckpoints` still has the old `(cfg, ctx)` signature 
 Replace the entire contents of `apps/web/src/dashboard/deriveCheckpoints.ts` with:
 
 ```ts
-import {
-  type DashboardStep,
-  type DoneWhen,
-  type Observation,
-  type ShowWhen,
-} from '@ops/shared';
+import { type DashboardStep, type DoneWhen, type Observation, type ShowWhen } from '@ops/shared';
 import {
   DATE_SOURCE_FN,
   EVENT_EVALUATORS,
@@ -934,7 +961,10 @@ export function deriveCheckpoints(
   ctx: DeriveContext,
   now: Date = new Date(),
 ): CheckpointWithStatus[] {
-  const ordered = steps.filter((s) => s.enabled).slice().sort((a, b) => a.order - b.order);
+  const ordered = steps
+    .filter((s) => s.enabled)
+    .slice()
+    .sort((a, b) => a.order - b.order);
   const out: CheckpointWithStatus[] = [];
   let prevDone = false;
 
@@ -1031,6 +1061,7 @@ git commit -m "feat(dashboard): interpret composed steps via event registry"
 ## Task 6: Wire `StaffDashboardPage` to `resolveSteps`
 
 **Files:**
+
 - Modify: `apps/web/src/dashboard/StaffDashboardPage.tsx`
 
 No new unit test (integration verified by typecheck + the existing app). The page builds a `DeriveContext` inline and calls `deriveCheckpoints`.
@@ -1048,13 +1079,13 @@ In `apps/web/src/dashboard/StaffDashboardPage.tsx`, add `resolveSteps` to the `@
 Find the `openBooking` `useMemo` (around lines 168-174) and add, immediately after it:
 
 ```ts
-  const hasBookedSlot = useMemo(() => {
-    for (const w of myWindows ?? []) {
-      const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
-      if (inv?.bookedSlotId) return true;
-    }
-    return false;
-  }, [myWindows, emailLower]);
+const hasBookedSlot = useMemo(() => {
+  for (const w of myWindows ?? []) {
+    const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
+    if (inv?.bookedSlotId) return true;
+  }
+  return false;
+}, [myWindows, emailLower]);
 ```
 
 - [ ] **Step 3: Replace the `deriveCheckpoints` call**
@@ -1062,37 +1093,37 @@ Find the `openBooking` `useMemo` (around lines 168-174) and add, immediately aft
 In the `tasks` `useMemo` (around lines 187-215), replace `deriveCheckpoints(config?.checkpoints ?? {}, { … })` with `resolveSteps(config)` as the first argument and add `hasBookedSlot` to the context object:
 
 ```ts
-  const tasks = useMemo<CheckpointWithStatus[]>(() => {
-    if (!staff) return [];
-    return deriveCheckpoints(resolveSteps(config), {
-      finalizedStandard: finalizedStandard,
-      standardDraft,
-      workProductDraft: wpDraft,
-      instructionalRoundDraft: irDraft,
-      finalizedWorkProduct: null,
-      finalizedInstructionalRound: null,
-      workProductQuestionsCount: wpQuestions.data?.length ?? 0,
-      instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
-      appSettings: appSettings ?? null,
-      openBooking,
-      hasBookedSlot,
-      hasWorkProduct,
-      hasInstructionalRound,
-    });
-  }, [
-    staff,
-    config,
-    finalizedStandard,
+const tasks = useMemo<CheckpointWithStatus[]>(() => {
+  if (!staff) return [];
+  return deriveCheckpoints(resolveSteps(config), {
+    finalizedStandard: finalizedStandard,
     standardDraft,
-    wpDraft,
-    irDraft,
-    wpQuestions.data,
-    appSettings,
+    workProductDraft: wpDraft,
+    instructionalRoundDraft: irDraft,
+    finalizedWorkProduct: null,
+    finalizedInstructionalRound: null,
+    workProductQuestionsCount: wpQuestions.data?.length ?? 0,
+    instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
+    appSettings: appSettings ?? null,
     openBooking,
     hasBookedSlot,
     hasWorkProduct,
     hasInstructionalRound,
-  ]);
+  });
+}, [
+  staff,
+  config,
+  finalizedStandard,
+  standardDraft,
+  wpDraft,
+  irDraft,
+  wpQuestions.data,
+  appSettings,
+  openBooking,
+  hasBookedSlot,
+  hasWorkProduct,
+  hasInstructionalRound,
+]);
 ```
 
 (Note the `finalizedStandard` key name fix and the added `hasBookedSlot` dep.)
@@ -1114,6 +1145,7 @@ git commit -m "feat(dashboard): drive staff dashboard from composed steps"
 ## Task 7: `useDashboardDraft` holds `steps[]`
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/useDashboardDraft.ts`
 
 - [ ] **Step 1: Update imports + `DashboardDraft` shape**
@@ -1126,6 +1158,7 @@ Replace the `DashboardCheckpointsConfig` import with `DashboardStep` + `resolveS
   type DashboardStep,
   resolveSteps,
 ```
+
 (remove `type DashboardCheckpointsConfig` from the import).
 
 Change the `DashboardDraft` interface field:
@@ -1157,11 +1190,11 @@ function freshDraft(): DashboardDraft {
 In the hydration `useEffect`, build `steps` via the migration:
 
 ```ts
-    const next: DashboardDraft = {
-      sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
-      steps: resolveSteps(stripIds(configDoc)),
-      quickMaterials: stripIds(quickDoc)?.items ?? [],
-    };
+const next: DashboardDraft = {
+  sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
+  steps: resolveSteps(stripIds(configDoc)),
+  quickMaterials: stripIds(quickDoc)?.items ?? [],
+};
 ```
 
 - [ ] **Step 3: Update setters + save**
@@ -1169,9 +1202,9 @@ In the hydration `useEffect`, build `steps` via the migration:
 Replace `setCheckpoints` with:
 
 ```ts
-  const setSteps = useCallback((next: DashboardStep[]) => {
-    setDraft((d) => ({ ...d, steps: next }));
-  }, []);
+const setSteps = useCallback((next: DashboardStep[]) => {
+  setDraft((d) => ({ ...d, steps: next }));
+}, []);
 ```
 
 In `save`, change the config `setDoc` payload from `checkpoints: draft.checkpoints` to:
@@ -1199,6 +1232,7 @@ git commit -m "feat(admin): dashboard draft stores composed steps + migrates leg
 ## Task 8: Interpreter-driven preview
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/previewSampleData.ts`
 - Modify: `apps/web/src/admin/dashboard/DashboardPreview.tsx`
 - Test: add a case to `apps/web/src/dashboard/deriveCheckpoints.test.ts` is unnecessary; add a focused preview test below.
@@ -1335,7 +1369,11 @@ In `apps/web/src/admin/dashboard/DashboardPreview.tsx`:
 Replace the `DashboardCheckpointsConfig` import with `DashboardStep`:
 
 ```ts
-import { type DashboardQuickMaterial, type DashboardSectionsConfig, type DashboardStep } from '@ops/shared';
+import {
+  type DashboardQuickMaterial,
+  type DashboardSectionsConfig,
+  type DashboardStep,
+} from '@ops/shared';
 ```
 
 Change the prop type + usage:
@@ -1370,6 +1408,7 @@ git commit -m "feat(admin): interpreter-driven dashboard preview"
 ## Task 9: Plain-language copy for the builder
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/copyStrings.ts`
 
 - [ ] **Step 1: Replace the cycle-steps copy**
@@ -1502,6 +1541,7 @@ git commit -m "feat(admin): plain-language copy for the step builder"
 ## Task 10: Step-builder UI (`CycleStepsEditor.tsx`)
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/CycleStepsEditor.tsx`
 
 This is a full rewrite of the editor component. It keeps the existing `@dnd-kit` drag setup and `SortableItem`/`GripHandle` helpers.
@@ -1715,42 +1755,56 @@ export function CycleStepsEditor({
                             value={step.chipStyle}
                             options={STEP_CHIP_STYLES}
                             labels={CHIP_STYLE_LABELS}
-                            onChange={(v) => updateStep(step.id, { chipStyle: v as DashboardStep['chipStyle'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { chipStyle: v as DashboardStep['chipStyle'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_WATCHES}
                             value={step.watchedKind}
                             options={WATCHED_KINDS}
                             labels={WATCHED_KIND_LABELS}
-                            onChange={(v) => updateStep(step.id, { watchedKind: v as DashboardStep['watchedKind'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, {
+                                watchedKind: v as DashboardStep['watchedKind'],
+                              })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_SHOW}
                             value={step.showWhen}
                             options={SHOW_WHEN_OPTIONS}
                             labels={SHOW_WHEN_LABELS}
-                            onChange={(v) => updateStep(step.id, { showWhen: v as DashboardStep['showWhen'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { showWhen: v as DashboardStep['showWhen'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_DONE}
                             value={step.doneWhen}
                             options={DONE_WHEN_OPTIONS}
                             labels={DONE_WHEN_LABELS}
-                            onChange={(v) => updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_DATE}
                             value={step.dateFrom}
                             options={DATE_SOURCES}
                             labels={DATE_SOURCE_LABELS}
-                            onChange={(v) => updateStep(step.id, { dateFrom: v as DashboardStep['dateFrom'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { dateFrom: v as DashboardStep['dateFrom'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_PROGRESS}
                             value={step.inProgress}
                             options={IN_PROGRESS_SOURCES}
                             labels={IN_PROGRESS_LABELS}
-                            onChange={(v) => updateStep(step.id, { inProgress: v as DashboardStep['inProgress'] })}
+                            onChange={(v) =>
+                              updateStep(step.id, { inProgress: v as DashboardStep['inProgress'] })
+                            }
                           />
                           <SelectField
                             label={CS_FIELD_BUTTON_TARGET}
@@ -1758,7 +1812,9 @@ export function CycleStepsEditor({
                             options={STEP_BUTTON_TARGETS}
                             labels={BUTTON_TARGET_LABELS}
                             onChange={(v) =>
-                              updateStep(step.id, { buttonTarget: v as DashboardStep['buttonTarget'] })
+                              updateStep(step.id, {
+                                buttonTarget: v as DashboardStep['buttonTarget'],
+                              })
                             }
                           />
                           {step.buttonTarget === 'fixedUrl' ? (
@@ -1772,7 +1828,9 @@ export function CycleStepsEditor({
                             <input
                               type="checkbox"
                               checked={step.hideWhenDone}
-                              onChange={() => updateStep(step.id, { hideWhenDone: !step.hideWhenDone })}
+                              onChange={() =>
+                                updateStep(step.id, { hideWhenDone: !step.hideWhenDone })
+                              }
                             />
                             {CS_FIELD_HIDE_DONE}
                           </label>
@@ -1891,6 +1949,7 @@ git commit -m "feat(admin): composed-step builder UI"
 ## Task 11: Wire `DashboardSettingsPage`
 
 **Files:**
+
 - Modify: `apps/web/src/admin/dashboard/DashboardSettingsPage.tsx`
 
 - [ ] **Step 1: Update the two bindings**
@@ -1900,19 +1959,19 @@ In `apps/web/src/admin/dashboard/DashboardSettingsPage.tsx`:
 Change the steps-tab editor binding (around lines 121-123) from `draft.draft.checkpoints` / `draft.setCheckpoints` to:
 
 ```tsx
-          {tab === 'steps' ? (
-            <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} />
-          ) : null}
+{
+  tab === 'steps' ? <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} /> : null;
+}
 ```
 
 Change the `DashboardPreview` binding (around lines 137-141) from `checkpoints={draft.draft.checkpoints}` to:
 
 ```tsx
-          <DashboardPreview
-            sections={draft.draft.sections}
-            steps={draft.draft.steps}
-            quickMaterials={draft.draft.quickMaterials}
-          />
+<DashboardPreview
+  sections={draft.draft.sections}
+  steps={draft.draft.steps}
+  quickMaterials={draft.draft.quickMaterials}
+/>
 ```
 
 - [ ] **Step 2: Full web typecheck**
@@ -1949,14 +2008,17 @@ Run: `pnpm lint`
 Expected: 0 errors (per repo rule `--max-warnings 0`).
 
 Run (git-normalized format check, per the Windows CRLF caveat — verifies what CI sees):
+
 ```bash
 for f in $(git diff --name-only HEAD~10 -- '*.ts' '*.tsx'); do git cat-file -p :"$f" | pnpm exec prettier --check --stdin-filepath "$f"; done
 ```
+
 Expected: every file "All matched files use Prettier code style!" / no diffs.
 
 - [ ] **Step 4: Manual smoke (the implementer should confirm)**
 
 Start dev (`pnpm dev`), sign in as an admin, open `/admin/dashboard` → "Dashboard steps":
+
 - The 8 seed steps render; toggling, reordering, editing slots, adding, and deleting all update the live preview.
 - Switch to a staff dashboard: cards still render as before, with pre-obs/observation/post-obs completing once their dates pass.
 
@@ -1974,4 +2036,7 @@ git commit -m "chore(dashboard): lint/format fixups for step builder" || echo "n
 - **Spec coverage:** schema (Task 1), seeds + migration (Task 2), interpreter + registry (Tasks 4-5), `hasBookedSlot`/`signupSlotBooked` thread-through (Tasks 4, 6), staff page (Task 6), draft + migration (Task 7), interpreter-driven preview (Task 8), plain-language copy (Task 9), builder UI (Task 10), settings wiring (Task 11), tests throughout, full validation (Task 12). The module-assignment subsystem is intentionally out of scope (separate stub).
 - **Type consistency:** `DeriveContext` is defined once in `dashboardEvents.ts` and re-exported by `deriveCheckpoints.ts`; `CheckpointWithStatus.key` relaxed to `string` (no downstream branching on it, verified). `deriveCheckpoints(steps, ctx, now?)` signature used consistently in Tasks 5, 6, 8 and all tests.
 - **Legacy fields:** `checkpoints`/`DashboardCheckpointConfig` stay in the schema for read-time migration only; never written after the first save.
+
+```
+
 ```
