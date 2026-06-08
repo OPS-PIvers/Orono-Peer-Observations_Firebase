@@ -3,6 +3,7 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
+  AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_SLOT_STATUS,
   OBSERVATION_WINDOW_STATUS,
@@ -15,6 +16,7 @@ import {
 } from '@ops/shared';
 import { peConflicts } from './engine/timeWindows.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
+import { isWindowBookingClosed } from './engine/bookingRules.js';
 import {
   createDraftObservationForBooking,
   loadSchedulingSettings,
@@ -78,6 +80,9 @@ export const assignObservationFromPreference = onCall(
       }
       if (!BOOKABLE_WINDOW_STATUSES.includes(window.status)) {
         throw new HttpsError('failed-precondition', 'Window is not open for assignment');
+      }
+      if (isWindowBookingClosed(window.endDate, new Date())) {
+        throw new HttpsError('failed-precondition', 'Window booking period has ended');
       }
 
       const prefSnap = await tx.get(prefRef);
@@ -163,7 +168,7 @@ export const assignObservationFromPreference = onCall(
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: FieldValue.serverTimestamp(),
       userEmail: callerEmail,
-      action: 'observationWindow.assignFromPreference',
+      action: AUDIT_ACTIONS.slotAssignedFromPreference,
       target: `${COLLECTIONS.observationWindows}/${input.windowId}/${WINDOW_SUBCOLLECTIONS.slots}/${input.slotId}`,
       details: { windowId: input.windowId, slotId: input.slotId, staffEmail, observationId },
     });

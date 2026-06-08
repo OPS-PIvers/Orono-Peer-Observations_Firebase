@@ -5,6 +5,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  AUDIT_ACTIONS,
   COLLECTIONS,
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_WINDOW_STATUS,
@@ -185,7 +186,7 @@ export const createObservationWindow = onCall(
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: now,
       userEmail,
-      action: 'observationWindow.create',
+      action: AUDIT_ACTIONS.windowCreated,
       target: `${COLLECTIONS.observationWindows}/${windowId}`,
       details: {
         bookingMode: input.bookingMode,

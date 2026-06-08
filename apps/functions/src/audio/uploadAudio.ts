@@ -18,6 +18,17 @@ if (getApps().length === 0) initializeApp();
 const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
+ * Hard upper bound on an uploaded audio body. Without it an authenticated
+ * observer could POST an arbitrarily large payload and OOM the 512MiB / 300s
+ * function or stuff Drive with junk. Sized to the Cloud Run HTTP request limit
+ * (~32 MiB) — audio recordings are inherently larger than the evidence-file
+ * uploads (capped at 20 MB), and anything above the platform limit is already
+ * rejected at ingress, so this bounds the body without regressing a legitimate
+ * full-length recording.
+ */
+const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
+
+/**
  * Accepts a raw audio blob in the request body and writes it to the
  * observation's Drive folder (creating the folder on first audio upload).
  *
@@ -76,6 +87,10 @@ export const uploadAudio = onRequest(
     const body = req.rawBody;
     if (body.length === 0) {
       res.status(400).send('Empty body');
+      return;
+    }
+    if (body.length > MAX_AUDIO_BYTES) {
+      res.status(413).send('Audio file too large');
       return;
     }
 

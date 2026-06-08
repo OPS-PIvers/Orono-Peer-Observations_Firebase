@@ -21,6 +21,33 @@ export function substituteVariables(template: string, vars: TemplateVars): strin
 }
 
 /**
+ * /mail doc id for the "incomplete WP/IR" reminder.
+ *
+ * Keyed on the reminder's run date (Chicago YYYY-MM-DD) so the daily job can
+ * re-send a fresh nudge each day an observation stays incomplete. The Trigger
+ * Email extension only sends on /mail doc *creation*, so a fully-static id
+ * (just the observationId) would silently no-op every run after the first. The
+ * per-day key keeps a single day's run idempotent (safe on retries) while
+ * still allowing the next day's resend.
+ */
+export function incompleteReminderMailDocId(observationId: string, runDateYMD: string): string {
+  return `incomplete-${observationId}-${runDateYMD}`;
+}
+
+/**
+ * /mail doc id for a staff-invite email.
+ *
+ * Includes the send timestamp so re-inviting a staff member (e.g. after a
+ * delete + re-create, or a re-activation) creates a *new* /mail doc and
+ * actually re-sends. A static `invite-<email>` id would collide with the
+ * earlier invite and silently no-op (the Trigger Email extension only sends on
+ * doc creation).
+ */
+export function staffInviteMailDocId(email: string, nowMs: number): string {
+  return `invite-${email.replace('@', '-at-')}-${String(nowMs)}`;
+}
+
+/**
  * Load an active template for a given trigger type.
  * Returns null if no active template exists for this trigger.
  */

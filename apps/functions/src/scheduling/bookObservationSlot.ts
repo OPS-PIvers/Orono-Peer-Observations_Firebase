@@ -1,9 +1,10 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, type Firestore, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  AUDIT_ACTIONS,
   COLLECTIONS,
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_SLOT_STATUS,
@@ -22,7 +23,11 @@ import {
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 import { peConflicts } from './engine/timeWindows.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
-import { meetsLeadTime } from './engine/bookingRules.js';
+import {
+  isWindowBookingClosed,
+  meetsLeadTime,
+  resolveObservedIdentity,
+} from './engine/bookingRules.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
@@ -33,9 +38,7 @@ const BOOKABLE_WINDOW_STATUSES: string[] = [
 ];
 
 /** Read /appSettings/global.scheduling, falling back to defaults. */
-export async function loadSchedulingSettings(
-  db: FirebaseFirestore.Firestore,
-): Promise<SchedulingSettings> {
+export async function loadSchedulingSettings(db: Firestore): Promise<SchedulingSettings> {
   const snap = await db.collection(COLLECTIONS.appSettings).doc(APP_SETTINGS_DOC_ID).get();
   const scheduling = snap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined;
   return { ...DEFAULT_SCHEDULING_SETTINGS, ...(scheduling ?? {}) };
@@ -55,7 +58,7 @@ export function nextWindowStatus(invitees: WindowInvitee[]): string {
  * bookObservationSlot and assignObservationFromPreference.
  */
 export async function createDraftObservationForBooking(args: {
-  db: FirebaseFirestore.Firestore;
+  db: Firestore;
   window: ObservationWindow;
   slot: ObservationSlot;
   staffEmail: string;
@@ -68,6 +71,19 @@ export async function createDraftObservationForBooking(args: {
   const staffSnap = await db.collection(COLLECTIONS.staff).doc(staffEmail).get();
   const staff = staffSnap.exists ? (staffSnap.data() as Staff) : null;
 
+  // The window invitee carries the name/role/year resolved from /staff when
+  // the window was created. Prefer the live staff doc, but fall back to the
+  // invitee snapshot rather than placeholder defaults ('unknown'/year 1) so a
+  // booking never stamps a wrong role/year just because the staff doc is
+  // momentarily missing.
+  const invitee = window.invitees.find((inv) => inv.email === staffEmail);
+  const {
+    name: observedName,
+    role: observedRole,
+    year: observedYear,
+    buildings: observedBuildings,
+  } = resolveObservedIdentity(staffEmail, staff, invitee);
+
   const slotStart = toDate(slot.startUTC);
   const slotEnd = toDate(slot.endUTC);
 
@@ -77,10 +93,10 @@ export async function createDraftObservationForBooking(args: {
     observationId: obsRef.id,
     observerEmail: window.observerEmail,
     observedEmail: staffEmail,
-    observedName: staff?.name ?? staffEmail,
-    observedRole: staff?.role ?? 'unknown',
-    observedYear: staff?.year ?? 1,
-    observedBuildings: staff?.buildings ?? [],
+    observedName,
+    observedRole,
+    observedYear,
+    observedBuildings,
     status: OBSERVATION_STATUS.draft,
     type: window.defaultObservationType,
     observationName: window.defaultObservationName,
@@ -126,10 +142,10 @@ export async function createDraftObservationForBooking(args: {
     const vars = {
       observerName: window.observerName,
       observerEmail: window.observerEmail,
-      observedName: staff?.name ?? staffEmail,
+      observedName,
       observedEmail: staffEmail,
-      observedRole: staff?.role ?? '',
-      observedYear: staff ? String(staff.year) : '',
+      observedRole,
+      observedYear: String(observedYear),
       observationName: window.defaultObservationName,
       observationType: window.defaultObservationType,
       slotDateLocal: formatChicagoDate(slotStart),
@@ -209,10 +225,7 @@ export const bookObservationSlot = onCall(
       if (!BOOKABLE_WINDOW_STATUSES.includes(window.status)) {
         throw new HttpsError('failed-precondition', 'Window is not open for booking');
       }
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(
-        new Date(nowMs),
-      );
-      if (window.endDate < today) {
+      if (isWindowBookingClosed(window.endDate, new Date(nowMs))) {
         throw new HttpsError('failed-precondition', 'Window booking period has ended');
       }
 
@@ -296,7 +309,7 @@ export const bookObservationSlot = onCall(
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: FieldValue.serverTimestamp(),
       userEmail,
-      action: 'observationSlot.book',
+      action: AUDIT_ACTIONS.slotBooked,
       target: `${COLLECTIONS.observationWindows}/${input.windowId}/${WINDOW_SUBCOLLECTIONS.slots}/${input.slotId}`,
       details: { windowId: input.windowId, slotId: input.slotId, observationId },
     });

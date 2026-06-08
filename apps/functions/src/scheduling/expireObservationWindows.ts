@@ -4,6 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  AUDIT_ACTIONS,
   COLLECTIONS,
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_WINDOW_STATUS,
@@ -39,12 +40,18 @@ export const expireObservationWindows = onSchedule(
     const db = getFirestore();
     const today = chicagoToday(new Date());
 
+    // Server-side endDate filter so we only fetch windows whose booking
+    // period has actually elapsed (endDate strictly before today). The
+    // (status, endDate) composite index in firestore.indexes.json backs the
+    // `in` + range combination. endDate is a zero-padded YYYY-MM-DD, so the
+    // string range compares correctly against the Chicago date.
     const snap = await db
       .collection(COLLECTIONS.observationWindows)
       .where('status', 'in', [
         OBSERVATION_WINDOW_STATUS.open,
         OBSERVATION_WINDOW_STATUS.partiallyBooked,
       ])
+      .where('endDate', '<', today)
       .get();
 
     const now = FieldValue.serverTimestamp();
@@ -53,11 +60,9 @@ export const expireObservationWindows = onSchedule(
 
     for (const docSnap of snap.docs) {
       const window = docSnap.data() as ObservationWindow;
-      if (window.endDate < today) {
-        await docSnap.ref.update({ status: OBSERVATION_WINDOW_STATUS.expired, updatedAt: now });
-        expired.push(docSnap.id);
-        expiredWindows.push(window);
-      }
+      await docSnap.ref.update({ status: OBSERVATION_WINDOW_STATUS.expired, updatedAt: now });
+      expired.push(docSnap.id);
+      expiredWindows.push(window);
     }
 
     // Best-effort expiry notices to invitees who never booked.
@@ -109,7 +114,7 @@ export const expireObservationWindows = onSchedule(
       await db.collection(COLLECTIONS.auditLog).add({
         timestamp: now,
         userEmail: 'system',
-        action: 'observationWindow.expire',
+        action: AUDIT_ACTIONS.windowExpired,
         target: COLLECTIONS.observationWindows,
         details: { today, expiredCount: expired.length, windowIds: expired },
       });

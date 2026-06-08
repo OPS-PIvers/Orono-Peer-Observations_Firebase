@@ -1,25 +1,27 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference, getFirestore } from 'firebase-admin/firestore';
 import {
+  AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_SLOT_STATUS,
-  OBSERVATION_STATUS,
   OBSERVATION_WINDOW_STATUS,
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
   cancelBookingInput,
   isAdminRole,
   type Building,
+  type ObservationPreference,
   type ObservationSlot,
   type ObservationWindow,
   type Staff,
 } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { deleteObservationEvent } from '../calendar/lib/googleCalendar.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
+import { preferenceShouldRevert } from './engine/bookingRules.js';
 import { loadSchedulingSettings, nextWindowStatus } from './bookObservationSlot.js';
+import { deleteDraftObservation } from './draftCleanup.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
@@ -77,6 +79,24 @@ export const cancelBooking = onCall(
         throw new HttpsError('permission-denied', 'Not allowed to cancel this booking');
       }
 
+      // Day-preference revert: if this booking was assigned from a day
+      // preference, the preference must drop back to unassigned so the PE can
+      // re-assign it. Read inside the transaction (all reads before writes).
+      let prefRefToRevert: DocumentReference | null = null;
+      if (window.bookingMode === 'day-preference' && slot.bookedBy) {
+        const prefRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.preferences).doc(slot.bookedBy);
+        const prefSnap = await tx.get(prefRef);
+        if (
+          prefSnap.exists &&
+          preferenceShouldRevert(
+            (prefSnap.data() as ObservationPreference).assignedSlotId,
+            slot.slotId,
+          )
+        ) {
+          prefRefToRevert = prefRef;
+        }
+      }
+
       const windowCancelled = window.status === OBSERVATION_WINDOW_STATUS.cancelled;
       const freedStatus = windowCancelled
         ? OBSERVATION_SLOT_STATUS.blocked
@@ -116,6 +136,10 @@ export const cancelBooking = onCall(
       }
       tx.update(windowRef, updates);
 
+      if (prefRefToRevert) {
+        tx.update(prefRefToRevert, { assignedSlotId: null, assignedAt: null });
+      }
+
       cancelledSlot = slot;
       cancelledWindow = window;
       cancelledObservationId = slot.observationId ?? null;
@@ -134,34 +158,11 @@ export const cancelBooking = onCall(
       logger.error('cancelBooking: recomputeBlockedSlots failed', err),
     );
 
-    // Delete the Draft observation, if it's still a Draft.
+    // Delete the Draft observation spawned by this booking (no-op if it's
+    // already Finalized — that doc has a shared Drive folder to preserve).
     if (observationId) {
       try {
-        const obsRef = db.collection(COLLECTIONS.observations).doc(observationId);
-        const obsSnap = await obsRef.get();
-        if (obsSnap.exists && obsSnap.data()?.['status'] === OBSERVATION_STATUS.draft) {
-          // Best-effort: tear down any Google Calendar events first so the
-          // deleted booking doesn't linger on the parties' calendars.
-          const obsData = obsSnap.data() ?? {};
-          const gcalEventIds = (obsData['gcalEventIds'] ?? {}) as {
-            observer?: string;
-            observed?: string;
-          };
-          const observerEmail: unknown = obsData['observerEmail'];
-          const observedEmail: unknown = obsData['observedEmail'];
-          const calCleanup: Promise<void>[] = [];
-          if (gcalEventIds.observer && typeof observerEmail === 'string') {
-            calCleanup.push(deleteObservationEvent(observerEmail, gcalEventIds.observer));
-          }
-          if (gcalEventIds.observed && typeof observedEmail === 'string') {
-            calCleanup.push(deleteObservationEvent(observedEmail, gcalEventIds.observed));
-          }
-          await Promise.all(calCleanup).catch((err: unknown) =>
-            logger.warn('cancelBooking: calendar event cleanup failed', err),
-          );
-
-          await obsRef.delete();
-        }
+        await deleteDraftObservation(db, observationId);
       } catch (err) {
         logger.error('cancelBooking: observation delete failed', err);
       }
@@ -211,7 +212,7 @@ export const cancelBooking = onCall(
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: FieldValue.serverTimestamp(),
       userEmail: callerEmail,
-      action: 'observationSlot.cancel',
+      action: AUDIT_ACTIONS.slotCancelled,
       target: `${COLLECTIONS.observationWindows}/${input.windowId}/${WINDOW_SUBCOLLECTIONS.slots}/${input.slotId}`,
       details: {
         windowId: input.windowId,

@@ -5,6 +5,7 @@ import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Role } from '@ops/shared';
 import {
   formatDate,
+  incompleteReminderMailDocId,
   loadActiveTemplate,
   sendEmail,
   substituteVariables,
@@ -152,6 +153,11 @@ export const scheduledEmailReminders = onSchedule(
     const incompleteTemplate = await loadActiveTemplate(db, 'scheduled.reminderIncomplete');
     if (incompleteTemplate) {
       const daysAfter = incompleteTemplate.scheduledDays;
+      // Chicago run date keys the mail doc id so the nudge re-sends daily until
+      // the observation is completed (see incompleteReminderMailDocId).
+      const runDateYMD = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Chicago',
+      }).format(today);
       // Use Chicago midnight as the cutoff so observations created on the same
       // calendar day N days ago are included regardless of time-of-day.
       const { start: cutoff } = chicagoMidnight(today, -daysAfter);
@@ -192,7 +198,7 @@ export const scheduledEmailReminders = onSchedule(
           to: obs['observedEmail'] as string,
           subject: substituteVariables(incompleteTemplate.subject, vars),
           html: substituteVariables(incompleteTemplate.bodyHtml, vars),
-          mailDocId: `incomplete-${docSnap.id}`,
+          mailDocId: incompleteReminderMailDocId(docSnap.id, runDateYMD),
           auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.reminderIncomplete' },
         }).catch((err: unknown) =>
           logger.error('scheduledEmailReminders: incomplete send failed', err),

@@ -4,7 +4,7 @@ import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
+import { OBSERVATION_STATUS, OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import { deleteDriveFolder } from '../lib/drive.js';
 import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
@@ -283,7 +283,7 @@ async function handleDeletion(
   //    observations have their folder shared with the observed staff member —
   //    deleting it would revoke their access to audio, evidence, and the PDF.
   if (
-    beforeData?.['status'] === 'Draft' &&
+    beforeData?.['status'] === OBSERVATION_STATUS.draft &&
     typeof beforeData['driveFolderId'] === 'string' &&
     beforeData['driveFolderId']
   ) {
