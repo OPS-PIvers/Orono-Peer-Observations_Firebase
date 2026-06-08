@@ -1,29 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutGrid, List, Search, Users } from 'lucide-react';
-import { orderBy } from 'firebase/firestore';
 import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
+import { buildStaffDirectoryConstraints } from './staffDirectoryQuery';
 
-const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 const VIEW_MODE_KEY = 'staffDir:viewMode';
 type ViewMode = 'list' | 'cards';
 
 export function StaffDirectoryPage() {
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+
+  // Filter inactive staff out server-side by default (sorted by name
+  // client-side below) instead of fetching every record and hiding them.
+  const staffConstraints = useMemo(
+    () => buildStaffDirectoryConstraints(showInactive),
+    [showInactive],
+  );
   const {
     data: staff,
     loading,
     error,
-  } = useFirestoreCollection<Staff>(COLLECTIONS.staff, STAFF_CONSTRAINTS);
+  } = useFirestoreCollection<Staff>(COLLECTIONS.staff, staffConstraints, [showInactive]);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('');
-  const [showInactive, setShowInactive] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === 'undefined') return 'list';
     const raw = window.sessionStorage.getItem(VIEW_MODE_KEY);
@@ -55,13 +61,18 @@ export function StaffDirectoryPage() {
   const filtered = useMemo(() => {
     if (!staff) return [];
     const q = search.trim().toLowerCase();
-    return staff.filter((s) => {
-      if (!showInactive && !s.isActive) return false;
-      if (roleFilter && s.role !== roleFilter) return false;
-      if (q && !s.name.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q))
-        return false;
-      return true;
-    });
+    // `staff.filter` returns a fresh array, so sorting it in place is safe and
+    // doesn't mutate the cached snapshot. Name sort happens here now that the
+    // query no longer issues a server-side orderBy.
+    return staff
+      .filter((s) => {
+        if (!showInactive && !s.isActive) return false;
+        if (roleFilter && s.role !== roleFilter) return false;
+        if (q && !s.name.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q))
+          return false;
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, search, roleFilter, showInactive]);
 
   function clearFilters() {

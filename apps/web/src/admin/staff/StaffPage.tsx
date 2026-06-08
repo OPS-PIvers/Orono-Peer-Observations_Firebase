@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Check, ListChecks, MoreVertical, Plus } from 'lucide-react';
+import { Check, ListChecks, MoreVertical, Plus, RefreshCw } from 'lucide-react';
 import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
@@ -11,6 +11,7 @@ import {
   type Staff,
 } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreCollectionOnce } from '@/hooks/useFirestoreCollectionOnce';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -54,7 +55,17 @@ const byDisplayName = <T extends { displayName: string }>(a: T, b: T) =>
   a.displayName.localeCompare(b.displayName);
 
 export function StaffPage() {
-  const { data: staff, loading, error } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  // One-shot read (no live listener): the full staff collection is large and
+  // a live onSnapshot re-renders this admin table on every staff write. Use
+  // the Refresh control to pull the latest. Inline edits below write through
+  // and update their own optimistic UI, so a stale list is acceptable.
+  const {
+    data: staff,
+    loading,
+    error,
+    fetching,
+    refresh,
+  } = useFirestoreCollectionOnce<Staff>(COLLECTIONS.staff);
   const { data: rolesRaw } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
     ACTIVE_ROLES_CONSTRAINTS,
@@ -212,6 +223,15 @@ export function StaffPage() {
       }
       actions={
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={refresh}
+            disabled={fetching}
+            aria-label="Refresh staff list"
+          >
+            <RefreshCw className={fetching ? 'animate-spin' : undefined} />
+            Refresh
+          </Button>
           <Button
             variant={selectMode ? 'default' : 'outline'}
             onClick={() => {

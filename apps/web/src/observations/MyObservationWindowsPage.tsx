@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Copy, Check } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { orderBy, type QueryConstraint } from 'firebase/firestore';
 import {
   COLLECTIONS,
   type CancelObservationWindowInput,
@@ -13,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { functions } from '@/lib/firebase';
+import { buildMyWindowsConstraints } from './observationWindowQuery';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -32,8 +32,6 @@ const cancelObservationWindowFn = httpsCallable<CancelObservationWindowInput, Ca
   functions,
   'cancelObservationWindow',
 );
-
-const WINDOW_CONSTRAINTS: QueryConstraint[] = [orderBy('createdAt', 'desc')];
 
 const STATUS_LABELS: Record<ObservationWindow['status'], string> = {
   open: 'Open',
@@ -63,9 +61,16 @@ export function MyObservationWindowsPage() {
   const isAdmin = useIsAdmin();
   const myEmail = user?.email?.toLowerCase() ?? '';
 
+  // Admins see every window; everyone else is filtered server-side to the
+  // windows they opened, rather than fetching all windows and filtering here.
+  const windowConstraints = useMemo(
+    () => buildMyWindowsConstraints({ isAdmin, email: myEmail }),
+    [isAdmin, myEmail],
+  );
   const { data: windows, loading } = useFirestoreCollection<ObservationWindow>(
     COLLECTIONS.observationWindows,
-    WINDOW_CONSTRAINTS,
+    windowConstraints,
+    [isAdmin, myEmail],
   );
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,12 +78,7 @@ export function MyObservationWindowsPage() {
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Admins see every window; everyone else sees only the windows they opened.
-  const visible = useMemo(() => {
-    if (!windows) return [];
-    if (isAdmin) return windows;
-    return windows.filter((w) => w.observerEmail.toLowerCase() === myEmail);
-  }, [windows, isAdmin, myEmail]);
+  const visible = windows ?? [];
 
   async function copyLinks(w: ObservationWindow & { id: string }) {
     const origin = window.location.origin;

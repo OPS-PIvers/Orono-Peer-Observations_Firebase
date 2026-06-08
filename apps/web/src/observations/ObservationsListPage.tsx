@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
-import { type QueryConstraint, orderBy, where } from 'firebase/firestore';
+import { type QueryConstraint, limit, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -27,6 +27,11 @@ import {
 } from '@/components/ui/table';
 
 type StatusFilter = ObservationStatus | 'all';
+
+// Cap the query so the page never fetches and renders an unbounded result
+// set. The vast majority of use is recent work; older records are reachable
+// by tightening the status filter or searching.
+const OBSERVATIONS_PAGE_LIMIT = 200;
 
 /**
  * Landing page for PEs and admins (special-access roles). Shows the
@@ -59,7 +64,10 @@ export function ObservationsListPage() {
   // Constraints stay stable per filter selection. Admins default to "all
   // PEs"; non-admin PEs default to "just mine" with a toggle to widen.
   const constraints = useMemo<QueryConstraint[]>(() => {
-    const cs: QueryConstraint[] = [orderBy('lastModifiedAt', 'desc')];
+    const cs: QueryConstraint[] = [
+      orderBy('lastModifiedAt', 'desc'),
+      limit(OBSERVATIONS_PAGE_LIMIT),
+    ];
     if (statusFilter !== 'all') {
       cs.unshift(where('status', '==', statusFilter));
     }
@@ -94,6 +102,16 @@ export function ObservationsListPage() {
     );
   }, [observations, search]);
 
+  // Derive the relative-time label once per data/filter change rather than
+  // recomputing `formatRelative` for every row on every render (e.g. while
+  // typing in the search box).
+  const rows = useMemo(
+    () => filtered.map((o) => ({ ...o, relativeModified: formatRelative(o.lastModifiedAt) })),
+    [filtered],
+  );
+
+  const capNotice = observationsCapNotice(observations?.length ?? 0, OBSERVATIONS_PAGE_LIMIT);
+
   return (
     <PageHeader
       title="Observations"
@@ -122,6 +140,7 @@ export function ObservationsListPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by observed name, email, or observation name"
+            aria-label="Search observations"
             className="pl-9"
           />
         </div>
@@ -141,6 +160,12 @@ export function ObservationsListPage() {
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load observations: {error.message}
+        </div>
+      ) : null}
+
+      {capNotice ? (
+        <div className="text-muted-foreground bg-muted/40 mb-3 rounded-md px-3 py-2 text-xs">
+          {capNotice}
         </div>
       ) : null}
 
@@ -184,7 +209,7 @@ export function ObservationsListPage() {
                   </TableCell>
                 </TableRow>
               ))
-            ) : filtered.length === 0 ? (
+            ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
                   {observations?.length === 0
@@ -193,7 +218,7 @@ export function ObservationsListPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((o) => (
+              rows.map((o) => (
                 <TableRow key={o.id}>
                   <TableCell>
                     <div className="font-medium">{o.observedName || o.observedEmail}</div>
@@ -210,7 +235,7 @@ export function ObservationsListPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{o.type}</TableCell>
                   <TableCell className="text-muted-foreground text-xs">
-                    {formatRelative(o.lastModifiedAt)}
+                    {o.relativeModified}
                   </TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" asChild>
@@ -242,7 +267,16 @@ function StatusBadge({ status }: { status: ObservationStatus }) {
   );
 }
 
-function formatRelative(value: Observation['lastModifiedAt']): string {
+/**
+ * When the loaded result set has hit the page cap, returns a notice telling
+ * the user older records exist beyond the window; otherwise `null`.
+ */
+export function observationsCapNotice(loadedCount: number, pageLimit: number): string | null {
+  if (loadedCount < pageLimit) return null;
+  return `Showing the ${String(pageLimit)} most recently modified observations. Narrow the status filter or search to reach older ones.`;
+}
+
+export function formatRelative(value: Observation['lastModifiedAt']): string {
   // Firestore Timestamp objects have a toDate() method; Date objects work
   // directly. The schema types value as Date but actual runtime data may
   // be either depending on whether onSnapshot has converted it yet — cast
