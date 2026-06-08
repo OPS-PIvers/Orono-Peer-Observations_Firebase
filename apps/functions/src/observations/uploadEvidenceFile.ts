@@ -3,7 +3,13 @@ import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, type Observation, type Staff } from '@ops/shared';
+import {
+  COLLECTIONS,
+  OBSERVATION_STATUS,
+  isAdminRole,
+  type Observation,
+  type Staff,
+} from '@ops/shared';
 import { ensureObservationFolder, getDriveClient, uploadFileToFolder } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
@@ -89,7 +95,7 @@ export const uploadEvidenceFile = onCall(
     if (!isAdmin && obs.observerEmail !== userEmail) {
       throw new HttpsError('permission-denied', 'Only the observer or admin can upload evidence');
     }
-    if (obs.status !== 'Draft') {
+    if (obs.status !== OBSERVATION_STATUS.draft) {
       throw new HttpsError(
         'failed-precondition',
         'Cannot upload evidence to a finalized observation',

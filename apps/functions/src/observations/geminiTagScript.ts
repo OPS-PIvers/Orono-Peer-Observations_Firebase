@@ -11,12 +11,16 @@ import {
   roleYearMappingDocId,
   type ComponentColor,
   type Observation,
-  type Role,
   type RoleYearMapping,
   type Rubric,
   type RubricComponent,
-  type TiptapDoc,
 } from '@ops/shared';
+import {
+  applyTagsToScriptDoc,
+  extractParagraphs,
+  type RawTagSuggestion,
+} from './scriptTextblocks.js';
+import { resolveRole } from './roleLookup.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -30,12 +34,6 @@ interface GeminiTagRequest {
 interface GeminiTagResponse {
   taggedCount: number;
   skippedCount: number;
-}
-
-interface RawTagSuggestion {
-  paragraphIndex: number;
-  text: string;
-  componentId: string;
 }
 
 /**
@@ -102,13 +100,8 @@ export const geminiTagScript = onCall(
       throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
     }
 
-    const rolesSnap = await db.collection(COLLECTIONS.roles).get();
-    const roleDoc =
-      rolesSnap.docs.find((d) => (d.data() as Role).roleId === obs.observedRole) ??
-      rolesSnap.docs.find((d) => (d.data() as Role).displayName === obs.observedRole);
-    if (!roleDoc)
-      throw new HttpsError('failed-precondition', `Role "${obs.observedRole}" missing.`);
-    const role = roleDoc.data() as Role;
+    const role = await resolveRole(db, obs.observedRole);
+    if (!role) throw new HttpsError('failed-precondition', `Role "${obs.observedRole}" missing.`);
 
     const rubricSnap = await db.doc(`${COLLECTIONS.rubrics}/${role.rubricId}`).get();
     if (!rubricSnap.exists) {
@@ -257,184 +250,6 @@ ${JSON.stringify(paragraphBlock, null, 2)}`;
         text: tt.text,
         componentId: tt.componentId,
       });
-    }
-  }
-  return out;
-}
-
-// ─── Tiptap doc walking ──────────────────────────────────────────────────────
-
-interface MaybeNode {
-  type?: string;
-  text?: string;
-  marks?: { type?: string; attrs?: Record<string, unknown> }[];
-  content?: unknown[];
-}
-
-function isTextblockType(type: string): boolean {
-  return type === 'paragraph' || type === 'heading' || type === 'blockquote' || type === 'listItem';
-}
-
-/** Flatten the doc into one string per top-level textblock. */
-function extractParagraphs(scriptDoc: TiptapDoc): string[] {
-  const out: string[] = [];
-  function visit(node: MaybeNode | null | undefined, depth: number): string {
-    if (!node || typeof node !== 'object') return '';
-    if (node.type === 'text' && typeof node.text === 'string') return node.text;
-    let s = '';
-    if (Array.isArray(node.content)) {
-      for (const c of node.content) {
-        s += visit(c as MaybeNode, depth + 1);
-      }
-    }
-    if (typeof node.type === 'string' && depth > 0 && isTextblockType(node.type)) {
-      out.push(s);
-      return '';
-    }
-    return s;
-  }
-  visit(scriptDoc, 0);
-  return out;
-}
-
-/**
- * Walk the doc and apply `componentTag` marks to every accepted suggestion.
- * For each suggestion we find the first occurrence of `text` inside the
- * paragraph at `paragraphIndex` and split surrounding text nodes so the
- * mark applies to exactly that range. Existing marks on the matched text
- * are preserved; we only add or replace the `componentTag` mark.
- */
-function applyTagsToScriptDoc(
-  doc: TiptapDoc,
-  suggestions: RawTagSuggestion[],
-  colorMap: Map<string, ComponentColor>,
-): TiptapDoc {
-  // Group suggestions by paragraph to apply them in a single pass per
-  // paragraph (simpler bookkeeping than a global pass).
-  const byParagraph = new Map<number, RawTagSuggestion[]>();
-  for (const s of suggestions) {
-    const list = byParagraph.get(s.paragraphIndex) ?? [];
-    list.push(s);
-    byParagraph.set(s.paragraphIndex, list);
-  }
-
-  let paragraphCounter = -1;
-  function visit(input: unknown): unknown {
-    if (!input || typeof input !== 'object') return input;
-    const node = input as MaybeNode;
-    if (typeof node.type === 'string' && isTextblockType(node.type)) {
-      paragraphCounter += 1;
-      const localTags = byParagraph.get(paragraphCounter);
-      const newContent = applyTagsWithinParagraph(
-        (node.content ?? []) as MaybeNode[],
-        localTags ?? [],
-        colorMap,
-      );
-      return { ...node, content: newContent };
-    }
-    if (Array.isArray(node.content)) {
-      return {
-        ...node,
-        content: (node.content as MaybeNode[]).map((c) => visit(c)),
-      };
-    }
-    return node;
-  }
-
-  return visit(doc) as TiptapDoc;
-}
-
-function applyTagsWithinParagraph(
-  content: MaybeNode[],
-  tags: RawTagSuggestion[],
-  colorMap: Map<string, ComponentColor>,
-): MaybeNode[] {
-  // Build a flat representation of the paragraph: { text, marks } per text
-  // node. Nested non-text nodes are kept as-is and treated as opaque
-  // separators (they can't be split for tagging).
-  let working = [...content];
-  for (const tag of tags) {
-    const color = colorMap.get(tag.componentId);
-    working = applySingleTag(working, tag.text, tag.componentId, color);
-  }
-  return working;
-}
-
-function applySingleTag(
-  content: MaybeNode[],
-  needle: string,
-  componentId: string,
-  color: ComponentColor | undefined,
-): MaybeNode[] {
-  // Concatenate adjacent text nodes' text to find the needle's position.
-  // Mark each text node with its (start, end) offset in the paragraph
-  // string so we can split the right one(s).
-  interface TextSlot {
-    kind: 'text';
-    node: MaybeNode;
-    text: string;
-    start: number;
-    end: number;
-  }
-  interface OtherSlot {
-    kind: 'other';
-    node: MaybeNode;
-  }
-  const slots: (TextSlot | OtherSlot)[] = [];
-  let cursor = 0;
-  for (const c of content) {
-    if (c.type === 'text' && typeof c.text === 'string') {
-      slots.push({
-        kind: 'text',
-        node: c,
-        text: c.text,
-        start: cursor,
-        end: cursor + c.text.length,
-      });
-      cursor += c.text.length;
-    } else {
-      slots.push({ kind: 'other', node: c });
-    }
-  }
-  const flat = slots
-    .filter((s): s is TextSlot => s.kind === 'text')
-    .map((s) => s.text)
-    .join('');
-  const matchStart = flat.indexOf(needle);
-  if (matchStart < 0) return content;
-  const matchEnd = matchStart + needle.length;
-
-  const out: MaybeNode[] = [];
-  for (const slot of slots) {
-    if (slot.kind === 'other') {
-      out.push(slot.node);
-      continue;
-    }
-    if (slot.end <= matchStart || slot.start >= matchEnd) {
-      out.push(slot.node);
-      continue;
-    }
-    // This slot overlaps the match. Split into up to three pieces.
-    const overlapStart = Math.max(slot.start, matchStart) - slot.start;
-    const overlapEnd = Math.min(slot.end, matchEnd) - slot.start;
-    const before = slot.text.slice(0, overlapStart);
-    const middle = slot.text.slice(overlapStart, overlapEnd);
-    const after = slot.text.slice(overlapEnd);
-    const baseMarks = (slot.node.marks ?? []).filter((m) => m.type !== 'componentTag');
-    const tagMark: { type: string; attrs: Record<string, unknown> } = {
-      type: 'componentTag',
-      attrs: {
-        componentId,
-        bg: color?.bg ?? null,
-        fg: color?.fg ?? null,
-      },
-    };
-    if (before.length > 0) {
-      out.push({ ...slot.node, text: before, marks: baseMarks });
-    }
-    out.push({ ...slot.node, text: middle, marks: [...baseMarks, tagMark] });
-    if (after.length > 0) {
-      out.push({ ...slot.node, text: after, marks: baseMarks });
     }
   }
   return out;

@@ -3,7 +3,7 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS } from '@ops/shared';
+import { COLLECTIONS, OBSERVATION_STATUS, isAdminRole } from '@ops/shared';
 import { downloadFile, getDriveClient } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
@@ -83,9 +83,10 @@ export const getAudio = onRequest(
       return;
     }
 
-    const isAdmin = role === 'Administrator' || role === 'Full Access' || hasSpecialAccess;
+    const isAdmin = isAdminRole(role ?? null) || hasSpecialAccess;
     const isObserver = obs.observerEmail === userEmail;
-    const isObservedFinalized = obs.observedEmail === userEmail && obs.status === 'Finalized';
+    const isObservedFinalized =
+      obs.observedEmail === userEmail && obs.status === OBSERVATION_STATUS.finalized;
     if (!isAdmin && !isObserver && !isObservedFinalized) {
       res.status(403).send('Not authorized to access this audio');
       return;
