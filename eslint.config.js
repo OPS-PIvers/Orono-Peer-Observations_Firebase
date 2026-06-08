@@ -25,6 +25,9 @@ export default tseslint.config(
       '**/*.config.{js,ts,mjs,cjs}',
       'fixtures/**',
       '.firebase/**',
+      // Agent/editor tooling (Workflow scripts, launch configs). Not part of any
+      // tsconfig project and runs in a non-standard runtime — not app source to lint.
+      '.claude/**',
       // Standalone Node ESM scripts run directly via `node script.mjs`.
       // They aren't part of any tsconfig and don't need typed linting.
       'scripts/**/*.mjs',
