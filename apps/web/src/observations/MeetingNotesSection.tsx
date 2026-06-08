@@ -38,10 +38,18 @@ interface PanelProps {
   onNotesChange: (doc: TiptapDoc) => void;
 }
 
+/** Stable panel id per sub-section, shared by the toggle's aria-controls. */
+function panelId(slug: 'pre' | 'post'): string {
+  return `meeting-notes-panel-${slug}`;
+}
+
 function Panel({ slug, dateValue, notesValue, readOnly, onDateChange, onNotesChange }: PanelProps) {
   const dateInputId = `meeting-date-${slug}`;
   return (
-    <div className="border-ops-blue-lighter mt-2 space-y-3 rounded-md border bg-white p-3">
+    <div
+      id={panelId(slug)}
+      className="border-ops-blue-lighter mt-2 space-y-3 rounded-md border bg-white p-3"
+    >
       <div className="flex items-center gap-3">
         <label htmlFor={dateInputId} className="text-ops-gray-dark text-xs font-medium">
           Date
@@ -80,18 +88,21 @@ function TabButton({
   onClick,
   label,
   date,
+  controlsId,
 }: {
   active: boolean;
   hasContent: boolean;
   onClick: () => void;
   label: string;
   date: string | null;
+  controlsId: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-expanded={active}
+      aria-controls={controlsId}
       className={cn(
         'flex w-full items-center justify-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors',
         'md:inline-flex md:w-auto md:shrink-0 md:justify-start',
@@ -142,6 +153,7 @@ export function MeetingNotesSection({
           onClick={() => setActive((v) => (v === 'pre' ? null : 'pre'))}
           label="Planning"
           date={dateLabel(preObsDate)}
+          controlsId={panelId('pre')}
         />
         <TabButton
           active={active === 'post'}
@@ -149,6 +161,7 @@ export function MeetingNotesSection({
           onClick={() => setActive((v) => (v === 'post' ? null : 'post'))}
           label="Reflection"
           date={dateLabel(postObsDate)}
+          controlsId={panelId('post')}
         />
         {actions ? <div className="hidden md:ml-auto md:block">{actions}</div> : null}
       </div>

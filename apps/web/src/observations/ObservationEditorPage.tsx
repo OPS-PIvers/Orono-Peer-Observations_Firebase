@@ -899,7 +899,10 @@ function FinalizeDialog({
           </li>
         </ul>
         {error ? (
-          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+          <div
+            role="alert"
+            className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+          >
             {error}
           </div>
         ) : null}
