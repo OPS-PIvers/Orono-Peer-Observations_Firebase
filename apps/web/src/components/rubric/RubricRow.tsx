@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -56,7 +56,11 @@ type MobileSection = 'ratings' | 'lookfors' | 'notes' | 'evidence' | null;
  * below the row, spanning all five columns. Only one panel can be open
  * at a time per row; clicking the active chip closes it.
  */
-export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
+export const RubricRow = memo(function RubricRow({
+  component,
+  mode,
+  storageScope,
+}: RubricRowProps) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
   const readOnly = mode.kind !== 'edit' || mode.readOnly;
@@ -261,7 +265,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
       {hiddenFileInput}
     </div>
   );
-}
+});
 
 // ─── MobileLevelRow ───────────────────────────────────────────────────────────
 

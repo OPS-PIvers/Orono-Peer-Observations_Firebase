@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { type Content, type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -55,6 +55,12 @@ export function TiptapEditor({
   minHeight = '8rem',
   autoFocus = false,
 }: TiptapEditorProps) {
+  // Tracks the exact doc object we last emitted via onChange. The parent
+  // stores it and feeds it straight back as `value`, so a reference match
+  // lets the sync effect skip re-serialising the whole document on every
+  // keystroke.
+  const lastEmittedRef = useRef<TiptapDoc | null>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -70,7 +76,9 @@ export function TiptapEditor({
     editable: !readOnly,
     autofocus: autoFocus,
     onUpdate: ({ editor: ed }) => {
-      onChange(ed.getJSON());
+      const json: TiptapDoc = ed.getJSON();
+      lastEmittedRef.current = json;
+      onChange(json);
     },
     editorProps: {
       attributes: {
@@ -81,9 +89,12 @@ export function TiptapEditor({
 
   // External value sync: if the parent passes new content (e.g. switching
   // between components or hydrating from Firestore), push it into the editor
-  // without firing onUpdate to avoid an autosave loop.
+  // without firing onUpdate to avoid an autosave loop. The reference check
+  // short-circuits self-originated updates (the common per-keystroke case)
+  // so we only stringify-compare for genuinely external changes.
   useEffect(() => {
     const incoming = value ?? EMPTY_DOC;
+    if (incoming === lastEmittedRef.current) return;
     const current = editor.getJSON();
     if (JSON.stringify(current) === JSON.stringify(incoming)) return;
     editor.commands.setContent(incoming as Content, { emitUpdate: false });
