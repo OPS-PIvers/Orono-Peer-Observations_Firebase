@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
+  AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
@@ -9,7 +10,11 @@ import {
   type ObservationPreference,
   type ObservationWindow,
 } from '@ops/shared';
-import { applyDayCountChange, dayHasCapacity } from './engine/bookingRules.js';
+import {
+  applyDayCountChange,
+  dayHasCapacity,
+  isWindowBookingClosed,
+} from './engine/bookingRules.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -60,6 +65,9 @@ export const submitDayPreference = onCall(
       }
       if (!BOOKABLE_WINDOW_STATUSES.includes(window.status)) {
         throw new HttpsError('failed-precondition', 'Window is not open for booking');
+      }
+      if (isWindowBookingClosed(window.endDate, new Date())) {
+        throw new HttpsError('failed-precondition', 'Window booking period has ended');
       }
 
       const invitee = window.invitees.find(
@@ -124,7 +132,7 @@ export const submitDayPreference = onCall(
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: FieldValue.serverTimestamp(),
       userEmail,
-      action: 'observationWindow.submitDayPreference',
+      action: AUDIT_ACTIONS.dayPreferenceSubmitted,
       target: `${COLLECTIONS.observationWindows}/${input.windowId}/${WINDOW_SUBCOLLECTIONS.preferences}/${userEmail}`,
       details: { windowId: input.windowId, preferredDateYMD: input.preferredDateYMD },
     });

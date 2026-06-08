@@ -1,7 +1,7 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { type Firestore, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, type Role, type Staff } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
@@ -100,7 +100,7 @@ export const migrateRolesToSlugs = onCall(
 );
 
 async function migrateCollection(args: {
-  db: FirebaseFirestore.Firestore;
+  db: Firestore;
   collectionName: string;
   field: string;
   knownSlugs: ReadonlySet<string>;

@@ -1,7 +1,9 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference, getFirestore } from 'firebase-admin/firestore';
 import {
+  AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_SLOT_STATUS,
   OBSERVATION_WINDOW_STATUS,
@@ -12,6 +14,8 @@ import {
   type ObservationSlot,
   type ObservationWindow,
 } from '@ops/shared';
+import { bookedSlotObservationIds } from './engine/bookingRules.js';
+import { deleteDraftObservation } from './draftCleanup.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -21,8 +25,10 @@ const MAX_BATCH_WRITES = 450;
  * Cancel an observation window.
  *
  * Allowed for an admin or the window's own observer. Marks the window
- * `cancelled` and flips every non-booked slot to `blocked`/`window-cancelled`.
- * Booked-slot / observation cleanup is intentionally deferred to a later phase.
+ * `cancelled`, flips every non-booked slot to `blocked`/`window-cancelled`,
+ * and tears down the Draft observations the window's bookings spawned
+ * (Finalized observations are preserved — their Drive folder is shared with
+ * the observed staff member).
  */
 export const cancelObservationWindow = onCall(
   { region: 'us-central1', memory: '256MiB', timeoutSeconds: 120 },
@@ -61,7 +67,8 @@ export const cancelObservationWindow = onCall(
 
     // Block every non-booked slot.
     const slotsSnap = await windowRef.collection(WINDOW_SUBCOLLECTIONS.slots).get();
-    const refs: FirebaseFirestore.DocumentReference[] = [];
+    const slots = slotsSnap.docs.map((d) => d.data() as ObservationSlot);
+    const refs: DocumentReference[] = [];
     for (const slotDoc of slotsSnap.docs) {
       const slot = slotDoc.data() as ObservationSlot;
       if (slot.status === OBSERVATION_SLOT_STATUS.booked) continue;
@@ -78,12 +85,27 @@ export const cancelObservationWindow = onCall(
       await batch.commit();
     }
 
+    // Tear down the Draft observations the window's bookings spawned, so a
+    // cancelled window doesn't leave orphaned Drafts behind. Finalized
+    // observations are preserved by deleteDraftObservation.
+    let cleanedDraftCount = 0;
+    for (const obsId of bookedSlotObservationIds(slots)) {
+      try {
+        if (await deleteDraftObservation(db, obsId)) cleanedDraftCount += 1;
+      } catch (err) {
+        logger.warn('cancelObservationWindow: draft cleanup failed', {
+          observationId: obsId,
+          err,
+        });
+      }
+    }
+
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: now,
       userEmail,
-      action: 'observationWindow.cancel',
+      action: AUDIT_ACTIONS.windowCancelled,
       target: `${COLLECTIONS.observationWindows}/${windowId}`,
-      details: { reason, blockedSlotCount: refs.length },
+      details: { reason, blockedSlotCount: refs.length, cleanedDraftCount },
     });
 
     return { ok: true };
