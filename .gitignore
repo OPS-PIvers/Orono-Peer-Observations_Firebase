@@ -38,6 +38,9 @@ ui-debug.log
 Thumbs.db
 desktop.ini
 
+# Google Drive for Desktop upload staging (recreated automatically)
+.tmp.driveupload/
+
 # Logs
 logs/
 *.log
