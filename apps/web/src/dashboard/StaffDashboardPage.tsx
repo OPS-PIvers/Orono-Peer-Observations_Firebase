@@ -1,17 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  collectionGroup,
-  doc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
+import { useMemo } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { doc, limit, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
@@ -27,7 +16,6 @@ import {
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
   type ModuleDoc,
-  type ModuleItem,
   type ModuleProgress,
   type Observation,
   type ObservationWindow,
@@ -38,9 +26,6 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
-import { useActiveStandardObservation } from '@/hooks/useActiveStandardObservation';
-import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
-import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
 import { DashboardView, type ModuleChip } from './DashboardView';
@@ -50,6 +35,7 @@ import {
   extractFirstName,
 } from './deriveCheckpoints';
 import { deriveModuleTasks } from './deriveModuleTasks';
+import { fetchModuleMaterials } from './moduleMaterials';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -109,29 +95,14 @@ export function StaffDashboardPage() {
     return [...ids].slice(0, 30);
   }, [staff, modulesData]);
 
-  const materialsConstraints = useMemo(
-    () =>
-      assignedModuleIds.length > 0
-        ? [where('kind', '==', 'material'), where('moduleId', 'in', assignedModuleIds)]
-        : null,
-    [assignedModuleIds],
-  );
-
-  const [moduleMaterials, setModuleMaterials] = useState<ModuleItem[]>([]);
-  useEffect(() => {
-    if (!materialsConstraints) {
-      setModuleMaterials([]);
-      return;
-    }
-    let cancelled = false;
-    void getDocs(query(collectionGroup(db, 'items'), ...materialsConstraints)).then((snap) => {
-      if (cancelled) return;
-      setModuleMaterials(snap.docs.map((d) => d.data() as ModuleItem));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [materialsConstraints]);
+  // Module materials are a one-shot read (collection-group getDocs), shared
+  // and cached via TanStack Query keyed on the assigned module ids — no
+  // manual effect + local state, and no live listener for what is
+  // effectively static reference content.
+  const { data: moduleMaterials } = useQuery({
+    queryKey: ['dashboard-module-materials', assignedModuleIds],
+    queryFn: () => fetchModuleMaterials(assignedModuleIds),
+  });
 
   const finalizedConstraints = useMemo(
     () =>
@@ -182,11 +153,16 @@ export function StaffDashboardPage() {
     return false;
   }, [myWindows, emailLower]);
 
-  const { observation: standardDraft } = useActiveStandardObservation(emailLower);
-  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
-  const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
+  // Active-observation drafts come from the shared context (mounted by
+  // Layout) so the dashboard doesn't re-open the same snapshot listeners.
+  const {
+    standard: standardDraft,
+    workProduct: wpDraft,
+    instructionalRound: irDraft,
+    hasWorkProduct,
+    hasInstructionalRound,
+  } = useActiveObservationTypes();
   const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
-  const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
 
   const finalizedStandard = useMemo(
     () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
@@ -227,7 +203,7 @@ export function StaffDashboardPage() {
 
   const moduleTasks = useMemo(() => {
     const done = new Set((moduleProgress ?? []).map((p) => p.itemId));
-    return deriveModuleTasks({ materials: moduleMaterials, doneItemIds: done });
+    return deriveModuleTasks({ materials: moduleMaterials ?? [], doneItemIds: done });
   }, [moduleMaterials, moduleProgress]);
 
   const allTasks = useMemo(() => [...tasks, ...moduleTasks], [tasks, moduleTasks]);

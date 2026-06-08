@@ -6,10 +6,11 @@ import { TopLoadingBar } from '@/components/TopLoadingBar';
 import { useAuth } from '@/auth/AuthProvider';
 import { cn } from '@/lib/utils';
 import { ActiveObservationTypesProvider } from '@/observations/ActiveObservationTypesContext';
+import { GeminiFeaturesProvider } from '@/hooks/useGeminiFeatures';
 
 export function Layout() {
   const { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile } = useSidebar();
-  const { user, claims } = useAuth();
+  const { user } = useAuth();
   const lowerEmail = user?.email?.toLowerCase() ?? '';
   const { pathname } = useLocation();
   // Hide footer on the observation editor — its sticky script drawer
@@ -52,11 +53,20 @@ export function Layout() {
     </div>
   );
 
-  if (!claims.hasSpecialAccess && lowerEmail) {
+  // One shared `/appSettings/global` listener for the whole shell (Gemini
+  // feature flags), instead of each editor consumer opening its own.
+  const shell = <GeminiFeaturesProvider>{inner}</GeminiFeaturesProvider>;
+
+  // Mount the active-observation listeners once per session. Both plain
+  // staff and special-access users may have observations where they're the
+  // observed party (dashboard cards, MyRubricPage forms), so this is no
+  // longer gated on `hasSpecialAccess` — the dashboard and MyRubricPage read
+  // the raw observations straight from this context.
+  if (lowerEmail) {
     return (
-      <ActiveObservationTypesProvider email={lowerEmail}>{inner}</ActiveObservationTypesProvider>
+      <ActiveObservationTypesProvider email={lowerEmail}>{shell}</ActiveObservationTypesProvider>
     );
   }
 
-  return inner;
+  return shell;
 }
