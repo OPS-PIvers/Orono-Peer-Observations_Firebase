@@ -59,12 +59,11 @@ Data is Cloud Firestore; blob storage is Google Drive (service account + Domain-
   path (e.g. `C:/Temp`) **and Java 21** on `PATH`, or the Firestore emulator crashes on startup.
 - **ESLint is type-aware**, so it needs each workspace's tsconfig to resolve. New source files must be
   covered by a `tsconfig` referenced in `eslint.config.js` `parserOptions.project`.
-- **Windows line endings (`core.autocrlf=true`, no `.gitattributes`).** Git checks files out as CRLF
-  locally but commits LF, so a _full-repo_ `pnpm lint` / `pnpm format:check` reports thousands of false
-  `Delete ␍` / formatting warnings that CI (Linux, LF) never sees. Don't "fix" them — it fights autocrlf
-  and creates a huge spurious diff. Verify your gate on **changed files only** (`pnpm exec prettier
---check <files>`, `pnpm exec eslint <files>` — Prettier writes them as LF), and trust `git status` /
-  `git diff` over the full-repo formatter output.
+- **Line endings are enforced LF via `.gitattributes`** (`* text=auto eol=lf`), which overrides
+  `core.autocrlf`. The working tree is LF on every platform (including Windows), so local Prettier/ESLint
+  agree with CI and the full `pnpm lint` / `pnpm format:check` is reliable. If you ever hit a wall of
+  `Delete ␍` warnings, your checkout predates this — renormalize with
+  `git rm --cached -r . && git reset --hard`.
 
 ## Deploy (GitHub Actions — do not run manual deploys)
 
