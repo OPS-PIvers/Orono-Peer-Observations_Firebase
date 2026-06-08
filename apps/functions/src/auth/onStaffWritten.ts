@@ -4,7 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
-import { sendTemplatedEmail } from '../lib/emailUtils.js';
+import { sendTemplatedEmail, staffInviteMailDocId } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -86,7 +86,7 @@ export const onStaffWritten = onDocumentWritten(
             observedName: after.name ?? email.split('@')[0],
             observedEmail: email,
           },
-          mailDocId: `invite-${email.replace('@', '-at-')}`,
+          mailDocId: staffInviteMailDocId(email, Date.now()),
           auditDetails: { email, triggerType: 'staff.created' },
         });
       } catch (emailErr) {
