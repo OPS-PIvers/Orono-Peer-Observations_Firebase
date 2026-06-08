@@ -129,20 +129,24 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
         {sorted.length === 0 ? (
           <p className="text-muted-foreground text-sm">No questions configured yet.</p>
         ) : (
-          sorted.map((q, idx) => (
-            <div key={q.id}>
-              <p className="text-ops-gray-dark mb-1.5 text-sm font-semibold">
-                {idx + 1}. {q.text}
-              </p>
-              <textarea
-                value={answers[q.questionId] ?? ''}
-                onChange={(e) => handleChange(q.questionId, e.target.value)}
-                rows={4}
-                className="focus:border-ops-blue focus:ring-ops-blue min-h-[6rem] w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1"
-                placeholder="Type your response here…"
-              />
-            </div>
-          ))
+          sorted.map((q, idx) => {
+            const labelId = `wp-question-${q.questionId}`;
+            return (
+              <div key={q.id}>
+                <p id={labelId} className="text-ops-gray-dark mb-1.5 text-sm font-semibold">
+                  {idx + 1}. {q.text}
+                </p>
+                <textarea
+                  value={answers[q.questionId] ?? ''}
+                  onChange={(e) => handleChange(q.questionId, e.target.value)}
+                  rows={4}
+                  aria-labelledby={labelId}
+                  className="focus:border-ops-blue focus:ring-ops-blue min-h-[6rem] w-full resize-y rounded-md border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-1"
+                  placeholder="Type your response here…"
+                />
+              </div>
+            );
+          })
         )}
       </div>
     </div>

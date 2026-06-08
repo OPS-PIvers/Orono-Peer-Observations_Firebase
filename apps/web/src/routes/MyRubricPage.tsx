@@ -11,8 +11,7 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
-import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
+import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { PageHeader } from '@/components/PageHeader';
 import { AssignmentToggle, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
@@ -101,8 +100,10 @@ export function MyRubricPage() {
     return { ...rubric, domains: filteredDomains };
   }, [rubric, assignmentMode, assignedComponentIds]);
 
-  const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
-  const { observation: irObservation } = useActiveInstructionalRoundObservation(lowerEmail);
+  // Read the active WP/IR observations from the shared context (mounted by
+  // Layout) instead of opening duplicate listeners here.
+  const { workProduct: wpObservation, instructionalRound: irObservation } =
+    useActiveObservationTypes();
 
   // Scroll to the targeted domain section when the URL hash changes.
   // React Router's <Link> updates the hash but does NOT trigger native

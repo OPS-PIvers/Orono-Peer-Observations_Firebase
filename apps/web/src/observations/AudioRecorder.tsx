@@ -226,6 +226,20 @@ export function AudioRecorder({
 
       <PhaseStatus phase={phase} elapsed={elapsed} error={error} />
 
+      {/* Persistent polite live region so recording phase changes are
+          announced to screen readers. The visible PhaseStatus carries the
+          ticking timer (aria-hidden by omission here) so it isn't re-read
+          every second. */}
+      <span className="sr-only" role="status" aria-live="polite">
+        {phase === 'recording'
+          ? 'Recording in progress'
+          : phase === 'uploading'
+            ? 'Uploading audio to Drive'
+            : phase === 'error'
+              ? `Recording error${error ? `: ${error}` : ''}`
+              : ''}
+      </span>
+
       <RecordingsList
         observationId={observationId}
         audioFileIds={audioFileIds}
@@ -346,7 +360,7 @@ function RecordingsList({
         return (
           <li key={fileId} className="py-3">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-muted-foreground text-xs">
+              <span className="text-muted-foreground text-xs" aria-live="polite">
                 Recording {String(i + 1)}
                 {transcript
                   ? ' · transcript ready'

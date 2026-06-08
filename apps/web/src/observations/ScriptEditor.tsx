@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { type Content, type Editor, EditorContent, useEditor } from '@tiptap/react';
+import { useEffect, useRef, useState } from 'react';
+import { type Content, type Editor, EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
@@ -63,6 +63,10 @@ export function ScriptEditor({
   placeholder,
   minHeight = '0',
 }: ScriptEditorProps) {
+  // Tracks the exact doc object we last emitted via onChange so the sync
+  // effect can skip re-serialising the whole script on every keystroke.
+  const lastEmittedRef = useRef<TiptapDoc | null>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -77,7 +81,9 @@ export function ScriptEditor({
     content: (value ?? EMPTY_DOC) as Content,
     editable: !readOnly,
     onUpdate: ({ editor: ed }) => {
-      onChange(ed.getJSON());
+      const json: TiptapDoc = ed.getJSON();
+      lastEmittedRef.current = json;
+      onChange(json);
     },
     editorProps: {
       attributes: { class: 'tiptap-surface focus:outline-none px-3 py-2 text-sm' },
@@ -86,6 +92,7 @@ export function ScriptEditor({
 
   useEffect(() => {
     const incoming = value ?? EMPTY_DOC;
+    if (incoming === lastEmittedRef.current) return;
     const current = editor.getJSON();
     if (JSON.stringify(current) === JSON.stringify(incoming)) return;
     editor.commands.setContent(incoming as Content, { emitUpdate: false });
@@ -95,20 +102,27 @@ export function ScriptEditor({
     editor.setEditable(!readOnly);
   }, [editor, readOnly]);
 
-  // Force a rerender on each editor selection change so we can read the
-  // active mark from anywhere in this component tree.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const handler = () => {
-      setTick((n) => n + 1);
-    };
-    editor.on('selectionUpdate', handler);
-    editor.on('transaction', handler);
-    return () => {
-      editor.off('selectionUpdate', handler);
-      editor.off('transaction', handler);
-    };
-  }, [editor]);
+  // Derive only the toolbar-relevant editor state. `useEditorState` re-renders
+  // this component solely when one of these values changes (deep-equal),
+  // instead of the previous per-transaction `setTick` that re-rendered on
+  // every keystroke and selection change.
+  const toolbarState = useEditorState({
+    editor,
+    selector: ({ editor: ed }): ScriptToolbarState => ({
+      activeTagId: (ed.getAttributes('componentTag')['componentId'] as string | null) ?? null,
+      isBold: ed.isActive('bold'),
+      isItalic: ed.isActive('italic'),
+      isStrike: ed.isActive('strike'),
+      isHeading2: ed.isActive('heading', { level: 2 }),
+      isHeading3: ed.isActive('heading', { level: 3 }),
+      isBulletList: ed.isActive('bulletList'),
+      isOrderedList: ed.isActive('orderedList'),
+      isBlockquote: ed.isActive('blockquote'),
+      isLink: ed.isActive('link'),
+      canUndo: ed.can().chain().focus().undo().run(),
+      canRedo: ed.can().chain().focus().redo().run(),
+    }),
+  });
 
   const geminiFeatures = useGeminiFeatures();
   const autoTagEnabled = geminiFeatures.scriptAutoTag.enabled;
@@ -121,7 +135,7 @@ export function ScriptEditor({
     skippedCount: number;
   } | null>(null);
 
-  const activeTagId = editor.getAttributes('componentTag')['componentId'] as string | null;
+  const activeTagId = toolbarState.activeTagId;
 
   function applyTag(component: RubricComponent) {
     const { bg, fg } = colorFor(component);
@@ -172,7 +186,7 @@ export function ScriptEditor({
       {!readOnly ? (
         <ScriptToolbar
           editor={editor}
-          activeTagId={activeTagId}
+          state={toolbarState}
           pickerOpen={pickerOpen}
           onTogglePicker={() => setPickerOpen((v) => !v)}
           onAutoTag={observationId && autoTagEnabled ? () => void runAutoTag() : null}
@@ -215,76 +229,92 @@ export function ScriptEditor({
   );
 }
 
+interface ScriptToolbarState {
+  activeTagId: string | null;
+  isBold: boolean;
+  isItalic: boolean;
+  isStrike: boolean;
+  isHeading2: boolean;
+  isHeading3: boolean;
+  isBulletList: boolean;
+  isOrderedList: boolean;
+  isBlockquote: boolean;
+  isLink: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
 function ScriptToolbar({
   editor,
-  activeTagId,
+  state,
   pickerOpen,
   onTogglePicker,
   onAutoTag,
   autoTagBusy,
 }: {
   editor: Editor;
-  activeTagId: string | null;
+  state: ScriptToolbarState;
   pickerOpen: boolean;
   onTogglePicker: () => void;
   onAutoTag: (() => void) | null;
   autoTagBusy: boolean;
 }) {
+  const activeTagId = state.activeTagId;
   return (
     <div className="border-input bg-muted/40 flex flex-wrap items-center gap-1 border-b px-2 py-1">
       <ToolbarButton
-        active={editor.isActive('bold')}
+        active={state.isBold}
         onClick={() => editor.chain().focus().toggleBold().run()}
         title="Bold (Ctrl+B)"
         icon={<Bold className="h-4 w-4" />}
       />
       <ToolbarButton
-        active={editor.isActive('italic')}
+        active={state.isItalic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         title="Italic (Ctrl+I)"
         icon={<Italic className="h-4 w-4" />}
       />
       <ToolbarButton
-        active={editor.isActive('strike')}
+        active={state.isStrike}
         onClick={() => editor.chain().focus().toggleStrike().run()}
         title="Strikethrough"
         icon={<Strikethrough className="h-4 w-4" />}
       />
       <Divider />
       <ToolbarButton
-        active={editor.isActive('heading', { level: 2 })}
+        active={state.isHeading2}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
         title="Heading 2"
         icon={<Heading2 className="h-4 w-4" />}
       />
       <ToolbarButton
-        active={editor.isActive('heading', { level: 3 })}
+        active={state.isHeading3}
         onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         title="Heading 3"
         icon={<Heading3 className="h-4 w-4" />}
       />
       <Divider />
       <ToolbarButton
-        active={editor.isActive('bulletList')}
+        active={state.isBulletList}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         title="Bullet list"
         icon={<List className="h-4 w-4" />}
       />
       <ToolbarButton
-        active={editor.isActive('orderedList')}
+        active={state.isOrderedList}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
         title="Numbered list"
         icon={<ListOrdered className="h-4 w-4" />}
       />
       <ToolbarButton
-        active={editor.isActive('blockquote')}
+        active={state.isBlockquote}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
         title="Quote"
         icon={<Quote className="h-4 w-4" />}
       />
       <Divider />
       <ToolbarButton
-        active={editor.isActive('link')}
+        active={state.isLink}
         onClick={() => insertOrEditLink(editor)}
         title="Add/edit link"
         icon={<LinkIcon className="h-4 w-4" />}
@@ -322,13 +352,13 @@ function ScriptToolbar({
       <div className="ml-auto flex items-center gap-1">
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
-          disabled={!editor.can().chain().focus().undo().run()}
+          disabled={!state.canUndo}
           title="Undo (Ctrl+Z)"
           icon={<Undo2 className="h-4 w-4" />}
         />
         <ToolbarButton
           onClick={() => editor.chain().focus().redo().run()}
-          disabled={!editor.can().chain().focus().redo().run()}
+          disabled={!state.canRedo}
           title="Redo (Ctrl+Shift+Z)"
           icon={<Redo2 className="h-4 w-4" />}
         />

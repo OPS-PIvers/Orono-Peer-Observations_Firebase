@@ -16,6 +16,12 @@ const HANDLE_HEIGHT = 24;
 const COLLAPSE_BTN_THRESHOLD = 80;
 // Cap drawer at 75% viewport so the rubric above stays usable.
 const MAX_HEIGHT_RATIO = 0.75;
+// Body height a keyboard "open" (Enter/Space on the handle) jumps to.
+const KEYBOARD_OPEN_HEIGHT = 280;
+// How much an ArrowUp/ArrowDown keypress resizes the drawer.
+const KEYBOARD_RESIZE_STEP = 48;
+// id linking the handle's aria-controls to the drawer body.
+const DRAWER_BODY_ID = 'script-drawer-body';
 
 function readSession(key: string, fallback: string): string {
   try {
@@ -40,11 +46,11 @@ export interface ScriptDrawerProps {
 }
 
 /**
- * Fixed-bottom resizable drawer for the script editor. There is no
- * expand/collapse button — the user drags the handle bar to open it,
- * resize it, or close it (drag down to zero). When the body is tall
- * enough, a floating chevron-down at the bottom-center offers a quick
- * one-click collapse back to zero.
+ * Fixed-bottom resizable drawer for the script editor. Pointer users drag the
+ * handle bar to open, resize, or close it (drag to zero); keyboard users focus
+ * the handle and use Enter/Space to toggle, the arrow keys to resize, and
+ * Escape to collapse. When the body is tall enough, a floating chevron-down at
+ * the bottom-center offers a quick one-click collapse back to zero.
  */
 export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
   const [bodyHeight, setBodyHeight] = useState<number>(() => {
@@ -96,6 +102,48 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
     writeSession(HEIGHT_KEY, '0');
   }, []);
 
+  const maxBodyHeight = useCallback(
+    () => window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT,
+    [],
+  );
+
+  // Keyboard support on the drag handle: the drawer otherwise only opens via
+  // pointer drag, leaving keyboard users no way in. Enter/Space toggle it
+  // open/closed, the arrow keys resize it, and Escape collapses it.
+  const onHandleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const clampAndStore = (next: number) => {
+        const clamped = Math.min(maxBodyHeight(), Math.max(0, next));
+        setBodyHeight(clamped);
+        writeSession(HEIGHT_KEY, String(clamped));
+      };
+      switch (e.key) {
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          clampAndStore(bodyHeight > 0 ? 0 : KEYBOARD_OPEN_HEIGHT);
+          break;
+        case 'Escape':
+          if (bodyHeight > 0) {
+            e.preventDefault();
+            collapse();
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          clampAndStore(bodyHeight + KEYBOARD_RESIZE_STEP);
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          clampAndStore(bodyHeight - KEYBOARD_RESIZE_STEP);
+          break;
+        default:
+          break;
+      }
+    },
+    [bodyHeight, collapse, maxBodyHeight],
+  );
+
   const drawerHeight = bodyHeight + HANDLE_HEIGHT;
   const showCollapseBtn = bodyHeight >= COLLAPSE_BTN_THRESHOLD;
 
@@ -117,13 +165,23 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
             centered pill grip. Acts as the resize affordance and the only
             way to open the drawer. */}
         <div
-          aria-hidden="true"
+          role="button"
+          tabIndex={0}
+          aria-expanded={bodyHeight > 0}
+          aria-controls={DRAWER_BODY_ID}
+          aria-label={
+            bodyHeight > 0
+              ? 'Script drawer. Press Enter to collapse, or the arrow keys to resize.'
+              : 'Script drawer. Press Enter to open, or the arrow keys to resize.'
+          }
           className={cn(
             'group relative flex shrink-0 cursor-ns-resize items-center border-t border-b',
             'border-ops-gray-lighter bg-ops-gray-lightest px-3 select-none',
+            'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
           )}
           style={{ height: HANDLE_HEIGHT }}
           onPointerDown={onPointerDown}
+          onKeyDown={onHandleKeyDown}
         >
           <span className="text-ops-gray-dark text-[11px] font-semibold tracking-wide uppercase">
             Script
@@ -140,7 +198,10 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
             scales smoothly as the user drags. flex-1 lets the script
             editor inside fill whatever space the handle leaves. */}
         {bodyHeight > 0 ? (
-          <div className="bg-background flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+          <div
+            id={DRAWER_BODY_ID}
+            className="bg-background flex min-h-0 flex-1 flex-col overflow-hidden p-4"
+          >
             {children}
           </div>
         ) : null}

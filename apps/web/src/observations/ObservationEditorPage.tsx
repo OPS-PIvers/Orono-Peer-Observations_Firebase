@@ -8,8 +8,10 @@ import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  type DriveFileRef,
   type Observation,
   type ObservationComponentEntry,
+  type ProficiencyLevel,
   type Role,
   type RoleYearMapping,
   type Rubric,
@@ -35,7 +37,13 @@ import {
 } from '@/components/ui/dialog';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
-import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
+import {
+  AssignmentToggle,
+  DomainNav,
+  RubricGrid,
+  type AssignmentMode,
+  type RubricGridMode,
+} from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
@@ -397,6 +405,16 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
+  // Stable handler for proficiency selection so the rubric grid's memoized
+  // edit-mode object (built in EditorRubricGrid) only changes when the data
+  // it depends on changes — not on every parent render.
+  const setProficiency = useCallback(
+    (componentId: string, proficiency: ProficiencyLevel | null) => {
+      updateEntry(componentId, { proficiency });
+    },
+    [updateEntry],
+  );
+
   async function handleFinalize() {
     if (!observation) return;
     setFinalizing(true);
@@ -595,22 +613,17 @@ export function ObservationEditorPage() {
             role/year mappings.
           </div>
         ) : (
-          <RubricGrid
+          <EditorRubricGrid
             rubric={visibleRubric}
-            mode={{
-              kind: 'edit',
-              entries: draft.observationData,
-              notes: draft.componentNotes,
-              ...(draft.scriptDoc ? { scriptDoc: draft.scriptDoc } : {}),
-              evidenceLinks: observation.evidenceLinks ?? {},
-              observationId: observation.id,
-              readOnly: !canEdit,
-              onProficiency: (componentId, proficiency) =>
-                updateEntry(componentId, { proficiency }),
-              onToggleLookFor: toggleLookFor,
-              onNotesChange: setNotesDoc,
-            }}
-            storageScope={`edit-${observation.id}`}
+            observationId={observation.id}
+            entries={draft.observationData}
+            notes={draft.componentNotes}
+            scriptDoc={draft.scriptDoc}
+            evidenceLinks={observation.evidenceLinks ?? {}}
+            readOnly={!canEdit}
+            onProficiency={setProficiency}
+            onToggleLookFor={toggleLookFor}
+            onNotesChange={setNotesDoc}
           />
         )}
       </div>
@@ -627,6 +640,65 @@ export function ObservationEditorPage() {
       </ScriptDrawer>
     </>
   );
+}
+
+interface EditorRubricGridProps {
+  rubric: Rubric;
+  observationId: string;
+  entries: ComponentEntries;
+  notes: ComponentNotes;
+  scriptDoc: TiptapDoc | undefined;
+  evidenceLinks: Record<string, DriveFileRef[]>;
+  readOnly: boolean;
+  onProficiency: (componentId: string, proficiency: ProficiencyLevel | null) => void;
+  onToggleLookFor: (componentId: string, lookForId: string) => void;
+  onNotesChange: (componentId: string, doc: TiptapDoc) => void;
+}
+
+/**
+ * Builds the rubric grid's edit-mode object with a stable identity. The
+ * callbacks arrive as props (already memoized in the parent), so this memo
+ * only changes when the rubric data the rows render from changes — keeping
+ * the memoized RubricRow from re-rendering on unrelated parent updates.
+ */
+function EditorRubricGrid({
+  rubric,
+  observationId,
+  entries,
+  notes,
+  scriptDoc,
+  evidenceLinks,
+  readOnly,
+  onProficiency,
+  onToggleLookFor,
+  onNotesChange,
+}: EditorRubricGridProps) {
+  const mode = useMemo<RubricGridMode>(
+    () => ({
+      kind: 'edit',
+      entries,
+      notes,
+      ...(scriptDoc ? { scriptDoc } : {}),
+      evidenceLinks,
+      observationId,
+      readOnly,
+      onProficiency,
+      onToggleLookFor,
+      onNotesChange,
+    }),
+    [
+      entries,
+      notes,
+      scriptDoc,
+      evidenceLinks,
+      observationId,
+      readOnly,
+      onProficiency,
+      onToggleLookFor,
+      onNotesChange,
+    ],
+  );
+  return <RubricGrid rubric={rubric} mode={mode} storageScope={`edit-${observationId}`} />;
 }
 
 interface EditorToolbarProps {
@@ -827,7 +899,10 @@ function FinalizeDialog({
           </li>
         </ul>
         {error ? (
-          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+          <div
+            role="alert"
+            className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+          >
             {error}
           </div>
         ) : null}

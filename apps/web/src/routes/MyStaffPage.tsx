@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, orderBy } from 'firebase/firestore';
-import { Check } from 'lucide-react';
+import { Check, RefreshCw } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useDevMode } from '@/dev/DevModeContext';
 import { useDocument } from '@/hooks/useDocument';
-import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreCollectionOnce } from '@/hooks/useFirestoreCollectionOnce';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
@@ -40,10 +40,14 @@ export function MyStaffPage() {
   const missingBuildings =
     !overrideBuilding && !adminLoading && (!adminDoc || adminBuildings.length === 0);
 
-  const { data: allStaff, loading: staffLoading } = useFirestoreCollection<Staff>(
-    COLLECTIONS.staff,
-    ALL_STAFF_CONSTRAINTS,
-  );
+  // One-shot read (no live listener) of the staff collection — refreshed on
+  // demand via the header control rather than re-rendering on every write.
+  const {
+    data: allStaff,
+    loading: staffLoading,
+    fetching,
+    refresh,
+  } = useFirestoreCollectionOnce<Staff>(COLLECTIONS.staff, ALL_STAFF_CONSTRAINTS);
 
   const buildingScoped = useMemo(() => {
     if (!allStaff) return [];
@@ -86,7 +90,23 @@ export function MyStaffPage() {
   ];
 
   return (
-    <PageHeader title="My Staff" subtitle="Building-scoped staff for your site">
+    <PageHeader
+      title="My Staff"
+      subtitle="Building-scoped staff for your site"
+      actions={
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refresh}
+          disabled={fetching}
+          aria-label="Refresh staff list"
+          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        >
+          <RefreshCw className={fetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          Refresh
+        </Button>
+      }
+    >
       {missingBuildings ? (
         <div className="bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md px-4 py-3 text-sm">
           Your building assignment isn&apos;t configured. Contact your site admin.

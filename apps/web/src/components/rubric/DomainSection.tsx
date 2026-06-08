@@ -25,13 +25,21 @@ export interface DomainSectionProps {
 export function DomainSection({ domain, children }: DomainSectionProps) {
   const headingId = `domain-title-${domain.id}`;
 
+  // The section IS the grid's rowgroup so the rows below are owned directly by
+  // the `role="grid"` ancestor (RubricGrid). The domain title strip is chrome
+  // (role="presentation"); its <h2> still carries the heading semantics and
+  // labels the rowgroup via aria-labelledby.
   return (
     <section
       id={`domain-${domain.id}`}
+      role="rowgroup"
       aria-labelledby={headingId}
       className="scroll-mt-[calc(var(--page-chrome-h,0px)+8px)]"
     >
-      <div className={cn('sticky top-[var(--page-chrome-h,0px)] z-[5]', 'bg-ops-blue-dark')}>
+      <div
+        role="presentation"
+        className={cn('sticky top-[var(--page-chrome-h,0px)] z-[5]', 'bg-ops-blue-dark')}
+      >
         <div className="flex items-center gap-3 px-4 py-2.5">
           <span
             aria-hidden="true"
@@ -45,41 +53,41 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
       </div>
 
-      <div role="rowgroup" className="bg-white">
+      <div
+        role="row"
+        className={cn(
+          'sticky top-[calc(var(--page-chrome-h,0px)+48px)] z-[4]',
+          'grid',
+          RUBRIC_GRID_COLS,
+        )}
+      >
         <div
-          role="row"
+          role="columnheader"
           className={cn(
-            'sticky top-[calc(var(--page-chrome-h,0px)+48px)] z-[4]',
-            'grid',
-            RUBRIC_GRID_COLS,
+            'bg-ops-blue-dark',
+            'font-heading px-3 py-2',
+            'text-[11px] font-semibold tracking-widest text-white uppercase',
           )}
         >
+          Component
+        </div>
+        {PROFICIENCY_LEVELS.map((level) => (
           <div
+            key={level}
             role="columnheader"
             className={cn(
-              'bg-ops-blue-dark',
-              'font-heading px-3 py-2',
-              'text-[11px] font-semibold tracking-widest text-white uppercase',
+              'bg-ops-red-light',
+              'border-r border-white/20 px-3 py-2 last:border-r-0',
+              'font-heading text-[11px] font-semibold tracking-widest text-white uppercase',
             )}
           >
-            Component
+            {PROFICIENCY_LABELS[level]}
           </div>
-          {PROFICIENCY_LEVELS.map((level) => (
-            <div
-              key={level}
-              role="columnheader"
-              className={cn(
-                'bg-ops-red-light',
-                'border-r border-white/20 px-3 py-2 last:border-r-0',
-                'font-heading text-[11px] font-semibold tracking-widest text-white uppercase',
-              )}
-            >
-              {PROFICIENCY_LABELS[level]}
-            </div>
-          ))}
-        </div>
+        ))}
+      </div>
 
-        <div className="divide-y divide-gray-100">{children}</div>
+      <div role="presentation" className="divide-y divide-gray-100 bg-white">
+        {children}
       </div>
     </section>
   );

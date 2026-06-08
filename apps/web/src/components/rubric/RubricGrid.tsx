@@ -125,8 +125,15 @@ export function RubricGrid({ rubric, mode, storageScope, className }: RubricGrid
     );
   }
 
+  const isReadOnly = mode.kind !== 'edit' || mode.readOnly;
+
   return (
-    <div className={cn('space-y-6', className)}>
+    <div
+      role="grid"
+      aria-label={`${rubric.displayName} rubric`}
+      aria-readonly={isReadOnly}
+      className={cn('space-y-6', className)}
+    >
       {visibleDomains.map(({ domain, components }) => (
         <DomainSection key={domain.id} domain={domain}>
           {components.map((component) => (

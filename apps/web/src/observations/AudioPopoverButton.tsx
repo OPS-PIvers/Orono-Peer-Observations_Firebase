@@ -57,6 +57,22 @@ export function AudioPopoverButton({
     };
   }, [open, phase]);
 
+  // Keyboard focus management: move focus into the popover when it opens so
+  // keyboard users land on the recorder, and restore focus to the trigger
+  // when it closes (Escape / click-outside) so they aren't stranded.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      const first = popoverRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      (first ?? popoverRef.current)?.focus();
+    } else if (!open && wasOpenRef.current) {
+      triggerRef.current?.focus();
+    }
+    wasOpenRef.current = open;
+  }, [open]);
+
   return (
     <div className="relative">
       <Button
@@ -88,7 +104,10 @@ export function AudioPopoverButton({
         id="audio-popover"
         ref={popoverRef}
         hidden={!open}
-        className="border-border bg-popover text-popover-foreground absolute top-full right-0 z-50 mt-2 w-[min(28rem,calc(100vw-2rem))] rounded-lg border p-3 shadow-lg"
+        tabIndex={-1}
+        role="dialog"
+        aria-label="Audio recorder"
+        className="border-border bg-popover text-popover-foreground absolute top-full right-0 z-50 mt-2 w-[min(28rem,calc(100vw-2rem))] rounded-lg border p-3 shadow-lg focus:outline-none"
       >
         <AudioRecorder
           observationId={observationId}
