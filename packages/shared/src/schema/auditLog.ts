@@ -33,6 +33,14 @@ export const AUDIT_ACTIONS = {
   transcriptionFailed: 'transcription_failed',
   driveFolderShared: 'drive_folder_shared',
   rateLimitTripped: 'rate_limit_tripped',
+  // Scheduling lifecycle (observation windows + slots).
+  windowCreated: 'window_created',
+  windowCancelled: 'window_cancelled',
+  windowExpired: 'window_expired',
+  slotBooked: 'slot_booked',
+  slotCancelled: 'slot_cancelled',
+  slotAssignedFromPreference: 'slot_assigned_from_preference',
+  dayPreferenceSubmitted: 'day_preference_submitted',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
