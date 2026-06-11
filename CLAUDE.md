@@ -70,14 +70,26 @@ Data is Cloud Firestore; blob storage is Google Drive (service account + Domain-
 
 ## Deploy (GitHub Actions — do not run manual deploys)
 
-- Push to **`dev-paul`** → auto-deploys a Hosting **preview** channel (against live Firestore).
-- **`main`** → production deploy via a manual `workflow_dispatch` (approval-gated). Don't trigger it.
-- CI runs on pushes to `main` and on PRs.
+- Push to **`dev-paul`** → deploys a Hosting **preview** channel **plus the live project's Firestore
+  rules + indexes, Storage rules, and Functions** (`deploy-dev.yml` runs `--only firestore,storage` and
+  `--only functions` against `peer-evaluator-rubric`). A dev push is NOT sandboxed — rules/functions
+  changes go live.
+- **`main`** → production hosting deploy via a manual `workflow_dispatch` (approval-gated). Don't trigger it.
+- `apps/pdf-renderer` deploys via its own paths-gated workflow (`deploy-pdf-renderer.yml`).
+- CI runs on pushes to `main`/`dev-paul` and on PRs.
 
-## Repeatable optimization workflow
+## Repeatable agent workflows
 
 `.claude/workflows/optimize-codebase.js` is a reusable [Workflow](.claude/workflows/optimize-codebase.js)
 that audits the codebase across 5 dimensions, ranks findings by impact, and (in `mode:'full'`) implements
 them in file-disjoint waves with verify-after-each-wave. Use `mode:'analyze'` for a read-only audit.
-Git commits, push, CI/deploy monitoring, and the PR remain the orchestrator's responsibility — not the
-workflow's.
+
+`.claude/workflows/mvp-to-production.js` is its feature-completion sibling: per-subsystem auditors →
+adversarial skeptics → ranked gap work-list (`mode:'audit'`), then dependency-aware file-disjoint
+implementation waves (`mode:'implement'` with `gapsFile`/`specFile` pointing at `.claude/workflows/runs/`).
+Implementers are model-routed by effort×risk (haiku/sonnet/opus; the top tier only for high-risk
+security/rules slices). The June 2026 run that took the app from MVP to feature-complete (161 gaps,
+3 batches) is archived in `.claude/workflows/runs/`.
+
+For both: git commits, push, CI/deploy monitoring, and the PR remain the orchestrator's responsibility —
+not the workflow's. Agents must never edit `.github/workflows/*` or `firebase.json` deploy config.

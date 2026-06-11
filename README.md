@@ -50,6 +50,22 @@ Firebase.
 | `pnpm import:emulator`       | Import current Sheet into the running emulator    |
 | `pnpm import:prod --confirm` | One-shot prod import (cutover only — destructive) |
 
+## Email delivery
+
+Outbound email rides the **Trigger Email** Firebase Extension
+(`firebase/firestore-send-email`): Cloud Functions write documents to the
+`/mail` Firestore collection (`apps/functions/src/lib/emailUtils.ts`), the
+extension sends them via SMTP and writes delivery state back onto each doc
+(monitored by `apps/functions/src/email/onMailDelivered.ts`).
+
+The instance is declared in `firebase.json` (`extensions` key) with its
+non-secret params in `extensions/firestore-send-email.env`. The SMTP password
+lives in Secret Manager (`firestore-send-email-SMTP_PASSWORD`), never in the
+repo. CI deploy workflows scope `firebase deploy --only …` to
+hosting/functions/firestore/storage, so extension config changes are **not**
+deployed by CI — rolling them out is a deliberate manual
+`firebase deploy --only extensions --project peer-evaluator-rubric`.
+
 ## Branches
 
 - `dev-paul` — work-in-progress; auto-deploys to a Hosting preview channel against live Firestore

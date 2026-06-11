@@ -1,0 +1,119 @@
+name: Deploy — pdf-renderer (Cloud Run)
+
+# Builds the apps/pdf-renderer Docker image with Cloud Build (reusing
+# apps/pdf-renderer/cloudbuild.yaml, which sets the repo-root build context
+# the Dockerfile needs for pnpm workspace deps) and deploys it to the
+# Cloud Run service that renders observation PDFs for @ops/functions.
+#
+# IAM prerequisites — the deployer service account behind
+# secrets.FIREBASE_SERVICE_ACCOUNT may NOT have these roles yet. Grant them
+# in project peer-evaluator-rubric (IAM & Admin → IAM) before relying on
+# this workflow:
+#   - roles/cloudbuild.builds.editor  submit Cloud Build jobs
+#   - roles/storage.objectAdmin       upload the source tarball to the
+#                                     <project>_cloudbuild staging bucket
+#   - roles/artifactregistry.writer   push images to the
+#                                     cloud-run-source-deploy repo
+#   - roles/run.admin                 create/update the Cloud Run service
+#   - roles/iam.serviceAccountUser    on the Cloud Run runtime service
+#                                     account (act-as during deploy)
+#
+# Triggers:
+#   - push to dev-paul touching apps/pdf-renderer/** (or this workflow)
+#   - manual workflow_dispatch gated on confirm == "DEPLOY"
+#     (same gate style as deploy-prod.yml)
+
+on:
+  push:
+    branches: [dev-paul]
+    paths:
+      - 'apps/pdf-renderer/**'
+      # Docs don't change the image — don't burn a Cloud Build on them.
+      # (Workflow-file edits deliberately do NOT auto-trigger either; use the
+      # manual dispatch to validate workflow changes — IAM may not be granted
+      # yet, see the header.)
+      - '!apps/pdf-renderer/**/*.md'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DEPLOY" to confirm Cloud Run deploy'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-pdf-renderer
+  cancel-in-progress: false
+
+env:
+  # Discovered from apps/pdf-renderer/cloudbuild.yaml (image path + documented
+  # manual deploy command) and apps/functions/.env.peer-evaluator-rubric
+  # (PDF_RENDERER_URL=https://pdf-renderer-968674433533.us-central1.run.app).
+  # Correct here if the service is ever renamed or moved.
+  GCP_PROJECT: peer-evaluator-rubric
+  SERVICE_NAME: pdf-renderer
+  REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/peer-evaluator-rubric/cloud-run-source-deploy/pdf-renderer
+
+jobs:
+  deploy:
+    name: Build + deploy Cloud Run pdf-renderer
+    runs-on: ubuntu-latest
+    # FIREBASE_SERVICE_ACCOUNT is referenced under an environment in the
+    # other deploy workflows; "dev" matches the dev-paul push trigger.
+    environment: dev
+    # Pushes are already paths-gated; manual runs must type the token.
+    if: ${{ github.event_name == 'push' || github.event.inputs.confirm == 'DEPLOY' }}
+    steps:
+      - name: Refuse if confirmation token is wrong
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'DEPLOY' }}
+        run: |
+          echo "Confirmation token did not match. Aborting."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Build + push image (Cloud Build)
+        # cloudbuild.yaml builds from the repo root so the Dockerfile can copy
+        # pnpm-workspace.yaml and packages/shared. Source upload respects
+        # .gitignore (no .gcloudignore checked in), so node_modules stays
+        # local. --timeout extends Cloud Build's 10-minute default; the
+        # Chromium download alone can blow past it.
+        run: |
+          gcloud builds submit \
+            --project "${{ env.GCP_PROJECT }}" \
+            --config apps/pdf-renderer/cloudbuild.yaml \
+            --substitutions=_TAG=${{ github.sha }} \
+            --timeout=1800s \
+            .
+
+      - name: Deploy to Cloud Run
+        # Flags mirror the manual deploy command documented in
+        # apps/pdf-renderer/cloudbuild.yaml; re-asserting them every deploy
+        # keeps the service config declarative. --no-allow-unauthenticated is
+        # load-bearing: the only caller is @ops/functions via Cloud Run IAM
+        # (roles/run.invoker on the functions runtime service account).
+        run: |
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --project "${{ env.GCP_PROJECT }}" \
+            --image "${{ env.IMAGE }}:${{ github.sha }}" \
+            --region "${{ env.REGION }}" \
+            --no-allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --concurrency 4 \
+            --timeout 120 \
+            --set-env-vars NODE_ENV=production
