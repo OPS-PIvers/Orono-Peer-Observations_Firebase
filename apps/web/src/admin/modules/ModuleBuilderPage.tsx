@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { Eye, Plus } from 'lucide-react';
+import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   COLLECTIONS,
+  MODULE_CONTENT_SUBCOLLECTION,
   MODULE_ICONS,
   MODULE_SUBCOLLECTIONS,
   type ModuleDoc,
@@ -72,7 +73,10 @@ export function ModuleBuilderPage() {
   }
 
   function addSection(type: ModuleSectionType) {
-    updateSections((current) => [...current, { id: newSectionId(), type, title: '', body: '' }]);
+    // New sections carry only public layout metadata (id/type/title). Rich-text
+    // bodies live in the gated /content subcollection (ModuleSectionEditor),
+    // never inline on the domain-readable module doc.
+    updateSections((current) => [...current, { id: newSectionId(), type, title: '' }]);
   }
 
   function patchSection(id: string, patch: Partial<ModuleSection>) {
@@ -100,6 +104,10 @@ export function ModuleBuilderPage() {
 
   function deleteSection(id: string) {
     updateSections((current) => current.filter((s) => s.id !== id));
+    // Best-effort: drop the section's gated rich-text content doc (if any) so a
+    // deleted richtext section doesn't strand a /content doc. No-op for
+    // resources/materials sections, which have no content doc.
+    void deleteDoc(doc(db, COLLECTIONS.modules, moduleId, MODULE_CONTENT_SUBCOLLECTION, id));
   }
 
   if (!module) {
@@ -116,9 +124,19 @@ export function ModuleBuilderPage() {
       variant="light"
       breadcrumb={['Admin', 'Modules', module.displayName]}
       actions={
-        <Button variant="outline" onClick={() => void navigate('/admin/modules')}>
-          Back to modules
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            data-testid="preview-module-button"
+            onClick={() => void navigate(`/m/${moduleId}`)}
+          >
+            <Eye className="mr-1 h-4 w-4" />
+            Preview page
+          </Button>
+          <Button variant="outline" onClick={() => void navigate('/admin/modules')}>
+            Back to modules
+          </Button>
+        </div>
       }
     >
       <div className="mb-6 grid max-w-xl gap-4">

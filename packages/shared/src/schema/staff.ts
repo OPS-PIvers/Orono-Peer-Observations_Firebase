@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
-import { OBSERVATION_YEARS } from '../constants.js';
+import { ALLOWED_EMAIL_DOMAIN, OBSERVATION_YEARS } from '../constants.js';
 
 /**
  * /staff/{email} — staff directory.
@@ -53,3 +53,52 @@ export type Staff = z.infer<typeof staff>;
  *  added server-side). */
 export const staffInput = staff.omit({ createdAt: true, updatedAt: true });
 export type StaffInput = z.infer<typeof staffInput>;
+
+/** Options controlling how strictly staff input is validated. */
+export interface ValidateStaffInputOptions {
+  /**
+   * When true, the email must belong to `ALLOWED_EMAIL_DOMAIN`
+   * (`@orono.k12.mn.us`). Off by default so imports and admin edits can
+   * stage staff records before SSO is enforced.
+   */
+  enforceDomain?: boolean;
+}
+
+/**
+ * Discriminated result of {@link validateStaffInput}. Mirrors Zod's
+ * `safeParse` shape but flattens the error to a single human-readable string
+ * so callers (web forms, callables, the import script) get a consistent
+ * message without depending on Zod's internal error structure.
+ */
+export type ValidateStaffInputResult =
+  | { success: true; data: StaffInput }
+  | { success: false; error: string };
+
+/**
+ * Validate raw staff form/import input against the {@link staffInput} schema,
+ * with optional domain enforcement.
+ *
+ * Email is normalized to lowercase by the schema before any checks run, so
+ * domain enforcement is case-insensitive.
+ *
+ * @param input    Unknown payload from a form, callable, or import row.
+ * @param options  See {@link ValidateStaffInputOptions}.
+ */
+export function validateStaffInput(
+  input: unknown,
+  options: ValidateStaffInputOptions = {},
+): ValidateStaffInputResult {
+  const parsed = staffInput.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((issue) => issue.message).join('; ') };
+  }
+
+  if (options.enforceDomain && !parsed.data.email.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+    return {
+      success: false,
+      error: `Email must belong to the ${ALLOWED_EMAIL_DOMAIN} domain.`,
+    };
+  }
+
+  return { success: true, data: parsed.data };
+}

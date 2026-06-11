@@ -255,6 +255,23 @@ export function SchedulingSettingsPage() {
             />
             Require staff to connect Google Calendar before booking
           </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.checkObserverCalendar}
+                onChange={(e) => set('checkObserverCalendar', e.target.checked)}
+                className="h-4 w-4"
+              />
+              Check evaluator calendar availability
+            </label>
+            <p className="text-muted-foreground mt-1 pl-6 text-xs">
+              When a window is created, the evaluator&apos;s connected Google Calendar is consulted
+              and periods overlapping meetings, PTO, or other events are blocked so staff can&apos;t
+              book them. The evaluator must connect Calendar and grant availability access; older
+              connections need to reconnect from their profile.
+            </p>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

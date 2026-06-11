@@ -14,8 +14,55 @@ import {
   type User,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { ALLOWED_EMAIL_DOMAIN, isAdminRole, isSpecialRole } from '@ops/shared';
-import { auth, functions } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import {
+  ALLOWED_EMAIL_DOMAIN,
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  isAdminRole,
+  isSpecialRole,
+} from '@ops/shared';
+import { auth, db, functions } from '@/lib/firebase';
+
+/** Default session length when appSettings has no explicit value (mirrors the
+ *  appSettings schema default). */
+const DEFAULT_SESSION_DURATION_HOURS = 24;
+
+/**
+ * Enforce the admin-configured maximum session length.
+ *
+ * Reads `sessionDurationHours` from appSettings/global (defaulting to 24h when
+ * absent). If the time since the user's `auth_time` exceeds that limit, signs
+ * the user out and returns true; otherwise returns false. A session exactly at
+ * the limit is still valid (strict `>`).
+ *
+ * Fail-open: when the settings doc is missing or Firestore errors, the session
+ * is left untouched (returns false) so a transient Firestore problem can never
+ * lock everyone out.
+ *
+ * @param authTimeMs  The user's `auth_time` claim in epoch milliseconds.
+ * @returns true when the session was expired and the user signed out.
+ */
+export async function enforceSessionDuration(authTimeMs: number): Promise<boolean> {
+  try {
+    const settingsSnap = await getDoc(doc(db, `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`));
+    if (!settingsSnap.exists()) return false;
+
+    const data = settingsSnap.data();
+    const rawHours = (data as { sessionDurationHours?: unknown }).sessionDurationHours;
+    const hours = typeof rawHours === 'number' ? rawHours : DEFAULT_SESSION_DURATION_HOURS;
+    const limitMs = hours * 60 * 60 * 1000;
+
+    if (Date.now() - authTimeMs > limitMs) {
+      await firebaseSignOut(auth);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('enforceSessionDuration failed (fail-open)', err);
+    return false;
+  }
+}
 
 const syncMyClaimsFn = httpsCallable<
   Record<string, never>,
@@ -60,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // sign in with a non-Orono account. If that happens, kick them out
       // immediately. Firestore rules also enforce the domain.
       if (next && !isAllowedEmail(next.email)) {
+        sessionStorage.setItem('signInError.rejectedEmail', next.email ?? '');
         void firebaseSignOut(auth);
         return;
       }
@@ -80,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubToken = onIdTokenChanged(auth, (next) => {
       if (!next) return;
       if (!isAllowedEmail(next.email)) {
+        sessionStorage.setItem('signInError.rejectedEmail', next.email ?? '');
         void firebaseSignOut(auth);
         return;
       }

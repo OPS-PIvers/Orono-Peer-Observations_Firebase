@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { moduleDoc, moduleSection, autoEnable, staffMatchesAutoEnable } from './module.js';
+import {
+  MODULE_CONTENT_SUBCOLLECTION,
+  moduleDoc,
+  moduleSection,
+  moduleSectionContent,
+  moduleSectionContentInput,
+  autoEnable,
+  staffMatchesAutoEnable,
+} from './module.js';
 import { moduleItem, moduleProgress } from './moduleItem.js';
 
 const now = new Date('2026-05-20T00:00:00Z');
@@ -31,11 +39,75 @@ describe('moduleDoc new fields', () => {
 });
 
 describe('moduleSection', () => {
-  it('accepts the three section types and defaults body to empty', () => {
+  it('accepts the three section types and carries only public layout metadata', () => {
     const s = moduleSection.parse({ id: 's1', type: 'richtext' });
-    expect(s.body).toBe('');
+    // `body` is a deprecated inline field — never auto-populated now that
+    // content lives in the gated /content subcollection. Check key presence
+    // rather than reading the deprecated field directly.
+    expect(Object.hasOwn(s, 'body')).toBe(false);
     expect(moduleSection.parse({ id: 's2', type: 'resources' }).type).toBe('resources');
     expect(moduleSection.parse({ id: 's3', type: 'materials' }).type).toBe('materials');
+  });
+
+  it('still parses a legacy section that carries an inline body', () => {
+    // A pre-migration doc with an inline body must still parse (the migration
+    // relies on it). The value is preserved on the deprecated field.
+    const parsed = moduleSection.safeParse({ id: 's1', type: 'richtext', body: '{"type":"doc"}' });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data && Object.hasOwn(parsed.data, 'body')).toBe(true);
+  });
+});
+
+describe('moduleSectionContent', () => {
+  const now = new Date('2026-05-20T00:00:00Z');
+
+  it('parses a content doc and defaults body to empty', () => {
+    const c = moduleSectionContent.parse({
+      sectionId: 'sec-1',
+      moduleId: 'mentor',
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect(c.body).toBe('');
+    expect(c.sectionId).toBe('sec-1');
+    expect(c.moduleId).toBe('mentor');
+  });
+
+  it('round-trips a serialized Tiptap body', () => {
+    const body = JSON.stringify({ type: 'doc', content: [] });
+    const c = moduleSectionContent.parse({
+      sectionId: 'sec-1',
+      moduleId: 'mentor',
+      body,
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect(c.body).toBe(body);
+  });
+
+  it('rejects a non-slug moduleId', () => {
+    expect(() =>
+      moduleSectionContent.parse({
+        sectionId: 'sec-1',
+        moduleId: 'Not A Slug',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).toThrow();
+  });
+
+  it('moduleSectionContentInput omits the server timestamps', () => {
+    const parsed = moduleSectionContentInput.parse({
+      sectionId: 'sec-1',
+      moduleId: 'mentor',
+      body: 'x',
+    });
+    expect('createdAt' in parsed).toBe(false);
+    expect('updatedAt' in parsed).toBe(false);
+  });
+
+  it('exposes the content subcollection name constant', () => {
+    expect(MODULE_CONTENT_SUBCOLLECTION).toBe('content');
   });
 });
 

@@ -22,6 +22,22 @@ import { cn } from '@/lib/utils';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
+/**
+ * Hosts approved for rich-text media embeds (YouTube video + Google Drive
+ * shares). Any embed URL whose host is outside this allowlist is rejected
+ * before it reaches the editor, so a pasted link can't smuggle in an arbitrary
+ * third-party iframe. Kept deliberately narrow — generic video platforms
+ * (Vimeo, Dailymotion, TikTok, …) are intentionally excluded.
+ */
+export const ALLOWED_EMBED_HOSTS = [
+  'youtube.com',
+  'www.youtube.com',
+  'youtu.be',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
+  'drive.google.com',
+] as const;
+
 export interface TiptapEditorProps {
   value: TiptapDoc | undefined;
   onChange: (doc: TiptapDoc) => void;

@@ -27,11 +27,7 @@
     "expectedBehavior": "The extension instance is declared as code (firebase.json `extensions` map + extensions/firestore-send-email.env with non-secret params), so deploys reproduce the delivery pipeline and its config (SMTP sender must match outboundEmailAddress) is reviewable.",
     "evidence": "firebase.json (no extensions key — full file reviewed); apps/functions/src/lib/emailUtils.ts:84-86 (delivery depends on the extension); no extensions/ dir in repo root",
     "implementationPlan": "1) Run `firebase ext:export` against the live project to capture the installed instance into firebase.json + extensions/*.env; commit (secrets stay in Secret Manager). 2) Document the /mail collection + extension linkage in CLAUDE.md or README deploy section. 3) Verify CI deploy workflow tolerates the extensions block (deploy is manual workflow_dispatch — do not trigger).",
-    "files": [
-      "firebase.json",
-      "extensions/firestore-send-email.env",
-      "README.md"
-    ],
+    "files": ["firebase.json", "extensions/firestore-send-email.env", "README.md"],
     "effort": "low",
     "risk": "low",
     "userImpact": 3,

@@ -1,1 +1,650 @@
-[{"id":"email-notifications--no-day-preference-notification","title":"PE is never notified when staff submit day preferences","files":["packages/shared/src/schema/emailTemplate.ts","scripts/import/seed.ts","apps/functions/src/scheduling/submitDayPreference.ts","apps/web/src/admin/email-templates/EmailTemplatesPage.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"email-notifications--variable-catalog-drift","title":"Variable catalog drift: vars sent but not insertable ({{staffYear}}), vars listed but misleading ({{assignedDomainList}}), chips missing available vars","files":["packages/shared/src/schema/emailTemplate.ts","apps/web/src/admin/email-templates/EmailTemplatesPage.tsx","apps/web/src/admin/email-templates/variableLabels.ts","apps/functions/src/settings/onRoleYearMappingWritten.ts"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"email-notifications--duplicate-active-templates-undefined-behavior","title":"Multiple active templates per trigger silently pick an arbitrary winner; system-template integrity is UI-only","files":["apps/web/src/admin/email-templates/EmailTemplatesPage.tsx","firestore.rules","tests/rules/admin-collections.test.ts","apps/functions/src/lib/emailUtils.ts","firestore.indexes.json"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"audio-transcription--no-admin-job-monitoring","title":"No admin visibility into transcription jobs despite rules and data supporting it","files":["apps/web/src/admin/transcription/TranscriptionJobsPage.tsx","apps/web/src/lazyRoutes.ts","apps/web/src/App.tsx","apps/web/src/admin/adminNav.ts","apps/functions/src/transcription/requestTranscription.ts","firestore.indexes.json"],"dependsOn":["audio-transcription--stuck-jobs-block-retranscription-forever"],"effort":"medium","risk":"low","userImpact":4},{"id":"modules-system--auto-enable-no-exclusions","title":"No per-staff opt-out from an auto-enabled module — the rule always wins","files":["packages/shared/src/schema/staff.ts","packages/shared/src/schema/module.ts","packages/shared/src/schema/module.test.ts","firestore.rules","tests/rules/modules.test.ts","apps/web/src/admin/staff/StaffInlineEditors.tsx","apps/web/src/admin/staff/StaffDialog.tsx","apps/web/src/components/AppSidebar.tsx","apps/web/src/dashboard/StaffDashboardPage.tsx","apps/web/src/modules/ModulePage.tsx"],"dependsOn":[],"effort":"medium","risk":"medium","userImpact":4},{"id":"staff-data-management--draft-observations-stale-after-staff-corrections","title":"Draft observations keep stale role/year snapshots after admin corrects the staff record","files":["apps/web/src/observations/ObservationEditorPage.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--cycle-close-hardcoded","title":"Hero 'Cycle close' date is hardcoded to May 15","files":["packages/shared/src/schema/dashboard.ts","packages/shared/src/schema/dashboard.test.ts","apps/web/src/admin/dashboard/SectionTilesEditor.tsx","apps/web/src/admin/dashboard/useDashboardDraft.ts","apps/web/src/admin/dashboard/DashboardSettingsPage.tsx","apps/web/src/admin/dashboard/DashboardPreview.tsx","apps/web/src/dashboard/StaffDashboardPage.tsx","apps/web/src/dashboard/DashboardView.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--branding-signin-screen-not-branded","title":"Sign-in screen ignores admin branding despite the admin UI claiming otherwise","files":["apps/web/src/auth/SignInScreen.tsx","apps/web/src/components/BrandingProvider.tsx","apps/web/src/admin/branding/BrandingPage.tsx","apps/web/src/auth/SignInScreen.test.tsx"],"dependsOn":["dashboard-ux-polish--branding-primary-color-unwired"],"effort":"low","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--branding-title-favicon-topnav-logo","title":"Branding assets not applied to document title, favicon, or top-nav primary logo","files":["apps/web/src/components/BrandingProvider.tsx","apps/web/src/components/AppHeader.tsx","apps/web/src/admin/branding/BrandingPage.tsx","apps/web/src/components/BrandingProvider.test.tsx"],"dependsOn":["dashboard-ux-polish--branding-primary-color-unwired"],"effort":"low","risk":"low","userImpact":3},{"id":"observation-lifecycle--legacy-role-rubric-lookup-web","title":"Editor rubric lookup lacks the legacy displayName fallback the server has","files":["apps/web/src/observations/ObservationEditorPage.tsx","apps/web/src/utils/roleLookup.ts"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"pdf-render-integration--orphan-pdf-and-lingering-share-on-failed-finalize","title":"Failed finalize leaves an orphan PDF in Drive and the folder shared with the observed staff member while the doc reverts to Draft","files":["apps/functions/src/observations/finalizeObservation.ts","apps/functions/src/lib/drive.ts"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--unsaved-changes-guard-missing","title":"Dashboard settings (and other admin drafts) lose unsaved edits on navigation with no warning","files":["apps/web/src/hooks/useUnsavedChangesGuard.ts","apps/web/src/admin/dashboard/DashboardSettingsPage.tsx","apps/web/src/admin/branding/BrandingPage.tsx","apps/web/src/components/AppSidebar.tsx","apps/web/src/hooks/useUnsavedChangesGuard.test.tsx","apps/web/src/admin/rubrics/RubricEditorPage.tsx","apps/web/src/admin/role-year-mappings/RoleYearMappingsPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":5},{"id":"dashboard-ux-polish--dead-cta-buttons","title":"Dashboard checkpoint cards render enabled CTA buttons that do nothing","files":["apps/web/src/dashboard/DashboardView.tsx","apps/web/src/dashboard/deriveCheckpoints.test.ts"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--internal-ctas-full-reload","title":"Dashboard CTAs to internal routes trigger full page reloads","files":["apps/web/src/dashboard/DashboardView.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"dashboard-ux-polish--module-task-overdue-and-completed-date","title":"Module tasks: no overdue state, no completion date, no undo from the dashboard","files":["apps/web/src/dashboard/deriveModuleTasks.ts","apps/web/src/dashboard/deriveModuleTasks.test.ts","apps/web/src/dashboard/StaffDashboardPage.tsx","apps/web/src/dashboard/DashboardView.tsx"],"dependsOn":["modules-system--due-date-off-by-one"],"effort":"low","risk":"low","userImpact":4},{"id":"rubrics-workproduct--question-admin-write-churn-and-silent-errors","title":"Question bank edits write to Firestore on every keystroke with no error handling and no delete confirmation","files":["apps/web/src/admin/work-product/WorkProductPage.tsx"],"dependsOn":["rubrics-workproduct--answers-orphaned-by-question-changes"],"effort":"low","risk":"low","userImpact":4},{"id":"rubrics-workproduct--rubric-editor-no-validation","title":"Rubric editor saves without validating against the shared schema","files":["apps/web/src/admin/rubrics/RubricEditorPage.tsx","apps/web/src/admin/rubrics/RubricEditorPage.test.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"rubrics-workproduct--no-domain-delete-rename-reorder","title":"Domains can never be deleted and components/domains can't be reordered; rubric display name is not editable","files":["apps/web/src/admin/rubrics/RubricEditorPage.tsx","apps/web/src/admin/rubrics/RubricGridEditor.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"modules-system--writes-bypass-schema-validation","title":"Module and item writes bypass the Zod schemas — empty-string URLs/dates, null updatedBy, and unbounded titles produce schema-invalid docs","files":["apps/web/src/admin/modules/ModuleSectionEditor.tsx","apps/web/src/admin/modules/ModulesPage.tsx","apps/web/src/admin/modules/ModuleBuilderPage.tsx","packages/shared/src/schema/module.ts","packages/shared/src/schema/moduleItem.ts","packages/shared/src/schema/module.test.ts"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"admin-settings-wiring--signup-fields-no-reorder","title":"Signup fields cannot be reordered and order values collide after deletes","files":["apps/web/src/admin/signup-fields/SignupFieldsPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"staff-data-management--my-staff-shows-raw-role-slug","title":"My Staff table shows raw role slugs and swallows load errors","files":["apps/web/src/routes/MyStaffPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"staff-data-management--person-page-ignores-archived-status","title":"Staff person page gives no archived indicator and allows new observations on inactive staff","files":["apps/web/src/routes/StaffPersonPage.tsx","apps/web/src/observations/CreateObservationDialog.tsx","apps/web/src/routes/StaffDirectoryPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"staff-data-management--directory-missing-building-and-cycle-filters","title":"Staff directory lacks building and cycle filters for multi-building caseloads","files":["apps/web/src/routes/StaffDirectoryPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"audio-transcription--getaudio-full-buffer-no-streaming","title":"Audio playback requires a manual full download — no streaming, Range support, or metadata","files":["apps/functions/src/audio/getAudio.ts","apps/web/src/observations/AudioRecorder.tsx","packages/shared/src/schema/observation.ts","apps/functions/src/audio/uploadAudio.ts"],"dependsOn":[],"effort":"high","risk":"medium","userImpact":4},{"id":"auth-roles-security--no-token-revocation-on-demotion","title":"Demoting or archiving a privileged user leaves their old admin/PE token valid for up to an hour","files":["apps/functions/src/auth/onStaffWritten.ts","apps/functions/src/auth/computeClaims.test.ts"],"dependsOn":["auth-roles-security--deactivated-staff-retain-access"],"effort":"low","risk":"low","userImpact":4},{"id":"auth-roles-security--no-email-verified-check","title":"Domain enforcement never checks email_verified — rules and claim-minting trust any token whose email string matches","files":["firestore.rules","apps/functions/src/auth/syncMyClaims.ts","tests/rules/harness.ts","tests/rules/auth.test.ts"],"dependsOn":[],"effort":"low","risk":"medium","userImpact":4},{"id":"pdf-render-integration--no-renderer-tests","title":"pdf-renderer workspace has zero tests and is silently skipped by the monorepo test gate","files":["apps/pdf-renderer/package.json","apps/pdf-renderer/vitest.config.ts","apps/pdf-renderer/src/template.test.ts","apps/pdf-renderer/src/extract-script-tags.test.ts","pnpm-lock.yaml"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":4},{"id":"observation-lifecycle--draft-review-promises-comments-that-dont-exist","title":"Default 'Review the draft' dashboard step tells staff they can comment — no commenting feature exists","files":["packages/shared/src/schema/dashboard.ts","firestore.rules","packages/shared/src/schema/observation.ts"],"dependsOn":[],"effort":"low","risk":"low","userImpact":4},{"id":"admin-settings-wiring--settings-writes-unvalidated","title":"Admin settings pages persist unvalidated values (no Zod parse before write, no rules validation)","files":["apps/web/src/admin/settings/SettingsPage.tsx","apps/web/src/admin/branding/BrandingPage.tsx","apps/web/src/admin/scheduling/SchedulingSettingsPage.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":3},{"id":"dashboard-ux-polish--dashboard-config-saved-unvalidated","title":"Dashboard config and quick materials save without schema validation","files":["apps/web/src/admin/dashboard/useDashboardDraft.ts","apps/web/src/admin/dashboard/QuickMaterialsEditor.tsx","apps/web/src/admin/dashboard/CycleStepsEditor.tsx","apps/web/src/admin/dashboard/DashboardSettingsPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"staff-data-management--roster-export-missing","title":"No roster export from the Staff admin table","files":["apps/web/src/admin/_shared/exportCsv.ts","apps/web/src/admin/staff/StaffPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"email-notifications--incomplete-reminder-unbounded","title":"Incomplete WP/IR reminder re-sends every single day forever with no cap","files":["packages/shared/src/schema/emailTemplate.ts","apps/functions/src/email/scheduledEmailReminders.ts","apps/functions/src/lib/emailUtils.ts","apps/functions/src/lib/emailUtils.test.ts","apps/web/src/admin/email-templates/EmailTemplatesPage.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":3},{"id":"rubrics-workproduct--stale-mapping-ids-never-pruned","title":"Deleting a rubric component leaves orphaned IDs in roleYearMappings forever","files":["apps/web/src/admin/role-year-mappings/RoleYearMappingsPage.tsx","apps/web/src/admin/rubrics/RubricEditorPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"auth-roles-security--dev-auth-server-unrestricted-mint","title":"Local dev-auth-server mints live-project tokens for any email and permanently creates verified Auth users","files":["scripts/dev-auth-server.mjs"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"pdf-render-integration--runtime-font-fetch-and-image-bloat","title":"Every render fetches Google Fonts over the network; image carries an unused firebase-admin dependency; undefined CSS variable","files":["apps/pdf-renderer/src/template.ts","apps/pdf-renderer/src/index.ts","apps/pdf-renderer/Dockerfile","apps/pdf-renderer/package.json","pnpm-lock.yaml"],"dependsOn":[],"effort":"low","risk":"low","userImpact":3},{"id":"audio-transcription--upload-mime-not-validated","title":"uploadAudio trusts client-supplied MIME type — arbitrary content lands in observation Drive folders","files":["apps/functions/src/audio/uploadAudio.ts","apps/functions/src/audio/uploadAudio.test.ts"],"dependsOn":[],"effort":"low","risk":"low","userImpact":2},{"id":"audio-transcription--job-docs-never-pruned","title":"transcriptionJobs documents accumulate forever with no retention or cascade on observation delete","files":["apps/functions/src/transcription/sweepStaleTranscriptionJobs.ts","apps/functions/src/observations/onObservationWritten.ts","apps/functions/src/index.ts"],"dependsOn":["audio-transcription--stuck-jobs-block-retranscription-forever"],"effort":"low","risk":"low","userImpact":2},{"id":"auth-roles-security--notfound-bypasses-auth-shell","title":"Catch-all 404 renders outside the auth shell: unauthenticated visitors see 'Page not found' instead of sign-in, signed-in users lose the app chrome","files":["apps/web/src/App.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":2},{"id":"rubrics-workproduct--sidebar-domain-links-dead-in-assigned-mode","title":"Sidebar 'My Rubric' domain links go nowhere when the domain has no assigned components","files":["apps/web/src/routes/MyRubricPage.tsx","apps/web/src/components/AppSidebar.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":2},{"id":"observation-lifecycle--dead-schema-fields","title":"componentTags and scratchNotes schema fields are written empty and never used","files":["packages/shared/src/schema/observation.ts","apps/web/src/observations/CreateObservationDialog.tsx","apps/functions/src/scheduling/bookObservationSlot.ts","apps/web/src/components/rubric/RubricRow.tsx","apps/web/src/components/rubric/RubricGrid.test.tsx","apps/web/src/observations/ObservationEditorPage.tsx"],"dependsOn":[],"effort":"low","risk":"low","userImpact":2},{"id":"critic--email-notifications--reminder-queries-missing-indexes","title":"Daily reminder job's queries have no composite indexes — pre-observation and incomplete-WP/IR reminders can never send in production","files":["firestore.indexes.json","apps/functions/src/email/scheduledEmailReminders.ts"],"dependsOn":[],"effort":"low","risk":"low","userImpact":7},{"id":"critic--pdf-render-integration--drive-sa-quota-ceiling","title":"All PDFs/audio/evidence live in the service account's fixed ~15 GB My Drive — uploads and finalization will hard-fail once it fills, and no Shared Drive support exists (supportsAllDrives never set)","files":["apps/functions/src/lib/drive.ts","apps/functions/src/drive/monitorDriveQuota.ts","apps/functions/src/index.ts","README.md","CLAUDE.md"],"dependsOn":[],"effort":"medium","risk":"medium","userImpact":8},{"id":"critic--scheduling-calendar--booking-commit-without-draft","title":"Booking transaction commits before the Draft observation exists — a post-transaction failure strands the invitee as 'booked' with no observation and no retry path","files":["apps/functions/src/scheduling/bookObservationSlot.ts","apps/functions/src/scheduling/assignObservationFromPreference.ts","apps/functions/src/scheduling/engine/bookingRules.test.ts"],"dependsOn":[],"effort":"medium","risk":"medium","userImpact":5},{"id":"critic--modules-system--no-admin-progress-visibility","title":"Admins have zero visibility into module completion — moduleProgress is written by staff but no admin report, per-module roster, or per-staff drill-in exists anywhere","files":["firestore.rules","tests/rules/modules.test.ts","firestore.indexes.json","apps/web/src/admin/modules/ModuleBuilderPage.tsx","apps/web/src/admin/modules/ModulesPage.tsx","apps/web/src/routes/StaffPersonPage.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":6},{"id":"critic--observation-lifecycle--no-offline-resilience","title":"No Firestore offline persistence — a WiFi drop or tab reload mid-observation on the classroom iPad loses queued scripting/scoring writes silently","files":["apps/web/src/lib/firebase.ts","apps/web/src/observations/ObservationEditorPage.tsx"],"dependsOn":[],"effort":"medium","risk":"medium","userImpact":7},{"id":"critic--observation-lifecycle--staff-no-observation-history","title":"Observed staff have no in-app list of their own finalized observations — history is only reachable via old emails or Drive","files":["apps/web/src/routes/MyObservationsPage.tsx","apps/web/src/App.tsx","apps/web/src/lazyRoutes.ts","apps/web/src/components/AppSidebar.tsx"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":5},{"id":"critic--email-notifications--no-acknowledgement-reminder","title":"No reminder for unacknowledged finalized observations — acknowledgement, the cycle's final step, has no nudge and no trigger type","files":["packages/shared/src/schema/emailTemplate.ts","apps/functions/src/email/scheduledEmailReminders.ts","firestore.indexes.json","apps/web/src/admin/email-templates/EmailTemplatesPage.tsx","scripts/import/seed.ts"],"dependsOn":["critic--email-notifications--reminder-queries-missing-indexes","email-notifications--incomplete-reminder-unbounded"],"effort":"medium","risk":"low","userImpact":4},{"id":"critic--dev-infrastructure--emulator-seed-missing","title":"Documented emulator seed does not exist — pnpm dev:emulators imports ./fixtures/seed, but fixtures/ is empty and nothing is tracked in git","files":["scripts/seed-dev.ts","fixtures/seed","package.json","CLAUDE.md","scripts/import/README.md"],"dependsOn":[],"effort":"medium","risk":"low","userImpact":3},{"id":"critic--dev-infrastructure--e2e-suite-empty","title":"Playwright E2E suite is empty and never runs in CI — pnpm test:e2e (advertised in CLAUDE.md with desktop+iPad projects) has zero specs","files":["apps/web/e2e/auth.spec.ts","apps/web/e2e/observation-lifecycle.spec.ts","apps/web/e2e/dashboard.spec.ts","apps/web/playwright.config.ts"],"dependsOn":["critic--dev-infrastructure--emulator-seed-missing"],"effort":"high","risk":"low","userImpact":4},{"id":"critic--dev-infrastructure--no-backup-or-dr","title":"No Firestore backup, export, or disaster-recovery posture anywhere in the repo — evaluation records have no documented recovery path","files":["docs/operations.md","README.md","scripts/import/README.md"],"dependsOn":[],"effort":"low","risk":"low","userImpact":6}]
+[
+  {
+    "id": "email-notifications--no-day-preference-notification",
+    "title": "PE is never notified when staff submit day preferences",
+    "files": [
+      "packages/shared/src/schema/emailTemplate.ts",
+      "scripts/import/seed.ts",
+      "apps/functions/src/scheduling/submitDayPreference.ts",
+      "apps/web/src/admin/email-templates/EmailTemplatesPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "email-notifications--variable-catalog-drift",
+    "title": "Variable catalog drift: vars sent but not insertable ({{staffYear}}), vars listed but misleading ({{assignedDomainList}}), chips missing available vars",
+    "files": [
+      "packages/shared/src/schema/emailTemplate.ts",
+      "apps/web/src/admin/email-templates/EmailTemplatesPage.tsx",
+      "apps/web/src/admin/email-templates/variableLabels.ts",
+      "apps/functions/src/settings/onRoleYearMappingWritten.ts"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "email-notifications--duplicate-active-templates-undefined-behavior",
+    "title": "Multiple active templates per trigger silently pick an arbitrary winner; system-template integrity is UI-only",
+    "files": [
+      "apps/web/src/admin/email-templates/EmailTemplatesPage.tsx",
+      "firestore.rules",
+      "tests/rules/admin-collections.test.ts",
+      "apps/functions/src/lib/emailUtils.ts",
+      "firestore.indexes.json"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "audio-transcription--no-admin-job-monitoring",
+    "title": "No admin visibility into transcription jobs despite rules and data supporting it",
+    "files": [
+      "apps/web/src/admin/transcription/TranscriptionJobsPage.tsx",
+      "apps/web/src/lazyRoutes.ts",
+      "apps/web/src/App.tsx",
+      "apps/web/src/admin/adminNav.ts",
+      "apps/functions/src/transcription/requestTranscription.ts",
+      "firestore.indexes.json"
+    ],
+    "dependsOn": ["audio-transcription--stuck-jobs-block-retranscription-forever"],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "modules-system--auto-enable-no-exclusions",
+    "title": "No per-staff opt-out from an auto-enabled module — the rule always wins",
+    "files": [
+      "packages/shared/src/schema/staff.ts",
+      "packages/shared/src/schema/module.ts",
+      "packages/shared/src/schema/module.test.ts",
+      "firestore.rules",
+      "tests/rules/modules.test.ts",
+      "apps/web/src/admin/staff/StaffInlineEditors.tsx",
+      "apps/web/src/admin/staff/StaffDialog.tsx",
+      "apps/web/src/components/AppSidebar.tsx",
+      "apps/web/src/dashboard/StaffDashboardPage.tsx",
+      "apps/web/src/modules/ModulePage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "medium",
+    "userImpact": 4
+  },
+  {
+    "id": "staff-data-management--draft-observations-stale-after-staff-corrections",
+    "title": "Draft observations keep stale role/year snapshots after admin corrects the staff record",
+    "files": ["apps/web/src/observations/ObservationEditorPage.tsx"],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--cycle-close-hardcoded",
+    "title": "Hero 'Cycle close' date is hardcoded to May 15",
+    "files": [
+      "packages/shared/src/schema/dashboard.ts",
+      "packages/shared/src/schema/dashboard.test.ts",
+      "apps/web/src/admin/dashboard/SectionTilesEditor.tsx",
+      "apps/web/src/admin/dashboard/useDashboardDraft.ts",
+      "apps/web/src/admin/dashboard/DashboardSettingsPage.tsx",
+      "apps/web/src/admin/dashboard/DashboardPreview.tsx",
+      "apps/web/src/dashboard/StaffDashboardPage.tsx",
+      "apps/web/src/dashboard/DashboardView.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--branding-signin-screen-not-branded",
+    "title": "Sign-in screen ignores admin branding despite the admin UI claiming otherwise",
+    "files": [
+      "apps/web/src/auth/SignInScreen.tsx",
+      "apps/web/src/components/BrandingProvider.tsx",
+      "apps/web/src/admin/branding/BrandingPage.tsx",
+      "apps/web/src/auth/SignInScreen.test.tsx"
+    ],
+    "dependsOn": ["dashboard-ux-polish--branding-primary-color-unwired"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--branding-title-favicon-topnav-logo",
+    "title": "Branding assets not applied to document title, favicon, or top-nav primary logo",
+    "files": [
+      "apps/web/src/components/BrandingProvider.tsx",
+      "apps/web/src/components/AppHeader.tsx",
+      "apps/web/src/admin/branding/BrandingPage.tsx",
+      "apps/web/src/components/BrandingProvider.test.tsx"
+    ],
+    "dependsOn": ["dashboard-ux-polish--branding-primary-color-unwired"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "observation-lifecycle--legacy-role-rubric-lookup-web",
+    "title": "Editor rubric lookup lacks the legacy displayName fallback the server has",
+    "files": [
+      "apps/web/src/observations/ObservationEditorPage.tsx",
+      "apps/web/src/utils/roleLookup.ts"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "pdf-render-integration--orphan-pdf-and-lingering-share-on-failed-finalize",
+    "title": "Failed finalize leaves an orphan PDF in Drive and the folder shared with the observed staff member while the doc reverts to Draft",
+    "files": [
+      "apps/functions/src/observations/finalizeObservation.ts",
+      "apps/functions/src/lib/drive.ts"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--unsaved-changes-guard-missing",
+    "title": "Dashboard settings (and other admin drafts) lose unsaved edits on navigation with no warning",
+    "files": [
+      "apps/web/src/hooks/useUnsavedChangesGuard.ts",
+      "apps/web/src/admin/dashboard/DashboardSettingsPage.tsx",
+      "apps/web/src/admin/branding/BrandingPage.tsx",
+      "apps/web/src/components/AppSidebar.tsx",
+      "apps/web/src/hooks/useUnsavedChangesGuard.test.tsx",
+      "apps/web/src/admin/rubrics/RubricEditorPage.tsx",
+      "apps/web/src/admin/role-year-mappings/RoleYearMappingsPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 5
+  },
+  {
+    "id": "dashboard-ux-polish--dead-cta-buttons",
+    "title": "Dashboard checkpoint cards render enabled CTA buttons that do nothing",
+    "files": [
+      "apps/web/src/dashboard/DashboardView.tsx",
+      "apps/web/src/dashboard/deriveCheckpoints.test.ts"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--internal-ctas-full-reload",
+    "title": "Dashboard CTAs to internal routes trigger full page reloads",
+    "files": ["apps/web/src/dashboard/DashboardView.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "dashboard-ux-polish--module-task-overdue-and-completed-date",
+    "title": "Module tasks: no overdue state, no completion date, no undo from the dashboard",
+    "files": [
+      "apps/web/src/dashboard/deriveModuleTasks.ts",
+      "apps/web/src/dashboard/deriveModuleTasks.test.ts",
+      "apps/web/src/dashboard/StaffDashboardPage.tsx",
+      "apps/web/src/dashboard/DashboardView.tsx"
+    ],
+    "dependsOn": ["modules-system--due-date-off-by-one"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "rubrics-workproduct--question-admin-write-churn-and-silent-errors",
+    "title": "Question bank edits write to Firestore on every keystroke with no error handling and no delete confirmation",
+    "files": ["apps/web/src/admin/work-product/WorkProductPage.tsx"],
+    "dependsOn": ["rubrics-workproduct--answers-orphaned-by-question-changes"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "rubrics-workproduct--rubric-editor-no-validation",
+    "title": "Rubric editor saves without validating against the shared schema",
+    "files": [
+      "apps/web/src/admin/rubrics/RubricEditorPage.tsx",
+      "apps/web/src/admin/rubrics/RubricEditorPage.test.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "rubrics-workproduct--no-domain-delete-rename-reorder",
+    "title": "Domains can never be deleted and components/domains can't be reordered; rubric display name is not editable",
+    "files": [
+      "apps/web/src/admin/rubrics/RubricEditorPage.tsx",
+      "apps/web/src/admin/rubrics/RubricGridEditor.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "modules-system--writes-bypass-schema-validation",
+    "title": "Module and item writes bypass the Zod schemas — empty-string URLs/dates, null updatedBy, and unbounded titles produce schema-invalid docs",
+    "files": [
+      "apps/web/src/admin/modules/ModuleSectionEditor.tsx",
+      "apps/web/src/admin/modules/ModulesPage.tsx",
+      "apps/web/src/admin/modules/ModuleBuilderPage.tsx",
+      "packages/shared/src/schema/module.ts",
+      "packages/shared/src/schema/moduleItem.ts",
+      "packages/shared/src/schema/module.test.ts"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "admin-settings-wiring--signup-fields-no-reorder",
+    "title": "Signup fields cannot be reordered and order values collide after deletes",
+    "files": ["apps/web/src/admin/signup-fields/SignupFieldsPage.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "staff-data-management--my-staff-shows-raw-role-slug",
+    "title": "My Staff table shows raw role slugs and swallows load errors",
+    "files": ["apps/web/src/routes/MyStaffPage.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "staff-data-management--person-page-ignores-archived-status",
+    "title": "Staff person page gives no archived indicator and allows new observations on inactive staff",
+    "files": [
+      "apps/web/src/routes/StaffPersonPage.tsx",
+      "apps/web/src/observations/CreateObservationDialog.tsx",
+      "apps/web/src/routes/StaffDirectoryPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "staff-data-management--directory-missing-building-and-cycle-filters",
+    "title": "Staff directory lacks building and cycle filters for multi-building caseloads",
+    "files": ["apps/web/src/routes/StaffDirectoryPage.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "audio-transcription--getaudio-full-buffer-no-streaming",
+    "title": "Audio playback requires a manual full download — no streaming, Range support, or metadata",
+    "files": [
+      "apps/functions/src/audio/getAudio.ts",
+      "apps/web/src/observations/AudioRecorder.tsx",
+      "packages/shared/src/schema/observation.ts",
+      "apps/functions/src/audio/uploadAudio.ts"
+    ],
+    "dependsOn": [],
+    "effort": "high",
+    "risk": "medium",
+    "userImpact": 4
+  },
+  {
+    "id": "auth-roles-security--no-token-revocation-on-demotion",
+    "title": "Demoting or archiving a privileged user leaves their old admin/PE token valid for up to an hour",
+    "files": [
+      "apps/functions/src/auth/onStaffWritten.ts",
+      "apps/functions/src/auth/computeClaims.test.ts"
+    ],
+    "dependsOn": ["auth-roles-security--deactivated-staff-retain-access"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "auth-roles-security--no-email-verified-check",
+    "title": "Domain enforcement never checks email_verified — rules and claim-minting trust any token whose email string matches",
+    "files": [
+      "firestore.rules",
+      "apps/functions/src/auth/syncMyClaims.ts",
+      "tests/rules/harness.ts",
+      "tests/rules/auth.test.ts"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "medium",
+    "userImpact": 4
+  },
+  {
+    "id": "pdf-render-integration--no-renderer-tests",
+    "title": "pdf-renderer workspace has zero tests and is silently skipped by the monorepo test gate",
+    "files": [
+      "apps/pdf-renderer/package.json",
+      "apps/pdf-renderer/vitest.config.ts",
+      "apps/pdf-renderer/src/template.test.ts",
+      "apps/pdf-renderer/src/extract-script-tags.test.ts",
+      "pnpm-lock.yaml"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "observation-lifecycle--draft-review-promises-comments-that-dont-exist",
+    "title": "Default 'Review the draft' dashboard step tells staff they can comment — no commenting feature exists",
+    "files": [
+      "packages/shared/src/schema/dashboard.ts",
+      "firestore.rules",
+      "packages/shared/src/schema/observation.ts"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "admin-settings-wiring--settings-writes-unvalidated",
+    "title": "Admin settings pages persist unvalidated values (no Zod parse before write, no rules validation)",
+    "files": [
+      "apps/web/src/admin/settings/SettingsPage.tsx",
+      "apps/web/src/admin/branding/BrandingPage.tsx",
+      "apps/web/src/admin/scheduling/SchedulingSettingsPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "dashboard-ux-polish--dashboard-config-saved-unvalidated",
+    "title": "Dashboard config and quick materials save without schema validation",
+    "files": [
+      "apps/web/src/admin/dashboard/useDashboardDraft.ts",
+      "apps/web/src/admin/dashboard/QuickMaterialsEditor.tsx",
+      "apps/web/src/admin/dashboard/CycleStepsEditor.tsx",
+      "apps/web/src/admin/dashboard/DashboardSettingsPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "staff-data-management--roster-export-missing",
+    "title": "No roster export from the Staff admin table",
+    "files": ["apps/web/src/admin/_shared/exportCsv.ts", "apps/web/src/admin/staff/StaffPage.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "email-notifications--incomplete-reminder-unbounded",
+    "title": "Incomplete WP/IR reminder re-sends every single day forever with no cap",
+    "files": [
+      "packages/shared/src/schema/emailTemplate.ts",
+      "apps/functions/src/email/scheduledEmailReminders.ts",
+      "apps/functions/src/lib/emailUtils.ts",
+      "apps/functions/src/lib/emailUtils.test.ts",
+      "apps/web/src/admin/email-templates/EmailTemplatesPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "rubrics-workproduct--stale-mapping-ids-never-pruned",
+    "title": "Deleting a rubric component leaves orphaned IDs in roleYearMappings forever",
+    "files": [
+      "apps/web/src/admin/role-year-mappings/RoleYearMappingsPage.tsx",
+      "apps/web/src/admin/rubrics/RubricEditorPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "auth-roles-security--dev-auth-server-unrestricted-mint",
+    "title": "Local dev-auth-server mints live-project tokens for any email and permanently creates verified Auth users",
+    "files": ["scripts/dev-auth-server.mjs"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "pdf-render-integration--runtime-font-fetch-and-image-bloat",
+    "title": "Every render fetches Google Fonts over the network; image carries an unused firebase-admin dependency; undefined CSS variable",
+    "files": [
+      "apps/pdf-renderer/src/template.ts",
+      "apps/pdf-renderer/src/index.ts",
+      "apps/pdf-renderer/Dockerfile",
+      "apps/pdf-renderer/package.json",
+      "pnpm-lock.yaml"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "audio-transcription--upload-mime-not-validated",
+    "title": "uploadAudio trusts client-supplied MIME type — arbitrary content lands in observation Drive folders",
+    "files": [
+      "apps/functions/src/audio/uploadAudio.ts",
+      "apps/functions/src/audio/uploadAudio.test.ts"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 2
+  },
+  {
+    "id": "audio-transcription--job-docs-never-pruned",
+    "title": "transcriptionJobs documents accumulate forever with no retention or cascade on observation delete",
+    "files": [
+      "apps/functions/src/transcription/sweepStaleTranscriptionJobs.ts",
+      "apps/functions/src/observations/onObservationWritten.ts",
+      "apps/functions/src/index.ts"
+    ],
+    "dependsOn": ["audio-transcription--stuck-jobs-block-retranscription-forever"],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 2
+  },
+  {
+    "id": "auth-roles-security--notfound-bypasses-auth-shell",
+    "title": "Catch-all 404 renders outside the auth shell: unauthenticated visitors see 'Page not found' instead of sign-in, signed-in users lose the app chrome",
+    "files": ["apps/web/src/App.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 2
+  },
+  {
+    "id": "rubrics-workproduct--sidebar-domain-links-dead-in-assigned-mode",
+    "title": "Sidebar 'My Rubric' domain links go nowhere when the domain has no assigned components",
+    "files": ["apps/web/src/routes/MyRubricPage.tsx", "apps/web/src/components/AppSidebar.tsx"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 2
+  },
+  {
+    "id": "observation-lifecycle--dead-schema-fields",
+    "title": "componentTags and scratchNotes schema fields are written empty and never used",
+    "files": [
+      "packages/shared/src/schema/observation.ts",
+      "apps/web/src/observations/CreateObservationDialog.tsx",
+      "apps/functions/src/scheduling/bookObservationSlot.ts",
+      "apps/web/src/components/rubric/RubricRow.tsx",
+      "apps/web/src/components/rubric/RubricGrid.test.tsx",
+      "apps/web/src/observations/ObservationEditorPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 2
+  },
+  {
+    "id": "critic--email-notifications--reminder-queries-missing-indexes",
+    "title": "Daily reminder job's queries have no composite indexes — pre-observation and incomplete-WP/IR reminders can never send in production",
+    "files": ["firestore.indexes.json", "apps/functions/src/email/scheduledEmailReminders.ts"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 7
+  },
+  {
+    "id": "critic--pdf-render-integration--drive-sa-quota-ceiling",
+    "title": "All PDFs/audio/evidence live in the service account's fixed ~15 GB My Drive — uploads and finalization will hard-fail once it fills, and no Shared Drive support exists (supportsAllDrives never set)",
+    "files": [
+      "apps/functions/src/lib/drive.ts",
+      "apps/functions/src/drive/monitorDriveQuota.ts",
+      "apps/functions/src/index.ts",
+      "README.md",
+      "CLAUDE.md"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "medium",
+    "userImpact": 8
+  },
+  {
+    "id": "critic--scheduling-calendar--booking-commit-without-draft",
+    "title": "Booking transaction commits before the Draft observation exists — a post-transaction failure strands the invitee as 'booked' with no observation and no retry path",
+    "files": [
+      "apps/functions/src/scheduling/bookObservationSlot.ts",
+      "apps/functions/src/scheduling/assignObservationFromPreference.ts",
+      "apps/functions/src/scheduling/engine/bookingRules.test.ts"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "medium",
+    "userImpact": 5
+  },
+  {
+    "id": "critic--modules-system--no-admin-progress-visibility",
+    "title": "Admins have zero visibility into module completion — moduleProgress is written by staff but no admin report, per-module roster, or per-staff drill-in exists anywhere",
+    "files": [
+      "firestore.rules",
+      "tests/rules/modules.test.ts",
+      "firestore.indexes.json",
+      "apps/web/src/admin/modules/ModuleBuilderPage.tsx",
+      "apps/web/src/admin/modules/ModulesPage.tsx",
+      "apps/web/src/routes/StaffPersonPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 6
+  },
+  {
+    "id": "critic--observation-lifecycle--no-offline-resilience",
+    "title": "No Firestore offline persistence — a WiFi drop or tab reload mid-observation on the classroom iPad loses queued scripting/scoring writes silently",
+    "files": [
+      "apps/web/src/lib/firebase.ts",
+      "apps/web/src/observations/ObservationEditorPage.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "medium",
+    "userImpact": 7
+  },
+  {
+    "id": "critic--observation-lifecycle--staff-no-observation-history",
+    "title": "Observed staff have no in-app list of their own finalized observations — history is only reachable via old emails or Drive",
+    "files": [
+      "apps/web/src/routes/MyObservationsPage.tsx",
+      "apps/web/src/App.tsx",
+      "apps/web/src/lazyRoutes.ts",
+      "apps/web/src/components/AppSidebar.tsx"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 5
+  },
+  {
+    "id": "critic--email-notifications--no-acknowledgement-reminder",
+    "title": "No reminder for unacknowledged finalized observations — acknowledgement, the cycle's final step, has no nudge and no trigger type",
+    "files": [
+      "packages/shared/src/schema/emailTemplate.ts",
+      "apps/functions/src/email/scheduledEmailReminders.ts",
+      "firestore.indexes.json",
+      "apps/web/src/admin/email-templates/EmailTemplatesPage.tsx",
+      "scripts/import/seed.ts"
+    ],
+    "dependsOn": [
+      "critic--email-notifications--reminder-queries-missing-indexes",
+      "email-notifications--incomplete-reminder-unbounded"
+    ],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "critic--dev-infrastructure--emulator-seed-missing",
+    "title": "Documented emulator seed does not exist — pnpm dev:emulators imports ./fixtures/seed, but fixtures/ is empty and nothing is tracked in git",
+    "files": [
+      "scripts/seed-dev.ts",
+      "fixtures/seed",
+      "package.json",
+      "CLAUDE.md",
+      "scripts/import/README.md"
+    ],
+    "dependsOn": [],
+    "effort": "medium",
+    "risk": "low",
+    "userImpact": 3
+  },
+  {
+    "id": "critic--dev-infrastructure--e2e-suite-empty",
+    "title": "Playwright E2E suite is empty and never runs in CI — pnpm test:e2e (advertised in CLAUDE.md with desktop+iPad projects) has zero specs",
+    "files": [
+      "apps/web/e2e/auth.spec.ts",
+      "apps/web/e2e/observation-lifecycle.spec.ts",
+      "apps/web/e2e/dashboard.spec.ts",
+      "apps/web/playwright.config.ts"
+    ],
+    "dependsOn": ["critic--dev-infrastructure--emulator-seed-missing"],
+    "effort": "high",
+    "risk": "low",
+    "userImpact": 4
+  },
+  {
+    "id": "critic--dev-infrastructure--no-backup-or-dr",
+    "title": "No Firestore backup, export, or disaster-recovery posture anywhere in the repo — evaluation records have no documented recovery path",
+    "files": ["docs/operations.md", "README.md", "scripts/import/README.md"],
+    "dependsOn": [],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 6
+  }
+]

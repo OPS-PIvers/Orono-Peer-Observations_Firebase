@@ -83,6 +83,7 @@ const rubric: Rubric = {
 const observation: Observation = {
   observationId: 'obs1',
   observerEmail: 'pe@orono.k12.mn.us',
+  observerName: 'Pat Evaluator',
   observedEmail: 'teacher@orono.k12.mn.us',
   observedName: 'Terry Teacher',
   observedRole: 'Teacher',

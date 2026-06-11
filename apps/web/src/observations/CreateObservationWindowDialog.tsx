@@ -72,6 +72,11 @@ function hhmmToMinutes(value: string): number {
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
 }
 
+/** Today's calendar date in America/Chicago as a YYYY-MM-DD string. */
+function chicagoDateString(now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(now);
+}
+
 export interface CreateObservationWindowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -253,6 +258,9 @@ export function CreateObservationWindowDialog({
     return map;
   }, [staff]);
 
+  // Today's date in Chicago time (the server's policy reference point).
+  const minDate = useMemo(() => chicagoDateString(new Date()), []);
+
   const resolvedInvitees = useMemo(() => {
     return [...selected.entries()].map(([email, buildingName]) => {
       const s = staffByEmail.get(email);
@@ -368,6 +376,7 @@ export function CreateObservationWindowDialog({
                 id="window-start"
                 type="date"
                 value={startDate}
+                min={minDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </div>
@@ -377,7 +386,7 @@ export function CreateObservationWindowDialog({
                 id="window-end"
                 type="date"
                 value={endDate}
-                min={startDate || undefined}
+                min={startDate || minDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>

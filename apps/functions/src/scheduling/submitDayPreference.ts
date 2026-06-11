@@ -16,6 +16,7 @@ import {
   isWindowBookingClosed,
   unknownAnswerFieldIds,
 } from './engine/bookingRules.js';
+import { calendarConnectionSatisfied, loadSchedulingSettings } from './bookObservationSlot.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -53,6 +54,25 @@ export const submitDayPreference = onCall(
     const input = parsed.data;
 
     const db = getFirestore();
+
+    // If admins require it, the staff member must have a connected Google
+    // Calendar before they can submit a day preference. Fail fast so they
+    // receive a clear message rather than a silent server error later when
+    // assignObservationFromPreference tries to create the calendar event.
+    const scheduling = await loadSchedulingSettings(db);
+    if (scheduling.requireCalendarConnect) {
+      const tokenSnap = await db.collection(COLLECTIONS.userCalendarTokens).doc(userEmail).get();
+      const tokenStatus = tokenSnap.exists
+        ? (tokenSnap.data()?.['status'] as string | undefined)
+        : undefined;
+      if (!calendarConnectionSatisfied(scheduling.requireCalendarConnect, tokenStatus)) {
+        throw new HttpsError(
+          'failed-precondition',
+          'You must connect your Google Calendar before submitting a day preference.',
+        );
+      }
+    }
+
     const windowRef = db.collection(COLLECTIONS.observationWindows).doc(input.windowId);
     const prefRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.preferences).doc(userEmail);
 

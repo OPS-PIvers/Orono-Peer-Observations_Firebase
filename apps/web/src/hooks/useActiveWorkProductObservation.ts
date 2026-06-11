@@ -4,8 +4,10 @@ import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Observation } 
 import { useFirestoreCollection } from './useFirestoreCollection';
 
 /**
- * Returns the first Draft Work Product observation where the current
- * user is the observed staff member, or null if none exists.
+ * Returns all Draft Work Product observations where the current user is the
+ * observed staff member, capped at 5 (a teacher realistically never has more
+ * active WP drafts than that). The first item is also exposed as the
+ * `observation` convenience field for callers that only need one.
  */
 export function useActiveWorkProductObservation(observedEmail: string) {
   const constraints = useMemo(
@@ -14,7 +16,7 @@ export function useActiveWorkProductObservation(observedEmail: string) {
       where('type', '==', OBSERVATION_TYPES.workProduct),
       where('status', '==', OBSERVATION_STATUS.draft),
       orderBy('createdAt', 'desc'),
-      limit(1),
+      limit(5),
     ],
     [observedEmail],
   );
@@ -27,5 +29,6 @@ export function useActiveWorkProductObservation(observedEmail: string) {
     [observedEmail],
   );
 
-  return { observation: data?.[0] ?? null, loading, error };
+  const observations = data ?? [];
+  return { observations, observation: observations[0] ?? null, loading, error };
 }

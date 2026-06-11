@@ -5,6 +5,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { ALLOWED_EMAIL_DOMAIN, COLLECTIONS, isSpecialRole, type Role } from '@ops/shared';
 import { computeClaims, type StaffClaimSource } from './computeClaims.js';
+import { APP_URL, loadSecurityAdminEmail, sendEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -46,13 +47,45 @@ export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, 
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Sign in required');
   }
-  const email = request.auth.token.email?.toLowerCase();
-  if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+  const callerEmail = request.auth.token.email?.toLowerCase();
+  if (!callerEmail?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+    // Best-effort security alert to the configured admin email before throwing.
+    const db = getFirestore();
+    const rejectedEmail = callerEmail ?? '(unknown)';
+    try {
+      const securityAdminEmail = await loadSecurityAdminEmail(db);
+      if (securityAdminEmail) {
+        const nowMs = Date.now();
+        const bodyHtml = `
+<p>A sign-in attempt was rejected because the account does not belong to the <strong>@${ALLOWED_EMAIL_DOMAIN}</strong> domain.</p>
+<table style="border-collapse:collapse;font-size:14px;">
+  <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Rejected account</td><td>${rejectedEmail}</td></tr>
+</table>
+<p>If this was unexpected, review the <a href="${APP_URL}">Audit Log</a> in the admin console.</p>
+        `.trim();
+        await sendEmail({
+          db,
+          to: securityAdminEmail,
+          subject: `[Security Alert] Non-domain sign-in rejected: ${rejectedEmail}`,
+          html: bodyHtml,
+          mailDocId: `securityAlert-signInRejected-${rejectedEmail.replace('@', '-at-')}-${String(nowMs)}`,
+          auditDetails: { alertType: 'signInRejected', rejectedEmail },
+        });
+        logger.info('syncMyClaims: security alert sent for rejected sign-in', {
+          rejectedEmail,
+          securityAdminEmail,
+        });
+      }
+    } catch (alertErr) {
+      // Non-fatal: we must still throw the permission-denied error below.
+      logger.error('syncMyClaims: failed to send security alert (non-fatal)', alertErr);
+    }
     throw new HttpsError(
       'permission-denied',
       `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts.`,
     );
   }
+  const email = callerEmail;
 
   const db = getFirestore();
   const staffSnap = await db.doc(`${COLLECTIONS.staff}/${email}`).get();

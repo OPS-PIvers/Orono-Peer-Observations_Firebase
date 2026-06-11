@@ -7,6 +7,7 @@ import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
   isAdminRole,
   roleYearMappingDocId,
   type DriveFileRef,
@@ -68,6 +69,54 @@ export const finalizeObservation = onCall(
     const callerRole = request.auth.token['role'] as string | undefined;
     const isAdmin = isAdminRole(callerRole ?? null);
 
+    // Guard: reject finalization when a transcription job is actively
+    // Pending or Running for this observation. Letting finalize proceed
+    // while a job is in flight would race the worker's obsRef.update and
+    // produce a PDF that diverges from the in-app record.
+    //
+    // The worker re-checks observation status before writing (its own race
+    // guard), so any job that sneaks in AFTER this check will fail safely
+    // rather than mutating the finalized doc.
+    const inflightJobs = await db
+      .collection(COLLECTIONS.transcriptionJobs)
+      .where('observationId', '==', observationId)
+      .where('status', 'in', ['Pending', 'Running'])
+      .limit(1)
+      .get();
+    if (!inflightJobs.empty) {
+      throw new HttpsError(
+        'failed-precondition',
+        'A transcription is still in progress for this observation. Wait for it to complete or fail before finalizing.',
+      );
+    }
+
+    // Server-side soft-block: refuse to finalize a Work Product or
+    // Instructional Round observation that has zero non-empty staff answers.
+    // The UI warns and requires a checkbox override, but this guard ensures
+    // the server is the authoritative checkpoint — a direct API call
+    // (or a browser with JS disabled) cannot skip the warning.
+    //
+    // We read the observation once before claiming so we can inspect the
+    // answer count without holding a transaction open.
+    const obsPreCheck = await obsRef.get();
+    if (obsPreCheck.exists) {
+      const preCheckData = obsPreCheck.data() as Observation;
+      const isWpOrIr =
+        preCheckData.type === OBSERVATION_TYPES.workProduct ||
+        preCheckData.type === OBSERVATION_TYPES.instructionalRound;
+      if (isWpOrIr) {
+        const nonEmptyAnswers = (preCheckData.workProductAnswers ?? []).filter(
+          (a) => a.answer.trim() !== '',
+        );
+        if (nonEmptyAnswers.length === 0) {
+          throw new HttpsError(
+            'failed-precondition',
+            `Cannot finalize a ${preCheckData.type} observation with no staff answers. Ask the observed staff member to submit their responses before finalizing.`,
+          );
+        }
+      }
+    }
+
     // Claim the observation: atomically move Draft → Finalized so two
     // concurrent finalize calls can't both run the PDF/Drive/email work
     // (which would create duplicate Drive PDFs + duplicate emails). The
@@ -104,8 +153,12 @@ export const finalizeObservation = onCall(
 
       const mappingDocId = roleYearMappingDocId(role.roleId, obs.observedYear);
       const mappingSnap = await db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`).get();
-      const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
-      const activeComponentIds = mapping?.assignedComponentIds ?? [];
+      // null  → no mapping doc → PDF includes every rubric component (fallback).
+      // []    → mapping exists but nothing assigned → PDF renders empty-state message.
+      // [...] → PDF renders exactly those component IDs.
+      const activeComponentIds: string[] | null = mappingSnap.exists
+        ? (mappingSnap.data() as RoleYearMapping).assignedComponentIds
+        : null;
 
       const parentFolderId = PARENT_FOLDER_ID.value();
       if (!parentFolderId) {
@@ -208,7 +261,7 @@ export const finalizeObservation = onCall(
           triggerType: 'observation.finalized',
           to: obs.observedEmail,
           vars: {
-            observerName: obs.observerEmail.split('@')[0] ?? '',
+            observerName: obs.observerName || (obs.observerEmail.split('@')[0] ?? ''),
             observerEmail: obs.observerEmail,
             observedName: obs.observedName,
             observedEmail: obs.observedEmail,

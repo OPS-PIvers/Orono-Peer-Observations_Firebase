@@ -1,5 +1,13 @@
 import { OBSERVATION_SLOT_STATUS } from '@ops/shared';
-import type { ObservationSlot, SignupFieldAnswer, Staff, WindowInvitee } from '@ops/shared';
+import type {
+  BookingMode,
+  ObservationSlot,
+  PeBusyInterval,
+  SignupField,
+  SignupFieldAnswer,
+  Staff,
+  WindowInvitee,
+} from '@ops/shared';
 
 /**
  * Pure booking-policy helpers shared by the booking / assignment callables.
@@ -122,6 +130,62 @@ export function dayHasCapacity(currentCount: number, cap: number | null): boolea
 }
 
 /**
+ * Why a reschedule target slot is rejected, or `null` when it is acceptable.
+ *
+ *   'same-slot'      — the target is the slot the booking already occupies.
+ *   'not-available'  — the target is not in `available` status (booked/blocked).
+ *   'wrong-building' — the target belongs to a different building than the
+ *                      invitee books against.
+ *
+ * Pure structural checks only; lead-time and PE-conflict checks (which need the
+ * scheduling settings and the merged busy ledger) stay in the caller.
+ */
+export type RescheduleTargetRejection = 'same-slot' | 'not-available' | 'wrong-building';
+
+export function rescheduleTargetRejection(
+  fromSlotId: string,
+  target: ObservationSlot,
+  inviteeBuildingId: string,
+): RescheduleTargetRejection | null {
+  if (target.slotId === fromSlotId) return 'same-slot';
+  if (target.status !== OBSERVATION_SLOT_STATUS.available) return 'not-available';
+  if (target.buildingId !== inviteeBuildingId) return 'wrong-building';
+  return null;
+}
+
+/**
+ * Swap an evaluator's busy-ledger entry from one slot to another.
+ *
+ * Removes the interval whose `slotId === fromSlotId` and appends `toInterval`,
+ * preserving every other entry's order. Returns a fresh array; the input is
+ * not mutated. Used when a reschedule moves a booking to a new slot so the
+ * authoritative `peBusyIntervals` ledger tracks the new time.
+ */
+export function swapLedgerInterval(
+  ledger: readonly PeBusyInterval[],
+  fromSlotId: string,
+  toInterval: PeBusyInterval,
+): PeBusyInterval[] {
+  return [...ledger.filter((iv) => iv.slotId !== fromSlotId), toInterval];
+}
+
+/**
+ * Recompute a window's `dayCounts` when an invitee fully withdraws their
+ * preference (no new day). Decrements the given day, never below zero.
+ *
+ * Returns a fresh map; the input is not mutated.
+ */
+export function removeDayCount(
+  dayCounts: Record<string, number>,
+  ymd: string,
+): Record<string, number> {
+  const next: Record<string, number> = { ...dayCounts };
+  const prev = next[ymd] ?? 0;
+  next[ymd] = Math.max(0, prev - 1);
+  return next;
+}
+
+/**
  * Recompute a window's `dayCounts` when an invitee's day preference changes.
  *
  * Decrements the previous day (if any, never below zero) and increments the
@@ -142,4 +206,28 @@ export function applyDayCountChange(
     next[newYMD] = (next[newYMD] ?? 0) + 1;
   }
   return next;
+}
+
+/**
+ * Identifies signup field IDs that are unknown or not applicable to the
+ * requested booking mode.
+ *
+ * A field is applicable if:
+ * - It is active (`isActive === true`)
+ * - Its `appliesTo` matches: either 'both' or the exact bookingMode
+ *
+ * Returns the list of invalid IDs (unknown, inactive, or wrong mode).
+ */
+export function invalidSignupFieldIds(
+  requestedFieldIds: readonly string[],
+  availableFields: readonly SignupField[],
+  bookingMode: BookingMode,
+): string[] {
+  const valid = new Set<string>();
+  for (const field of availableFields) {
+    if (field.isActive && (field.appliesTo === 'both' || field.appliesTo === bookingMode)) {
+      valid.add(field.fieldId);
+    }
+  }
+  return requestedFieldIds.filter((id) => !valid.has(id));
 }

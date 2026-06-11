@@ -31,6 +31,22 @@ observations come across as historical archive.
 
 A `.env` file at the repo root (gitignored) is the easiest way to set these.
 
+## Import safety — invite email suppression
+
+The `onStaffWritten` Cloud Function sends a `staff.created` invite email every
+time a new `/staff/{email}` document is created. Without protection, a production
+cutover import would blast an invite to every staff member the moment the trigger
+fires.
+
+**This is handled automatically.** The importer stamps every staff doc with an
+`importedAt` server timestamp. The `onStaffWritten` trigger detects this field
+and skips the invite email for docs that carry it. No manual template-deactivation
+step is required.
+
+Staff members imported this way will **not** receive an invite automatically; an
+admin can send one explicitly using the "Resend invite email" row action on the
+Staff admin page when the system is ready to go live.
+
 ## What gets imported
 
 | Sheet tab              | Firestore destination                      |

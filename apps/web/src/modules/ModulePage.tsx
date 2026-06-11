@@ -3,12 +3,14 @@ import { useParams } from 'react-router-dom';
 import { deleteDoc, doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
+  MODULE_CONTENT_SUBCOLLECTION,
   MODULE_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
   staffMatchesAutoEnable,
   type ModuleDoc,
   type ModuleItem,
   type ModuleProgress,
+  type ModuleSectionContent,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -47,11 +49,23 @@ export function ModulePage() {
     itemConstraints,
     [moduleId],
   );
+  // Rich-text section bodies live in the gated /content subcollection, not on
+  // the (domain-readable) module doc. Same access path as items: the moduleId
+  // filter is what makes the list authorized for non-admin assigned staff.
+  const { data: content, error: contentError } = useFirestoreCollection<ModuleSectionContent>(
+    moduleId ? `${COLLECTIONS.modules}/${moduleId}/${MODULE_CONTENT_SUBCOLLECTION}` : '',
+    itemConstraints,
+    [moduleId],
+  );
   const { data: progress } = useFirestoreCollection<ModuleProgress>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}/${STAFF_SUBCOLLECTIONS.moduleProgress}` : '',
   );
 
   const doneItemIds = useMemo(() => new Set((progress ?? []).map((p) => p.itemId)), [progress]);
+  const bodyBySectionId = useMemo(
+    () => new Map((content ?? []).map((c) => [c.sectionId, c.body])),
+    [content],
+  );
 
   const isAssigned = useMemo(() => {
     if (claims.isAdmin) return true;
@@ -108,9 +122,9 @@ export function ModulePage() {
       subtitle={module.description || undefined}
     >
       <div className="space-y-6">
-        {itemsError ? (
+        {(itemsError ?? contentError) ? (
           <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
-            Failed to load module content: {itemsError.message}
+            Failed to load module content: {(itemsError ?? contentError)?.message}
           </div>
         ) : null}
         {sections.length === 0 ? (
@@ -118,7 +132,13 @@ export function ModulePage() {
         ) : (
           sections.map((section) => {
             if (section.type === 'richtext') {
-              return <RichTextSection key={section.id} section={section} />;
+              return (
+                <RichTextSection
+                  key={section.id}
+                  section={section}
+                  body={bodyBySectionId.get(section.id) ?? ''}
+                />
+              );
             }
             if (section.type === 'resources') {
               return <ResourceListSection key={section.id} section={section} items={items ?? []} />;

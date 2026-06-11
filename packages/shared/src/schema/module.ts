@@ -40,27 +40,75 @@ export const MODULE_ICONS = [
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
 export const moduleIcon = z.enum(MODULE_ICONS);
 
+/** Subcollection (under /modules/{id}) holding gated rich-text section bodies.
+ *  Kept here next to {@link moduleSectionContent} rather than in
+ *  MODULE_SUBCOLLECTIONS so the schema file is the single source of truth for
+ *  the path. The firestore.rules `content` matcher must stay in sync. */
+export const MODULE_CONTENT_SUBCOLLECTION = 'content';
+
 /** The three section types an admin can compose a module page from. */
 export const MODULE_SECTION_TYPES = ['richtext', 'resources', 'materials'] as const;
 export type ModuleSectionType = (typeof MODULE_SECTION_TYPES)[number];
 export const moduleSectionType = z.enum(MODULE_SECTION_TYPES);
 
 /**
- * One ordered section on a module page. `body` carries Tiptap document JSON
- * (the `JSON.stringify` of a TiptapDoc), only meaningful for
- * `type === 'richtext'`; resources/materials sections pull their content from
- * the `/modules/{id}/items` subcollection by `sectionId`.
+ * One ordered section on a module page. A section carries only public layout
+ * metadata (id/type/title) so the whole module doc can stay domain-readable for
+ * chips + nav. The *content* of each section is access-controlled and lives
+ * outside the doc:
+ *  - `richtext` bodies live in `/modules/{id}/content/{sectionId}`
+ *    ({@link moduleSectionContent}), gated by the same assignment rule as items;
+ *  - `resources`/`materials` content lives in the `/modules/{id}/items`
+ *    subcollection, keyed by `sectionId`.
+ *
+ * @remarks `body` is a **deprecated** inline field retained only so older,
+ * un-migrated docs still parse. New writes never populate it — the builder
+ * writes rich-text to the gated content subcollection, and
+ * `migrateModuleSectionBodies` clears it from existing docs. Do not read it for
+ * rendering; read {@link moduleSectionContent} instead.
  */
 export const moduleSection = z.object({
   /** Generated section slug (e.g. "sec-abc12"); not a domain slugId. */
   id: z.string().min(1).max(64),
   type: moduleSectionType,
   title: z.string().trim().max(120).default(''),
-  /** Tiptap document JSON (richtext sections only). Intentionally not trimmed —
-   *  the editor manages its own whitespace/markup. */
-  body: z.string().default(''),
+  /** @deprecated Inline Tiptap JSON on the public doc. Superseded by
+   *  {@link moduleSectionContent} (a gated subcollection). Kept optional so
+   *  pre-migration docs still parse; never written by current code. */
+  body: z.string().optional(),
 });
 export type ModuleSection = z.infer<typeof moduleSection>;
+
+/**
+ * /modules/{moduleId}/content/{sectionId} — the rich-text body for a single
+ * `richtext` section, stored OUTSIDE the public module doc so it can be
+ * access-controlled. `moduleId` is denormalized onto each content doc so the
+ * recursive `match /{path=**}/content/{sectionId}` rule can gate reads by the
+ * viewer's assigned modules, exactly like module items do.
+ *
+ * The doc id is the owning section's id (a generated `sec-…` slug), so there is
+ * at most one content doc per section and the builder can write/read it by id
+ * without a query.
+ */
+export const moduleSectionContent = z.object({
+  /** The owning moduleSection.id (also the doc id). */
+  sectionId: z.string().min(1).max(64),
+  /** Denormalized owning module id — powers the assignment-gating rule. */
+  moduleId: slugId,
+  /** Tiptap document JSON (the `JSON.stringify` of a TiptapDoc). Intentionally
+   *  not trimmed — the editor manages its own whitespace/markup. */
+  body: z.string().default(''),
+  createdAt: isoDate,
+  updatedAt: isoDate,
+  updatedBy: email.optional(),
+});
+export type ModuleSectionContent = z.infer<typeof moduleSectionContent>;
+
+export const moduleSectionContentInput = moduleSectionContent.omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export type ModuleSectionContentInput = z.infer<typeof moduleSectionContentInput>;
 
 /**
  * Auto-enable rule: a module can automatically apply to every staff member
@@ -87,8 +135,10 @@ export const moduleDoc = z.object({
   hasPage: z.boolean().default(false),
   /** Lucide icon slug for the sidebar entry. */
   icon: moduleIcon.default('shapes'),
-  /** Ordered page layout. Content for resources/materials sections lives in
-   *  the items subcollection; rich-text content lives inline on the section. */
+  /** Ordered page layout (public metadata only: id/type/title). Section
+   *  *content* is access-controlled and lives outside this doc — rich-text in
+   *  the `/content` subcollection ({@link moduleSectionContent}),
+   *  resources/materials in the `/items` subcollection. */
   sections: z.array(moduleSection).default([]),
   /** When set, the module auto-applies to staff matching this single
    *  criterion, on top of any manual assignments. null = manual-only. */

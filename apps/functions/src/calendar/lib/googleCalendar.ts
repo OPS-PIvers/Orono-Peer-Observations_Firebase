@@ -30,6 +30,19 @@ export const GOOGLE_OAUTH_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECR
 /** The Calendar scope we require to write events on a user's behalf. */
 export const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
+/**
+ * The read-only free/busy scope. Optional — granted alongside
+ * {@link CALENDAR_EVENTS_SCOPE} so slot generation can consult the evaluator's
+ * real availability. Connections made before this scope existed simply lack it,
+ * and availability sync is skipped for them until the user reconnects.
+ */
+export const CALENDAR_FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.freebusy';
+
+/** True when the stored scope grant includes the free/busy read scope. */
+export function hasFreebusyScope(scopes: readonly string[] | undefined): boolean {
+  return Array.isArray(scopes) && scopes.includes(CALENDAR_FREEBUSY_SCOPE);
+}
+
 /** Construct a fresh OAuth2 client. `redirectUri` is only needed for the
  *  authorization-code exchange; event operations don't use it. */
 function buildOAuthClient(redirectUri?: string): OAuth2Client {
@@ -186,6 +199,64 @@ async function primaryCalendarId(email: string): Promise<string> {
   const snap = await tokensRef(email).get();
   const id = snap.data()?.['primaryCalendarId'];
   return typeof id === 'string' && id.length > 0 ? id : 'primary';
+}
+
+/** A busy interval reported by Google's free/busy API, as absolute instants. */
+export interface FreeBusyInterval {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Query the connected user's calendar free/busy for `[timeMin, timeMax)`.
+ *
+ * Returns the list of busy intervals on success, or `null` (never throws) when
+ * availability can't be consulted:
+ *   - no connected calendar (delegates to {@link getCalendarClientFor})
+ *   - the stored grant lacks {@link CALENDAR_FREEBUSY_SCOPE} (pre-scope connect)
+ *   - the API call fails for any reason
+ *
+ * `null` is the "skip availability sync" signal; an empty array means
+ * "checked, the calendar is entirely free in this range".
+ */
+export async function queryFreeBusy(
+  email: string,
+  timeMin: Date,
+  timeMax: Date,
+): Promise<FreeBusyInterval[] | null> {
+  // Gate on the stored scope first so we never make a call that will 403.
+  const tokenSnap = await tokensRef(email).get();
+  if (!tokenSnap.exists) return null;
+  const scopes = tokenSnap.data()?.['scopes'];
+  if (!hasFreebusyScope(Array.isArray(scopes) ? (scopes as string[]) : undefined)) return null;
+
+  const cal = await getCalendarClientFor(email);
+  if (!cal) return null;
+
+  const calendarId = await primaryCalendarId(email);
+  try {
+    const res = await cal.freebusy.query({
+      requestBody: {
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        items: [{ id: calendarId }],
+      },
+    });
+    const busyRaw = res.data.calendars?.[calendarId]?.busy ?? [];
+    const intervals: FreeBusyInterval[] = [];
+    for (const b of busyRaw) {
+      const start = b.start ? toDate(b.start) : null;
+      const end = b.end ? toDate(b.end) : null;
+      if (start && end) intervals.push({ start, end });
+    }
+    return intervals;
+  } catch (err) {
+    logger.warn('queryFreeBusy: freebusy.query failed (best-effort)', {
+      email: email.toLowerCase(),
+      err,
+    });
+    return null;
+  }
 }
 
 /** Coerce a Firestore Timestamp / Date / ISO string into a JS Date. */

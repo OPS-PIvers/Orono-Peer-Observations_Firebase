@@ -256,7 +256,10 @@ export function SettingsPage() {
 
         <fieldset className="border-border space-y-4 rounded-md border p-4">
           <legend className="px-2 text-sm font-medium">Rate limits</legend>
-          <Field label="Observation saves per minute (per user)">
+          <Field
+            label="Observation saves per minute (per user)"
+            help="Throttles how often the observation editor autosaves to Firestore for each evaluator."
+          >
             <Input
               type="number"
               min={1}
@@ -276,7 +279,10 @@ export function SettingsPage() {
               }
             />
           </Field>
-          <Field label="Audio uploads per hour (per user)">
+          <Field
+            label="Audio uploads per hour (per user)"
+            help="Audio recordings beyond this many in a rolling hour are rejected (HTTP 429) per evaluator."
+          >
             <Input
               type="number"
               min={1}
@@ -296,7 +302,10 @@ export function SettingsPage() {
               }
             />
           </Field>
-          <Field label="Transcription requests per day (per user)">
+          <Field
+            label="Transcription requests per day (per user)"
+            help="New transcription jobs beyond this many in a rolling day are rejected per evaluator (re-using an in-flight job doesn't count)."
+          >
             <Input
               type="number"
               min={1}

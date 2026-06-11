@@ -9,6 +9,8 @@ export interface AudioPopoverButtonProps {
   audioFileIds: Observation['audioDriveFileIds'];
   transcripts: Observation['transcripts'];
   readOnly: boolean;
+  /** Forwarded to AudioRecorder — appends transcript text to the observation script. */
+  onInsertTranscript?: (text: string) => void;
 }
 
 /**
@@ -27,6 +29,7 @@ export function AudioPopoverButton({
   audioFileIds,
   transcripts,
   readOnly,
+  onInsertTranscript,
 }: AudioPopoverButtonProps) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -115,6 +118,7 @@ export function AudioPopoverButton({
           transcripts={transcripts}
           readOnly={readOnly}
           onPhaseChange={setPhase}
+          {...(onInsertTranscript ? { onInsertTranscript } : {})}
         />
       </div>
     </div>

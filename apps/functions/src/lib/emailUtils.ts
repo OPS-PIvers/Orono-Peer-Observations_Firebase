@@ -49,6 +49,25 @@ export function staffInviteMailDocId(email: string, nowMs: number): string {
 }
 
 /**
+ * /mail doc id for a *resent* window-invite email.
+ *
+ * Mirrors createObservationWindow.windowInviteMailDocId but adds a `-resend`
+ * marker and the send timestamp so a resend never collides with the original
+ * static invite id (which would silently no-op — the Trigger Email extension
+ * only sends on doc creation). Keyed per invitee entry (email + building) and
+ * per instant so the same person can be resent at two buildings, and the same
+ * entry can be resent repeatedly.
+ */
+export function resendWindowInviteMailDocId(
+  windowId: string,
+  email: string,
+  buildingId: string,
+  nowMs: number,
+): string {
+  return `scheduling.windowInvite-resend-${windowId}-${email}-${buildingId}-${String(nowMs)}`;
+}
+
+/**
  * Load an active template for a given trigger type.
  * Returns null if no active template exists for this trigger.
  */
@@ -87,6 +106,23 @@ async function loadEmailBranding(
     fromEmail:
       typeof outbound === 'string' && outbound.trim() !== '' ? outbound.trim() : FROM_EMAIL,
   };
+}
+
+/**
+ * Load the security admin email from appSettings/global.
+ *
+ * Returns the trimmed address when set, or `null` when the field is absent,
+ * blank, or the settings doc does not exist. Callers should skip sending when
+ * null is returned.
+ *
+ * Used to resolve `recipient === 'admin'` in templated emails and to direct
+ * security-event alerts (rejected sign-ins, rate-limit trips, etc.).
+ */
+export async function loadSecurityAdminEmail(db: Firestore): Promise<string | null> {
+  const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+  const raw = snap.data()?.['securityAdminEmail'] as string | undefined;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  return raw.trim();
 }
 
 /**
@@ -139,6 +175,11 @@ export async function sendEmail(args: {
 /**
  * High-level helper: load the active template for a trigger type,
  * substitute variables, and send. Returns false if no active template.
+ *
+ * When the template's `recipient` is `'admin'`, the `to` argument is
+ * ignored and the email is instead directed to the security admin address
+ * from appSettings/global.securityAdminEmail. If that field is unset the
+ * send is skipped and this function returns false.
  */
 export async function sendTemplatedEmail(args: {
   db: Firestore;
@@ -159,11 +200,27 @@ export async function sendTemplatedEmail(args: {
   const appSettingsSnap = await db
     .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
     .get();
+  const appSettingsData = appSettingsSnap.data();
   const appName: string =
-    (appSettingsSnap.data()?.['branding']?.['appName'] as string | undefined) ??
+    (appSettingsData?.['branding']?.['appName'] as string | undefined) ??
     'Orono Peer Observations';
-  const signupLink: string =
-    (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
+  const signupLink: string = (appSettingsData?.['signupLink'] as string | undefined) ?? '';
+
+  // Resolve the recipient address: 'admin' → securityAdminEmail from settings.
+  let resolvedTo: string | string[];
+  if (template.recipient === 'admin') {
+    const securityAdminEmail = appSettingsData?.['securityAdminEmail'] as string | undefined;
+    if (!securityAdminEmail || securityAdminEmail.trim() === '') {
+      logger.info('emailUtils: recipient=admin but securityAdminEmail is unset; skipping', {
+        triggerType,
+        mailDocId,
+      });
+      return false;
+    }
+    resolvedTo = securityAdminEmail.trim();
+  } else {
+    resolvedTo = to;
+  }
 
   const fullVars: TemplateVars = {
     appName,
@@ -175,7 +232,14 @@ export async function sendTemplatedEmail(args: {
   const subject = substituteVariables(template.subject, fullVars);
   const html = substituteVariables(template.bodyHtml, fullVars);
 
-  await sendEmail({ db, to, subject, html, mailDocId, ...(auditDetails !== undefined ? { auditDetails } : {}) });
+  await sendEmail({
+    db,
+    to: resolvedTo,
+    subject,
+    html,
+    mailDocId,
+    ...(auditDetails !== undefined ? { auditDetails } : {}),
+  });
   return true;
 }
 

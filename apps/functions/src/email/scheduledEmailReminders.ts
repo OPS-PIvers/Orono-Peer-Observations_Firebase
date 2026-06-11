@@ -7,6 +7,7 @@ import {
   formatDate,
   incompleteReminderMailDocId,
   loadActiveTemplate,
+  loadSecurityAdminEmail,
   sendEmail,
   substituteVariables,
 } from '../lib/emailUtils.js';
@@ -97,56 +98,75 @@ export const scheduledEmailReminders = onSchedule(
       const daysAhead = preObsTemplate.scheduledDays;
       const { start: targetStart, end: targetEnd } = chicagoMidnight(today, daysAhead);
 
-      const snap = await db
-        .collection(COLLECTIONS.observations)
-        .where('status', '==', OBSERVATION_STATUS.draft)
-        .where('observationDate', '>=', Timestamp.fromDate(targetStart))
-        .where('observationDate', '<=', Timestamp.fromDate(targetEnd))
-        .get();
-
-      for (const docSnap of snap.docs) {
-        const obs = docSnap.data();
-        const vars = {
-          observerName: (obs['observerEmail'] as string | undefined)?.split('@')[0] ?? '',
-          observerEmail: (obs['observerEmail'] as string | undefined) ?? '',
-          observedName: (obs['observedName'] as string | undefined) ?? '',
-          observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
-          observedRole: resolveRoleLabel(
-            rolesLookup,
-            (obs['observedRole'] as string | undefined) ?? '',
-          ),
-          observedYear: String(obs['observedYear'] ?? ''),
-          observationDate: formatDate(obs['observationDate']),
-          observationName: (obs['observationName'] as string | undefined) ?? '',
-          observationType: (obs['type'] as string | undefined) ?? '',
-        };
-
-        let recipient: string | string[];
-        if (preObsTemplate.recipient === 'observer') {
-          recipient = (obs['observerEmail'] as string | undefined) ?? '';
-        } else if (preObsTemplate.recipient === 'both') {
-          recipient = [obs['observedEmail'] as string, obs['observerEmail'] as string].filter(
-            Boolean,
-          );
-        } else {
-          recipient = (obs['observedEmail'] as string | undefined) ?? '';
-        }
-
-        const recipientArr = Array.isArray(recipient) ? recipient : [recipient];
-        if (recipientArr.every((r) => !r)) continue;
-
-        await sendEmail({
-          db,
-          to: recipient,
-          subject: substituteVariables(preObsTemplate.subject, vars),
-          html: substituteVariables(preObsTemplate.bodyHtml, vars),
-          mailDocId: `preobs-${docSnap.id}-${String(daysAhead)}d`,
-          auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.preObservation' },
-        }).catch((err: unknown) =>
-          logger.error('scheduledEmailReminders: preObs send failed', err),
+      // Resolve admin address once before the loop — all per-observation emails
+      // share the same destination when recipient === 'admin'.
+      const preObsAdminEmail =
+        preObsTemplate.recipient === 'admin' ? await loadSecurityAdminEmail(db) : null;
+      if (preObsTemplate.recipient === 'admin' && preObsAdminEmail === null) {
+        logger.info(
+          'scheduledEmailReminders: preObs template recipient=admin but securityAdminEmail is unset; skipping',
         );
+      } else {
+        const snap = await db
+          .collection(COLLECTIONS.observations)
+          .where('status', '==', OBSERVATION_STATUS.draft)
+          .where('observationDate', '>=', Timestamp.fromDate(targetStart))
+          .where('observationDate', '<=', Timestamp.fromDate(targetEnd))
+          .get();
+
+        for (const docSnap of snap.docs) {
+          const obs = docSnap.data();
+          const observerNameRaw = (obs['observerName'] as string | undefined) ?? '';
+          const vars = {
+            observerName:
+              observerNameRaw !== ''
+                ? observerNameRaw
+                : ((obs['observerEmail'] as string | undefined)?.split('@')[0] ?? ''),
+            observerEmail: (obs['observerEmail'] as string | undefined) ?? '',
+            observedName: (obs['observedName'] as string | undefined) ?? '',
+            observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
+            observedRole: resolveRoleLabel(
+              rolesLookup,
+              (obs['observedRole'] as string | undefined) ?? '',
+            ),
+            observedYear: String(obs['observedYear'] ?? ''),
+            observationDate: formatDate(obs['observationDate']),
+            observationName: (obs['observationName'] as string | undefined) ?? '',
+            observationType: (obs['type'] as string | undefined) ?? '',
+          };
+
+          // Resolve the recipient address for this observation.
+          // When recipient === 'admin', preObsAdminEmail is guaranteed non-null
+          // (the outer else-branch only runs when it is non-null or recipient !== 'admin').
+          let recipient: string | string[];
+          if (preObsTemplate.recipient === 'admin' && preObsAdminEmail !== null) {
+            recipient = preObsAdminEmail;
+          } else if (preObsTemplate.recipient === 'observer') {
+            recipient = (obs['observerEmail'] as string | undefined) ?? '';
+          } else if (preObsTemplate.recipient === 'both') {
+            recipient = [obs['observedEmail'] as string, obs['observerEmail'] as string].filter(
+              Boolean,
+            );
+          } else {
+            recipient = (obs['observedEmail'] as string | undefined) ?? '';
+          }
+
+          const recipientArr = Array.isArray(recipient) ? recipient : [recipient];
+          if (recipientArr.every((r) => !r)) continue;
+
+          await sendEmail({
+            db,
+            to: recipient,
+            subject: substituteVariables(preObsTemplate.subject, vars),
+            html: substituteVariables(preObsTemplate.bodyHtml, vars),
+            mailDocId: `preobs-${docSnap.id}-${String(daysAhead)}d`,
+            auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.preObservation' },
+          }).catch((err: unknown) =>
+            logger.error('scheduledEmailReminders: preObs send failed', err),
+          );
+        }
+        logger.info('scheduledEmailReminders: preObs processed', { count: snap.size, daysAhead });
       }
-      logger.info('scheduledEmailReminders: preObs processed', { count: snap.size, daysAhead });
     }
 
     // ── 2. Incomplete WP / IR reminders ──────────────────────────────

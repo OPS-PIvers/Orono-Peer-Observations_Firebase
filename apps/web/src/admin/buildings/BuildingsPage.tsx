@@ -1,10 +1,26 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, PILL_COLORS, type Building, type PillColorName } from '@ops/shared';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import {
+  COLLECTIONS,
+  PILL_COLORS,
+  type Building,
+  type PillColorName,
+  type Staff,
+} from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
+import { bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
@@ -199,6 +215,12 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /** Affected staff for a pending rename — null while no rename is staged. */
+  const [pendingRename, setPendingRename] = useState<{
+    oldName: string;
+    newName: string;
+    affected: { id: string; buildings: string[] }[];
+  } | null>(null);
 
   if (open && form.buildingId !== (existing?.buildingId ?? '') && existing) {
     setForm({
@@ -209,6 +231,7 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
     });
     setError(null);
     setConfirmingDelete(false);
+    setPendingRename(null);
   }
 
   function autoSlug(name: string) {
@@ -224,6 +247,22 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
     }
   }
 
+  /** Write the building doc with the current form values. */
+  async function writeBuilding() {
+    await setDoc(
+      doc(db, COLLECTIONS.buildings, form.buildingId),
+      {
+        buildingId: form.buildingId,
+        displayName: form.displayName.trim(),
+        ...(form.color !== undefined ? { color: form.color } : {}),
+        isActive: form.isActive,
+        updatedAt: serverTimestamp(),
+        ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
+      },
+      { merge: true },
+    );
+  }
+
   async function save() {
     setError(null);
     if (!form.displayName.trim()) {
@@ -235,23 +274,65 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
       return;
     }
 
+    const newName = form.displayName.trim();
+    // Renaming a building: the display name is denormalized into each staff
+    // member's `buildings` array, so we must cascade. Query the affected
+    // staff first and ask the admin to confirm before writing anything.
+    if (mode === 'edit' && existing && newName !== existing.displayName) {
+      setSubmitting(true);
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, COLLECTIONS.staff),
+            where('buildings', 'array-contains', existing.displayName),
+          ),
+        );
+        const affected = snap.docs.map((d) => {
+          const data = d.data() as Staff;
+          return { id: d.id, buildings: data.buildings };
+        });
+        setPendingRename({ oldName: existing.displayName, newName, affected });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not check affected staff');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await setDoc(
-        doc(db, COLLECTIONS.buildings, form.buildingId),
-        {
-          buildingId: form.buildingId,
-          displayName: form.displayName.trim(),
-          ...(form.color !== undefined ? { color: form.color } : {}),
-          isActive: form.isActive,
-          updatedAt: serverTimestamp(),
-          ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
-        },
-        { merge: true },
-      );
+      await writeBuilding();
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /** Commit a confirmed rename: write the building, then cascade the new
+   *  display name into every affected staff member's `buildings` array. */
+  async function confirmRename() {
+    if (!pendingRename) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await writeBuilding();
+      const { oldName, newName, affected } = pendingRename;
+      await bulkMergePerRow(
+        COLLECTIONS.staff,
+        affected.map((s) => s.id),
+        (id) => {
+          const staff = affected.find((s) => s.id === id);
+          if (!staff) return null;
+          return { buildings: staff.buildings.map((b) => (b === oldName ? newName : b)) };
+        },
+      );
+      setPendingRename(null);
+      onOpenChange(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Rename failed');
     } finally {
       setSubmitting(false);
     }
@@ -371,10 +452,37 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
               </div>
             </div>
           ) : null}
+
+          {pendingRename ? (
+            <div className="border-ops-blue bg-ops-blue-lighter text-ops-blue-dark rounded-md border-l-4 px-3 py-2 text-sm">
+              <p className="mb-2">
+                Rename <strong>{pendingRename.oldName}</strong> to{' '}
+                <strong>{pendingRename.newName}</strong>?{' '}
+                {pendingRename.affected.length > 0
+                  ? `This updates ${String(pendingRename.affected.length)} staff record${
+                      pendingRename.affected.length === 1 ? '' : 's'
+                    } assigned to this building.`
+                  : 'No staff are currently assigned to this building.'}
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void confirmRename()} disabled={submitting}>
+                  {submitting ? 'Renaming…' : 'Yes, rename'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPendingRename(null)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
-          {mode === 'edit' && existing && !confirmingDelete ? (
+          {mode === 'edit' && existing && !confirmingDelete && !pendingRename ? (
             <Button
               variant="ghost"
               onClick={() => setConfirmingDelete(true)}
@@ -387,9 +495,11 @@ function BuildingDialog({ open, onOpenChange, mode, existing }: BuildingDialogPr
           <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
             Cancel
           </Button>
-          <Button onClick={() => void save()} disabled={submitting}>
-            {submitting ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
-          </Button>
+          {!pendingRename ? (
+            <Button onClick={() => void save()} disabled={submitting}>
+              {submitting ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
+            </Button>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

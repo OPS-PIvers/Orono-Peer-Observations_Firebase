@@ -81,12 +81,21 @@ export function StaffPersonPage() {
   // special chars are safe, but Firestore doc IDs are stored lowercase.
   const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, claims } = useAuth();
   const currentEmail = user?.email?.toLowerCase() ?? '';
+  const isAdmin = claims.isAdmin;
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+
+  // Current user's own staff doc — used to populate the observerName var in
+  // manual emails. The signed-in user can always read their own /staff doc.
+  const currentUserDocRef = useMemo(
+    () => (currentEmail ? doc(db, COLLECTIONS.staff, currentEmail) : null),
+    [currentEmail],
+  );
+  const { data: currentUserStaff } = useDocument<Staff>(currentUserDocRef);
 
   const obsConstraints = useMemo(
     () => (email ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')] : []),
@@ -170,7 +179,7 @@ export function StaffPersonPage() {
           staffName: staffMember.name,
           staffEmail: email,
           staffRole: roleLabel,
-          observerName: (user?.email ?? '').split('@')[0] ?? '',
+          observerName: currentUserStaff?.name ?? (user?.email ?? '').split('@')[0] ?? '',
           observerEmail: user?.email ?? '',
         },
       });
@@ -343,7 +352,7 @@ export function StaffPersonPage() {
             <ObservationCard
               key={o.id}
               observation={o}
-              canDelete={o.observerEmail === currentEmail}
+              canDelete={o.observerEmail === currentEmail || isAdmin}
               confirmingDelete={confirmingDeleteId === o.id}
               onRequestDelete={() => setConfirmingDeleteId(o.id)}
               onCancelDelete={() => setConfirmingDeleteId(null)}
@@ -446,11 +455,12 @@ function ObservationCard({
               {o.type}
             </span>
           </div>
-          <StatusChip status={o.status} />
+          <StatusChip status={o.status} acknowledgedAt={o.acknowledgedAt} />
         </div>
 
         <p className="text-ops-gray mb-3 text-xs">
-          By: {o.observerEmail} · Last modified: {formatRelative(o.lastModifiedAt)}
+          By: {o.observerName || (o.observerEmail.split('@')[0] ?? o.observerEmail)} · Last
+          modified: {formatRelative(o.lastModifiedAt)}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -502,6 +512,31 @@ function ObservationCard({
                   </a>
                 </Button>
               ) : null}
+              {canDelete &&
+                (confirmingDelete ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <span>Delete this observation?</span>
+                    <button
+                      onClick={onConfirmDelete}
+                      className="text-ops-red font-semibold"
+                      type="button"
+                    >
+                      Yes, delete
+                    </button>
+                    <button onClick={onCancelDelete} type="button">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-ops-red hover:text-ops-red hover:bg-red-50"
+                    onClick={onRequestDelete}
+                  >
+                    Delete
+                  </Button>
+                ))}
             </>
           )}
         </div>
@@ -510,7 +545,13 @@ function ObservationCard({
   );
 }
 
-function StatusChip({ status }: { status: ObservationStatus }) {
+function StatusChip({
+  status,
+  acknowledgedAt,
+}: {
+  status: ObservationStatus;
+  acknowledgedAt?: Observation['acknowledgedAt'];
+}) {
   if (status === OBSERVATION_STATUS.draft) {
     return (
       <span className="inline-flex items-center rounded border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
@@ -518,9 +559,39 @@ function StatusChip({ status }: { status: ObservationStatus }) {
       </span>
     );
   }
+
+  const ackLabel = formatAckLabel(acknowledgedAt);
+
   return (
-    <span className="inline-flex items-center rounded border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-800">
-      Finalized
+    <span className="inline-flex flex-col items-end gap-0.5">
+      <span className="inline-flex items-center rounded border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-800">
+        Finalized
+      </span>
+      {ackLabel !== null ? (
+        <span className="inline-flex items-center rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+          {ackLabel}
+        </span>
+      ) : (
+        <span className="inline-flex items-center rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+          Awaiting ack
+        </span>
+      )}
     </span>
   );
+}
+
+function formatAckLabel(value: Observation['acknowledgedAt'] | undefined): string | null {
+  if (!value) return null;
+  const raw = value as unknown;
+  let date: Date | null = null;
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (typeof raw === 'object' && raw !== null && 'toDate' in raw) {
+    date = (raw as { toDate: () => Date }).toDate();
+  } else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date) return null;
+  return `Acknowledged ${date.toLocaleDateString()}`;
 }

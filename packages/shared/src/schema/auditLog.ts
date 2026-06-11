@@ -22,6 +22,7 @@ export const AUDIT_ACTIONS = {
   observationDeleted: 'observation_deleted',
   pdfRegenerated: 'pdf_regenerated',
   emailSent: 'email_sent',
+  emailFailed: 'email_failed',
   staffCreated: 'staff_created',
   staffUpdated: 'staff_updated',
   staffDeactivated: 'staff_deactivated',
@@ -41,6 +42,18 @@ export const AUDIT_ACTIONS = {
   slotCancelled: 'slot_cancelled',
   slotAssignedFromPreference: 'slot_assigned_from_preference',
   dayPreferenceSubmitted: 'day_preference_submitted',
+  dayPreferenceWithdrawn: 'day_preference_withdrawn',
+  // Observation lifecycle (admin reopen of a finalized observation).
+  observationReopened: 'observation_reopened',
+  // Staff permission changes (role / admin access / active flag).
+  staffPermissionsChanged: 'staff.permissionsChanged',
+  // Google Calendar integration lifecycle.
+  calendarConnect: 'calendar.connect',
+  calendarDisconnect: 'calendar.disconnect',
+  calendarEventSkipped: 'calendar.eventSkipped',
+  calendarEventCreateFailed: 'calendar.eventCreateFailed',
+  // Warning logged when a building schedule change affects an open window.
+  observationWindowScheduleChangeWarning: 'observationWindow.scheduleChangeWarning',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

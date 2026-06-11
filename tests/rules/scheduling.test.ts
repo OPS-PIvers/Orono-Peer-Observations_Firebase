@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -211,7 +211,7 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('a different PE cannot update someone else’s window', async () => {
+  it("a different PE cannot update someone else's window", async () => {
     const db = testEnv
       .authenticatedContext('pe2', claims.peerEval('pe2@orono.k12.mn.us'))
       .firestore();
@@ -220,10 +220,92 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('observer can update their window', async () => {
+  // --- Phase 1 security fix: all client updates/deletes are now denied ------
+
+  it('observer cannot update their own window (all mutations are server-only)', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+  });
+
+  it('observer cannot delete their own window', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(deleteDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('admin CAN delete a window (hard-delete for cleanup)', async () => {
+    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    await assertSucceeds(deleteDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('admin cannot update a window (client writes fully denied)', async () => {
+    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+  });
+
+  it('invited staff cannot update a window', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      setDoc(
+        doc(db, 'observationWindows/w1'),
+        { invitees: [], dayCounts: {}, peBusyIntervals: [] },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('invited staff cannot delete a window', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(deleteDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  // --- /tokens subcollection: PE can read, no client writes -----------------
+
+  it('PE can read a token doc', async () => {
+    await seed('observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school', {
+      inviteToken: 'secret-token-abc',
+      email: INVITED_EMAIL,
+      buildingId: 'high-school',
+    });
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertSucceeds(
-      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+      getDoc(doc(db, 'observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school')),
+    );
+  });
+
+  it('invited staff cannot read any token doc', async () => {
+    await seed('observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school', {
+      inviteToken: 'secret-token-abc',
+      email: INVITED_EMAIL,
+      buildingId: 'high-school',
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      getDoc(doc(db, 'observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school')),
+    );
+  });
+
+  it('no client can write a token doc', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school'), {
+        inviteToken: 'x',
+      }),
+    );
+  });
+
+  it('admin can read a token doc', async () => {
+    await seed('observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school', {
+      inviteToken: 'secret-token-abc',
+      email: INVITED_EMAIL,
+      buildingId: 'high-school',
+    });
+    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'observationWindows/w1/tokens/teacher@orono.k12.mn.us::high-school')),
     );
   });
 

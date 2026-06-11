@@ -24,9 +24,17 @@ const PROFICIENCY_LABEL: Record<ProficiencyLevel, string> = {
 export interface RenderPayload {
   observation: Observation;
   rubric: Rubric;
-  /** Component IDs active for this observation's role/year combo. If empty,
-   *  every component in the rubric is included. */
-  activeComponentIds: string[];
+  /**
+   * Component IDs active for this observation's role/year combo.
+   *
+   * - `null`  — no mapping document exists → include every component in the
+   *             rubric (fallback for roles that haven't been configured yet).
+   * - `string[]` — mapping document exists; render only the listed IDs.
+   *               An empty array means the role-year deliberately has no
+   *               components assigned, so the PDF renders the empty-state
+   *               message instead of the full rubric.
+   */
+  activeComponentIds: string[] | null;
 }
 
 /**
@@ -37,7 +45,11 @@ export interface RenderPayload {
  */
 export function renderObservationHtml(payload: RenderPayload): string {
   const { observation, rubric, activeComponentIds } = payload;
-  const allow = activeComponentIds.length > 0 ? new Set(activeComponentIds) : null;
+  // null  → no mapping doc → include all components (unconfigured role-year).
+  // []    → mapping exists, nothing assigned → allow is an empty Set so all
+  //         components are filtered out and the empty-state message renders.
+  // [...] → include only the listed component IDs.
+  const allow = activeComponentIds !== null ? new Set(activeComponentIds) : null;
   const observationDate = formatDate(observation.observationDate);
   const finalizedDate = observation.finalizedAt ? formatDate(observation.finalizedAt) : '';
 

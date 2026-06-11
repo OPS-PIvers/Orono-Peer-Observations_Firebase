@@ -1,6 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Check, ListChecks, MoreVertical, Plus, RefreshCw } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  ListChecks,
+  Loader2,
+  MoreVertical,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
@@ -13,7 +23,7 @@ import {
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreCollectionOnce } from '@/hooks/useFirestoreCollectionOnce';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { db } from '@/lib/firebase';
+import { db, functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -33,6 +43,7 @@ import { StaffDialog } from './StaffDialog';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterBar';
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
+import { AdvanceYearDialog } from './AdvanceYearDialog';
 import {
   BuildingsPill,
   ModuleAccessPill,
@@ -44,6 +55,13 @@ import {
 } from './StaffInlineEditors';
 
 type StaffRow = Staff & { id: string };
+
+// ── Callables ─────────────────────────────────────────────────────────────
+
+const resendStaffInviteFn = httpsCallable<{ email: string }, { sent: boolean }>(
+  functions,
+  'resendStaffInvite',
+);
 
 // Equality-only filters (no orderBy on the wire) so these small admin
 // collections don't need composite indexes; sorted client-side below.
@@ -98,6 +116,7 @@ export function StaffPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
+  const [showAdvanceYear, setShowAdvanceYear] = useState(false);
 
   const patchStaff = useCallback<PatchStaff>(
     (email, patch) => {
@@ -255,6 +274,19 @@ export function StaffPage() {
             <Plus />
             Add staff
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="More staff actions">
+                <MoreVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setShowAdvanceYear(true)}>
+                <CalendarClock />
+                Advance school year
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       }
     >
@@ -321,6 +353,16 @@ export function StaffPage() {
           refresh();
         }}
       />
+
+      <AdvanceYearDialog
+        open={showAdvanceYear}
+        onOpenChange={setShowAdvanceYear}
+        staff={staff ?? []}
+        onMutate={mutate}
+        onApplied={() => {
+          toast.success('School year advanced');
+        }}
+      />
     </PageHeader>
   );
 }
@@ -334,6 +376,31 @@ function RowActions({
   onEdit: () => void;
   onPatch: PatchStaff;
 }) {
+  const [resending, setResending] = useState(false);
+
+  async function handleResendInvite() {
+    setResending(true);
+    try {
+      const result = await resendStaffInviteFn({ email: row.email });
+      if (result.data.sent) {
+        toast.success('Invite email sent', {
+          description: `An invite was sent to ${row.email}.`,
+        });
+      } else {
+        toast.warning('No active invite template', {
+          description:
+            'No active "staff.created" email template is configured. Enable one in Email Templates first.',
+        });
+      }
+    } catch (err) {
+      toast.error('Failed to send invite', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    } finally {
+      setResending(false);
+    }
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -342,8 +409,13 @@ function RowActions({
           size="icon"
           className="h-9 min-h-9 w-9 min-w-9"
           aria-label={`Actions for ${row.name}`}
+          disabled={resending}
         >
-          <MoreVertical className="h-4 w-4" />
+          {resending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <MoreVertical className="h-4 w-4" />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -355,6 +427,11 @@ function RowActions({
         >
           Copy email
         </DropdownMenuItem>
+        {row.isActive ? (
+          <DropdownMenuItem onSelect={() => void handleResendInvite()} disabled={resending}>
+            Resend invite email
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         {row.isActive ? (
           <DropdownMenuItem

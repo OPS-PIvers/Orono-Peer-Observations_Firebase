@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { CheckCircle2 } from 'lucide-react';
+import { CalendarX, CheckCircle2 } from 'lucide-react';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   WINDOW_SUBCOLLECTIONS,
+  type AppSettings,
   type BookObservationSlotInput,
+  type CalendarConnectionStatusResult,
   type CancelBookingInput,
   type ObservationPreference,
   type ObservationSlot,
@@ -13,6 +16,7 @@ import {
   type SignupField,
   type SubmitDayPreferenceInput,
   type WindowInvitee,
+  type WithdrawDayPreferenceInput,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
@@ -22,6 +26,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { functions } from '@/lib/firebase';
+import { beginCalendarConnect } from './connectCalendar';
 import { SlotGrid } from './SlotGrid';
 import {
   SignupDetailFields,
@@ -47,6 +52,14 @@ const submitDayPreferenceFn = httpsCallable<SubmitDayPreferenceInput, OkResult>(
   'submitDayPreference',
 );
 const cancelBookingFn = httpsCallable<CancelBookingInput, OkResult>(functions, 'cancelBooking');
+const withdrawDayPreferenceFn = httpsCallable<WithdrawDayPreferenceInput, OkResult>(
+  functions,
+  'withdrawDayPreference',
+);
+const getCalendarConnectionStatusFn = httpsCallable<
+  Record<string, never>,
+  CalendarConnectionStatusResult
+>(functions, 'getCalendarConnectionStatus');
 
 type SlotDoc = ObservationSlot & { id: string };
 
@@ -78,6 +91,7 @@ export function BookingPage() {
   const token = searchParams.get('token') ?? '';
   const { user } = useAuth();
   const myEmail = user?.email?.toLowerCase() ?? '';
+  const location = useLocation();
 
   const windowPath = windowId ? `${COLLECTIONS.observationWindows}/${windowId}` : '';
   const { data: windowDoc, loading: windowLoading } =
@@ -89,6 +103,38 @@ export function BookingPage() {
   const { data: slots } = useFirestoreCollection<ObservationSlot>(slotsPath);
 
   const { data: signupFields } = useFirestoreCollection<SignupField>(COLLECTIONS.signupFields);
+
+  const { data: appSettings } = useFirestoreDoc<AppSettings>(
+    `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
+  );
+  const requireCalendarConnect = appSettings?.scheduling.requireCalendarConnect ?? false;
+
+  // Proactively check whether this staff member has a connected Google Calendar
+  // when the admin setting is on. We fetch once on mount (no live-listener
+  // needed — status only changes via the OAuth callback, which is a separate
+  // page load). While the check is in-flight we treat the status as unknown
+  // (null) and avoid blocking the UI unnecessarily.
+  const [calendarStatus, setCalendarStatus] = useState<
+    CalendarConnectionStatusResult['status'] | null
+  >(null);
+  const [calendarStatusLoading, setCalendarStatusLoading] = useState(false);
+
+  useEffect(() => {
+    if (!requireCalendarConnect || !myEmail) return;
+    setCalendarStatusLoading(true);
+    getCalendarConnectionStatusFn({})
+      .then(({ data }) => {
+        setCalendarStatus(data.status);
+      })
+      .catch(() => {
+        // Non-fatal: if we can't load the status, fall through and let the
+        // server enforce the requirement on submit.
+        setCalendarStatus(null);
+      })
+      .finally(() => {
+        setCalendarStatusLoading(false);
+      });
+  }, [requireCalendarConnect, myEmail]);
 
   // Find the invitee this link belongs to: email must match the signed-in
   // user AND the per-invitee token must match the one in the URL.
@@ -284,22 +330,33 @@ export function BookingPage() {
     if (existingPref?.assignedSlotId != null) {
       const assigned = (slots ?? []).find((s) => s.slotId === existingPref.assignedSlotId);
       return (
-        <div className="border-border bg-background rounded-lg border p-4">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="text-ops-blue-dark mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Your observation time has been assigned.</p>
-              {assigned ? (
-                <p className="text-muted-foreground text-sm">
-                  {formatLocalDateTime(assigned.startUTC)}
-                  {assigned.periodName ? ` · ${assigned.periodName}` : ''}
-                </p>
-              ) : (
-                <p className="text-muted-foreground text-sm">
-                  Your time has been set by the observer.
-                </p>
-              )}
+        <div className="grid gap-4">
+          <div className="border-border bg-background rounded-lg border p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="text-ops-blue-dark mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">Your observation time has been assigned.</p>
+                {assigned ? (
+                  <p className="text-muted-foreground text-sm">
+                    {formatLocalDateTime(assigned.startUTC)}
+                    {assigned.periodName ? ` · ${assigned.periodName}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Your time has been set by the observer.
+                  </p>
+                )}
+              </div>
             </div>
+          </div>
+          <div>
+            <Button
+              variant="destructive"
+              disabled={submitting || windowCancelled}
+              onClick={() => void cancel(existingPref.assignedSlotId ?? '')}
+            >
+              {submitting ? 'Cancelling…' : 'Cancel booking'}
+            </Button>
           </div>
         </div>
       );
@@ -361,12 +418,27 @@ export function BookingPage() {
             </div>
           )}
         </div>
-        <div>
-          <Button disabled={!ready} onClick={() => void submitPreference(selectedDate)}>
-            {submitting ? 'Submitting…' : existingPref ? 'Update preference' : 'Submit preference'}
-          </Button>
+        <div className="grid gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={!ready} onClick={() => void submitPreference(selectedDate)}>
+              {submitting
+                ? 'Submitting…'
+                : existingPref
+                  ? 'Update preference'
+                  : 'Submit preference'}
+            </Button>
+            {existingPref ? (
+              <Button
+                variant="destructive"
+                disabled={submitting || windowCancelled}
+                onClick={() => void withdrawPreference()}
+              >
+                {submitting ? 'Withdrawing…' : 'Withdraw preference'}
+              </Button>
+            ) : null}
+          </div>
           {!signupFieldsComplete(fields, 'day-preference', answers) ? (
-            <p className="text-ops-red-dark mt-2 text-xs">
+            <p className="text-ops-red-dark text-xs">
               Fill in the required detail fields above before submitting.
             </p>
           ) : null}
@@ -418,6 +490,24 @@ export function BookingPage() {
     }
   }
 
+  async function withdrawPreference() {
+    if (!windowId) return;
+    const confirmed = window.confirm(
+      'Withdraw your day preference? This will free up your slot in the day.',
+    );
+    if (!confirmed) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await withdrawDayPreferenceFn({ windowId, inviteToken: token });
+      setSelectedDate('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not withdraw your preference.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submitPreference(preferredDateYMD: string) {
     if (!windowId || !preferredDateYMD) return;
     setError(null);
@@ -437,6 +527,12 @@ export function BookingPage() {
     }
   }
 
+  // When the admin requires calendar connection and the staff member is not
+  // connected, show a blocking card above either booking mode so they get a
+  // clear action rather than a cryptic server error on submit.
+  const calendarConnectRequired =
+    requireCalendarConnect && calendarStatus !== null && calendarStatus !== 'connected';
+
   return (
     <PageHeader
       title="Schedule observation"
@@ -449,6 +545,35 @@ export function BookingPage() {
           className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3 text-sm"
         >
           This observation window has been cancelled and is no longer accepting bookings.
+        </div>
+      ) : null}
+      {calendarStatusLoading ? null : calendarConnectRequired ? (
+        <div
+          role="alert"
+          className="bg-ops-gray-lightest border-border mb-4 flex items-start gap-3 rounded-lg border p-4"
+        >
+          <CalendarX className="text-ops-red mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="flex-1">
+            <p className="text-sm font-medium">Google Calendar connection required</p>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Your observer requires all staff to connect Google Calendar before booking an
+              observation. Connect now to continue.
+            </p>
+            <Button
+              className="mt-3"
+              onClick={() => {
+                try {
+                  beginCalendarConnect(myEmail, location.pathname + location.search);
+                } catch (err) {
+                  setError(
+                    err instanceof Error ? err.message : 'Could not start the calendar connection.',
+                  );
+                }
+              }}
+            >
+              Connect Google Calendar
+            </Button>
+          </div>
         </div>
       ) : null}
       {error ? (

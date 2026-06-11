@@ -154,6 +154,45 @@ describe('/appSettings — domain read, admin write', () => {
   });
 });
 
+describe('/rateLimitCounters — fully server-only (no client read or write)', () => {
+  beforeEach(async () => {
+    await seed('rateLimitCounters/pe@orono.k12.mn.us__audioUpload', {
+      count: 1,
+      userEmail: 'pe@orono.k12.mn.us',
+      key: 'audioUpload',
+    });
+  });
+
+  it('a teacher cannot read a counter', async () => {
+    const db = testEnv.authenticatedContext('a', claims.teacher()).firestore();
+    await assertFails(getDoc(doc(db, 'rateLimitCounters/pe@orono.k12.mn.us__audioUpload')));
+  });
+
+  it('the owning peer evaluator cannot read their own counter', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval()).firestore();
+    await assertFails(getDoc(doc(db, 'rateLimitCounters/pe@orono.k12.mn.us__audioUpload')));
+  });
+
+  it('an admin cannot read a counter (no remaining-budget leak)', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertFails(getDoc(doc(db, 'rateLimitCounters/pe@orono.k12.mn.us__audioUpload')));
+  });
+
+  it('a peer evaluator cannot zero out their own counter', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval()).firestore();
+    await assertFails(
+      setDoc(doc(db, 'rateLimitCounters/pe@orono.k12.mn.us__audioUpload'), { count: 0 }),
+    );
+  });
+
+  it('an admin cannot write a counter directly (only Cloud Functions can)', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertFails(
+      setDoc(doc(db, 'rateLimitCounters/pe@orono.k12.mn.us__transcription'), { count: 0 }),
+    );
+  });
+});
+
 describe('/auditLog — admin read, no client writes', () => {
   beforeEach(async () => {
     await seed('auditLog/log1', { action: 'sign_in', userEmail: 'a@orono.k12.mn.us' });

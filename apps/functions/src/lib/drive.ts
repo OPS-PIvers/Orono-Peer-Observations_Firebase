@@ -263,6 +263,40 @@ export async function deleteDriveFolder(
   });
 }
 
+/**
+ * Permanently delete a single Drive file. Used to remove an individual
+ * evidence/audio file or a superseded PDF (the SA owns these files, so the
+ * delete is unconditional). A missing file (404) is treated as success so a
+ * double-delete or an already-cleaned file never throws.
+ */
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const drive = getDriveClient();
+  try {
+    await drive.files.delete({ fileId });
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return; // already gone — nothing to delete
+    throw err;
+  }
+}
+
+/**
+ * Move a single Drive file to the trash (recoverable) rather than deleting it
+ * permanently. Used when reopening a finalized observation: the superseded PDF
+ * is trashed so an accidental reopen can be undone from Drive's trash. A
+ * missing file (404) is treated as success.
+ */
+export async function trashDriveFile(fileId: string): Promise<void> {
+  const drive = getDriveClient();
+  try {
+    await drive.files.update({ fileId, requestBody: { trashed: true } });
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return; // already gone — nothing to trash
+    throw err;
+  }
+}
+
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {
   const drive = getDriveClient();
   const meta = await drive.files.get({

@@ -193,6 +193,163 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
   });
 });
 
+describe('/modules/{id}/content — read gated by assignment, write admin-only', () => {
+  beforeEach(async () => {
+    await seed('staff/assigned@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('staff/other@orono.k12.mn.us', { modules: ['ilt'] });
+    await seed('modules/mentor/content/sec-1', {
+      sectionId: 'sec-1',
+      moduleId: 'mentor',
+      body: '{"type":"doc","content":[]}',
+    });
+  });
+
+  it('assigned staff can read a content body', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/mentor/content/sec-1')));
+  });
+
+  it('unassigned staff cannot read a content body (the leak the fix closes)', async () => {
+    const db = testEnv
+      .authenticatedContext('o', claims.teacher('other@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/mentor/content/sec-1')));
+  });
+
+  it('admin can read and write content', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/mentor/content/sec-1')));
+    await assertSucceeds(
+      setDoc(doc(db, 'modules/mentor/content/sec-2'), {
+        sectionId: 'sec-2',
+        moduleId: 'mentor',
+        body: '{"type":"doc"}',
+      }),
+    );
+  });
+
+  it('assigned staff cannot write content', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      setDoc(doc(db, 'modules/mentor/content/sec-3'), {
+        sectionId: 'sec-3',
+        moduleId: 'mentor',
+        body: 'x',
+      }),
+    );
+  });
+});
+
+describe('/modules/{id}/content — auto-enable grants access by status/year', () => {
+  beforeEach(async () => {
+    await seed('modules/high-cycle', {
+      moduleId: 'high-cycle',
+      displayName: 'High Cycle',
+      autoEnable: { dimension: 'status', value: 'high' },
+    });
+    await seed('modules/high-cycle/content/sec-1', {
+      sectionId: 'sec-1',
+      moduleId: 'high-cycle',
+      body: 'High cycle guidance',
+    });
+    await seed('modules/year2', {
+      moduleId: 'year2',
+      displayName: 'Year 2',
+      autoEnable: { dimension: 'year', value: 2 },
+    });
+    await seed('modules/year2/content/sec-1', {
+      sectionId: 'sec-1',
+      moduleId: 'year2',
+      body: 'Year 2 guidance',
+    });
+    await seed('staff/high2@orono.k12.mn.us', { year: 2, summativeYear: true, modules: [] });
+    await seed('staff/low1@orono.k12.mn.us', { year: 1, summativeYear: false, modules: [] });
+    await seed('staff/y2low@orono.k12.mn.us', { year: 2, summativeYear: false, modules: [] });
+    await seed('staff/y1high@orono.k12.mn.us', { year: 1, summativeYear: true, modules: [] });
+  });
+
+  it('status-matched staff reads a status-rule content body (not in their array)', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+  });
+
+  it('non-matching staff is denied a status-only content body', async () => {
+    const db = testEnv
+      .authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+  });
+
+  it('cross-dimension isolation: a year match does not grant a status-rule content body', async () => {
+    const db = testEnv
+      .authenticatedContext('y2l', claims.teacher('y2low@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+    await assertSucceeds(getDoc(doc(db, 'modules/year2/content/sec-1')));
+  });
+
+  it('cross-dimension isolation: a status match does not grant a year-rule content body', async () => {
+    const db = testEnv
+      .authenticatedContext('y1h', claims.teacher('y1high@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/year2/content/sec-1')));
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+  });
+});
+
+// The module page (/m/{moduleId}) lists /modules/{id}/content directly, the
+// same way it lists /items — Firestore evaluates list queries against the
+// QUERY, so the rule's `resource.data.moduleId in …` condition is only provable
+// when the client filters on moduleId. An unfiltered list is denied for every
+// non-admin user, even assigned staff.
+describe('module content — direct subcollection list (the module page access path)', () => {
+  beforeEach(async () => {
+    await seed('staff/assigned@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('staff/other@orono.k12.mn.us', { modules: ['ilt'] });
+    await seed('modules/mentor/content/sec-1', {
+      sectionId: 'sec-1',
+      moduleId: 'mentor',
+      body: 'Mentor guidance',
+    });
+  });
+
+  it('assigned staff can list content filtered to their module id', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(
+      getDocs(query(collection(db, 'modules/mentor/content'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('assigned staff cannot list content without the moduleId filter', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDocs(collection(db, 'modules/mentor/content')));
+  });
+
+  it('unassigned staff cannot list content even with the moduleId filter', async () => {
+    const db = testEnv
+      .authenticatedContext('o', claims.teacher('other@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      getDocs(query(collection(db, 'modules/mentor/content'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('admin can list content without any filter', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(getDocs(collection(db, 'modules/mentor/content')));
+  });
+});
+
 describe('/staff/{email}/moduleProgress — own progress only', () => {
   beforeEach(async () => {
     await seed('staff/me@orono.k12.mn.us', { modules: ['mentor'] });

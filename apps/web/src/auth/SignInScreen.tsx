@@ -8,7 +8,16 @@ import { Button } from '@/components/ui/button';
 
 export function SignInScreen() {
   const { status } = useAuth();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    // On initial render, check if there's a stored rejection message from
+    // a previous sign-in attempt (e.g., in a redirect scenario).
+    const stored = sessionStorage.getItem('signInError.rejectedEmail');
+    if (stored) {
+      sessionStorage.removeItem('signInError.rejectedEmail');
+      return `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts — you signed in as ${stored}`;
+    }
+    return null;
+  });
   const [pending, setPending] = useState(false);
 
   // If the user already has a session (e.g., a stale tab where
@@ -45,13 +54,39 @@ export function SignInScreen() {
       // Chrome's COOP polling-block warnings appear in the console but
       // don't block sign-in completion (postMessage delivers the result
       // independently).
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+
+      // After successful sign-in, verify the user's email belongs to the
+      // Orono domain. The GoogleAuthProvider's `hd` param restricts the
+      // account chooser, but a determined user could still sign in with a
+      // non-Orono account. If that happens, delete the just-created Auth
+      // user and display a clear error message.
+      if (result.user.email && !isAllowedEmail(result.user.email)) {
+        try {
+          await result.user.delete();
+        } catch (deleteErr) {
+          console.warn('Failed to delete non-domain auth user, signing out instead', deleteErr);
+          // Fallback: if delete fails, sign out. This shouldn't happen for a
+          // freshly-created user, but it's safer than leaving the user signed in.
+          await auth.signOut();
+        }
+        sessionStorage.setItem('signInError.rejectedEmail', result.user.email);
+        setError(
+          `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts — you signed in as ${result.user.email}`,
+        );
+        return;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sign-in failed. Please try again.';
       setError(message);
     } finally {
       setPending(false);
     }
+  }
+
+  function isAllowedEmail(email: string | null): boolean {
+    if (!email) return false;
+    return email.toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
   }
 
   return (

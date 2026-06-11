@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Mail } from 'lucide-react';
+import { toast } from 'sonner';
 import { doc, limit, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
@@ -89,11 +91,18 @@ export function StaffDashboardPage() {
   );
 
   // Assigned module IDs (max 30 for the `in` query — staff never have that many).
+  // Only include modules that are active (isActive=true); inactive/draft modules
+  // must not surface their materials on the staff dashboard.
   const assignedModuleIds = useMemo(() => {
     if (!staff) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-    const ids = new Set(staff.modules ?? []);
+    const activeModules = new Map<string, ModuleDoc>();
     for (const m of modulesData ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+      if (m.isActive ?? true) activeModules.set(m.moduleId, m);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+    const ids = new Set((staff.modules ?? []).filter((id) => activeModules.has(id)));
+    for (const m of activeModules.values()) {
       if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
     }
     return [...ids].slice(0, 30);
@@ -125,7 +134,7 @@ export function StaffDashboardPage() {
         : [],
     [emailLower, cycleStart],
   );
-  const { data: finalizedObs } = useFirestoreCollection<Observation>(
+  const { data: finalizedObs, error: finalizedObsError } = useFirestoreCollection<Observation>(
     emailLower ? COLLECTIONS.observations : '',
     finalizedConstraints,
     [emailLower, cycleStart.getTime()],
@@ -141,7 +150,7 @@ export function StaffDashboardPage() {
         : [],
     [emailLower],
   );
-  const { data: myWindows } = useFirestoreCollection<ObservationWindow>(
+  const { data: myWindows, error: myWindowsError } = useFirestoreCollection<ObservationWindow>(
     emailLower ? COLLECTIONS.observationWindows : '',
     windowConstraints,
     [emailLower],
@@ -195,6 +204,16 @@ export function StaffDashboardPage() {
     [finalizedObs],
   );
 
+  const finalizedWorkProduct = useMemo(
+    () => (finalizedObs ?? []).find((o) => o.type === OBSERVATION_TYPES.workProduct) ?? null,
+    [finalizedObs],
+  );
+
+  const finalizedInstructionalRound = useMemo(
+    () => (finalizedObs ?? []).find((o) => o.type === OBSERVATION_TYPES.instructionalRound) ?? null,
+    [finalizedObs],
+  );
+
   const tasks = useMemo<CheckpointWithStatus[]>(() => {
     if (!staff) return [];
     return deriveCheckpoints(resolveSteps(config), {
@@ -202,8 +221,8 @@ export function StaffDashboardPage() {
       standardDraft,
       workProductDraft: wpDraft,
       instructionalRoundDraft: irDraft,
-      finalizedWorkProduct: null,
-      finalizedInstructionalRound: null,
+      finalizedWorkProduct,
+      finalizedInstructionalRound,
       workProductQuestionsCount: questionCounts.workProduct,
       instructionalRoundQuestionsCount: questionCounts.instructionalRound,
       appSettings: appSettings ?? null,
@@ -219,6 +238,8 @@ export function StaffDashboardPage() {
     standardDraft,
     wpDraft,
     irDraft,
+    finalizedWorkProduct,
+    finalizedInstructionalRound,
     questionCounts,
     appSettings,
     openBooking,
@@ -229,10 +250,27 @@ export function StaffDashboardPage() {
 
   const moduleTasks = useMemo(() => {
     const done = new Set((moduleProgress ?? []).map((p) => p.itemId));
-    return deriveModuleTasks({ materials: moduleMaterials ?? [], doneItemIds: done });
-  }, [moduleMaterials, moduleProgress]);
+    // Defense in depth: filter materials to only include items whose owning
+    // module is active and whose sectionId still exists on that module. This
+    // prevents displaying items from inactive/draft modules or deleted sections
+    // as ghost tasks.
+    const validMaterials = (moduleMaterials ?? []).filter((item) => {
+      const module = modulesData?.find((m) => m.moduleId === item.moduleId);
+      if (!module) return false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+      if (!(module.isActive ?? true)) return false;
+      return module.sections.some((s) => s.id === item.sectionId);
+    });
+    return deriveModuleTasks({ materials: validMaterials, doneItemIds: done });
+  }, [moduleMaterials, moduleProgress, modulesData]);
 
   const allTasks = useMemo(() => [...tasks, ...moduleTasks], [tasks, moduleTasks]);
+
+  // If any critical listener fails, collect the error to display an alert.
+  // finalizedObs and myWindows are critical — both feed into checkpoint derivation.
+  const loadError = useMemo(() => {
+    return finalizedObsError ?? myWindowsError ?? null;
+  }, [finalizedObsError, myWindowsError]);
 
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
@@ -251,6 +289,11 @@ export function StaffDashboardPage() {
         },
       });
     },
+    onError: (err: unknown) => {
+      toast.error('Failed to acknowledge observation', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    },
   });
 
   const roleDisplayName = useMemo(() => {
@@ -264,8 +307,10 @@ export function StaffDashboardPage() {
       .filter(
         (m) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-          (staff.modules ?? []).includes(m.moduleId) ||
-          staffMatchesAutoEnable(staff, m.autoEnable ?? null),
+          (m.isActive ?? true) &&
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+          ((staff.modules ?? []).includes(m.moduleId) ||
+            staffMatchesAutoEnable(staff, m.autoEnable ?? null)),
       )
       .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
   }, [staff, modulesData]);
@@ -283,10 +328,31 @@ export function StaffDashboardPage() {
   }
 
   if (!user || !staff) {
+    const adminEmail = appSettings?.securityAdminEmail;
+    const mailtoHref = adminEmail
+      ? `mailto:${adminEmail}?subject=Account%20provisioning%20request&body=Please%20provision%20my%20account%3A%20${encodeURIComponent(user?.email ?? '')}`
+      : null;
     return (
       <div className="staff-dashboard">
         <div className="page">
-          <p className="empty-note">No staff record found for your account.</p>
+          <div className="flex flex-col items-center gap-4 py-16 text-center">
+            <p className="text-ops-gray font-medium">
+              No staff record found for your account ({user?.email ?? ''}).
+            </p>
+            <p className="text-ops-gray max-w-sm text-sm">
+              Your account exists but hasn&apos;t been provisioned yet. Contact your site
+              administrator to request access.
+            </p>
+            {mailtoHref ? (
+              <a
+                href={mailtoHref}
+                className="bg-ops-blue hover:bg-ops-blue-dark inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors"
+              >
+                <Mail className="h-4 w-4" />
+                Request access
+              </a>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -295,7 +361,10 @@ export function StaffDashboardPage() {
   const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
   const peerEvaluator: { name: string; email: string; role: string } | null = peSource
     ? {
-        name: peSource.observerEmail.split('@')[0] ?? peSource.observerEmail,
+        // observerName is denormalized at creation time. Fall back to the
+        // email localpart for observations created before the field was added.
+        name:
+          peSource.observerName || (peSource.observerEmail.split('@')[0] ?? peSource.observerEmail),
         email: peSource.observerEmail,
         role: 'Peer Evaluator',
       }
@@ -312,6 +381,7 @@ export function StaffDashboardPage() {
       tasks={allTasks}
       quickMaterials={quick?.items ?? []}
       peerEvaluator={peerEvaluator}
+      loadError={loadError}
       onAcknowledge={(id) => ackMutation.mutate(id)}
       acknowledging={ackMutation.isPending}
       onCompleteModuleItem={(moduleId, itemId) => {
@@ -327,6 +397,10 @@ export function StaffDashboardPage() {
           moduleId,
           status: 'done',
           completedAt: serverTimestamp(),
+        }).catch((err: unknown) => {
+          toast.error('Failed to mark item complete', {
+            description: err instanceof Error ? err.message : 'Please try again.',
+          });
         });
       }}
       roleDisplayName={roleDisplayName}

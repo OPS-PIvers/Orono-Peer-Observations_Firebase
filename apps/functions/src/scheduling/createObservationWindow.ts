@@ -17,12 +17,15 @@ import {
   type BuildingSchedule,
   type ObservationWindow,
   type SchedulingSettings,
+  type SignupField,
   type Staff,
   type WindowInvitee,
 } from '@ops/shared';
 import { APP_URL, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow } from './engine/slotGeneration.js';
 import { formatYMD } from './engine/schedulingEmail.js';
+import { chicagoDateString, invalidSignupFieldIds } from './engine/bookingRules.js';
+import { observerBusyForWindow, recomputeBlockedSlots } from './engine/blocking.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -97,6 +100,35 @@ export const createObservationWindow = onCall(
     }
     const input = parsed.data;
 
+    const db = getFirestore();
+
+    // Load scheduling settings early for policy validation.
+    const settingsSnap = await db
+      .collection(COLLECTIONS.appSettings)
+      .doc(APP_SETTINGS_DOC_ID)
+      .get();
+    const scheduling: SchedulingSettings = {
+      ...DEFAULT_SCHEDULING_SETTINGS,
+      ...((settingsSnap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined) ?? {}),
+    };
+
+    // Validate bookingMode is in the admin's allowed list.
+    if (!scheduling.allowedBookingModes.includes(input.bookingMode)) {
+      throw new HttpsError(
+        'invalid-argument',
+        `bookingMode "${input.bookingMode}" not in allowed modes: ${scheduling.allowedBookingModes.join(', ')}`,
+      );
+    }
+
+    // Validate endDate is not before today (Chicago time).
+    const today = chicagoDateString(new Date());
+    if (input.endDate < today) {
+      throw new HttpsError(
+        'invalid-argument',
+        `endDate "${input.endDate}" must be on or after today "${today}"`,
+      );
+    }
+
     if (input.endDate < input.startDate) {
       throw new HttpsError('invalid-argument', 'endDate must be on or after startDate');
     }
@@ -104,7 +136,18 @@ export const createObservationWindow = onCall(
       throw new HttpsError('invalid-argument', 'latestMinute must be >= earliestMinute');
     }
 
-    const db = getFirestore();
+    // Validate signupFieldIds reference active, applicable fields.
+    if (input.signupFieldIds.length > 0) {
+      const fieldsSnap = await db.collection(COLLECTIONS.signupFields).get();
+      const fields = fieldsSnap.docs.map((doc) => doc.data() as SignupField);
+      const invalid = invalidSignupFieldIds(input.signupFieldIds, fields, input.bookingMode);
+      if (invalid.length > 0) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Invalid signupFieldIds: ${invalid.join(', ')}. Fields must exist, be active, and apply to "${input.bookingMode}" mode.`,
+        );
+      }
+    }
 
     // Resolve observer name from /staff/{email}.
     const observerSnap = await db.collection(COLLECTIONS.staff).doc(userEmail).get();
@@ -224,6 +267,24 @@ export const createObservationWindow = onCall(
       await batch.commit();
     }
 
+    // Optionally consult the evaluator's real Google Calendar availability and
+    // block slots that overlap meetings / PTO / other events. Best-effort and
+    // gated on the admin toggle + a freebusy-scoped connection — a missing
+    // scope or any API failure leaves all slots available (returns null).
+    if (scheduling.checkObserverCalendar) {
+      try {
+        const observerBusy = await observerBusyForWindow(windowForGen, scheduling);
+        if (observerBusy !== null) {
+          await recomputeBlockedSlots(db, windowId, observerBusy);
+        }
+      } catch (err) {
+        logger.error('createObservationWindow: observer-calendar availability check failed', {
+          windowId,
+          err,
+        });
+      }
+    }
+
     await db.collection(COLLECTIONS.auditLog).add({
       timestamp: now,
       userEmail,
@@ -239,15 +300,6 @@ export const createObservationWindow = onCall(
     });
 
     // Best-effort invite emails. One failure must not fail the whole call.
-    const settingsSnap = await db
-      .collection(COLLECTIONS.appSettings)
-      .doc(APP_SETTINGS_DOC_ID)
-      .get();
-    const scheduling: SchedulingSettings = {
-      ...DEFAULT_SCHEDULING_SETTINGS,
-      ...((settingsSnap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined) ?? {}),
-    };
-
     if (scheduling.inviteEmailEnabled) {
       const buildingNames = new Map<string, string>();
       for (const buildingId of buildingIds) {

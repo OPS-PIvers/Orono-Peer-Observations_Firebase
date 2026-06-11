@@ -68,7 +68,13 @@ export function SaveStatusIndicator({
   );
 }
 
-export function StatusBadge({ status }: { status: Observation['status'] }) {
+export function StatusBadge({
+  status,
+  acknowledgedAt,
+}: {
+  status: Observation['status'];
+  acknowledgedAt?: Observation['acknowledgedAt'];
+}) {
   if (status === OBSERVATION_STATUS.draft) {
     return (
       <span
@@ -80,9 +86,45 @@ export function StatusBadge({ status }: { status: Observation['status'] }) {
       </span>
     );
   }
+
+  // For finalized observations also render the acknowledgement state.
+  const ackDate = formatAckDate(acknowledgedAt);
+
   return (
-    <span className="bg-ops-blue-lighter text-ops-blue-dark border-ops-blue/30 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
-      Finalized
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <span className="bg-ops-blue-lighter text-ops-blue-dark border-ops-blue/30 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase">
+        Finalized
+      </span>
+      {ackDate !== null ? (
+        <span className="inline-flex shrink-0 items-center rounded-full border border-green-200 bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-800">
+          Acknowledged {ackDate}
+        </span>
+      ) : (
+        <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+          Awaiting acknowledgement
+        </span>
+      )}
     </span>
   );
+}
+
+/**
+ * Format the acknowledgedAt timestamp for display. Accepts a JS Date, a
+ * Firestore Timestamp-like (with toDate()), or an ISO string. Returns a short
+ * locale date string, or null when the value cannot be parsed.
+ */
+export function formatAckDate(value: Observation['acknowledgedAt'] | undefined): string | null {
+  if (!value) return null;
+  const raw = value as unknown;
+  let date: Date | null = null;
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (typeof raw === 'object' && raw !== null && 'toDate' in raw) {
+    date = (raw as { toDate: () => Date }).toDate();
+  } else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date) return null;
+  return date.toLocaleDateString();
 }

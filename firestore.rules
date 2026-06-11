@@ -3,11 +3,17 @@ rules_version = '2';
 // =============================================================================
 // Orono Peer Observations — Firestore Security Rules
 // =============================================================================
-// Two layers of defense:
-//   1) Auth blocking function (functions/src/auth/beforeCreate.ts) rejects
-//      sign-ins from outside @orono.k12.mn.us at the Auth boundary.
-//   2) These rules re-check the email domain on every request and constrain
-//      what each role can read/write based on custom claims.
+// Multiple layers of defense protect against non-domain sign-ins:
+//   1) GoogleAuthProvider's `hd` parameter (SignInScreen.tsx:36) restricts
+//      the account chooser to @orono.k12.mn.us.
+//   2) Client-side domain check in SignInScreen.signIn() verifies the signed-
+//      in user's email after signInWithPopup() resolves; if it fails, the
+//      Auth user is deleted and a clear error is shown.
+//   3) AuthProvider enforces domain on onAuthStateChanged and onIdTokenChanged;
+//      any non-domain user is signed out immediately.
+//   4) These rules re-check the email domain on every Firestore request via
+//      isFromOronoDomain() and constrain what each role can read/write based
+//      on custom claims.
 //
 // Custom claims set by the auth flow:
 //   request.auth.token.email                — verified email
@@ -149,6 +155,28 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- module section content (collection-group rule) ----------------------
+    // Rich-text section bodies under /modules/{id}/content/{sectionId}. The
+    // bodies are deliberately stored OUTSIDE the (domain-readable) module doc so
+    // cohort-targeted guidance (probationary-only, summative-only, …) is gated
+    // exactly like resource/material items: read for admins, OR a signed-in
+    // staff member whose /staff doc lists this content's moduleId (or who
+    // matches the module's autoEnable rule). Write: admin only.
+    //
+    // The module doc's `sections` array keeps only public layout metadata
+    // (id/type/title) so chips + nav stay domain-readable. Doc id is the owning
+    // section id, so each section has at most one content doc.
+    //
+    // Scope/casing notes mirror the items rule above ({path=**} for
+    // collection-group support; lowercased staff doc ids).
+    match /{path=**}/content/{sectionId} {
+      allow read: if isAdmin()
+        || (isFromOronoDomain()
+            && (resource.data.moduleId in staffDocData().get('modules', [])
+                || matchesModuleAutoEnable(resource.data.moduleId)));
+      allow write: if isAdmin();
+    }
+
     match /rubrics/{rubricId} {
       allow read: if isFromOronoDomain();
       allow write: if isAdmin();
@@ -178,18 +206,21 @@ service cloud.firestore {
     // --- /observationWindows/{windowId} -------------------------------------
     // A scheduling window. Read: special-access (PE/admin) or an invited
     // staff member (their email is in invitedEmails). Create: special-access,
-    // and the observer must be the caller. Update/delete: admin or the
-    // observer. Staff never write the window (or its peBusyIntervals /
-    // dayCounts) directly — booking + day-preference flow through callable
-    // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
-    // ledger and per-day caps atomic.
+    // and the observer must be the caller.
+    //
+    // Update + delete: CLIENT writes are denied entirely. All mutations
+    // (peBusyIntervals, dayCounts, invitees, status) flow through callable
+    // Cloud Functions via the Admin SDK — this keeps the evaluator-time
+    // ledger and per-day caps atomic and prevents clients from corrupting
+    // those invariants. Admins may hard-delete a window document (e.g.
+    // test-data cleanup), but that too goes through the callable in the UI.
     match /observationWindows/{windowId} {
       allow get, list: if hasSpecialAccess()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
       allow create: if hasSpecialAccess()
         && request.resource.data.observerEmail == request.auth.token.email;
-      allow update, delete: if isAdmin()
-        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email);
+      allow update: if false;
+      allow delete: if isAdmin();
 
       // Slots: readable by anyone who can read the parent window; never
       // client-writable (mutated only inside the booking transaction).
@@ -209,6 +240,20 @@ service cloud.firestore {
           || (isFromOronoDomain()
               && request.auth.token.email ==
                  get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail);
+        allow write: if false;
+      }
+
+      // Per-invitee invite tokens. Stored here so the window doc's invitees[]
+      // array need not carry every token (which would expose all invitees'
+      // tokens to every other invitee who can read the window doc). Doc id is
+      // `${email}::${buildingId}` — the same key used by inviteeEntryKey().
+      // Read: special-access (PE/admin) — needed to re-build booking links.
+      //       Individual invitees do NOT need to read here; the token arrives
+      //       via the invite email and is validated entirely server-side.
+      // Write: denied to all clients; only the Admin SDK (Cloud Functions) may
+      //        write here.
+      match /tokens/{tokenKey} {
+        allow read: if hasSpecialAccess();
         allow write: if false;
       }
     }
@@ -330,6 +375,15 @@ service cloud.firestore {
     match /auditLog/{id} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // --- /rateLimitCounters --------------------------------------------------
+    // Per-user fixed-window counters backing the saves/min, uploads/hr and
+    // transcriptions/day limits. Maintained exclusively by Cloud Functions via
+    // the Admin SDK (which bypasses rules); clients are denied entirely so a
+    // client can never read its remaining budget or zero out its own counter.
+    match /rateLimitCounters/{id} {
+      allow read, write: if false;
     }
 
     // --- /transcriptionJobs --------------------------------------------------

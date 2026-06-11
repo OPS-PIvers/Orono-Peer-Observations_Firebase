@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { ObservationSlot, Staff, WindowInvitee } from '@ops/shared';
+import type { ObservationSlot, SignupField, Staff, WindowInvitee } from '@ops/shared';
 import {
   applyDayCountChange,
   bookedSlotObservationIds,
   chicagoDateString,
   dayHasCapacity,
+  invalidSignupFieldIds,
   isWindowBookingClosed,
   meetsLeadTime,
   preferenceShouldRevert,
+  removeDayCount,
   resolveObservedIdentity,
   unknownAnswerFieldIds,
 } from './bookingRules.js';
+import { calendarConnectionSatisfied } from '../bookObservationSlot.js';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -93,6 +96,33 @@ describe('applyDayCountChange', () => {
     const input = { '2025-03-10': 1 };
     applyDayCountChange(input, '2025-03-11', '2025-03-10');
     expect(input).toEqual({ '2025-03-10': 1 });
+  });
+});
+
+describe('removeDayCount', () => {
+  it('decrements the count for the given day', () => {
+    expect(removeDayCount({ '2025-03-10': 3 }, '2025-03-10')).toEqual({ '2025-03-10': 2 });
+  });
+
+  it('never drives a count below zero', () => {
+    expect(removeDayCount({ '2025-03-10': 0 }, '2025-03-10')).toEqual({ '2025-03-10': 0 });
+  });
+
+  it('treats a missing key the same as zero', () => {
+    expect(removeDayCount({}, '2025-03-10')).toEqual({ '2025-03-10': 0 });
+  });
+
+  it('does not mutate the input', () => {
+    const input = { '2025-03-10': 2 };
+    removeDayCount(input, '2025-03-10');
+    expect(input).toEqual({ '2025-03-10': 2 });
+  });
+
+  it('does not affect other days in the map', () => {
+    expect(removeDayCount({ '2025-03-10': 2, '2025-03-11': 1 }, '2025-03-10')).toEqual({
+      '2025-03-10': 1,
+      '2025-03-11': 1,
+    });
   });
 });
 
@@ -222,5 +252,105 @@ describe('preferenceShouldRevert', () => {
   it('does not revert an unassigned preference', () => {
     expect(preferenceShouldRevert(null, 'slot-1')).toBe(false);
     expect(preferenceShouldRevert(undefined, 'slot-1')).toBe(false);
+  });
+});
+
+// ── requireCalendarConnect enforcement (day-preference + direct booking) ────
+// calendarConnectionSatisfied is the pure guard extracted from the booking
+// callables so it can be tested without touching Firestore. Both
+// bookObservationSlot and submitDayPreference use it to enforce the admin
+// setting before any other validation.
+
+describe('calendarConnectionSatisfied', () => {
+  it('returns true when the setting is off, regardless of token status', () => {
+    expect(calendarConnectionSatisfied(false, undefined)).toBe(true);
+    expect(calendarConnectionSatisfied(false, 'revoked')).toBe(true);
+    expect(calendarConnectionSatisfied(false, 'connected')).toBe(true);
+  });
+
+  it('returns true when setting is on and the token is connected', () => {
+    expect(calendarConnectionSatisfied(true, 'connected')).toBe(true);
+  });
+
+  it('returns false when setting is on and the token doc is absent (undefined status)', () => {
+    expect(calendarConnectionSatisfied(true, undefined)).toBe(false);
+  });
+
+  it('returns false when setting is on and the token is revoked', () => {
+    expect(calendarConnectionSatisfied(true, 'revoked')).toBe(false);
+  });
+
+  it('returns false when setting is on and the token is in error state', () => {
+    expect(calendarConnectionSatisfied(true, 'error')).toBe(false);
+  });
+
+  it('returns false when setting is on and status is an unrecognised string', () => {
+    expect(calendarConnectionSatisfied(true, 'disconnected')).toBe(false);
+  });
+});
+
+describe('invalidSignupFieldIds', () => {
+  const field = (over: Partial<SignupField>): SignupField =>
+    ({
+      fieldId: 'field-1',
+      label: 'Test',
+      type: 'select',
+      options: [],
+      appliesTo: 'both',
+      required: false,
+      order: 0,
+      isActive: true,
+      createdAt: '2025-03-10T00:00:00Z',
+      updatedAt: '2025-03-10T00:00:00Z',
+      ...over,
+    }) as unknown as SignupField;
+
+  it('accepts field ids that are active and applicable to the mode', () => {
+    const fields = [
+      field({ fieldId: 'grade', appliesTo: 'both' }),
+      field({ fieldId: 'period', appliesTo: 'direct' }),
+    ];
+    expect(invalidSignupFieldIds(['grade', 'period'], fields, 'direct')).toEqual([]);
+  });
+
+  it('rejects field ids that are inactive', () => {
+    const fields = [field({ fieldId: 'grade', isActive: false })];
+    expect(invalidSignupFieldIds(['grade'], fields, 'direct')).toEqual(['grade']);
+  });
+
+  it('rejects field ids not applicable to the requested mode', () => {
+    const fields = [field({ fieldId: 'period', appliesTo: 'day-preference' })];
+    expect(invalidSignupFieldIds(['period'], fields, 'direct')).toEqual(['period']);
+  });
+
+  it('accepts fields applicable to both modes regardless of the mode', () => {
+    const fields = [field({ fieldId: 'grade', appliesTo: 'both' })];
+    expect(invalidSignupFieldIds(['grade'], fields, 'direct')).toEqual([]);
+    expect(invalidSignupFieldIds(['grade'], fields, 'day-preference')).toEqual([]);
+  });
+
+  it('returns unknown field ids', () => {
+    const fields = [field({ fieldId: 'grade' })];
+    expect(invalidSignupFieldIds(['grade', 'unknown'], fields, 'direct')).toEqual(['unknown']);
+  });
+
+  it('accepts an empty requested field list', () => {
+    const fields = [field({ fieldId: 'grade' })];
+    expect(invalidSignupFieldIds([], fields, 'direct')).toEqual([]);
+  });
+
+  it('returns all fields when none are available', () => {
+    expect(invalidSignupFieldIds(['grade', 'period'], [], 'direct')).toEqual(['grade', 'period']);
+  });
+
+  it('handles mixed valid and invalid ids', () => {
+    const fields = [
+      field({ fieldId: 'grade', appliesTo: 'both' }),
+      field({ fieldId: 'period', appliesTo: 'direct', isActive: false }),
+    ];
+    expect(invalidSignupFieldIds(['grade', 'period', 'unknown'], fields, 'direct')).toEqual([
+      'period',
+      'unknown',
+    ]);
   });
 });

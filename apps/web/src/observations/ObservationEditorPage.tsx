@@ -2,22 +2,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, limit, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  type AppSettings,
   type DriveFileRef,
   type Observation,
   type ObservationComponentEntry,
   type ProficiencyLevel,
+  type RateLimits,
   type Role,
   type RoleYearMapping,
   type Rubric,
   type RubricComponent,
   type RubricDomain,
   type TiptapDoc,
+  type TranscriptionJob,
+  type WorkProductAnswer,
   roleYearMappingDocId,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -27,6 +32,7 @@ import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db, functions } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -66,6 +72,10 @@ const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeR
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
+/** Mirrors the appSettings.rateLimits.observationSavesPerMinute schema default
+ *  — used while settings are loading or the field is absent. */
+const DEFAULT_SAVES_PER_MINUTE = 60;
+
 type ComponentEntries = Record<string, ObservationComponentEntry>;
 type ComponentNotes = Record<string, TiptapDoc>;
 interface EditorDraft {
@@ -92,6 +102,63 @@ const emptyDraft: EditorDraft = {
   observationDate: undefined,
 };
 
+/** Pre-finalize completeness summary derived from local draft state. */
+export interface ObservationCompleteness {
+  /** Number of assigned components that have a proficiency selected. */
+  scoredCount: number;
+  /** Total number of assigned components. */
+  totalAssigned: number;
+  /**
+   * Whether the observation type is Work Product or Instructional Round
+   * (i.e., has staff answers).
+   */
+  isWpOrIr: boolean;
+  /**
+   * Number of non-empty staff answers (only meaningful when isWpOrIr is true).
+   */
+  wpAnswerCount: number;
+  /** True when every assigned component has a proficiency score. */
+  allScored: boolean;
+  /** True when WP/IR and there are zero non-empty answers. */
+  noAnswers: boolean;
+}
+
+/**
+ * Derive pre-finalize completeness from local draft state and the
+ * assigned component set. Pure function — safe to call in useMemo and
+ * in unit tests without any React mocking.
+ */
+export function computeCompleteness(
+  observationData: ComponentEntries,
+  assignedComponentIds: ReadonlySet<string>,
+  observationType: string,
+  workProductAnswers: readonly WorkProductAnswer[] | undefined,
+): ObservationCompleteness {
+  const totalAssigned = assignedComponentIds.size;
+  let scoredCount = 0;
+  for (const id of assignedComponentIds) {
+    const entry = observationData[id];
+    if (entry?.proficiency != null) scoredCount++;
+  }
+
+  const isWpOrIr =
+    observationType === OBSERVATION_TYPES.workProduct ||
+    observationType === OBSERVATION_TYPES.instructionalRound;
+
+  const wpAnswerCount = isWpOrIr
+    ? (workProductAnswers ?? []).filter((a) => a.answer.trim() !== '').length
+    : 0;
+
+  return {
+    scoredCount,
+    totalAssigned,
+    isWpOrIr,
+    wpAnswerCount,
+    allScored: totalAssigned > 0 && scoredCount === totalAssigned,
+    noAnswers: isWpOrIr && wpAnswerCount === 0,
+  };
+}
+
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
@@ -105,6 +172,24 @@ export function ObservationEditorPage() {
   } = useFirestoreDoc<Observation>(`${COLLECTIONS.observations}/${observationId ?? ''}`);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
+  const { claims } = useAuth();
+
+  // Admin-configured autosave throttle. observationSavesPerMinute caps how
+  // often the editor flushes to Firestore per user, so a fast typist (or a
+  // buggy loop) can't hammer the doc. Firestore reads bypass Zod defaults, so
+  // a missing field/doc falls back to the schema default.
+  const { data: appSettings } = useFirestoreDoc<AppSettings>(
+    `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
+  );
+  // The schema types rateLimits as always-present, but Firestore reads bypass
+  // Zod, so a doc predating this field surfaces undefined — read it as a raw
+  // optional and fall back to the schema default.
+  const savesPerMinute = (appSettings?.rateLimits as Partial<RateLimits> | undefined)
+    ?.observationSavesPerMinute;
+  const minSaveIntervalMs =
+    typeof savesPerMinute === 'number' && savesPerMinute > 0
+      ? Math.ceil(60_000 / savesPerMinute)
+      : Math.ceil(60_000 / DEFAULT_SAVES_PER_MINUTE);
 
   // Derive rubric for this observation (looked up via the observed role
   // slug → role doc → rubricId).
@@ -179,11 +264,43 @@ export function ObservationEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const draftRef = useRef<EditorDraft>(emptyDraft);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Epoch ms of the last flush() Firestore write — used to space writes at
+   *  least minSaveIntervalMs apart (observationSavesPerMinute throttle). */
+  const lastFlushAtRef = useRef<number>(0);
+  /** Keep the latest min-interval available to the (memoized) scheduleSave
+   *  without re-creating the callback on every settings snapshot. */
+  const minSaveIntervalRef = useRef<number>(minSaveIntervalMs);
+  useEffect(() => {
+    minSaveIntervalRef.current = minSaveIntervalMs;
+  }, [minSaveIntervalMs]);
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
+
+  // Subscribe to in-flight transcription jobs so the FinalizeDialog can warn
+  // when a Pending/Running job exists. Only active while the observation is
+  // a Draft (which is when finalization is possible).
+  const obsId = observation?.id ?? '';
+  const inflightJobConstraints = useMemo(
+    () => [
+      where('observationId', '==', obsId),
+      where('status', 'in', ['Pending', 'Running']),
+      limit(5),
+    ],
+    [obsId],
+  );
+  const { data: inflightJobs } = useFirestoreCollection<TranscriptionJob>(
+    // Only subscribe when the observation exists and is still Draft — once
+    // finalized, no more jobs can be created for it.
+    observation?.id && observation.status === OBSERVATION_STATUS.draft
+      ? COLLECTIONS.transcriptionJobs
+      : '',
+    inflightJobConstraints,
+    [observation?.id ?? ''],
+  );
+  const inflightJobCount = inflightJobs?.length ?? 0;
 
   // Sticky chrome ref — `EditorChrome` consumes it via `usePublishChromeHeight`
   // so `DomainSection.tsx`'s `top-[var(--page-chrome-h)]` resolves correctly.
@@ -218,6 +335,7 @@ export function ObservationEditorPage() {
 
   const flush = useCallback(async () => {
     if (!observation) return;
+    lastFlushAtRef.current = Date.now();
     setSavingState('saving');
     setSaveError(null);
     try {
@@ -249,15 +367,26 @@ export function ObservationEditorPage() {
     }
   }, [observation]);
 
-  // Debounce only — leave the visible indicator on its prior state ('saved'
-  // or 'idle') during the wait. flush() itself flips to 'saving', and the
-  // indicator defers rendering that label so fast writes don't flash.
+  // Debounce + per-user throttle. Leave the visible indicator on its prior
+  // state ('saved' or 'idle') during the wait. flush() itself flips to
+  // 'saving', and the indicator defers rendering that label so fast writes
+  // don't flash.
+  //
+  // The wait is the larger of the debounce (coalesce keystrokes) and the
+  // remaining gap until the previous flush is minSaveIntervalMs old
+  // (observationSavesPerMinute throttle). Edits keep coalescing into the
+  // pending draft during the wait, so the user never loses input — we just
+  // write less often. We read the interval from a ref so a settings change
+  // doesn't churn this callback (and the editor's memoized handlers).
   const scheduleSave = useCallback(() => {
     if (flushTimer.current) clearTimeout(flushTimer.current);
+    const sinceLast = Date.now() - lastFlushAtRef.current;
+    const throttleWait = Math.max(0, minSaveIntervalRef.current - sinceLast);
+    const wait = Math.max(AUTOSAVE_DEBOUNCE_MS, throttleWait);
     flushTimer.current = setTimeout(() => {
       flushTimer.current = null;
       void flush();
-    }, AUTOSAVE_DEBOUNCE_MS);
+    }, wait);
   }, [flush]);
 
   // Flush any pending save on unmount.
@@ -276,8 +405,23 @@ export function ObservationEditorPage() {
   // would silently flip to read-only for their original observer.
   const isReadOnly = observation?.status === OBSERVATION_STATUS.finalized;
   const isObserver = observation?.observerEmail === user?.email?.toLowerCase();
-  const canEdit = !isReadOnly && isObserver;
+  const isAdmin = claims.isAdmin;
+  const canEdit = !isReadOnly && (isObserver || isAdmin);
   const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
+  const editingAsAdmin = isAdmin && !isObserver;
+
+  const completeness = useMemo(
+    () =>
+      observation
+        ? computeCompleteness(
+            draft.observationData,
+            assignedComponentIds,
+            observation.type,
+            observation.workProductAnswers,
+          )
+        : null,
+    [draft.observationData, assignedComponentIds, observation],
+  );
 
   const updateEntry = useCallback(
     (componentId: string, patch: Partial<ObservationComponentEntry>) => {
@@ -407,6 +551,43 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
+  /**
+   * Appends a transcript string to the observation script as one paragraph
+   * per non-empty line. If the script is empty/undefined, creates a new doc
+   * from the transcript lines. Triggers the normal autosave path.
+   */
+  const appendTranscriptToScript = useCallback(
+    (text: string) => {
+      if (!canEdit) return;
+      const lines = text.split('\n').filter((l) => l.trim().length > 0);
+      const newParagraphs: unknown[] = lines.map((line) => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text: line }],
+      }));
+      const existing = draftRef.current.scriptDoc;
+      const existingContent: unknown[] = existing?.content ?? [];
+      // If the only existing content is a single empty paragraph (blank doc),
+      // replace it. Otherwise append a blank separator then the new paragraphs.
+      const isBlank =
+        existingContent.length === 0 ||
+        (existingContent.length === 1 &&
+          typeof existingContent[0] === 'object' &&
+          existingContent[0] !== null &&
+          'type' in existingContent[0] &&
+          (existingContent[0] as { type: string }).type === 'paragraph' &&
+          !('content' in existingContent[0]));
+      const combined: unknown[] = isBlank
+        ? newParagraphs
+        : [...existingContent, { type: 'paragraph' }, ...newParagraphs];
+      const nextDoc: TiptapDoc = { type: 'doc', content: combined };
+      const next: EditorDraft = { ...draftRef.current, scriptDoc: nextDoc };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
   // Stable handler for proficiency selection so the rubric grid's memoized
   // edit-mode object (built in EditorRubricGrid) only changes when the data
   // it depends on changes — not on every parent render.
@@ -509,7 +690,10 @@ export function ObservationEditorPage() {
                 year={observation.observedYear}
                 type={observation.type}
               />
-              <StatusBadge status={observation.status} />
+              <StatusBadge
+                status={observation.status}
+                acknowledgedAt={observation.acknowledgedAt}
+              />
               <SaveStatusIndicator state={savingState} error={saveError} />
             </div>
           </div>
@@ -548,6 +732,7 @@ export function ObservationEditorPage() {
         rubric={visibleRubric}
         showFinalize={showFinalize}
         onFinalize={() => setFinalizeOpen(true)}
+        onInsertTranscript={appendTranscriptToScript}
       />
 
       <div className={bodyWrapperCls}>
@@ -563,9 +748,16 @@ export function ObservationEditorPage() {
           observation={observation}
           finalizing={finalizing}
           error={finalizeError}
+          inflightJobCount={inflightJobCount}
+          completeness={completeness}
           onConfirm={() => void handleFinalize()}
         />
 
+        {editingAsAdmin ? (
+          <div className="rounded-lg border-l-4 border-l-amber-400 bg-amber-100 px-4 py-2.5 text-sm text-amber-900">
+            You are editing this observation as an administrator.
+          </div>
+        ) : null}
         {!canEdit && !isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
             You can view this observation but not edit it (you&apos;re not the observer).
@@ -715,6 +907,7 @@ interface EditorToolbarProps {
   rubric: Rubric | null;
   showFinalize: boolean;
   onFinalize: () => void;
+  onInsertTranscript: (text: string) => void;
 }
 
 /**
@@ -737,6 +930,7 @@ function EditorToolbar({
   rubric,
   showFinalize,
   onFinalize,
+  onInsertTranscript,
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
   const hasDomains = !!rubric && rubric.domains.length > 0;
@@ -763,6 +957,7 @@ function EditorToolbar({
               audioFileIds={observation.audioDriveFileIds}
               transcripts={observation.transcripts}
               readOnly={!canEdit}
+              onInsertTranscript={onInsertTranscript}
             />
           ) : null}
           {showFinalize ? (
@@ -875,6 +1070,8 @@ function FinalizeDialog({
   observation,
   finalizing,
   error,
+  inflightJobCount,
+  completeness,
   onConfirm,
 }: {
   open: boolean;
@@ -882,8 +1079,24 @@ function FinalizeDialog({
   observation: Observation;
   finalizing: boolean;
   error: string | null;
+  inflightJobCount: number;
+  completeness: ObservationCompleteness | null;
   onConfirm: () => void;
 }) {
+  // When the dialog opens we reset the checkbox so each open is a fresh decision.
+  const [incompleteConfirmed, setIncompleteConfirmed] = useState(false);
+  useEffect(() => {
+    if (open) setIncompleteConfirmed(false);
+  }, [open]);
+
+  const isIncomplete =
+    completeness !== null &&
+    (!completeness.allScored || (completeness.isWpOrIr && completeness.noAnswers));
+
+  // Block the Finalize button when: any transcription is running, OR the
+  // observation is incomplete and the evaluator hasn't checked the override.
+  const confirmBlocked = inflightJobCount > 0 || (isIncomplete && !incompleteConfirmed);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -895,6 +1108,8 @@ function FinalizeDialog({
             edits are possible.
           </DialogDescription>
         </DialogHeader>
+
+        {/* ── Basic observation summary ── */}
         <ul className="text-muted-foreground space-y-1 px-1 py-2 text-sm">
           <li>· Observed: {observation.observedName}</li>
           <li>· Type: {observation.type}</li>
@@ -905,6 +1120,59 @@ function FinalizeDialog({
               : `${String(observation.audioDriveFileIds.length)} (will remain in the Drive folder)`}
           </li>
         </ul>
+
+        {/* ── Completeness summary ── */}
+        {completeness !== null ? (
+          <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm">
+            <p className="text-ops-gray-dark mb-1.5 font-semibold">Completeness</p>
+            <ul className="space-y-1 text-gray-700">
+              <li className={cn(completeness.allScored ? 'text-green-700' : 'text-amber-700')}>
+                {completeness.allScored ? '✓' : '!'} Rubric components scored:{' '}
+                <strong>
+                  {String(completeness.scoredCount)} of {String(completeness.totalAssigned)}
+                </strong>
+              </li>
+              {completeness.isWpOrIr ? (
+                <li className={cn(completeness.noAnswers ? 'text-amber-700' : 'text-green-700')}>
+                  {completeness.noAnswers ? '!' : '✓'} Staff answers submitted:{' '}
+                  <strong>{String(completeness.wpAnswerCount)}</strong>
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* ── In-flight transcription warning ── */}
+        {inflightJobCount > 0 ? (
+          <div
+            role="alert"
+            className="rounded-md border-l-4 border-l-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            {inflightJobCount === 1
+              ? 'A transcription is still running for this observation.'
+              : `${String(inflightJobCount)} transcriptions are still running for this observation.`}{' '}
+            The PDF will not include audio transcripts — wait for transcription to finish before
+            finalizing, or the server will reject the request.
+          </div>
+        ) : null}
+
+        {/* ── Incomplete confirmation checkbox ── */}
+        {isIncomplete && inflightJobCount === 0 ? (
+          <div className="flex cursor-pointer items-start gap-2.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            <Checkbox
+              id="incomplete-confirm"
+              className="mt-0.5"
+              checked={incompleteConfirmed}
+              onChange={(e) => setIncompleteConfirmed(e.target.checked)}
+            />
+            <label htmlFor="incomplete-confirm" className="cursor-pointer">
+              This observation is incomplete. I understand the PDF will reflect the current
+              (partial) state and cannot be re-generated after finalizing.
+            </label>
+          </div>
+        ) : null}
+
+        {/* ── Server error ── */}
         {error ? (
           <div
             role="alert"
@@ -913,6 +1181,7 @@ function FinalizeDialog({
             {error}
           </div>
         ) : null}
+
         <DialogFooter>
           <Button
             variant="outline"
@@ -922,7 +1191,7 @@ function FinalizeDialog({
           >
             Cancel
           </Button>
-          <Button onClick={onConfirm} disabled={finalizing}>
+          <Button onClick={onConfirm} disabled={finalizing || confirmBlocked}>
             {finalizing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />

@@ -12,6 +12,7 @@ import {
   GOOGLE_OAUTH_CLIENT_ID,
   GOOGLE_OAUTH_CLIENT_SECRET,
   exchangeCodeForTokens,
+  hasFreebusyScope,
 } from '../lib/googleCalendar.js';
 
 if (getApps().length === 0) initializeApp();
@@ -63,7 +64,10 @@ export const connectGoogleCalendar = onCall(
     }
 
     // Require the calendar.events scope — without it we can't create events.
-    const grantedScopes = tokens.scopes.length > 0 ? tokens.scopes : input.scopesGranted;
+    // Normalize: the client fallback may pass scopes as a single space-joined
+    // string, so flatten on whitespace before membership checks.
+    const rawScopes = tokens.scopes.length > 0 ? tokens.scopes : input.scopesGranted;
+    const grantedScopes = rawScopes.flatMap((s) => s.split(/\s+/).filter((v) => v.length > 0));
     if (!grantedScopes.includes(CALENDAR_EVENTS_SCOPE)) {
       throw new HttpsError(
         'failed-precondition',
@@ -79,6 +83,19 @@ export const connectGoogleCalendar = onCall(
       });
     }
 
+    // The freebusy scope is optional — without it event creation still works,
+    // but availability sync (blocking slots that overlap real calendar events)
+    // can't run. Record its absence so the issue is diagnosable from logs.
+    const freebusyGranted = hasFreebusyScope(grantedScopes);
+    if (!freebusyGranted) {
+      logger.info(
+        'connectGoogleCalendar: freebusy scope not granted (availability sync disabled)',
+        {
+          callerEmail,
+        },
+      );
+    }
+
     const nowIso = Timestamp.now().toDate().toISOString();
     const db = getFirestore();
     await db.collection(COLLECTIONS.userCalendarTokens).doc(callerEmail).set({
@@ -87,6 +104,8 @@ export const connectGoogleCalendar = onCall(
       accessToken: tokens.accessToken,
       accessTokenExpiresAt: tokens.accessTokenExpiresAt,
       scopes: grantedScopes,
+      /** Cached scope check so consumers needn't re-scan `scopes`. */
+      freebusyEnabled: freebusyGranted,
       googleAccountEmail: tokens.googleAccountEmail,
       status: 'connected',
       lastError: null,
@@ -100,7 +119,7 @@ export const connectGoogleCalendar = onCall(
       userEmail: callerEmail,
       action: 'calendar.connect',
       target: `${COLLECTIONS.userCalendarTokens}/${callerEmail}`,
-      details: { googleAccountEmail: tokens.googleAccountEmail },
+      details: { googleAccountEmail: tokens.googleAccountEmail, freebusyEnabled: freebusyGranted },
     });
 
     return { status: 'connected', googleAccountEmail: tokens.googleAccountEmail };

@@ -295,6 +295,34 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'scheduling-booking-time-changed',
+    name: 'Scheduling: Time Changed (Bell Schedule)',
+    description:
+      'Sent to the staff member and evaluator when a bell-schedule change shifts the time of an already-booked observation.',
+    subject: 'Observation time updated for {{slotDateLocal}} — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>The bell schedule at {{buildingName}} changed, so your observation with {{observerName}} has moved to a new time on <strong>{{slotDateLocal}}</strong>.</p>
+<p>New time: <strong>{{slotStartLocal}}–{{slotEndLocal}}</strong> ({{slotPeriodName}}). Your calendar invite has been updated automatically.</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'slotEndLocal',
+      'slotPeriodName',
+      'buildingName',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.bookingTimeChanged',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'scheduling-assignment-notice',
     name: 'Scheduling: Time Assigned',
     description:

@@ -13,7 +13,12 @@ import { localDate } from './buildingSchedule.js';
 
 export const observationSlotStatus = z.enum(['available', 'booked', 'blocked']);
 
-export const slotBlockedReason = z.enum(['no-school', 'pe-conflict', 'window-cancelled']);
+export const slotBlockedReason = z.enum([
+  'no-school',
+  'pe-conflict',
+  'observer-busy',
+  'window-cancelled',
+]);
 export type SlotBlockedReasonValue = z.infer<typeof slotBlockedReason>;
 
 export const observationSlot = z.object({

@@ -40,6 +40,7 @@ const HEADER_ROW = [
   'Observation Date',
   'Drive Folder',
   'PDF',
+  'Acknowledged',
 ];
 
 /** Fields that, when changed, warrant a Sheet sync. Component notes,
@@ -50,6 +51,7 @@ const MEANINGFUL_FIELDS = [
   'observationName',
   'observationDate',
   'finalizedAt',
+  'acknowledgedAt',
   'pdfDriveFileId',
   'driveFolderId',
   'observerEmail',
@@ -121,6 +123,9 @@ export const onObservationWritten = onDocumentWritten(
         const observedEmail = afterData['observedEmail'] as string;
         const observedName = afterData['observedName'] as string;
         const observerEmail = (afterData['observerEmail'] as string | undefined) ?? '';
+        const observerNameRaw = (afterData['observerName'] as string | undefined) ?? '';
+        const observerName =
+          observerNameRaw !== '' ? observerNameRaw : (observerEmail.split('@')[0] ?? '');
         const observedRole = afterData['observedRole'] as string;
         const observedYear = String(
           (afterData['observedYear'] as number | string | undefined) ?? '',
@@ -133,7 +138,7 @@ export const onObservationWritten = onDocumentWritten(
           triggerType,
           to: observedEmail,
           vars: {
-            observerName: observerEmail.split('@')[0],
+            observerName,
             observerEmail,
             observedName,
             observedEmail,
@@ -192,12 +197,12 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
   // Ensure header is present (idempotent — only writes if A1 is empty).
   const head = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId,
-    range: 'A1:N1',
+    range: 'A1:O1',
   });
   if (!head.data.values || head.data.values.length === 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: 'A1:N1',
+      range: 'A1:O1',
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [HEADER_ROW] },
     });
@@ -216,7 +221,7 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
   if (matchIndex === -1) {
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId,
-      range: 'A1:N1',
+      range: 'A1:O1',
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [row] },
@@ -225,14 +230,14 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
     const rowNumber = matchIndex + 1;
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: `A${String(rowNumber)}:N${String(rowNumber)}`,
+      range: `A${String(rowNumber)}:O${String(rowNumber)}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [row] },
     });
   }
 }
 
-function buildRow(observationId: string, data: ObsLike): string[] {
+export function buildRow(observationId: string, data: ObsLike): string[] {
   return [
     observationId,
     asString(data['observerEmail']),
@@ -248,6 +253,7 @@ function buildRow(observationId: string, data: ObsLike): string[] {
     formatTimestamp(data['observationDate']),
     driveFolderUrl(data['driveFolderId']),
     pdfUrl(data['pdfDriveFileId']),
+    formatTimestamp(data['acknowledgedAt']),
   ];
 }
 
@@ -333,7 +339,7 @@ async function handleDeletion(
     // clear all other metadata, and stamp status as [DELETED].
     await sheets.spreadsheets.values.update({
       spreadsheetId: sheetId,
-      range: `A${String(rowNumber)}:N${String(rowNumber)}`,
+      range: `A${String(rowNumber)}:O${String(rowNumber)}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [
@@ -346,6 +352,7 @@ async function handleDeletion(
             '',
             asString(beforeData?.['type']),
             '[DELETED]',
+            '',
             '',
             '',
             '',

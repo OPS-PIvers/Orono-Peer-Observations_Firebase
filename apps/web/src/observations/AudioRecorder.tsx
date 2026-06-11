@@ -1,10 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Loader2, Mic, RefreshCw, Sparkles, Square, Upload } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  ClipboardCopy,
+  Download,
+  Loader2,
+  Mic,
+  PlusCircle,
+  RefreshCw,
+  Sparkles,
+  Square,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { getIdToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
+import { useTranscriptionJob } from '@/hooks/useTranscriptionJob';
 import { cn } from '@/lib/utils';
 
 interface RequestTranscriptionResponse {
@@ -16,6 +30,11 @@ const requestTranscriptionFn = httpsCallable<
   RequestTranscriptionResponse
 >(functions, 'requestTranscription');
 
+const deleteObservationFileFn = httpsCallable<
+  { observationId: string; kind: 'audio'; driveFileId: string },
+  { deleted: boolean }
+>(functions, 'deleteObservationFile');
+
 export interface AudioRecorderProps {
   observationId: string;
   audioFileIds: string[];
@@ -25,6 +44,9 @@ export interface AudioRecorderProps {
   /** Notifies the parent when recording phase changes — used by the
    *  toolbar to render a red-dot indicator while recording is in flight. */
   onPhaseChange?: (phase: Phase) => void;
+  /** Called when the user clicks "Insert into script" on a transcript.
+   *  The parent is responsible for appending the text to the Tiptap scriptDoc. */
+  onInsertTranscript?: (text: string) => void;
 }
 
 export type Phase = 'idle' | 'recording' | 'uploading' | 'error';
@@ -34,6 +56,9 @@ export type Phase = 'idle' | 'recording' | 'uploading' | 'error';
  * (Chrome/Firefox) or audio/mp4 (Safari/iPad) and uploads via the
  * `uploadAudio` Cloud Function on stop. The function writes the file to
  * the observation's Drive folder, owned by the service account.
+ *
+ * If an upload fails, the recorded blob is retained so the observer can
+ * retry the upload or download the recording locally rather than losing it.
  *
  * The list of recorded audio is rendered live from the observation doc
  * (whatever `audioFileIds` the parent passes in); playback streams through
@@ -47,6 +72,7 @@ export function AudioRecorder({
   readOnly = false,
   onUploaded,
   onPhaseChange,
+  onInsertTranscript,
 }: AudioRecorderProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   useEffect(() => {
@@ -54,9 +80,15 @@ export function AudioRecorder({
   }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  /** Retained recording after a failed upload so the user can retry/download. */
+  const [failedUpload, setFailedUpload] = useState<{ blob: Blob; mimeType: string } | null>(null);
+  /** Object URL for the failed-upload download link (revoked on cleanup). */
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   /** fileIds with a transcription request in flight (local optimistic). */
   const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
   const [transcribeError, setTranscribeError] = useState<Record<string, string>>({});
+  /** Locally-tracked jobId per recording, returned by requestTranscription. */
+  const [jobIds, setJobIds] = useState<Record<string, string>>({});
   const transcriptionEnabled = useGeminiFeatures().audioTranscription.enabled;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -72,7 +104,9 @@ export function AudioRecorder({
       });
       setTranscribing((prev) => new Set(prev).add(audioFileId));
       try {
-        await requestTranscriptionFn({ observationId, audioFileId });
+        const result = await requestTranscriptionFn({ observationId, audioFileId });
+        const jobId = result.data.jobId;
+        if (jobId) setJobIds((prev) => ({ ...prev, [audioFileId]: jobId }));
       } catch (err) {
         setTranscribeError((prev) => ({
           ...prev,
@@ -98,12 +132,34 @@ export function AudioRecorder({
     if (changed) setTranscribing(next);
   }, [transcripts, transcribing]);
 
+  // While recording, warn the user before they navigate away / close the tab
+  // so an in-progress capture isn't silently lost.
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    const handler = (e: BeforeUnloadEvent) => {
+      // Calling preventDefault is the modern way to trigger the browser's
+      // "leave site?" confirmation; the deprecated returnValue is not needed.
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+    };
+  }, [phase]);
+
   useEffect(() => {
     return () => {
       stopTracks();
       if (tickerRef.current) clearInterval(tickerRef.current);
     };
   }, []);
+
+  // Revoke the failed-upload object URL when it changes or unmounts.
+  useEffect(() => {
+    return () => {
+      if (failedUrl) URL.revokeObjectURL(failedUrl);
+    };
+  }, [failedUrl]);
 
   function stopTracks() {
     if (streamRef.current) {
@@ -112,8 +168,18 @@ export function AudioRecorder({
     }
   }
 
+  /** Clear any retained failed-upload recovery state. */
+  function clearFailedUpload() {
+    setFailedUpload(null);
+    setFailedUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }
+
   async function startRecording() {
     setError(null);
+    clearFailedUpload();
     chunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -159,18 +225,16 @@ export function AudioRecorder({
     }
   }
 
-  async function uploadRecording(mimeType: string) {
+  /** POST a recorded blob to the uploadAudio function. On failure the blob is
+   *  retained for retry/download via `failedUpload`. */
+  async function uploadBlob(blob: Blob, mimeType: string) {
+    setPhase('uploading');
     try {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      stopTracks();
-      if (blob.size === 0) {
-        setError('No audio captured.');
-        setPhase('error');
-        return;
-      }
       const user = auth.currentUser;
       if (!user) {
         setError('Not signed in.');
+        setFailedUpload({ blob, mimeType });
+        setFailedUrl(URL.createObjectURL(blob));
         setPhase('error');
         return;
       }
@@ -192,6 +256,8 @@ export function AudioRecorder({
         );
       }
       const data = (await response.json()) as { audioFileId: string };
+      clearFailedUpload();
+      setError(null);
       setPhase('idle');
       onUploaded?.(data.audioFileId);
       // Auto-request transcription so the user doesn't have to click again
@@ -201,8 +267,29 @@ export function AudioRecorder({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
+      setFailedUpload({ blob, mimeType });
+      setFailedUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
       setPhase('error');
     }
+  }
+
+  async function uploadRecording(mimeType: string) {
+    const blob = new Blob(chunksRef.current, { type: mimeType });
+    stopTracks();
+    if (blob.size === 0) {
+      setError('No audio captured.');
+      setPhase('error');
+      return;
+    }
+    await uploadBlob(blob, mimeType);
+  }
+
+  function retryUpload() {
+    if (!failedUpload) return;
+    void uploadBlob(failedUpload.blob, failedUpload.mimeType);
   }
 
   return (
@@ -212,8 +299,8 @@ export function AudioRecorder({
           <h3 className="font-heading text-lg font-semibold">Audio</h3>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Record voice notes during the observation. After stopping, the recording uploads to this
-            observation&apos;s Drive folder. Transcription is requested separately and lands in the
-            script when ready.
+            observation&apos;s Drive folder. Once a transcript is ready, use{' '}
+            <strong>Insert into script</strong> to append it to the scripting area.
           </p>
         </div>
         <RecordButton
@@ -225,6 +312,24 @@ export function AudioRecorder({
       </header>
 
       <PhaseStatus phase={phase} elapsed={elapsed} error={error} />
+
+      {failedUpload && failedUrl ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-3 flex flex-wrap items-center gap-2 rounded-md border-l-4 px-3 py-2 text-sm">
+          <span className="mr-auto">Upload didn&apos;t go through. Retry, or save it locally.</span>
+          <Button size="sm" variant="outline" onClick={retryUpload}>
+            <RefreshCw className="h-3 w-3" />
+            Retry upload
+          </Button>
+          <a
+            href={failedUrl}
+            download={`recording.${mimeExtension(failedUpload.mimeType)}`}
+            className="border-input hover:bg-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium"
+          >
+            <Download className="h-3 w-3" />
+            Download recording
+          </a>
+        </div>
+      ) : null}
 
       {/* Persistent polite live region so recording phase changes are
           announced to screen readers. The visible PhaseStatus carries the
@@ -246,9 +351,11 @@ export function AudioRecorder({
         transcripts={transcripts}
         transcribing={transcribing}
         transcribeError={transcribeError}
+        jobIds={jobIds}
         onTranscribe={(id) => void requestTranscription(id)}
         transcriptionEnabled={transcriptionEnabled}
         readOnly={readOnly}
+        {...(onInsertTranscript ? { onInsertTranscript } : {})}
       />
     </div>
   );
@@ -331,18 +438,22 @@ function RecordingsList({
   transcripts,
   transcribing,
   transcribeError,
+  jobIds,
   onTranscribe,
   transcriptionEnabled,
   readOnly,
+  onInsertTranscript,
 }: {
   observationId: string;
   audioFileIds: string[];
   transcripts: Record<string, string>;
   transcribing: Set<string>;
   transcribeError: Record<string, string>;
+  jobIds: Record<string, string>;
   onTranscribe: (audioFileId: string) => void;
   transcriptionEnabled: boolean;
   readOnly: boolean;
+  onInsertTranscript?: (text: string) => void;
 }) {
   if (audioFileIds.length === 0) {
     return (
@@ -353,59 +464,193 @@ function RecordingsList({
   }
   return (
     <ul className="divide-border divide-y">
-      {audioFileIds.map((fileId, i) => {
-        const transcript = transcripts[fileId];
-        const isTranscribing = transcribing.has(fileId);
-        const errMsg = transcribeError[fileId];
-        return (
-          <li key={fileId} className="py-3">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-muted-foreground text-xs" aria-live="polite">
-                Recording {String(i + 1)}
-                {transcript
-                  ? ' · transcript ready'
-                  : isTranscribing
-                    ? ' · transcribing…'
-                    : ' · no transcript yet'}
-              </span>
-              {!readOnly && transcriptionEnabled ? (
+      {audioFileIds.map((fileId, i) => (
+        <RecordingRow
+          key={fileId}
+          index={i}
+          observationId={observationId}
+          fileId={fileId}
+          transcript={transcripts[fileId]}
+          isTranscribing={transcribing.has(fileId)}
+          errMsg={transcribeError[fileId]}
+          jobId={jobIds[fileId] ?? null}
+          onTranscribe={onTranscribe}
+          transcriptionEnabled={transcriptionEnabled}
+          readOnly={readOnly}
+          {...(onInsertTranscript ? { onInsertTranscript } : {})}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function RecordingRow({
+  index,
+  observationId,
+  fileId,
+  transcript,
+  isTranscribing,
+  errMsg,
+  jobId,
+  onTranscribe,
+  transcriptionEnabled,
+  readOnly,
+  onInsertTranscript,
+}: {
+  index: number;
+  observationId: string;
+  fileId: string;
+  transcript: string | undefined;
+  isTranscribing: boolean;
+  errMsg: string | undefined;
+  jobId: string | null;
+  onTranscribe: (audioFileId: string) => void;
+  transcriptionEnabled: boolean;
+  readOnly: boolean;
+  onInsertTranscript?: (text: string) => void;
+}) {
+  const job = useTranscriptionJob(jobId);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // A live job status takes precedence over the local optimistic flag.
+  const jobInProgress = job.status === 'Pending' || job.status === 'Running';
+  const jobFailed = job.status === 'Failed';
+  const busy = isTranscribing || jobInProgress;
+
+  async function remove() {
+    if (!confirm('Delete this recording? This also removes its transcript and cannot be undone.')) {
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteObservationFileFn({ observationId, kind: 'audio', driveFileId: fileId });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function copyTranscript() {
+    if (!transcript) return;
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setCopied(true);
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
+      // Clipboard write failed — silently ignore; the user can select manually.
+    }
+  }
+
+  return (
+    <li className="py-3">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-muted-foreground text-xs" aria-live="polite">
+          Recording {String(index + 1)}
+          {transcript
+            ? ' · transcript ready'
+            : job.status === 'Pending'
+              ? ' · pending...'
+              : job.status === 'Running' || isTranscribing
+                ? ' · transcribing...'
+                : jobFailed
+                  ? ' · failed'
+                  : ' · no transcript yet'}
+        </span>
+        <div className="flex items-center gap-1">
+          {!readOnly && transcriptionEnabled ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onTranscribe(fileId);
+              }}
+              disabled={busy}
+              className="h-7 text-xs"
+              title={
+                transcript ? 'Re-transcribe this recording' : 'Generate transcript with Gemini'
+              }
+            >
+              {busy ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : transcript || jobFailed ? (
+                <RefreshCw className="h-3 w-3" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {busy
+                ? 'Transcribing...'
+                : jobFailed
+                  ? 'Retry'
+                  : transcript
+                    ? 'Re-transcribe'
+                    : 'Transcribe'}
+            </Button>
+          ) : null}
+          {!readOnly ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void remove()}
+              disabled={deleting}
+              aria-label={`Remove recording ${String(index + 1)}`}
+              className="h-7 w-7"
+            >
+              {deleting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <RecordingPlayer observationId={observationId} audioFileId={fileId} />
+      {jobFailed && job.error ? (
+        <p className="text-destructive mt-1 text-xs">Transcription failed: {job.error}</p>
+      ) : null}
+      {errMsg ? <p className="text-destructive mt-1 text-xs">{errMsg}</p> : null}
+      {deleteError ? <p className="text-destructive mt-1 text-xs">{deleteError}</p> : null}
+      {transcript ? (
+        <details className="mt-2" open>
+          <summary className="text-muted-foreground cursor-pointer text-xs">Transcript</summary>
+          <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
+          {!readOnly ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => void copyTranscript()}
+                aria-label={`Copy transcript for recording ${String(index + 1)}`}
+              >
+                {copied ? <Check className="h-3 w-3" /> : <ClipboardCopy className="h-3 w-3" />}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+              {onInsertTranscript ? (
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  onClick={() => {
-                    onTranscribe(fileId);
-                  }}
-                  disabled={isTranscribing}
                   className="h-7 text-xs"
-                  title={
-                    transcript ? 'Re-transcribe this recording' : 'Generate transcript with Gemini'
-                  }
+                  onClick={() => {
+                    onInsertTranscript(transcript);
+                  }}
+                  aria-label={`Insert transcript for recording ${String(index + 1)} into script`}
                 >
-                  {isTranscribing ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : transcript ? (
-                    <RefreshCw className="h-3 w-3" />
-                  ) : (
-                    <Sparkles className="h-3 w-3" />
-                  )}
-                  {isTranscribing ? 'Transcribing…' : transcript ? 'Re-transcribe' : 'Transcribe'}
+                  <PlusCircle className="h-3 w-3" />
+                  Insert into script
                 </Button>
               ) : null}
             </div>
-            <RecordingPlayer observationId={observationId} audioFileId={fileId} />
-            {errMsg ? <p className="text-destructive mt-1 text-xs">{errMsg}</p> : null}
-            {transcript ? (
-              <details className="mt-2" open>
-                <summary className="text-muted-foreground cursor-pointer text-xs">
-                  Transcript
-                </summary>
-                <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
-              </details>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+          ) : null}
+        </details>
+      ) : null}
+    </li>
   );
 }
 
@@ -479,6 +724,13 @@ function pickSupportedMimeType(): string | null {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c)) return c;
   }
   return null;
+}
+
+/** Best-effort file extension for a recorded MIME type, for the download link. */
+function mimeExtension(mimeType: string): string {
+  if (mimeType.includes('mp4')) return 'm4a';
+  if (mimeType.includes('ogg')) return 'ogg';
+  return 'webm';
 }
 
 function formatDuration(seconds: number): string {

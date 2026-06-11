@@ -61,6 +61,9 @@ export interface DashboardViewProps {
   /** Resolved module chips (id+name+color) for the role chip row. Empty
    *  array = staff has no modules. */
   moduleChips: ModuleChip[];
+  /** Error from a critical Firestore listener (observations or windows).
+   *  When set, renders an alert banner instead of the task list. */
+  loadError?: Error | null;
 }
 
 export function DashboardView(props: DashboardViewProps): React.ReactElement {
@@ -71,6 +74,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
     peerEvaluator,
     readOnly = false,
     onCompleteModuleItem,
+    loadError,
   } = props;
   const [filter, setFilter] = useState<FilterKey>('all');
 
@@ -110,6 +114,45 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
         ) : null}
         {sections.filterBar ? (
           <FilterBar filter={filter} setFilter={setFilter} counts={counts} />
+        ) : null}
+
+        {loadError ? (
+          <div
+            className="alert alert--error"
+            style={{
+              marginTop: 20,
+              padding: '12px 16px',
+              backgroundColor: 'var(--ot-red-light, #fee2e2)',
+              border: '1px solid var(--ot-red, #ef4444)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+            role="alert"
+          >
+            <span style={{ color: 'var(--ot-red, #ef4444)', flexShrink: 0 }}>⚠</span>
+            <span style={{ flex: 1, color: 'var(--ot-text-dark, #1f2937)', fontSize: '14px' }}>
+              Couldn&apos;t load your checkpoints — please refresh to try again.
+            </span>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                backgroundColor: 'var(--ot-red, #ef4444)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Refresh
+            </button>
+          </div>
         ) : null}
 
         <div className="page-grid" style={{ marginTop: 20 }}>

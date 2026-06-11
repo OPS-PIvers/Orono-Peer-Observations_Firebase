@@ -164,6 +164,14 @@ export const schedulingSettings = z.object({
   gcalSendUpdates: z.enum(['none', 'all']).default('none'),
   /** Block booking until the staff member connects Google Calendar. */
   requireCalendarConnect: z.boolean().default(false),
+  /**
+   * When on, the evaluator's connected Google Calendar free/busy is consulted
+   * during slot generation so periods overlapping a real meeting / PTO / other
+   * district event are blocked (`observer-busy`) and never offered to staff.
+   * Requires the evaluator to have connected Calendar with the freebusy scope;
+   * connections made before this scope existed are skipped until reconnected.
+   */
+  checkObserverCalendar: z.boolean().default(false),
   inviteEmailEnabled: z.boolean().default(true),
   confirmationEmailEnabled: z.boolean().default(true),
   cancellationEmailEnabled: z.boolean().default(true),

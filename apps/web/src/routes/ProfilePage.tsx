@@ -135,12 +135,25 @@ function CalendarIntegrationSection({ email }: { email: string }) {
             )}
           </div>
 
+          {isConnected ? (
+            <p className="text-ops-gray text-xs">
+              Connected before calendar availability sync was added? Reconnect to grant read-only
+              free/busy access so your booked meetings and time off block conflicting observation
+              slots automatically.
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             {isConnected ? (
-              <Button variant="outline" onClick={() => void handleDisconnect()} disabled={busy}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Disconnect
-              </Button>
+              <>
+                <Button onClick={handleConnect} disabled={!email}>
+                  Reconnect to enable availability sync
+                </Button>
+                <Button variant="outline" onClick={() => void handleDisconnect()} disabled={busy}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Disconnect
+                </Button>
+              </>
             ) : (
               <Button onClick={handleConnect} disabled={!email}>
                 {isRevoked ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}

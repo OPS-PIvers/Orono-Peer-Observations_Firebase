@@ -34,6 +34,30 @@ export function intervalsOverlap(
  * recomputing a slot against a ledger that may already contain that slot's
  * own booking.
  */
+/**
+ * Combine two busy-interval ledgers into one for conflict checking.
+ *
+ * Used when rescheduling a booking: the evaluator's own window ledger
+ * (`peBusyIntervals`) is checked together with the intervals booked in every
+ * sibling window so a reschedule can't double-book the PE across windows.
+ * Duplicate `slotId`s are de-duplicated (the same slot can't be busy twice),
+ * keeping the first occurrence so an in-window interval wins over a sibling
+ * copy. Inputs are not mutated.
+ */
+export function mergeBusyIntervals(
+  primary: readonly PeBusyInterval[],
+  secondary: readonly PeBusyInterval[],
+): PeBusyInterval[] {
+  const seen = new Set<string>();
+  const merged: PeBusyInterval[] = [];
+  for (const interval of [...primary, ...secondary]) {
+    if (seen.has(interval.slotId)) continue;
+    seen.add(interval.slotId);
+    merged.push(interval);
+  }
+  return merged;
+}
+
 export function peConflicts(
   slotStartUTC: Date,
   slotEndUTC: Date,

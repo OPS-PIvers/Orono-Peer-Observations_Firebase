@@ -1,4 +1,4 @@
-import { ExternalLink, FileText } from 'lucide-react';
+import { ExternalLink, FileDown, FileText } from 'lucide-react';
 import type { ModuleItem, ModuleSection } from '@ops/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,11 @@ function sectionItems(items: ModuleItem[], sectionId: string, kind: ModuleItem['
     .sort((a, b) => a.order - b.order);
 }
 
-export function RichTextSection({ section }: { section: ModuleSection }) {
-  const doc = parseTiptapBody(section.body);
+export function RichTextSection({ section, body }: { section: ModuleSection; body: string }) {
+  // `body` comes from the gated /modules/{id}/content/{sectionId} doc (passed
+  // in by ModulePage), not from the section itself — section bodies are no
+  // longer inline on the domain-readable module doc.
+  const doc = parseTiptapBody(body);
   return (
     <Card>
       {section.title ? (
@@ -60,10 +63,25 @@ export function ResourceListSection({
         ) : (
           <ul className="divide-border divide-y">
             {resources.map((r) => {
-              const href = r.linkUrl ?? r.fileUrl ?? '';
+              // An uploaded file (driveFile/fileUrl) is a hosted document — show
+              // a download icon. An external linkUrl keeps the open-in-new-tab
+              // affordance. Files take precedence so a resource with both points
+              // staff at the district-hosted copy.
+              const isFile = !!(r.driveFile ?? r.fileUrl);
+              const href = isFile ? (r.fileUrl ?? '') : (r.linkUrl ?? '');
               return (
                 <li key={r.itemId} className="flex items-center gap-2 py-2">
-                  <FileText className="text-muted-foreground h-4 w-4 shrink-0" />
+                  {isFile ? (
+                    <FileDown
+                      className="text-muted-foreground h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <FileText
+                      className="text-muted-foreground h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
                   {href ? (
                     <a
                       href={href}
@@ -72,7 +90,11 @@ export function ResourceListSection({
                       className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
                     >
                       {r.title}
-                      <ExternalLink className="h-3 w-3" />
+                      {isFile ? (
+                        <FileDown className="h-3 w-3" aria-label="Download file" />
+                      ) : (
+                        <ExternalLink className="h-3 w-3" aria-label="Opens in a new tab" />
+                      )}
                     </a>
                   ) : (
                     <span className="text-sm">{r.title}</span>

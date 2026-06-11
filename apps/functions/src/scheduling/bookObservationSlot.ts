@@ -45,6 +45,22 @@ export async function loadSchedulingSettings(db: Firestore): Promise<SchedulingS
   return { ...DEFAULT_SCHEDULING_SETTINGS, ...(scheduling ?? {}) };
 }
 
+/**
+ * Pure guard: returns `true` when the calendar-connection requirement is
+ * satisfied. If `requireCalendarConnect` is false the check is a no-op
+ * (`true`). When the setting is on, the token doc must exist with
+ * `status === 'connected'`.
+ *
+ * Extracted so it can be unit-tested without touching Firestore.
+ */
+export function calendarConnectionSatisfied(
+  requireCalendarConnect: boolean,
+  tokenStatus: string | undefined,
+): boolean {
+  if (!requireCalendarConnect) return true;
+  return tokenStatus === 'connected';
+}
+
 /** Recompute window status from its invitees' booked state. */
 export function nextWindowStatus(invitees: WindowInvitee[]): string {
   const allBooked = invitees.length > 0 && invitees.every((inv) => inv.bookedSlotId != null);
@@ -93,6 +109,7 @@ export async function createDraftObservationForBooking(args: {
   await obsRef.set({
     observationId: obsRef.id,
     observerEmail: window.observerEmail,
+    observerName: window.observerName,
     observedEmail: staffEmail,
     observedName,
     observedRole,
@@ -204,7 +221,10 @@ export const bookObservationSlot = onCall(
     // Calendar before they can book. Checked early so we fail fast.
     if (scheduling.requireCalendarConnect) {
       const tokenSnap = await db.collection(COLLECTIONS.userCalendarTokens).doc(userEmail).get();
-      if (!tokenSnap.exists || tokenSnap.data()?.['status'] !== 'connected') {
+      const tokenStatus = tokenSnap.exists
+        ? (tokenSnap.data()?.['status'] as string | undefined)
+        : undefined;
+      if (!calendarConnectionSatisfied(scheduling.requireCalendarConnect, tokenStatus)) {
         throw new HttpsError(
           'failed-precondition',
           'You must connect your Google Calendar before booking an observation.',

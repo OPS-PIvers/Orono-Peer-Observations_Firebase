@@ -38,6 +38,21 @@ async function resolveTranscriptionModel(): Promise<string> {
   }
 }
 
+/**
+ * Returns true when a transcription worker should abort writing a transcript
+ * because the observation was finalized (or deleted) while the job was
+ * running. The worker must NOT mutate a finalized doc — that would diverge
+ * from the archived PDF.
+ *
+ * Extracted as a pure function so it can be unit-tested without an emulator.
+ */
+export function shouldAbortTranscriptionWrite(
+  obsExists: boolean,
+  obsStatus: string | undefined,
+): boolean {
+  return !obsExists || obsStatus !== 'Draft';
+}
+
 export const onTranscriptionJobCreated = onDocumentCreated(
   {
     document: 'transcriptionJobs/{jobId}',
@@ -111,6 +126,27 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         GEMINI_API_KEY.value(),
         model,
       );
+
+      // Re-read observation status before writing the transcript. If the
+      // observation was finalized while transcription was in flight, we must
+      // NOT mutate the locked doc (which would diverge from the archived PDF).
+      // Mark the job Failed instead so the observer can re-transcribe after
+      // creating a corrected observation if needed.
+      const obsSnap = await obsRef.get();
+      const obsStatus = (obsSnap.data() as { status?: string } | undefined)?.status;
+      if (shouldAbortTranscriptionWrite(obsSnap.exists, obsStatus)) {
+        logger.warn('onTranscriptionJobCreated: observation finalized during transcription', {
+          jobId: snapshot.id,
+          observationId: job.observationId,
+          obsStatus: obsStatus ?? 'missing',
+        });
+        await jobRef.update({
+          status: 'Failed',
+          completedAt: FieldValue.serverTimestamp(),
+          error: 'Observation was finalized during transcription; transcript not applied.',
+        });
+        return;
+      }
 
       await obsRef.update({
         [`transcripts.${job.audioDriveFileId}`]: transcript,

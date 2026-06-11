@@ -13,8 +13,18 @@
  * `${origin}/oauth/google-calendar/callback` for every origin we serve from.
  */
 
-/** Scope we request — write access to the user's calendar events only. */
-export const CALENDAR_OAUTH_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+/** Write access to the user's calendar events (create/update/delete events). */
+export const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
+/** Read-only free/busy — lets slot generation skip times the evaluator is busy. */
+export const CALENDAR_FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.freebusy';
+
+/**
+ * Scopes we request: event write access plus read-only free/busy. The freebusy
+ * scope is what powers calendar-availability sync when an admin enables
+ * "Check evaluator calendar availability" in Scheduling Settings.
+ */
+export const CALENDAR_OAUTH_SCOPE = `${CALENDAR_EVENTS_SCOPE} ${CALENDAR_FREEBUSY_SCOPE}`;
 
 /** Hosted-domain restriction passed to Google's account chooser. */
 const HOSTED_DOMAIN = 'orono.k12.mn.us';

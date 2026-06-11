@@ -18,6 +18,8 @@ export const EMAIL_TRIGGER_TYPES = [
   'scheduled.reminderIncomplete',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
+  'scheduling.bookingRescheduled',
+  'scheduling.bookingTimeChanged',
   'scheduling.assignmentNotice',
   'scheduling.bookingCancelled',
   'scheduling.windowCancelled',

@@ -11,6 +11,7 @@ vi.mock('@/lib/firebase', () => ({
 }));
 
 import {
+  formatAckLabel,
   formatRelative,
   hasMoreObservations,
   nextObservationsPageSize,
@@ -58,6 +59,39 @@ describe('observationsCapNotice', () => {
   it('reflects a widened window after load-more clicks', () => {
     expect(observationsCapNotice(400, 400)).toContain('400');
     expect(observationsCapNotice(399, 400)).toBeNull();
+  });
+});
+
+describe('formatAckLabel', () => {
+  it('returns null for null (not yet acknowledged)', () => {
+    expect(formatAckLabel(null)).toBeNull();
+  });
+
+  it('returns null for undefined', () => {
+    expect(formatAckLabel(undefined as unknown as null)).toBeNull();
+  });
+
+  it('formats a JS Date with a locale date prefix', () => {
+    const label = formatAckLabel(new Date('2026-05-15T10:00:00.000Z'));
+    expect(label).not.toBeNull();
+    expect(label).toMatch(/^Acknowledged /);
+  });
+
+  it('formats a Firestore Timestamp-like via .toDate()', () => {
+    const ts = { toDate: () => new Date('2026-05-15T10:00:00.000Z') };
+    const label = formatAckLabel(ts as unknown as Date);
+    expect(label).not.toBeNull();
+    expect(label).toMatch(/^Acknowledged /);
+  });
+
+  it('formats an ISO date string', () => {
+    const label = formatAckLabel('2026-05-15T10:00:00.000Z' as unknown as Date);
+    expect(label).not.toBeNull();
+    expect(label).toMatch(/^Acknowledged /);
+  });
+
+  it('returns null for an unparseable value', () => {
+    expect(formatAckLabel('not-a-date' as unknown as Date)).toBeNull();
   });
 });
 

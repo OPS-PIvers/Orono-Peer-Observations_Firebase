@@ -18,7 +18,13 @@ function getAuth(): GoogleAuth {
 export interface RenderObservationArgs {
   observation: Observation;
   rubric: Rubric;
-  activeComponentIds: string[];
+  /**
+   * Component IDs active for this observation's role/year combo.
+   *
+   * - `null`  — no mapping document exists → include every component (fallback).
+   * - `string[]` — mapping document exists; render exactly these IDs (may be empty).
+   */
+  activeComponentIds: string[] | null;
 }
 
 /**

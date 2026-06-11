@@ -44,6 +44,8 @@ export const onStaffWritten = onDocumentWritten(
       | (StaffClaimSource & {
           name?: string;
           year?: number;
+          /** Set by the bulk importer to suppress the invite email on doc creation. */
+          importedAt?: unknown;
         })
       | undefined;
     const base = computeClaims(after);
@@ -92,9 +94,14 @@ export const onStaffWritten = onDocumentWritten(
       logger.info('onStaffWritten: refresh tokens revoked (elevated access removed)', { email });
     }
 
-    // New staff invite email — only on creation (before=null) for active staff
+    // New staff invite email — only on creation (before=null) for active staff,
+    // and only when the doc was NOT stamped with `importedAt` by the bulk
+    // importer. The bulk importer sets `importedAt` to signal that the invite
+    // should be suppressed so a production cutover doesn't accidentally blast
+    // an email to every imported staff member.
     const isNewStaff = !event.data?.before.exists && event.data?.after.exists;
-    if (isNewStaff && after?.isActive) {
+    const isImported = 'importedAt' in (after ?? {}) && after?.importedAt !== undefined;
+    if (isNewStaff && after?.isActive && !isImported) {
       try {
         // Resolve role slug → displayName for the invite email so the
         // recipient sees a human-readable role.

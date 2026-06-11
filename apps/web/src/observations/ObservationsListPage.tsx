@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
-import { type QueryConstraint, limit, orderBy, where } from 'firebase/firestore';
+import { Plus, Search, Trash2 } from 'lucide-react';
+import { type QueryConstraint, deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -14,6 +14,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { db } from '@/lib/firebase';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +61,8 @@ export function ObservationsListPage() {
         : 'all';
   const [search, setSearch] = useState('');
   const [showAllPEs, setShowAllPEs] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // "Load more" widens the live query window one page at a time. The window
   // is keyed to the current filter selection (derived during render, no
@@ -118,6 +121,16 @@ export function ObservationsListPage() {
 
   const capNotice = observationsCapNotice(observations?.length ?? 0, pageSize);
 
+  async function handleDelete(id: string) {
+    setDeleteError(null);
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.observations, id));
+      setConfirmingDeleteId(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete observation');
+    }
+  }
+
   return (
     <PageHeader
       title="Observations"
@@ -169,6 +182,12 @@ export function ObservationsListPage() {
         </div>
       ) : null}
 
+      {deleteError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {deleteError}
+        </div>
+      ) : null}
+
       <div className="border-border bg-background overflow-hidden rounded-lg border">
         <Table>
           <TableHeader className="bg-ops-blue text-white">
@@ -179,6 +198,7 @@ export function ObservationsListPage() {
               <TableHead className="w-32">Type</TableHead>
               <TableHead className="w-32">Last modified</TableHead>
               <TableHead className="w-20" />
+              {isAdmin ? <TableHead className="w-20" /> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -231,7 +251,7 @@ export function ObservationsListPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">{o.observerEmail}</TableCell>
                   <TableCell>
-                    <StatusBadge status={o.status} />
+                    <StatusBadge status={o.status} acknowledgedAt={o.acknowledgedAt} />
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{o.type}</TableCell>
                   <TableCell className="text-muted-foreground text-xs">
@@ -242,6 +262,38 @@ export function ObservationsListPage() {
                       <Link to={`/observations/${o.id}`}>Open</Link>
                     </Button>
                   </TableCell>
+                  {isAdmin ? (
+                    <TableCell>
+                      {confirmingDeleteId === o.id ? (
+                        <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+                          <button
+                            onClick={() => void handleDelete(o.id)}
+                            className="text-ops-red font-semibold"
+                            type="button"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setConfirmingDeleteId(null)}
+                            type="button"
+                            className="text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-ops-red hover:text-ops-red hover:bg-red-50"
+                          onClick={() => setConfirmingDeleteId(o.id)}
+                          title={`Delete ${o.status === OBSERVATION_STATUS.draft ? 'draft' : 'observation'}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))
             )}
@@ -270,7 +322,13 @@ export function ObservationsListPage() {
   );
 }
 
-function StatusBadge({ status }: { status: ObservationStatus }) {
+function StatusBadge({
+  status,
+  acknowledgedAt,
+}: {
+  status: ObservationStatus;
+  acknowledgedAt?: Observation['acknowledgedAt'];
+}) {
   if (status === OBSERVATION_STATUS.draft) {
     return (
       <span className="inline-flex items-center rounded border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
@@ -279,8 +337,49 @@ function StatusBadge({ status }: { status: ObservationStatus }) {
     );
   }
   return (
-    <span className="inline-flex items-center rounded border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-800">
-      Finalized
+    <span className="inline-flex flex-col gap-0.5">
+      <span className="inline-flex items-center rounded border border-green-200 bg-green-100 px-2 py-0.5 text-xs text-green-800">
+        Finalized
+      </span>
+      {ackBadge(acknowledgedAt)}
+    </span>
+  );
+}
+
+/**
+ * Pure helper: returns a localised "Acknowledged <date>" string for finalized
+ * observations, or null when the observation has not yet been acknowledged.
+ * Accepts a JS Date, a Firestore Timestamp-like (with .toDate()), or an ISO
+ * string. Exported for unit testing.
+ */
+export function formatAckLabel(value: Observation['acknowledgedAt'] | undefined): string | null {
+  if (!value) return null;
+  const raw = value as unknown;
+  let date: Date | null = null;
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (typeof raw === 'object' && raw !== null && 'toDate' in raw) {
+    date = (raw as { toDate: () => Date }).toDate();
+  } else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date) return null;
+  return `Acknowledged ${date.toLocaleDateString()}`;
+}
+
+function ackBadge(acknowledgedAt: Observation['acknowledgedAt'] | undefined): ReactElement {
+  const label = formatAckLabel(acknowledgedAt);
+  if (label !== null) {
+    return (
+      <span className="inline-flex items-center rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+      Awaiting ack
     </span>
   );
 }

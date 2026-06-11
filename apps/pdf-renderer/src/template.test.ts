@@ -57,6 +57,7 @@ function makeObservation(overrides: Partial<Observation> = {}): Observation {
   return {
     observationId: 'obs1',
     observerEmail: 'pe@orono.k12.mn.us',
+    observerName: 'Pat Evaluator',
     observedEmail: 'teacher@orono.k12.mn.us',
     observedName: 'Terry Teacher',
     observedRole: 'Teacher',
@@ -88,10 +89,12 @@ function makeObservation(overrides: Partial<Observation> = {}): Observation {
 }
 
 function render(overrides: Partial<Observation> = {}): string {
+  // Pass null (no mapping doc) so the helper renders all rubric components —
+  // we only want to exercise the date/header rows, not component visibility.
   return renderObservationHtml({
     observation: makeObservation(overrides),
     rubric,
-    activeComponentIds: [],
+    activeComponentIds: null,
   });
 }
 
@@ -147,5 +150,56 @@ describe('renderObservationHtml finalized row', () => {
   it('renders the Finalized row from a JSON-serialized Admin Timestamp', () => {
     const html = render({ finalizedAt: asDate(timestampBlob(FINALIZED_DATE_ISO)) });
     expect(html).toContain(FINALIZED_DATE_ROW);
+  });
+});
+
+/**
+ * Tests for the consistent null / [] semantics of activeComponentIds:
+ *   null  → no mapping document exists → render every rubric component
+ *   []    → mapping exists, nothing assigned → render the empty-state message
+ *   [ids] → render only the listed component IDs
+ */
+describe('renderObservationHtml activeComponentIds semantics', () => {
+  const COMPONENT_HEADING = 'Demonstrating Knowledge of Content and Pedagogy';
+  const EMPTY_STATE_MSG = 'No components are assigned for this role/year combination.';
+
+  it('null: renders all rubric components when no mapping doc exists', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation(),
+      rubric,
+      activeComponentIds: null,
+    });
+    expect(html).toContain(COMPONENT_HEADING);
+    expect(html).not.toContain(EMPTY_STATE_MSG);
+  });
+
+  it('empty array: renders the empty-state message when mapping exists with no IDs', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation(),
+      rubric,
+      activeComponentIds: [],
+    });
+    expect(html).toContain(EMPTY_STATE_MSG);
+    expect(html).not.toContain(COMPONENT_HEADING);
+  });
+
+  it('matching IDs: renders only the listed components', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation(),
+      rubric,
+      activeComponentIds: ['1a'],
+    });
+    expect(html).toContain(COMPONENT_HEADING);
+    expect(html).not.toContain(EMPTY_STATE_MSG);
+  });
+
+  it('non-matching IDs: renders the empty-state message when no rubric component matches', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation(),
+      rubric,
+      activeComponentIds: ['99z'],
+    });
+    expect(html).toContain(EMPTY_STATE_MSG);
+    expect(html).not.toContain(COMPONENT_HEADING);
   });
 });

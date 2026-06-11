@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Mail, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { deleteDoc, doc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -46,6 +47,8 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduled.reminderIncomplete': 'Scheduled: Incomplete Reminder',
   'scheduling.windowInvite': 'Scheduling: Window Invite',
   'scheduling.bookingConfirmation': 'Scheduling: Booking Confirmed',
+  'scheduling.bookingRescheduled': 'Scheduling: Booking Rescheduled',
+  'scheduling.bookingTimeChanged': 'Scheduling: Time Changed (Bell Schedule)',
   'scheduling.assignmentNotice': 'Scheduling: Time Assigned',
   'scheduling.bookingCancelled': 'Scheduling: Booking Cancelled',
   'scheduling.windowCancelled': 'Scheduling: Window Cancelled',
@@ -147,6 +150,32 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'appName',
   ],
   'scheduling.bookingConfirmation': [
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'slotDateLocal',
+    'slotStartLocal',
+    'slotEndLocal',
+    'slotPeriodName',
+    'buildingName',
+    'signInLink',
+    'appName',
+  ],
+  'scheduling.bookingRescheduled': [
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'slotDateLocal',
+    'slotStartLocal',
+    'slotEndLocal',
+    'slotPeriodName',
+    'buildingName',
+    'signInLink',
+    'appName',
+  ],
+  'scheduling.bookingTimeChanged': [
     'observedName',
     'observedEmail',
     'observerName',
@@ -294,11 +323,17 @@ export function EmailTemplatesPage() {
   }
 
   async function toggleActive(t: TemplateDoc) {
-    await setDoc(
-      doc(db, COLLECTIONS.emailTemplates, t.id),
-      { isActive: !t.isActive, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
+    try {
+      await setDoc(
+        doc(db, COLLECTIONS.emailTemplates, t.id),
+        { isActive: !t.isActive, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+    } catch (err) {
+      toast.error('Failed to update template', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
   }
 
   async function saveTemplate() {
@@ -345,15 +380,27 @@ export function EmailTemplatesPage() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    await setDoc(doc(db, COLLECTIONS.emailTemplates, newId), newDoc);
-    setExpandedId(newId);
-    setEditForm({ ...newDoc, id: newId });
+    try {
+      await setDoc(doc(db, COLLECTIONS.emailTemplates, newId), newDoc);
+      setExpandedId(newId);
+      setEditForm({ ...newDoc, id: newId });
+    } catch (err) {
+      toast.error('Failed to create template', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
   }
 
   async function deleteTemplate(t: TemplateDoc) {
-    await deleteDoc(doc(db, COLLECTIONS.emailTemplates, t.id));
-    setDeleteTarget(null);
-    if (expandedId === t.id) setExpandedId(null);
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.emailTemplates, t.id));
+      setDeleteTarget(null);
+      if (expandedId === t.id) setExpandedId(null);
+    } catch (err) {
+      toast.error('Failed to delete template', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
   }
 
   function openTestDialog(templateId: string) {

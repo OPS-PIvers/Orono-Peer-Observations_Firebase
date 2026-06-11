@@ -159,8 +159,50 @@ export const cancelBookingInput = z.object({
 });
 export type CancelBookingInput = z.infer<typeof cancelBookingInput>;
 
+/**
+ * A document in the /observationWindows/{id}/tokens/{email::buildingId}
+ * subcollection. Storing tokens here (instead of in invitees[]) means
+ * invited staff cannot read each other's tokens through the window doc — the
+ * subcollection rules only grant read access to special-access users (PE/admin)
+ * and deny all client writes (server-only via Admin SDK).
+ *
+ * Key format: `${email}::${buildingId}` (mirrors inviteeEntryKey).
+ */
+export const windowTokenEntry = z.object({
+  inviteToken: z.string().min(1),
+  email,
+  buildingId: slugId,
+});
+export type WindowTokenEntry = z.infer<typeof windowTokenEntry>;
+
 export const cancelObservationWindowInput = z.object({
   windowId: z.string().min(1),
   reason: z.string().trim().max(500).default(''),
 });
 export type CancelObservationWindowInput = z.infer<typeof cancelObservationWindowInput>;
+
+/**
+ * Input for the `withdrawDayPreference` callable.
+ *
+ * Allows an invitee in day-preference mode to retract their preference
+ * before a time has been assigned, freeing the day's capacity slot.
+ */
+export const withdrawDayPreferenceInput = z.object({
+  windowId: z.string().min(1),
+  inviteToken: z.string().min(1),
+});
+export type WithdrawDayPreferenceInput = z.infer<typeof withdrawDayPreferenceInput>;
+
+export const rescheduleBookingInput = z.object({
+  windowId: z.string().min(1),
+  fromSlotId: z.string().min(1),
+  toSlotId: z.string().min(1),
+});
+export type RescheduleBookingInput = z.infer<typeof rescheduleBookingInput>;
+
+export const resendWindowInviteInput = z.object({
+  windowId: z.string().min(1),
+  email,
+  buildingId: slugId,
+});
+export type ResendWindowInviteInput = z.infer<typeof resendWindowInviteInput>;

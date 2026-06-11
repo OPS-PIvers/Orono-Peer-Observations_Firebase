@@ -73,6 +73,10 @@ export const observation = z.object({
   // Participants (denormalized at create time so historical observations
   // survive role/name changes).
   observerEmail: email,
+  /** Observer's display name, denormalized from the observer's /staff doc at
+   *  creation time. Falls back to '' for observations created before this
+   *  field was added; consumers should fall back to the email localpart. */
+  observerName: z.string().trim().default(''),
   observedEmail: email,
   observedName: z.string().trim().min(1),
   observedRole: z.string().trim().min(1),

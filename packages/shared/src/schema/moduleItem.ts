@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { localDate } from './buildingSchedule.js';
-import { email, isoDate, slugId } from './common.js';
+import { driveFileRef, email, isoDate, slugId } from './common.js';
+
+/**
+ * Hard upper bound (bytes) on a resource file an admin uploads to a module.
+ * Matched between the client picker and the `uploadModuleFile` callable so a
+ * file that would be rejected server-side never gets base64-encoded and sent.
+ * 20 MB mirrors the observation-evidence limit and comfortably covers
+ * handbooks/PDFs while respecting the callable request-size ceiling.
+ */
+export const MAX_MODULE_FILE_BYTES = 20 * 1024 * 1024;
 
 /**
  * /modules/{moduleId}/items/{itemId} — the resource and material content for a
@@ -23,6 +32,13 @@ export const moduleItem = z.object({
   title: z.string().trim().min(1).max(200),
   // resource-only:
   fileUrl: z.url().optional(),
+  /** Drive reference for a file uploaded via the `uploadModuleFile` callable.
+   *  Present only when the resource is backed by an uploaded file (rather than
+   *  an external `linkUrl`); lets the admin editor delete/replace the file and
+   *  the renderer distinguish a hosted file from an external link. `fileUrl` is
+   *  the file's webViewLink, kept alongside so the renderer can stay
+   *  ref-agnostic. */
+  driveFile: driveFileRef.optional(),
   linkUrl: z.url().optional(),
   // material-only:
   description: z.string().trim().max(2000).default(''),

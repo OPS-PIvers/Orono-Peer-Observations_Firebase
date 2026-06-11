@@ -117,7 +117,7 @@ export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
     date: obs ? toDate(obs.createdAt) : null,
   }),
   signupWindowOpened: (ctx) => ({ satisfied: ctx.openBooking != null, date: null }),
-  signupSlotBooked: (ctx) => ({ satisfied: ctx.hasBookedSlot, date: null }),
+  signupSlotBooked: (_ctx, obs) => ({ satisfied: obs?.slotId != null, date: null }),
   preObsDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, false),
   preObsDatePassed: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, true),
   observationDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.observationDate), now, false),

@@ -122,6 +122,17 @@ describe('EVENT_EVALUATORS', () => {
       ).satisfied,
     ).toBe(true);
   });
+
+  it('signupSlotBooked checks observation.slotId, not window status', () => {
+    // No observation → not satisfied
+    expect(EVENT_EVALUATORS.signupSlotBooked(ctx({}), null, NOW).satisfied).toBe(false);
+    // Observation without slotId → not satisfied
+    expect(EVENT_EVALUATORS.signupSlotBooked(ctx({}), obs({}), NOW).satisfied).toBe(false);
+    // Observation with slotId → satisfied (remains true even if window becomes fully-booked)
+    expect(
+      EVENT_EVALUATORS.signupSlotBooked(ctx({}), obs({ slotId: 'slot-123' }), NOW).satisfied,
+    ).toBe(true);
+  });
 });
 
 describe('responseProgress', () => {

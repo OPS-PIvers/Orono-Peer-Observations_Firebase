@@ -174,6 +174,11 @@ async function run(args: CliArgs): Promise<ImportSummary> {
       ...s,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      // `importedAt` signals to the onStaffWritten trigger that this doc was
+      // created by the bulk importer, suppressing the staff.created invite
+      // email. Without this flag a production cutover would fire an invite
+      // email for every imported staff member the moment the trigger runs.
+      importedAt: FieldValue.serverTimestamp(),
     });
     summary.staff += 1;
   }
