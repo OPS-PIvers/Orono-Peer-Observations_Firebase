@@ -1,0 +1,41 @@
+[
+  {
+    "id": "pdf-render-integration--renderer-deploy-not-in-ci",
+    "title": "pdf-renderer has no deploy pipeline — template changes never ship without a manual gcloud run",
+    "category": "polish",
+    "currentState": "CI builds the renderer for typecheck only (.github/workflows/ci.yml:62-63). deploy-dev deploys firestore/storage/functions/hosting (deploy-dev.yml:79-88) and deploy-prod deploys hosting,functions,firestore,storage (deploy-prod.yml:88) — neither builds or deploys the Cloud Run service. The only documented path is a manual `gcloud builds submit` + `gcloud run deploy` (apps/pdf-renderer/cloudbuild.yaml:9-14), which conflicts with the repo's own 'do not run manual deploys' rule (CLAUDE.md). Net effect: every fidelity fix to template.ts (including the gaps above) lands in git but the live renderer silently keeps producing the old PDFs, and nothing detects the drift.",
+    "expectedBehavior": "Pushing renderer changes deploys them through the same gated pipeline as functions/hosting: dev pushes update the Cloud Run service (or at least a CI job exists that builds the image and deploys on apps/pdf-renderer/** or packages/shared/** changes), and the prod workflow includes the renderer.",
+    "evidence": ".github/workflows/deploy-dev.yml:79-88 and .github/workflows/deploy-prod.yml:88 (no Cloud Run step); .github/workflows/ci.yml:62-63 (build only); apps/pdf-renderer/cloudbuild.yaml:9-14 (manual-only usage instructions)",
+    "implementationPlan": "Add a deploy job (in deploy-dev.yml and deploy-prod.yml, or a dedicated deploy-pdf-renderer.yml triggered by path filters on apps/pdf-renderer/** + packages/shared/**): authenticate with the existing GCP service-account credentials, run `gcloud builds submit --config apps/pdf-renderer/cloudbuild.yaml --substitutions=_TAG=${{ github.sha }} .`, then `gcloud run deploy pdf-renderer --image ...:${{ github.sha }} --region us-central1 --no-allow-unauthenticated --memory 1Gi --cpu 1 --concurrency 4 --timeout 120`. Keep the prod path inside the approval-gated workflow_dispatch. Document the flow in apps/pdf-renderer (or CLAUDE.md deploy section).",
+    "files": [
+      ".github/workflows/deploy-dev.yml",
+      ".github/workflows/deploy-prod.yml",
+      "apps/pdf-renderer/cloudbuild.yaml",
+      "CLAUDE.md"
+    ],
+    "effort": "medium",
+    "risk": "medium",
+    "userImpact": 6,
+    "area": "pdf-render-integration",
+    "dependsOn": []
+  },
+  {
+    "id": "email-notifications--trigger-email-extension-not-declared",
+    "title": "Trigger Email extension (the entire delivery hop) has no presence in repo config",
+    "category": "polish",
+    "currentState": "Every email funnels into the /mail collection for 'the Trigger Email extension' to deliver (apps/functions/src/lib/emailUtils.ts:84-113), but firebase.json contains no `extensions` block (only firestore/storage/functions/hosting/emulators) and there is no extensions/ directory or .env documenting the instance. The single most critical delivery dependency is configured only by hand in the console: a fresh project setup (or disaster recovery before the Aug/Sept 2026 cutover) would deploy an app where every email silently queues forever, and the emulator suite cannot exercise the send path.",
+    "expectedBehavior": "The extension instance is declared as code (firebase.json `extensions` map + extensions/firestore-send-email.env with non-secret params), so deploys reproduce the delivery pipeline and its config (SMTP sender must match outboundEmailAddress) is reviewable.",
+    "evidence": "firebase.json (no extensions key — full file reviewed); apps/functions/src/lib/emailUtils.ts:84-86 (delivery depends on the extension); no extensions/ dir in repo root",
+    "implementationPlan": "1) Run `firebase ext:export` against the live project to capture the installed instance into firebase.json + extensions/*.env; commit (secrets stay in Secret Manager). 2) Document the /mail collection + extension linkage in CLAUDE.md or README deploy section. 3) Verify CI deploy workflow tolerates the extensions block (deploy is manual workflow_dispatch — do not trigger).",
+    "files": [
+      "firebase.json",
+      "extensions/firestore-send-email.env",
+      "README.md"
+    ],
+    "effort": "low",
+    "risk": "low",
+    "userImpact": 3,
+    "area": "email-notifications",
+    "dependsOn": []
+  }
+]
