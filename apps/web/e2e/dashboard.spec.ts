@@ -23,9 +23,13 @@ const SEED_TEACHER_EMAIL = 'teacher.one@orono.k12.mn.us';
 async function devSignIn(page: Page, email: string): Promise<void> {
   await page.goto('/dev-sign-in');
 
+  // DevSignIn is a lazy-loaded route chunk — wait for it to render instead
+  // of sampling visibility immediately, which skips flakily on cold loads
+  // (e.g. CI, where the Vite dev server compiles modules on first request).
   const isDevMode = await page
-    .locator('text=DEV MODE')
-    .isVisible()
+    .getByText('DEV MODE')
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
     .catch(() => false);
   if (!isDevMode) {
     test.skip(true, 'dev sign-in unavailable (not a development build)');

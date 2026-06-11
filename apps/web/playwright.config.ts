@@ -73,6 +73,16 @@ export default defineConfig({
       env: {
         VITE_USE_EMULATORS: 'true',
         VITE_FIREBASE_PROJECT_ID: PROJECT_ID,
+        // Emulator-safe web SDK config. The emulators accept any API key, but
+        // the SDK throws at init (auth/invalid-api-key, missing storage
+        // bucket) when these are absent — and CI has no .env.local to supply
+        // them. Process env wins over .env files in Vite, so pinning fakes
+        // here keeps the suite hermetic locally and in CI.
+        VITE_FIREBASE_API_KEY: 'fake-emulator-api-key',
+        VITE_FIREBASE_AUTH_DOMAIN: `${PROJECT_ID}.firebaseapp.com`,
+        VITE_FIREBASE_STORAGE_BUCKET: `${PROJECT_ID}.firebasestorage.app`,
+        VITE_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
+        VITE_FIREBASE_APP_ID: '1:000000000000:web:0000000000000000',
       },
     },
     {

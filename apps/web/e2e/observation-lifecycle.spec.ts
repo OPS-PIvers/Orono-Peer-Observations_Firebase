@@ -26,9 +26,13 @@ const SEED_TEACHER_EMAIL = 'teacher.one@orono.k12.mn.us';
 async function devSignIn(page: Page, email: string): Promise<void> {
   await page.goto('/dev-sign-in');
 
+  // DevSignIn is a lazy-loaded route chunk — wait for it to render instead
+  // of sampling visibility immediately, which skips flakily on cold loads
+  // (e.g. CI, where the Vite dev server compiles modules on first request).
   const isDevMode = await page
-    .locator('text=DEV MODE')
-    .isVisible()
+    .getByText('DEV MODE')
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
     .catch(() => false);
   if (!isDevMode) {
     test.skip(true, 'dev sign-in unavailable (not a development build)');
@@ -89,8 +93,16 @@ test.describe('observation create -> edit -> autosave', () => {
     // Default type (Standard) is fine; create the observation.
     await dialog.getByRole('button', { name: 'Create observation' }).click();
 
-    // We land on the editor route for the new draft.
-    await page.waitForURL(/\/observations\/[A-Za-z0-9]+$/, { timeout: 15_000 });
+    // We land on the editor route for the new draft. Note: a plain
+    // /\/observations\/[A-Za-z0-9]+$/ regex also matches the current
+    // /observations/new URL, so it would resolve before the navigation —
+    // explicitly exclude the "new" segment.
+    await page.waitForURL(
+      (url) =>
+        /^\/observations\/[A-Za-z0-9]+$/.test(url.pathname) &&
+        !url.pathname.endsWith('/observations/new'),
+      { timeout: 15_000 },
+    );
     expect(page.url()).not.toContain('/observations/new');
 
     // Editor renders: observed name heading + Draft status chip.

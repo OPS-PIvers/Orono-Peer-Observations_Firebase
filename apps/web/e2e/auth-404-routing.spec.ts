@@ -15,8 +15,10 @@ test.describe('404 routing for unknown paths', () => {
     // Navigate to a nonexistent path
     await page.goto('/nonexistent');
 
-    // Should be redirected to sign-in
-    expect(page.url()).toBe(`${baseURL}/sign-in`);
+    // Should be redirected to sign-in. The redirect is a client-side
+    // navigation that lands after Firebase resolves the (signed-out) auth
+    // state — poll with toHaveURL rather than asserting page.url().
+    await expect(page).toHaveURL(`${baseURL ?? ''}/sign-in`);
 
     // Sign-in screen should be visible (not the NotFound page)
     await expect(page.locator('button:has-text("Continue with Google")')).toBeVisible();
@@ -30,9 +32,14 @@ test.describe('404 routing for unknown paths', () => {
     // First navigate to the dev sign-in page
     await page.goto('/dev-sign-in');
 
-    // Wait for the page to load and check if we're in dev mode
-    const devModeIndicator = page.locator('text=DEV MODE');
-    const isDevMode = await devModeIndicator.isVisible().catch(() => false);
+    // DevSignIn is a lazy-loaded route chunk — wait for it to render instead
+    // of sampling visibility immediately, which skips flakily on cold loads
+    // (e.g. CI, where the Vite dev server compiles modules on first request).
+    const isDevMode = await page
+      .getByText('DEV MODE')
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
 
     if (!isDevMode) {
       // Skip this test if not in development mode (dev-sign-in won't be available)
@@ -65,19 +72,22 @@ test.describe('404 routing for unknown paths', () => {
     const backButton = page.locator('a:has-text("Back to home")');
     await expect(backButton).toBeVisible();
 
-    // Clicking back to home should navigate to /
+    // Clicking back to home should navigate to / (which the role-aware
+    // redirect may immediately forward to a landing page — waitForURL
+    // observes the transient "/" commit, so don't re-assert it after).
     await backButton.click();
     await page.waitForURL(`${baseURL}/`);
-    expect(page.url()).toBe(`${baseURL}/`);
   });
 
   test('authenticated user can navigate to a nonexistent admin path', async ({ page, baseURL }) => {
     // Navigate to dev sign-in
     await page.goto('/dev-sign-in');
 
+    // Lazy-loaded route — wait for the chunk to render (see above).
     const isDevMode = await page
-      .locator('text=DEV MODE')
-      .isVisible()
+      .getByText('DEV MODE')
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
       .catch(() => false);
     if (!isDevMode) {
       test.skip();
