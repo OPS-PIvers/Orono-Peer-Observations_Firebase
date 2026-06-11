@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Branding } from '@ops/shared';
-import { validateBrandingDraft } from './BrandingPage';
+
+// The page module imports the real Firebase client at module scope; stub it
+// so the pure validator can be exercised without env credentials (CI has none).
+vi.mock('@/lib/firebase', () => ({
+  firebaseApp: {},
+  auth: {},
+  db: {},
+  storage: {},
+  functions: {},
+  functionsHttpUrl: (name: string) => `https://example.test/${name}`,
+}));
+
+const { validateBrandingDraft } = await import('./BrandingPage');
 
 describe('validateBrandingDraft', () => {
   it('passes an empty draft (all fields optional when partial)', () => {

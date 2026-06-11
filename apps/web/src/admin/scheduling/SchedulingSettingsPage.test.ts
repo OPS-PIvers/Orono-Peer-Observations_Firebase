@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SCHEDULING_SETTINGS } from '@ops/shared';
-import { validateSchedulingSettingsDraft } from './SchedulingSettingsPage';
+
+// The page module imports the real Firebase client at module scope; stub it
+// so the pure validator can be exercised without env credentials (CI has none).
+vi.mock('@/lib/firebase', () => ({
+  firebaseApp: {},
+  auth: {},
+  db: {},
+  storage: {},
+  functions: {},
+  functionsHttpUrl: (name: string) => `https://example.test/${name}`,
+}));
+
+const { validateSchedulingSettingsDraft } = await import('./SchedulingSettingsPage');
 
 describe('validateSchedulingSettingsDraft', () => {
   it('passes the default scheduling settings', () => {
