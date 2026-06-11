@@ -348,6 +348,32 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'scheduling-window-cancelled',
+    name: 'Scheduling: Window Cancelled',
+    description:
+      'Sent to invitees who had not yet booked when a peer evaluator cancels a scheduling window.',
+    subject: 'Observation scheduling window cancelled — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>{{observerName}} has cancelled the window to schedule your observation ({{windowStartLocal}}–{{windowEndLocal}}), so no booking is needed.</p>
+<p>{{cancellationReason}}</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'windowStartLocal',
+      'windowEndLocal',
+      'cancellationReason',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.windowCancelled',
+    recipient: 'observed',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'scheduling-window-expired',
     name: 'Scheduling: Window Expired',
     description: 'Sent to invitees who never booked when a scheduling window expires.',

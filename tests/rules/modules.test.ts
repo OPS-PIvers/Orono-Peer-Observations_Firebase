@@ -4,7 +4,16 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { collectionGroup, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import {
+  collection,
+  collectionGroup,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -288,5 +297,79 @@ describe('module items — collectionGroup query (the dashboard access path)', (
         ),
       ),
     );
+  });
+});
+
+// The module page (/m/{moduleId}) lists /modules/{id}/items directly.
+// Firestore evaluates list queries against the QUERY, not the returned
+// documents, so the rule's `resource.data.moduleId in …` condition is only
+// provable when the client filters on moduleId — an unfiltered list is
+// denied for every non-admin user, even assigned staff.
+describe('module items — direct subcollection list (the module page access path)', () => {
+  beforeEach(async () => {
+    await seed('staff/assigned@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('staff/other@orono.k12.mn.us', { modules: ['ilt'] });
+    await seed('modules/mentor/items/i1', {
+      itemId: 'i1',
+      moduleId: 'mentor',
+      kind: 'resource',
+      sectionId: 's1',
+      title: 'Handbook',
+    });
+    // auto-enable module (status: high) + staff matching it without assignment
+    await seed('modules/high-cycle', {
+      moduleId: 'high-cycle',
+      displayName: 'High Cycle',
+      autoEnable: { dimension: 'status', value: 'high' },
+    });
+    await seed('modules/high-cycle/items/i2', {
+      itemId: 'i2',
+      moduleId: 'high-cycle',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'High cycle packet',
+    });
+    await seed('staff/high@orono.k12.mn.us', { year: 2, summativeYear: true, modules: [] });
+  });
+
+  it('assigned staff can list items filtered to their module id', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(
+      getDocs(query(collection(db, 'modules/mentor/items'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('assigned staff cannot list items without the moduleId filter', async () => {
+    const db = testEnv
+      .authenticatedContext('a', claims.teacher('assigned@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDocs(collection(db, 'modules/mentor/items')));
+  });
+
+  it('unassigned staff cannot list items even with the moduleId filter', async () => {
+    const db = testEnv
+      .authenticatedContext('o', claims.teacher('other@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      getDocs(query(collection(db, 'modules/mentor/items'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('auto-enable-matched staff can list items with the moduleId filter', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(
+      getDocs(
+        query(collection(db, 'modules/high-cycle/items'), where('moduleId', '==', 'high-cycle')),
+      ),
+    );
+  });
+
+  it('admin can list items without any filter', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(getDocs(collection(db, 'modules/mentor/items')));
   });
 });

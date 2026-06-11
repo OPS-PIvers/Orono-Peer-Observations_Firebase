@@ -223,6 +223,68 @@ describe('observations: update', () => {
   });
 });
 
+describe('observations: server-managed Drive linkage is immutable to the observer', () => {
+  beforeEach(async () => {
+    await seedDraftObs('obs1', {
+      driveFolderId: 'obs1-folder',
+      pdfDriveFileId: 'obs1-pdf',
+      audioDriveFileIds: ['audio-1'],
+      transcripts: { 'audio-1': 'transcript text' },
+      evidenceLinks: { c1: [{ fileId: 'ev-1', name: 'evidence.pdf' }] },
+    });
+  });
+
+  it('observer CANNOT change driveFolderId on their Draft', async () => {
+    // Worst case this prevents: pointing draft-delete cleanup at the
+    // district-wide parent folder before deleting the Draft.
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/obs1'), { driveFolderId: 'district-parent-folder' }),
+    );
+  });
+
+  it('observer CANNOT change pdfDriveFileId on their Draft', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { pdfDriveFileId: 'spoofed-pdf' }));
+  });
+
+  it('observer CANNOT change audioDriveFileIds, transcripts, or evidenceLinks', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/obs1'), { audioDriveFileIds: ['spoofed-audio'] }),
+    );
+    await assertFails(
+      updateDoc(doc(db, 'observations/obs1'), { transcripts: { 'audio-1': 'tampered' } }),
+    );
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { evidenceLinks: {} }));
+  });
+
+  it('observer CANNOT set driveFolderId on a Draft where it is absent', async () => {
+    await seedDraftObs('obs2');
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs2'), { driveFolderId: 'injected' }));
+  });
+
+  it('observer CAN still autosave content fields with Drive fields untouched', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        observationName: 'Autosaved name',
+        observationData: {},
+        componentNotes: {},
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('admin CAN still rewrite Drive linkage fields', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), { driveFolderId: 'admin-corrected' }),
+    );
+  });
+});
+
 describe('observations: delete', () => {
   beforeEach(async () => {
     await seedDraftObs('obs1');
