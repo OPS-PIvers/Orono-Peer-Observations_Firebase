@@ -18,6 +18,13 @@ if (getApps().length === 0) initializeApp();
  */
 const MASTER_LOG_SHEET_ID = defineString('MASTER_LOG_SHEET_ID');
 
+/**
+ * The district-wide parent Drive folder that holds every observation
+ * folder. Draft-delete cleanup verifies a folder actually lives under
+ * this parent before permanently deleting it (see deleteDriveFolder).
+ */
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
+
 const HEADER_ROW = [
   'Observation ID',
   'Observer Email',
@@ -89,7 +96,12 @@ export const onObservationWritten = onDocumentWritten(
 
     if (!afterData) {
       // Deletion — clean up Drive (Drafts only) and mark the Sheet row.
-      await handleDeletion(sheetId, event.params.observationId, beforeData);
+      await handleDeletion(
+        sheetId,
+        PARENT_FOLDER_ID.value(),
+        event.params.observationId,
+        beforeData,
+      );
       return;
     }
 
@@ -276,21 +288,32 @@ function pdfUrl(fileId: unknown): string {
 
 async function handleDeletion(
   sheetId: string,
+  parentFolderId: string,
   observationId: string,
   beforeData: ObsLike | null | undefined,
 ): Promise<void> {
   // 1. Delete the Drive folder for Draft observations only. Finalized
   //    observations have their folder shared with the observed staff member —
   //    deleting it would revoke their access to audio, evidence, and the PDF.
+  //    deleteDriveFolder verifies the folder actually lives under the
+  //    configured parent before the permanent recursive delete; without a
+  //    configured parent we can't verify, so cleanup is skipped entirely.
   if (
     beforeData?.['status'] === OBSERVATION_STATUS.draft &&
     typeof beforeData['driveFolderId'] === 'string' &&
     beforeData['driveFolderId']
   ) {
-    try {
-      await deleteDriveFolder(beforeData['driveFolderId']);
-    } catch (err) {
-      logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
+    if (parentFolderId) {
+      try {
+        await deleteDriveFolder(beforeData['driveFolderId'], parentFolderId);
+      } catch (err) {
+        logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
+      }
+    } else {
+      logger.warn(
+        'onObservationWritten: DRIVE_PARENT_FOLDER_ID unset; skipping Drive folder cleanup',
+        { observationId },
+      );
     }
   }
 

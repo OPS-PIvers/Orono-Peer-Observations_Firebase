@@ -3,8 +3,10 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
+import { COLLECTIONS, type Role } from '@ops/shared';
 import { sendTemplatedEmail, staffInviteMailDocId } from '../lib/emailUtils.js';
+import { computeClaims, elevatedAccessRevoked, type StaffClaimSource } from './computeClaims.js';
+import { roleGrantsSpecialAccess } from './syncMyClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -13,35 +15,38 @@ if (getApps().length === 0) initializeApp();
  * changes. Covers:
  *   - admin promotes someone (Teacher → Peer Evaluator) — claims updated
  *     so the next token refresh picks up new permissions
- *   - admin deactivates a staff member — role goes to null, hasSpecialAccess
- *     to false (they can still sign in, but rules block sensitive ops)
+ *   - admin archives/deactivates a staff member (isActive → false) — claims
+ *     collapse to { role: null, hasSpecialAccess: false, isAdmin: false }
+ *     (they can still sign in, but rules block sensitive ops)
  *   - staff doc deleted entirely — claims cleared
  *
  * If the matching auth user doesn't exist yet (admin pre-provisioned a
  * staff member who hasn't signed in yet), this trigger no-ops; the claims
  * will be set on first sign-in via syncMyClaims.
  *
- * Note: existing tokens still carry old claims until they refresh. The
- * web client's AuthProvider exposes `refreshClaims()` for promote-then-
- * test cases.
+ * Special access also derives from the staff member's `/roles/{roleId}`
+ * doc (`isSpecialAccess`) — see roleGrantsSpecialAccess. Edits to a role
+ * doc itself don't fire this trigger; they take effect at each user's
+ * next sign-in (syncMyClaims) or next staff-doc write.
+ *
+ * Note: existing tokens still carry old claims until they refresh. When a
+ * change removes elevated access (special/admin → none), refresh tokens
+ * are revoked so the stale token cannot outlive its ≤1h expiry. The web
+ * client's AuthProvider exposes `refreshClaims()` for promote-then-test
+ * cases.
  */
 export const onStaffWritten = onDocumentWritten(
   { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
   async (event) => {
     const email = event.params.email;
+    const before = event.data?.before.data() as StaffClaimSource | undefined;
     const after = event.data?.after.data() as
-      | {
-          role?: string;
-          hasAdminAccess?: boolean;
-          isActive?: boolean;
+      | (StaffClaimSource & {
           name?: string;
           year?: number;
-        }
+        })
       | undefined;
-    const role = after?.role ?? null;
-    const hasAdminAccess = after?.hasAdminAccess ?? false;
-    const isAdmin = isAdminRole(role) || hasAdminAccess;
-    const hasSpecialAccess = isSpecialRole(role) || isAdmin;
+    const base = computeClaims(after);
 
     let user;
     try {
@@ -57,14 +62,40 @@ export const onStaffWritten = onDocumentWritten(
       throw err;
     }
 
+    const db = getFirestore();
+    // Admin-defined roles can grant special access via the /roles doc's
+    // isSpecialAccess flag; isAdmin stays restricted to the built-in admin
+    // roles and staff.hasAdminAccess.
+    const specialViaRoleDoc = await roleGrantsSpecialAccess(db, base.role);
+    const claims = { ...base, hasSpecialAccess: base.hasSpecialAccess || specialViaRoleDoc };
+    const { role, hasSpecialAccess, isAdmin } = claims;
+
     await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+
+    // Access revocation (archive/demote/delete of a special-access or admin
+    // user): kill refresh tokens so the old elevated ID token dies at its
+    // next refresh instead of lingering until the user signs out. The
+    // before-claims must also consult the role doc, or archiving a
+    // custom-special-access user would skip revocation.
+    const beforeBase = computeClaims(before);
+    const beforeClaims = {
+      ...beforeBase,
+      hasSpecialAccess:
+        beforeBase.hasSpecialAccess ||
+        (beforeBase.role === base.role
+          ? specialViaRoleDoc
+          : await roleGrantsSpecialAccess(db, beforeBase.role)),
+    };
+    if (elevatedAccessRevoked(beforeClaims, claims)) {
+      await getAuth().revokeRefreshTokens(user.uid);
+      logger.info('onStaffWritten: refresh tokens revoked (elevated access removed)', { email });
+    }
 
     // New staff invite email — only on creation (before=null) for active staff
     const isNewStaff = !event.data?.before.exists && event.data?.after.exists;
     if (isNewStaff && after?.isActive) {
       try {
-        const db = getFirestore();
         // Resolve role slug → displayName for the invite email so the
         // recipient sees a human-readable role.
         let roleLabel = after.role ?? '';

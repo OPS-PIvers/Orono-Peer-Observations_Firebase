@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
@@ -98,29 +98,36 @@ export function ModuleSectionEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBodyRef = useRef<string | null>(null);
 
+  // Latest props, readable from the timer callback and the unmount cleanup.
+  // Without these, the unmount flush would capture the mount-time
+  // onPatchSection closure and could write back a stale sections array.
+  const onPatchSectionRef = useRef(onPatchSection);
+  const sectionIdRef = useRef(section.id);
   useEffect(() => {
-    return () => {
-      // Flush any pending rich-text write on unmount so the last edit isn't lost.
-      if (debounceRef.current !== null) {
-        clearTimeout(debounceRef.current);
-        if (pendingBodyRef.current !== null) {
-          onPatchSection(section.id, { body: pendingBodyRef.current });
-        }
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    onPatchSectionRef.current = onPatchSection;
+    sectionIdRef.current = section.id;
+  });
+
+  const flushPendingBody = useCallback(() => {
+    if (debounceRef.current !== null) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (pendingBodyRef.current !== null) {
+      onPatchSectionRef.current(sectionIdRef.current, { body: pendingBodyRef.current });
+      pendingBodyRef.current = null;
+    }
   }, []);
+
+  useEffect(() => {
+    // Flush any pending rich-text write on unmount so the last edit isn't lost.
+    return flushPendingBody;
+  }, [flushPendingBody]);
 
   function handleBodyChange(serialized: string) {
     pendingBodyRef.current = serialized;
     if (debounceRef.current !== null) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      debounceRef.current = null;
-      if (pendingBodyRef.current !== null) {
-        onPatchSection(section.id, { body: pendingBodyRef.current });
-        pendingBodyRef.current = null;
-      }
-    }, 400);
+    debounceRef.current = setTimeout(flushPendingBody, 400);
   }
 
   return (

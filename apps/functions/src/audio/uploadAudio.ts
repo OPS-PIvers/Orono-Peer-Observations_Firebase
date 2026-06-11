@@ -5,7 +5,11 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
-import { ensureObservationFolder, uploadFileToFolder } from '../lib/drive.js';
+import {
+  ensureObservationFolder,
+  shareObservationFolderWithObserver,
+  uploadFileToFolder,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -122,6 +126,13 @@ export const uploadAudio = onRequest(
         observedName: obs.observedName,
         parentFolderId: PARENT_FOLDER_ID.value(),
         existingFolderId: obs.driveFolderId,
+      });
+      // Grant the observer Reader on the folder so the recordings they see
+      // in the editor actually open (the parent folder is shared only with
+      // admins + the service account). Idempotent and non-fatal.
+      await shareObservationFolderWithObserver({
+        folderId,
+        observerEmail: obs.observerEmail,
       });
       const ext = mimeTypeToExt(mimeType);
       const filename = `audio-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${ext}`;

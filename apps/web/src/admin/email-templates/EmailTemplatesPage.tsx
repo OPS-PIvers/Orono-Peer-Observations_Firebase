@@ -48,6 +48,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduling.bookingConfirmation': 'Scheduling: Booking Confirmed',
   'scheduling.assignmentNotice': 'Scheduling: Time Assigned',
   'scheduling.bookingCancelled': 'Scheduling: Booking Cancelled',
+  'scheduling.windowCancelled': 'Scheduling: Window Cancelled',
   'scheduling.windowExpired': 'Scheduling: Window Expired',
 };
 
@@ -180,6 +181,16 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'signInLink',
     'appName',
   ],
+  'scheduling.windowCancelled': [
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'windowStartLocal',
+    'windowEndLocal',
+    'cancellationReason',
+    'signInLink',
+    'appName',
+  ],
   'scheduling.windowExpired': [
     'observedName',
     'observedEmail',
@@ -227,7 +238,7 @@ const SAMPLE_VARS: Record<TemplateVariable, string> = {
 // ── Callable ───────────────────────────────────────────────────────────────
 
 const sendManualEmailFn = httpsCallable<
-  { templateId: string; toEmail: string; vars: Record<string, string> },
+  { templateId: string; toEmail: string; vars: Record<string, string>; isTest: boolean },
   { sent: boolean }
 >(functions, 'sendManualEmail');
 
@@ -361,6 +372,9 @@ export function EmailTemplatesPage() {
         templateId: testTemplateId,
         toEmail: testEmail,
         vars: Object.fromEntries(KNOWN_TEMPLATE_VARIABLES.map((v) => [v, SAMPLE_VARS[v]])),
+        // Test sends may exercise any template (automatic or inactive);
+        // the function prefixes the subject with [TEST].
+        isTest: true,
       });
       setTestResult('sent');
     } catch (err) {
@@ -467,7 +481,9 @@ export function EmailTemplatesPage() {
           <DialogHeader>
             <DialogTitle>Send Test Email</DialogTitle>
             <DialogDescription>
-              Send this template with sample data to any address.
+              Send this template with sample data to any address. Works for automatic and inactive
+              templates too — the subject is prefixed with [TEST] and no real recipients are
+              involved.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2">

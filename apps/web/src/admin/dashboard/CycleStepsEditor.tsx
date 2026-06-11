@@ -8,9 +8,10 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import {
   DATE_SOURCES,
+  DEFAULT_STEPS,
   DONE_WHEN_OPTIONS,
   IN_PROGRESS_SOURCES,
   SHOW_WHEN_OPTIONS,
@@ -61,6 +62,13 @@ import { GripHandle, SortableItem } from './SortableItem';
  * and the logic slots via plain-language dropdowns.
  */
 
+// Step-builder-only copy (everything shared with the rest of the page lives
+// in copyStrings.ts).
+const CS_RESET_DEFAULTS = 'Reset to defaults';
+const CS_EMPTY =
+  'No steps — staff will see no checkpoint cards on their dashboard. ' +
+  "Use 'Add step' to build your own, or 'Reset to defaults' to restore the built-in cycle.";
+
 export function CycleStepsEditor({
   value,
   onChange,
@@ -99,6 +107,11 @@ export function CycleStepsEditor({
     commit(steps.filter((s) => s.id !== id));
   }
 
+  function resetToDefaults() {
+    setExpanded(new Set());
+    commit(DEFAULT_STEPS.map((s) => ({ ...s })));
+  }
+
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
     const oldIndex = steps.findIndex((s) => s.id === e.active.id);
@@ -123,15 +136,31 @@ export function CycleStepsEditor({
           <h3 className="text-foreground mb-1 text-base font-semibold">{CS_HEADING}</h3>
           <p className="text-muted-foreground text-sm">{CS_BLURB}</p>
         </div>
-        <button
-          type="button"
-          onClick={addStep}
-          className="bg-ops-blue inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
-        >
-          <Plus className="h-4 w-4" />
-          {CS_ADD_STEP}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={resetToDefaults}
+            className="border-border text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium"
+          >
+            <RotateCcw className="h-4 w-4" />
+            {CS_RESET_DEFAULTS}
+          </button>
+          <button
+            type="button"
+            onClick={addStep}
+            className="bg-ops-blue inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+          >
+            <Plus className="h-4 w-4" />
+            {CS_ADD_STEP}
+          </button>
+        </div>
       </div>
+
+      {steps.length === 0 ? (
+        <p className="text-muted-foreground border-border rounded-lg border border-dashed p-8 text-center text-sm">
+          {CS_EMPTY}
+        </p>
+      ) : null}
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>

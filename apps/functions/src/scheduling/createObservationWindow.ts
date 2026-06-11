@@ -29,13 +29,54 @@ if (getApps().length === 0) initializeApp();
 const MAX_BATCH_WRITES = 450;
 
 /**
+ * Key identifying a single invitee *entry* on a window. The same person can
+ * legitimately be invited at two buildings (two entries, two invite tokens),
+ * so email alone is not unique — every per-entry lookup must key on
+ * email + buildingId.
+ */
+export function inviteeEntryKey(email: string, buildingId: string): string {
+  return `${email}::${buildingId}`;
+}
+
+/**
+ * /mail doc id for a window-invite email.
+ *
+ * Keyed per invitee entry (email + building), not per email: the Trigger
+ * Email extension only sends on /mail doc *creation*, so an email-only id
+ * would make the second entry's send overwrite the first entry's /mail doc
+ * and silently never deliver the second building's booking link/token.
+ */
+export function windowInviteMailDocId(windowId: string, email: string, buildingId: string): string {
+  return `scheduling.windowInvite-${windowId}-${email}-${buildingId}`;
+}
+
+/**
+ * Stamp inviteSentAt on exactly the invitee entries whose invite email was
+ * sent, identified by {@link inviteeEntryKey}. Entries that were not sent
+ * (or already carried a stamp) are returned unchanged.
+ */
+export function stampInviteSentAt(
+  invitees: WindowInvitee[],
+  sentKeys: ReadonlySet<string>,
+  sentAt: Date,
+): WindowInvitee[] {
+  return invitees.map((inv) =>
+    sentKeys.has(inviteeEntryKey(inv.email, inv.buildingId))
+      ? { ...inv, inviteSentAt: sentAt }
+      : inv,
+  );
+}
+
+/**
  * Create an observation window plus all its bookable slots.
  *
  * Requires special access (PE / Full Access / Admin). Validates the input
  * with the shared Zod contract, resolves each invitee from /staff, mints a
  * per-invitee invite token, verifies every distinct building has a schedule,
  * generates slots deterministically, and writes the window doc + slot docs in
- * chunked batches. No email is sent (that's a later phase).
+ * chunked batches. When invite emails are enabled, a best-effort invite is
+ * sent per invitee *entry* (email + building) — the same person invited at
+ * two buildings receives two emails, each with its own booking link/token.
  */
 export const createObservationWindow = onCall(
   { region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
@@ -76,7 +117,7 @@ export const createObservationWindow = onCall(
     const seen = new Set<string>();
     for (const inv of input.invitees) {
       const inviteeEmail = inv.email.toLowerCase();
-      const dedupeKey = `${inviteeEmail}::${inv.buildingId}`;
+      const dedupeKey = inviteeEntryKey(inviteeEmail, inv.buildingId);
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
@@ -221,7 +262,7 @@ export const createObservationWindow = onCall(
         }
       }
 
-      const sentEmails = new Set<string>();
+      const sentKeys = new Set<string>();
       for (const invitee of invitees) {
         try {
           const bookingLink = `${APP_URL}/book/${windowId}?token=${invitee.inviteToken}`;
@@ -242,27 +283,27 @@ export const createObservationWindow = onCall(
               windowStartLocal: formatYMD(input.startDate),
               windowEndLocal: formatYMD(input.endDate),
             },
-            mailDocId: `scheduling.windowInvite-${windowId}-${invitee.email}`,
+            mailDocId: windowInviteMailDocId(windowId, invitee.email, invitee.buildingId),
             auditDetails: {
               windowId,
               inviteeEmail: invitee.email,
+              buildingId: invitee.buildingId,
               triggerType: 'scheduling.windowInvite',
             },
           });
-          sentEmails.add(invitee.email);
+          sentKeys.add(inviteeEntryKey(invitee.email, invitee.buildingId));
         } catch (err) {
           logger.error('createObservationWindow: invite send failed', {
             email: invitee.email,
+            buildingId: invitee.buildingId,
             err,
           });
         }
       }
 
-      // Stamp inviteSentAt for invitees we successfully emailed.
-      if (sentEmails.size > 0) {
-        const stamped = invitees.map((inv) =>
-          sentEmails.has(inv.email) ? { ...inv, inviteSentAt: new Date() } : inv,
-        );
+      // Stamp inviteSentAt for invitee entries we successfully emailed.
+      if (sentKeys.size > 0) {
+        const stamped = stampInviteSentAt(invitees, sentKeys, new Date());
         await windowRef
           .update({ invitees: stamped, updatedAt: FieldValue.serverTimestamp() })
           .catch((err: unknown) =>

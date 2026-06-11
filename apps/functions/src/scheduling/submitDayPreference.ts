@@ -14,6 +14,7 @@ import {
   applyDayCountChange,
   dayHasCapacity,
   isWindowBookingClosed,
+  unknownAnswerFieldIds,
 } from './engine/bookingRules.js';
 
 if (getApps().length === 0) initializeApp();
@@ -89,10 +90,12 @@ export const submitDayPreference = onCall(
       }
 
       // Validate every answer references a field configured on the window.
-      for (const answer of input.detailAnswers) {
-        if (!window.signupFieldIds.includes(answer.fieldId)) {
-          throw new HttpsError('invalid-argument', `Unknown signup field: ${answer.fieldId}`);
-        }
+      const unknownFields = unknownAnswerFieldIds(input.detailAnswers, window.signupFieldIds);
+      if (unknownFields.length > 0) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Unknown signup field: ${unknownFields.join(', ')}`,
+        );
       }
 
       const prefSnap = await tx.get(prefRef);

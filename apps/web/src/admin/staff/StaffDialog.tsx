@@ -41,6 +41,10 @@ interface StaffDialogProps {
   onOpenChange: (open: boolean) => void;
   mode: 'create' | 'edit';
   existing: (Staff & { id: string }) | null;
+  /** Called after a successful save, before the dialog closes. The Staff
+   *  table is a one-shot read (no live listener), so the page refetches it
+   *  here to surface the created/edited row. */
+  onSaved: () => void;
 }
 
 interface FormState {
@@ -78,7 +82,7 @@ const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
 
-export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogProps) {
+export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: StaffDialogProps) {
   const [form, setForm] = useState<FormState>(empty);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +229,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         },
         { merge: true },
       );
+      onSaved();
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');

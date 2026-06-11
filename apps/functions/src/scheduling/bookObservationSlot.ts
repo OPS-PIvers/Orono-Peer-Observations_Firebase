@@ -27,6 +27,7 @@ import {
   isWindowBookingClosed,
   meetsLeadTime,
   resolveObservedIdentity,
+  unknownAnswerFieldIds,
 } from './engine/bookingRules.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
 
@@ -238,6 +239,17 @@ export const bookObservationSlot = onCall(
       }
       if (invitee.bookedSlotId != null) {
         throw new HttpsError('failed-precondition', 'You already have a booking in this window');
+      }
+
+      // Validate every answer references a field configured on the window —
+      // the same rule submitDayPreference enforces — so fields the PE did not
+      // select for this window never leak into the stored signupDetails.
+      const unknownFields = unknownAnswerFieldIds(input.detailAnswers, window.signupFieldIds);
+      if (unknownFields.length > 0) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Unknown signup field: ${unknownFields.join(', ')}`,
+        );
       }
 
       const slotSnap = await tx.get(slotRef);

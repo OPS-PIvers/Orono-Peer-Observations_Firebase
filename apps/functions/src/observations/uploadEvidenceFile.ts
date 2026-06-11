@@ -10,7 +10,12 @@ import {
   type Observation,
   type Staff,
 } from '@ops/shared';
-import { ensureObservationFolder, getDriveClient, uploadFileToFolder } from '../lib/drive.js';
+import {
+  ensureObservationFolder,
+  getDriveClient,
+  shareObservationFolderWithObserver,
+  uploadFileToFolder,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -123,6 +128,14 @@ export const uploadEvidenceFile = onCall(
         lastModifiedAt: FieldValue.serverTimestamp(),
       });
     }
+
+    // Grant the observer Reader on the folder so the evidence chips they
+    // see in the editor actually open (the parent folder is shared only
+    // with admins + the service account). Idempotent and non-fatal.
+    await shareObservationFolderWithObserver({
+      folderId,
+      observerEmail: obs.observerEmail,
+    });
 
     // Upload file to Drive
     const buffer = Buffer.from(base64Data, 'base64');

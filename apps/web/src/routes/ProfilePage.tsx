@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, orderBy, where } from 'firebase/firestore';
+import { doc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { AlertCircle, CalendarCheck, CalendarX, ChevronRight, Loader2, Mail } from 'lucide-react';
 import {
@@ -28,10 +28,13 @@ import {
   yearStatusLabel,
 } from '@/utils/staffFormatting';
 
+// Equality-only — Firestore merges the auto single-field indexes (no
+// composite index needed) and the security rule's list clause for active
+// administrators stays provable from these filters. Name sorting happens
+// client-side in `myAdmins`.
 const ADMIN_CONSTRAINTS = [
   where('role', '==', SPECIAL_ROLES.administrator),
   where('isActive', '==', true),
-  orderBy('name', 'asc'),
 ];
 
 const getCalendarConnectionStatusFn = httpsCallable<
@@ -164,7 +167,7 @@ export function ProfilePage() {
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staff, loading: staffLoading } = useDocument<Staff>(staffDocRef);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
-  const { data: administrators } = useFirestoreCollection<Staff>(
+  const { data: administrators, error: adminsError } = useFirestoreCollection<Staff>(
     COLLECTIONS.staff,
     ADMIN_CONSTRAINTS,
   );
@@ -185,7 +188,9 @@ export function ProfilePage() {
   const myAdmins = useMemo(() => {
     if (!staff || !administrators) return [];
     const myBuildings = new Set(staff.buildings);
-    return administrators.filter((a) => a.buildings.some((b) => myBuildings.has(b)));
+    return administrators
+      .filter((a) => a.buildings.some((b) => myBuildings.has(b)))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, administrators]);
 
   const finalizedByYear = useMemo(() => {
@@ -300,7 +305,14 @@ export function ProfilePage() {
           <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">
             My Administrator{myAdmins.length === 1 ? '' : 's'}
           </h2>
-          {myAdmins.length === 0 ? (
+          {adminsError ? (
+            <div className="mt-2 flex items-start gap-2 text-sm">
+              <AlertCircle className="text-ops-red mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-ops-red">
+                Couldn&apos;t load your administrators. Refresh the page to try again.
+              </p>
+            </div>
+          ) : myAdmins.length === 0 ? (
             <p className="text-ops-gray mt-2 text-sm italic">
               No administrator on file for your building{staff.buildings.length === 1 ? '' : 's'}.
             </p>

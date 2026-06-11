@@ -44,11 +44,19 @@ export const rateLimits = z.object({
 });
 export type RateLimits = z.infer<typeof rateLimits>;
 
+/**
+ * 6-digit hex color (e.g. "#2d3f89") — the only shape branding.primaryColor
+ * accepts. Exported so the web client can validate the Branding admin form
+ * at save time and sanitize raw Firestore reads (which bypass Zod) without
+ * re-deriving the pattern.
+ */
+export const PRIMARY_COLOR_HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
 export const branding = z.object({
   appName: z.string().trim().min(1).max(80).default('Orono Peer Observations'),
   primaryColor: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a 6-digit hex color')
+    .regex(PRIMARY_COLOR_HEX_PATTERN, 'Must be a 6-digit hex color')
     .default('#2d3f89'),
   /**
    * Public URL of the uploaded primary (horizontal) logo — used in the top

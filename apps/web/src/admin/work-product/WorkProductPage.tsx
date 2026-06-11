@@ -5,6 +5,14 @@ import { COLLECTIONS, type WorkProductQuestion } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -27,6 +35,11 @@ export function WorkProductPage() {
   const [newType, setNewType] = useState<QuestionType>('work-product');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<(WorkProductQuestion & { id: string }) | null>(
+    null,
+  );
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sorted = (questions ?? []).slice().sort((a, b) => a.order - b.order);
 
@@ -69,8 +82,39 @@ export function WorkProductPage() {
     );
   }
 
-  async function destroy(id: string) {
-    await deleteDoc(doc(db, COLLECTIONS.workProductQuestions, id));
+  function closeDeleteDialog() {
+    setPendingDelete(null);
+    setDeleteError(null);
+  }
+
+  /** Recommended path: hide the question from new forms but keep it (and
+   *  every historical answer keyed to it) in the bank. */
+  async function deactivatePending() {
+    if (!pendingDelete) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await update(pendingDelete, { isActive: false });
+      closeDeleteDialog();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Deactivate failed');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  async function destroyPending() {
+    if (!pendingDelete) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.workProductQuestions, pendingDelete.id));
+      closeDeleteDialog();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   return (
@@ -164,7 +208,10 @@ export function WorkProductPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => void destroy(q.id)}
+                onClick={() => {
+                  setDeleteError(null);
+                  setPendingDelete(q);
+                }}
                 aria-label="Delete question"
                 className="md:col-start-6"
               >
@@ -200,6 +247,56 @@ export function WorkProductPage() {
         Reordering via drag-and-drop will land in Phase 7 polish; for now, add questions in the
         order you want them displayed.
       </p>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this question?</DialogTitle>
+            <DialogDescription>
+              Deactivating is recommended: the question disappears from staff-facing forms but stays
+              in the bank. Permanent deletion cannot be undone — past observations keep a snapshot
+              of the question text, but the question itself is gone.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingDelete ? (
+            <p className="border-border bg-ops-gray-lightest rounded-md border px-3 py-2 text-sm">
+              {pendingDelete.text}
+            </p>
+          ) : null}
+          {deleteError ? (
+            <p role="alert" className="text-destructive text-sm">
+              {deleteError}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => void destroyPending()}
+              disabled={deleteBusy}
+              type="button"
+              className="text-destructive mr-auto"
+            >
+              Delete permanently
+            </Button>
+            <Button
+              variant="outline"
+              onClick={closeDeleteDialog}
+              disabled={deleteBusy}
+              type="button"
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void deactivatePending()} disabled={deleteBusy} type="button">
+              Deactivate instead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageHeader>
   );
 }

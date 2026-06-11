@@ -8,12 +8,16 @@ import {
   COLLECTIONS,
   DEFAULT_GEMINI_MODEL,
   isAdminRole,
+  OBSERVATION_STATUS,
   roleYearMappingDocId,
+  tiptapDoc,
   type ComponentColor,
   type Observation,
+  type ObservationStatus,
   type RoleYearMapping,
   type Rubric,
   type RubricComponent,
+  type TiptapDoc,
 } from '@ops/shared';
 import {
   applyTagsToScriptDoc,
@@ -29,17 +33,29 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 interface GeminiTagRequest {
   observationId?: string;
+  /** The editor's current (possibly not-yet-autosaved) script doc. */
+  scriptDoc?: unknown;
 }
 
-interface GeminiTagResponse {
+export interface GeminiTagResponse {
   taggedCount: number;
   skippedCount: number;
+  /**
+   * The tagged doc. Returned so the open editor — which hydrates its local
+   * draft only once per observation — can replace its content with the
+   * tagged version; otherwise the next autosave flush would write the stale
+   * untagged local doc back over the tags.
+   */
+  scriptDoc: TiptapDoc;
 }
 
 /**
  * Callable function that asks Gemini to identify spans in the script that
  * demonstrate evidence of each rubric component, then applies
- * `componentTag` marks to the matching text in `observation.scriptDoc`.
+ * `componentTag` marks to the matching text. It tags the `scriptDoc` sent by
+ * the caller when provided (the open editor's current content), falling back
+ * to `observation.scriptDoc`, persists the tagged doc, and returns it so the
+ * editor can replace its local draft with the tagged version.
  *
  * The function never paraphrases or rewrites — it only finds verbatim
  * substrings of paragraphs the observer typed and marks them. Tags whose
@@ -57,7 +73,7 @@ export const geminiTagScript = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId } = (request.data ?? {}) as GeminiTagRequest;
+    const { observationId, scriptDoc: rawScriptDoc } = (request.data ?? {}) as GeminiTagRequest;
     if (!observationId) {
       throw new HttpsError('invalid-argument', 'observationId required');
     }
@@ -73,6 +89,7 @@ export const geminiTagScript = onCall(
     if (!isAdmin && obs.observerEmail !== userEmail) {
       throw new HttpsError('permission-denied', 'Only the observer or an admin can auto-tag.');
     }
+    assertDraftForAutoTag(obs.status);
 
     const settingsSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
     // Raw Firestore reads don't apply Zod defaults; partial-shape the tree.
@@ -91,7 +108,18 @@ export const geminiTagScript = onCall(
     const model =
       configuredModel && configuredModel.length > 0 ? configuredModel : DEFAULT_GEMINI_MODEL;
 
-    const scriptDoc = obs.scriptDoc;
+    // Prefer the editor's current content over the Firestore copy — the open
+    // editor may be ahead of the last autosave flush, and tags must land on
+    // exactly what the observer is looking at.
+    let clientDoc: TiptapDoc | undefined;
+    if (rawScriptDoc !== undefined) {
+      const parsed = tiptapDoc.safeParse(rawScriptDoc);
+      if (!parsed.success) {
+        throw new HttpsError('invalid-argument', 'scriptDoc must be a Tiptap document');
+      }
+      clientDoc = parsed.data;
+    }
+    const scriptDoc = clientDoc ?? obs.scriptDoc;
     if (!scriptDoc) {
       throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
     }
@@ -135,36 +163,74 @@ export const geminiTagScript = onCall(
     );
 
     const validIds = new Set(activeComponents.map((c) => c.id));
-    let skippedCount = 0;
-    const accepted: RawTagSuggestion[] = [];
-    for (const s of suggestions) {
-      if (!validIds.has(s.componentId)) {
-        skippedCount += 1;
-        continue;
-      }
-      const para = paragraphs[s.paragraphIndex];
-      if (!para || !para.includes(s.text) || s.text.trim().length === 0) {
-        skippedCount += 1;
-        continue;
-      }
-      accepted.push(s);
-    }
-
-    const newDoc = applyTagsToScriptDoc(scriptDoc, accepted, componentColorMap);
+    const result = buildAutoTagResult(
+      scriptDoc,
+      paragraphs,
+      suggestions,
+      validIds,
+      componentColorMap,
+    );
 
     await obsRef.update({
-      scriptDoc: newDoc,
+      scriptDoc: result.scriptDoc,
       lastModifiedAt: FieldValue.serverTimestamp(),
     });
 
     logger.info('geminiTagScript: tagged spans', {
       observationId,
-      tagged: accepted.length,
-      skipped: skippedCount,
+      tagged: result.taggedCount,
+      skipped: result.skippedCount,
     });
-    return { taggedCount: accepted.length, skippedCount };
+    return result;
   },
 );
+
+/**
+ * Finalized observations are immutable through every server entry point.
+ * The Admin SDK bypasses the Firestore rules that lock Finalized docs, so the
+ * callable must enforce the Draft-only invariant itself (mirroring uploadAudio
+ * and uploadEvidenceFile). Exported for unit tests.
+ */
+export function assertDraftForAutoTag(status: ObservationStatus): void {
+  if (status !== OBSERVATION_STATUS.draft) {
+    throw new HttpsError('failed-precondition', 'Cannot auto-tag a finalized observation.');
+  }
+}
+
+/**
+ * Pure core of the tagging step, exported for unit tests: drop suggestions
+ * that reference unknown components or text that isn't a verbatim substring
+ * of the indexed paragraph, apply the survivors as `componentTag` marks, and
+ * shape the callable response (counts + the tagged doc the editor re-hydrates
+ * its local draft from).
+ */
+export function buildAutoTagResult(
+  scriptDoc: TiptapDoc,
+  paragraphs: string[],
+  suggestions: RawTagSuggestion[],
+  validComponentIds: ReadonlySet<string>,
+  componentColorMap: Map<string, ComponentColor>,
+): GeminiTagResponse {
+  let skippedCount = 0;
+  const accepted: RawTagSuggestion[] = [];
+  for (const s of suggestions) {
+    if (!validComponentIds.has(s.componentId)) {
+      skippedCount += 1;
+      continue;
+    }
+    const para = paragraphs[s.paragraphIndex];
+    if (!para || !para.includes(s.text) || s.text.trim().length === 0) {
+      skippedCount += 1;
+      continue;
+    }
+    accepted.push(s);
+  }
+  return {
+    taggedCount: accepted.length,
+    skippedCount,
+    scriptDoc: applyTagsToScriptDoc(scriptDoc, accepted, componentColorMap),
+  };
+}
 
 // ─── Gemini call ─────────────────────────────────────────────────────────────
 

@@ -8,9 +8,14 @@ import { pillColor } from './pillColor.js';
  * Role data is admin-editable in v1. `roleId` is a slug derived from the
  * displayName (e.g., "Library Media Specialist" → "library-media-specialist").
  *
- * `isSpecialAccess` flags the three roles that get filter UI / view-all
- * permissions: Administrator, Peer Evaluator, Full Access. Custom claims
- * mirror this so security rules can enforce it without a DB roundtrip.
+ * `isSpecialAccess` grants the role filter UI / view-all permissions. The
+ * claim-sync functions (`syncMyClaims`, `onStaffWritten`) mirror it into the
+ * `hasSpecialAccess` custom claim so security rules can enforce it without a
+ * DB roundtrip; it takes effect at each user's next sign-in or staff-doc
+ * write. The built-in Administrator, Peer Evaluator, and Full Access roles
+ * (SPECIAL_ROLES) are a hardcoded floor that always keeps special access, and
+ * admin access (`isAdmin`) is separate — it requires a built-in admin role or
+ * `staff.hasAdminAccess`, never this flag.
  *
  * `rubricId` references /rubrics/{rubricId} — usually equal to roleId, but
  * decoupled so multiple roles can share a rubric (e.g., grade-band

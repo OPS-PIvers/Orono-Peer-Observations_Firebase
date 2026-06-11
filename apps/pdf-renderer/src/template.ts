@@ -206,14 +206,37 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function formatDate(value: Date | { toDate: () => Date } | string | undefined): string {
-  if (!value) return '—';
-  let date: Date;
-  if (value instanceof Date) date = value;
-  else if (typeof value === 'string') date = new Date(value);
-  else if (typeof value === 'object' && 'toDate' in value) date = value.toDate();
-  else return '—';
-  if (Number.isNaN(date.getTime())) return '—';
+/**
+ * Date shapes the renderer may receive: real `Date`s (in-process callers),
+ * ISO strings (the normalized JSON payload from finalizeObservation),
+ * live Firestore Timestamps (`{toDate()}`), or the `{_seconds,_nanoseconds}`
+ * / `{seconds,nanoseconds}` blobs an Admin SDK Timestamp degrades to when an
+ * un-normalized payload is JSON-serialized over HTTP.
+ */
+type DateLike =
+  | Date
+  | string
+  | { toDate: () => Date }
+  | { _seconds: number; _nanoseconds?: number }
+  | { seconds: number; nanoseconds?: number };
+
+function coerceDate(value: DateLike | null | undefined): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') return new Date(value);
+  if ('toDate' in value) return value.toDate();
+  if ('_seconds' in value) {
+    return new Date(value._seconds * 1000 + Math.floor((value._nanoseconds ?? 0) / 1e6));
+  }
+  if ('seconds' in value) {
+    return new Date(value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1e6));
+  }
+  return null;
+}
+
+function formatDate(value: DateLike | null | undefined): string {
+  const date = coerceDate(value);
+  if (!date || Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',

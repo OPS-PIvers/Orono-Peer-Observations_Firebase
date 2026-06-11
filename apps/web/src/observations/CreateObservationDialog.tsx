@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -64,7 +64,12 @@ export function CreateObservationDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const ref = await addDoc(collection(db, COLLECTIONS.observations), {
+      // Pre-allocate the doc ref so the denormalized observationId (required
+      // by the schema; the booking path stamps it server-side) can be written
+      // in the same create. Dashboard CTAs and Acknowledge route by it.
+      const ref = doc(collection(db, COLLECTIONS.observations));
+      await setDoc(ref, {
+        observationId: ref.id,
         observerEmail: observerEmail.toLowerCase(),
         observedEmail: staff.email.toLowerCase(),
         observedName: staff.name,

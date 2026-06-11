@@ -150,8 +150,10 @@ export function ObservationEditorPage() {
 
   // The evaluator can flip between just the components assigned for
   // this role-year (default — what they're actually scoring) and the
-  // full rubric (read-the-other-descriptors mode). Only the assigned
-  // ones are persisted/scored regardless.
+  // full rubric (read-the-other-descriptors mode). Unassigned
+  // components render reference-only in Full Rubric mode — the grid
+  // gets assignedComponentIds and disables scoring outside the set,
+  // since the finalized PDF only ever includes assigned components.
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('assigned');
 
   // Build a filtered rubric so the matrix only renders rows the observed
@@ -616,6 +618,7 @@ export function ObservationEditorPage() {
           <EditorRubricGrid
             rubric={visibleRubric}
             observationId={observation.id}
+            assignedComponentIds={assignedComponentIds}
             entries={draft.observationData}
             notes={draft.componentNotes}
             scriptDoc={draft.scriptDoc}
@@ -645,6 +648,7 @@ export function ObservationEditorPage() {
 interface EditorRubricGridProps {
   rubric: Rubric;
   observationId: string;
+  assignedComponentIds: Set<string>;
   entries: ComponentEntries;
   notes: ComponentNotes;
   scriptDoc: TiptapDoc | undefined;
@@ -664,6 +668,7 @@ interface EditorRubricGridProps {
 function EditorRubricGrid({
   rubric,
   observationId,
+  assignedComponentIds,
   entries,
   notes,
   scriptDoc,
@@ -676,6 +681,7 @@ function EditorRubricGrid({
   const mode = useMemo<RubricGridMode>(
     () => ({
       kind: 'edit',
+      assignedComponentIds,
       entries,
       notes,
       ...(scriptDoc ? { scriptDoc } : {}),
@@ -687,6 +693,7 @@ function EditorRubricGrid({
       onNotesChange,
     }),
     [
+      assignedComponentIds,
       entries,
       notes,
       scriptDoc,

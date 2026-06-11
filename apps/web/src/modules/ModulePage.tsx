@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   MODULE_SUBCOLLECTIONS,
@@ -33,8 +33,19 @@ export function ModulePage() {
   const { data: myStaff, loading: staffLoading } = useFirestoreDoc<Staff>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '',
   );
-  const { data: items } = useFirestoreCollection<ModuleItem>(
+  // The collection-group rule authorizes non-admin reads via
+  // `resource.data.moduleId in staffDocData().modules` (or auto-enable).
+  // Firestore proves list queries against the query, not the documents, so
+  // the moduleId filter is required — an unfiltered list is denied for
+  // every non-admin user.
+  const itemConstraints = useMemo(
+    () => (moduleId ? [where('moduleId', '==', moduleId)] : []),
+    [moduleId],
+  );
+  const { data: items, error: itemsError } = useFirestoreCollection<ModuleItem>(
     moduleId ? `${COLLECTIONS.modules}/${moduleId}/${MODULE_SUBCOLLECTIONS.items}` : '',
+    itemConstraints,
+    [moduleId],
   );
   const { data: progress } = useFirestoreCollection<ModuleProgress>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}/${STAFF_SUBCOLLECTIONS.moduleProgress}` : '',
@@ -97,6 +108,11 @@ export function ModulePage() {
       subtitle={module.description || undefined}
     >
       <div className="space-y-6">
+        {itemsError ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">
+            Failed to load module content: {itemsError.message}
+          </div>
+        ) : null}
         {sections.length === 0 ? (
           <EmptyState title="This module has no content yet." />
         ) : (

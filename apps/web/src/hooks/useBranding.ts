@@ -1,4 +1,10 @@
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, OPS_BRAND, type AppSettings } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  OPS_BRAND,
+  PRIMARY_COLOR_HEX_PATTERN,
+  type AppSettings,
+} from '@ops/shared';
 import { useFirestoreDoc } from './useFirestoreDoc';
 
 export interface BrandingValues {
@@ -21,9 +27,16 @@ export function useBranding(): BrandingValues {
     `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
   );
   const b = data?.branding;
+  // Firestore reads bypass Zod, so a doc written before save-time validation
+  // existed can hold a non-hex string — fall back to the OPS default rather
+  // than letting an arbitrary value leak into the theme.
+  const rawPrimary = b?.primaryColor;
   return {
     appName: b?.appName ?? OPS_BRAND.defaultAppName,
-    primaryColor: b?.primaryColor ?? OPS_BRAND.defaultPrimaryColor,
+    primaryColor:
+      rawPrimary && PRIMARY_COLOR_HEX_PATTERN.test(rawPrimary)
+        ? rawPrimary
+        : OPS_BRAND.defaultPrimaryColor,
     logoUrl: b?.logoUrl ?? null,
     iconUrl: b?.iconUrl ?? null,
   };

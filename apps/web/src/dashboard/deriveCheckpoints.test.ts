@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STEPS, dashboardStep, type Observation } from '@ops/shared';
 import { deriveCheckpoints } from './deriveCheckpoints';
-import type { DeriveContext } from './dashboardEvents';
+import type { DashboardObservation, DeriveContext } from './dashboardEvents';
 
 const NOW = new Date('2026-03-01T00:00:00Z');
 const PAST = new Date('2026-02-01T00:00:00Z');
@@ -17,6 +17,21 @@ function obs(partial: Partial<Observation>): Observation {
     acknowledgedAt: null,
     ...partial,
   } as unknown as Observation;
+}
+
+/** Observation as the hooks deliver it (snapshot doc id attached) but missing
+ *  the denormalized `observationId` field — i.e. a legacy manually created
+ *  doc, which Firestore reads return without Zod defaults applied. */
+function manualObs(partial: Partial<DashboardObservation> = {}): DashboardObservation {
+  return {
+    id: 'doc-123',
+    status: 'Draft',
+    createdAt: PAST,
+    lastModifiedAt: PAST,
+    finalizedAt: null,
+    acknowledgedAt: null,
+    ...partial,
+  } as unknown as DashboardObservation;
 }
 
 function ctx(partial: Partial<DeriveContext>): DeriveContext {
@@ -83,6 +98,51 @@ describe('deriveCheckpoints (seed behavior)', () => {
     const review = cards.find((c) => c.id === 'reviewDraft');
     expect(review).toBeDefined();
     expect(review?.status).toBe('soon');
+  });
+
+  it('restarts the standard sequence for a second draft created after a finalize', () => {
+    // Probationary staff get 2-3 observations a year: the first is finalized,
+    // then a new draft opens a second cycle. Standard-kind steps must track
+    // the new draft, not stay pinned to the first finalized observation.
+    const firstCycle = obs({
+      observationId: 'first',
+      status: 'Finalized',
+      preObsDate: PAST,
+      observationDate: PAST,
+      postObsDate: PAST,
+      finalizedAt: PAST,
+    });
+    const secondDraft = obs({ observationId: 'second', createdAt: NOW, lastModifiedAt: NOW });
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ finalizedStandard: [firstCycle], standardDraft: secondDraft }),
+      NOW,
+    );
+    const preObs = cards.find((c) => c.id === 'preObs');
+    expect(preObs?.status).toBe('soon');
+    expect(preObs?.dateLabel).toBe('Awaiting date');
+    expect(cards.find((c) => c.id === 'observation')?.ctaUrl).toBe('/observations/second');
+    // The acknowledge card belongs to the finished first cycle, not the new one.
+    expect(cards.find((c) => c.id === 'acknowledge')).toBeUndefined();
+  });
+
+  it('keeps the finalized observation driving the cards when the draft predates it', () => {
+    // Inverse of the restart case: an abandoned draft from BEFORE the
+    // finalize must not resurrect the to-do sequence.
+    const finalized = obs({
+      observationId: 'fin',
+      status: 'Finalized',
+      preObsDate: PAST,
+      finalizedAt: NOW,
+    });
+    const staleDraft = obs({ observationId: 'stale', createdAt: PAST });
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ finalizedStandard: [finalized], standardDraft: staleDraft }),
+      NOW,
+    );
+    expect(cards.find((c) => c.id === 'preObs')?.status).toBe('done');
+    expect(cards.find((c) => c.id === 'acknowledge')?.ackObservationId).toBe('fin');
   });
 
   it('drives the work-product progress bar from answers', () => {
@@ -166,5 +226,40 @@ describe('deriveCheckpoints (generic slots)', () => {
     const cards = deriveCheckpoints([link, inert], ctx({}), NOW);
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');
     expect(cards.find((c) => c.id === 'i')?.ctaUrl).toBe('');
+  });
+});
+
+describe('deriveCheckpoints (observations missing observationId)', () => {
+  it('observation CTA falls back to the snapshot doc id', () => {
+    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: manualObs() }), NOW);
+    expect(cards.find((c) => c.id === 'observation')?.ctaUrl).toBe('/observations/doc-123');
+  });
+
+  it('acknowledge falls back to the snapshot doc id', () => {
+    const finalized = manualObs({ status: 'Finalized', finalizedAt: PAST });
+    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ finalizedStandard: [finalized] }), NOW);
+    expect(cards.find((c) => c.id === 'acknowledge')?.ackObservationId).toBe('doc-123');
+  });
+
+  it('acknowledge still prefers the denormalized observationId when present', () => {
+    const finalized = obs({ status: 'Finalized', finalizedAt: PAST });
+    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ finalizedStandard: [finalized] }), NOW);
+    expect(cards.find((c) => c.id === 'acknowledge')?.ackObservationId).toBe('obs-1');
+  });
+
+  it('renders an inert CTA (never "/observations/undefined") when no id exists at all', () => {
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ standardDraft: manualObs({ id: '' }) }),
+      NOW,
+    );
+    const card = cards.find((c) => c.id === 'observation');
+    expect(card?.ctaUrl).toBe('');
+    const ackCards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ finalizedStandard: [manualObs({ id: '', status: 'Finalized', finalizedAt: PAST })] }),
+      NOW,
+    );
+    expect(ackCards.find((c) => c.id === 'acknowledge')?.ackObservationId).toBeUndefined();
   });
 });

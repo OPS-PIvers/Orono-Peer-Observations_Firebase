@@ -35,6 +35,13 @@ export type RubricGridMode =
     }
   | {
       kind: 'edit';
+      /**
+       * Components assigned for this role-year. Rows outside this set
+       * (visible only in Full Rubric view) render reference-only —
+       * non-interactive descriptors, no notes/evidence chips — so a
+       * score can never land on a component the finalized PDF drops.
+       */
+      assignedComponentIds: Set<string>;
       entries: Record<string, ObservationComponentEntry>;
       notes: Record<string, TiptapDoc>;
       /**
@@ -193,8 +200,7 @@ function MobileDomainCard({
 
   const headingId = `domain-title-${domain.id}`;
   const active = components.find((c) => c.id === activeId) ?? components[0];
-  const isAssigned =
-    active && mode.kind === 'view' ? mode.assignedComponentIds.has(active.id) : true;
+  const isAssigned = active ? mode.assignedComponentIds.has(active.id) : true;
 
   return (
     <section
@@ -289,6 +295,11 @@ function MobileDomainCard({
                 <span className="text-ops-red inline-flex items-center gap-1 text-[10px] font-medium uppercase">
                   <Check className="h-3 w-3" aria-hidden="true" />
                   Assigned
+                </span>
+              ) : null}
+              {mode.kind === 'edit' && !isAssigned ? (
+                <span className="text-[10px] text-gray-400 italic">
+                  Not assigned for this cycle
                 </span>
               ) : null}
             </div>

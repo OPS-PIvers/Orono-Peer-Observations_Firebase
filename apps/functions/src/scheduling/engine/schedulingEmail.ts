@@ -1,7 +1,7 @@
 /**
  * Helpers for rendering America/Chicago-local date/time strings used by the
  * scheduling email templates (windowInvite, bookingConfirmation,
- * assignmentNotice, bookingCancelled, windowExpired).
+ * assignmentNotice, bookingCancelled, windowCancelled, windowExpired).
  *
  * Slot/window timestamps are stored as absolute UTC instants (Firestore
  * Timestamps); templates show them in the district's local zone.

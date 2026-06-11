@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar, useSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { BrandingProvider } from '@/components/BrandingProvider';
+import { GlobalBanner } from '@/components/GlobalBanner';
 import { TopLoadingBar } from '@/components/TopLoadingBar';
 import { useAuth } from '@/auth/AuthProvider';
 import { cn } from '@/lib/utils';
@@ -30,6 +32,9 @@ export function Layout() {
   const inner = (
     <div className="bg-ops-gray-lightest flex h-svh flex-col overflow-hidden">
       <AppHeader pcExpanded={pcExpanded} onTogglePc={togglePc} onOpenMobile={openMobile} />
+      {/* Admin-managed announcement strip — spans the full viewport width
+          (above the sidebar) so it reads as app chrome on every page. */}
+      <GlobalBanner />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <AppSidebar pcExpanded={pcExpanded} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
         <div
@@ -55,7 +60,13 @@ export function Layout() {
 
   // One shared `/appSettings/global` listener for the whole shell (Gemini
   // feature flags), instead of each editor consumer opening its own.
-  const shell = <GeminiFeaturesProvider>{inner}</GeminiFeaturesProvider>;
+  // BrandingProvider applies the admin-configured primary color to the app
+  // chrome by writing CSS custom properties on <html> (see index.css).
+  const shell = (
+    <BrandingProvider>
+      <GeminiFeaturesProvider>{inner}</GeminiFeaturesProvider>
+    </BrandingProvider>
+  );
 
   // Mount the active-observation listeners once per session. Both plain
   // staff and special-access users may have observations where they're the

@@ -56,15 +56,18 @@ const byDisplayName = <T extends { displayName: string }>(a: T, b: T) =>
 
 export function StaffPage() {
   // One-shot read (no live listener): the full staff collection is large and
-  // a live onSnapshot re-renders this admin table on every staff write. Use
-  // the Refresh control to pull the latest. Inline edits below write through
-  // and update their own optimistic UI, so a stale list is acceptable.
+  // a live onSnapshot re-renders this admin table on every staff write.
+  // Inline edits merge their patch into the cached rows via `mutate` so the
+  // table reflects them immediately; dialog saves and bulk edits call
+  // `refresh()`. The Refresh control covers everything else (e.g. another
+  // admin's concurrent edits).
   const {
     data: staff,
     loading,
     error,
     fetching,
     refresh,
+    mutate,
   } = useFirestoreCollectionOnce<Staff>(COLLECTIONS.staff);
   const { data: rolesRaw } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
@@ -96,13 +99,19 @@ export function StaffPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
 
-  const patchStaff = useCallback<PatchStaff>((email, patch) => {
-    void setDoc(
-      doc(db, COLLECTIONS.staff, email),
-      { ...patch, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-  }, []);
+  const patchStaff = useCallback<PatchStaff>(
+    (email, patch) => {
+      void setDoc(
+        doc(db, COLLECTIONS.staff, email),
+        { ...patch, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+      // The list is a one-shot read, so fold the patch into the cached row —
+      // pills and archive/restore render the new value without a refetch.
+      mutate((rows) => rows.map((r) => (r.email === email ? { ...r, ...patch } : r)));
+    },
+    [mutate],
+  );
 
   const roleLabelByRoleId = useMemo(() => {
     const map = new Map<string, string>();
@@ -283,7 +292,13 @@ export function StaffPage() {
         />
       </div>
 
-      <StaffDialog open={showCreate} onOpenChange={setShowCreate} mode="create" existing={null} />
+      <StaffDialog
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        mode="create"
+        existing={null}
+        onSaved={refresh}
+      />
       <StaffDialog
         open={editing !== null}
         onOpenChange={(open) => {
@@ -291,6 +306,7 @@ export function StaffPage() {
         }}
         mode="edit"
         existing={editing}
+        onSaved={refresh}
       />
 
       <BulkEditDialog
@@ -300,7 +316,10 @@ export function StaffPage() {
         }}
         field={bulkField}
         selectedRows={selectedRows}
-        onApplied={() => setSelected(new Set())}
+        onApplied={() => {
+          setSelected(new Set());
+          refresh();
+        }}
       />
     </PageHeader>
   );

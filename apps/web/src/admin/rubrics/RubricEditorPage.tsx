@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Rubric, type RubricComponent, type RubricDomain } from '@ops/shared';
+import {
+  COLLECTIONS,
+  flattenRubricComponentIds,
+  type Rubric,
+  type RubricComponent,
+  type RubricDomain,
+} from '@ops/shared';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { db } from '@/lib/firebase';
@@ -12,6 +18,57 @@ import { RubricGridEditor } from './RubricGridEditor';
 
 interface DraftRubric extends Rubric {
   domains: RubricDomain[];
+}
+
+/**
+ * Merge a patch into a component, treating `color: undefined` (the color
+ * "Reset" action) as "delete the key" instead of leaving an own
+ * `color: undefined` property behind. Firestore rejects `undefined` field
+ * values at write time ("Unsupported field value: undefined"), so a plain
+ * spread-merge would break every subsequent Save until the admin re-picked
+ * a color or reloaded.
+ */
+function applyComponentPatch(
+  component: RubricComponent,
+  patch: Partial<RubricComponent>,
+): RubricComponent {
+  const next = { ...component, ...patch };
+  if (next.color === undefined) delete next.color;
+  return next;
+}
+
+/**
+ * Component IDs that appear more than once across the whole rubric, in
+ * first-seen order. The editor no longer mints duplicates (addComponent
+ * fills ID gaps), so this is defense against bad imported data — save()
+ * refuses to write a rubric with ambiguous component IDs, since
+ * observation data and role-year mappings key on them.
+ */
+function findDuplicateComponentIds(rubric: Rubric): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const id of flattenRubricComponentIds(rubric)) {
+    if (seen.has(id)) duplicates.add(id);
+    else seen.add(id);
+  }
+  return [...duplicates];
+}
+
+/**
+ * Defense-in-depth for save(): strip any `color: undefined` stragglers
+ * (e.g. a draft hydrated before `applyComponentPatch` guarded the merge)
+ * so setDoc can never see an undefined field value.
+ */
+function sanitizeDomains(domains: RubricDomain[]): RubricDomain[] {
+  return domains.map((d) => ({
+    ...d,
+    components: d.components.map((c) => {
+      if (c.color !== undefined) return c;
+      const next = { ...c };
+      delete next.color;
+      return next;
+    }),
+  }));
 }
 
 export function RubricEditorPage() {
@@ -68,7 +125,9 @@ export function RubricEditorPage() {
       ...draft,
       domains: draft.domains.map((d) => ({
         ...d,
-        components: d.components.map((c) => (c.id === componentId ? { ...c, ...patch } : c)),
+        components: d.components.map((c) =>
+          c.id === componentId ? applyComponentPatch(c, patch) : c,
+        ),
       })),
     };
     update(next);
@@ -87,9 +146,21 @@ export function RubricEditorPage() {
     if (!draft) return;
     const domain = draft.domains.find((d) => d.id === domainId);
     if (!domain) return;
-    const nextLetter = String.fromCharCode(97 + domain.components.length); // a, b, c…
-    const newId = `${domainId}${nextLetter}`;
-    if (newId.length !== 2) return; // ran out of letters; admin can clean up
+    // First unused letter a…z in this domain. Deriving the letter from
+    // components.length re-mints an existing ID after a mid-list delete
+    // (delete 1b from [1a, 1b, 1c], add → length 2 → "1c" collides with
+    // the surviving 1c). The domain-digit prefix already guarantees
+    // cross-domain uniqueness, so only this domain's IDs matter.
+    const usedIds = new Set(domain.components.map((c) => c.id));
+    let newId: string | null = null;
+    for (let i = 0; i < 26; i++) {
+      const candidate = `${domainId}${String.fromCharCode(97 + i)}`;
+      if (!usedIds.has(candidate)) {
+        newId = candidate;
+        break;
+      }
+    }
+    if (newId?.length !== 2) return; // out of letters; admin can clean up
     const newComponent: RubricComponent = {
       id: newId,
       title: 'New component',
@@ -162,6 +233,13 @@ export function RubricEditorPage() {
 
   async function save() {
     if (!draft) return;
+    const duplicateIds = findDuplicateComponentIds(draft);
+    if (duplicateIds.length > 0) {
+      setSaveError(
+        `Cannot save: duplicate component ID${duplicateIds.length === 1 ? '' : 's'} (${duplicateIds.join(', ')}). Each component needs a unique ID — observations and role-year mappings reference components by ID.`,
+      );
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -172,7 +250,7 @@ export function RubricEditorPage() {
         {
           rubricId: draft.rubricId,
           displayName: draft.displayName,
-          domains: draft.domains,
+          domains: sanitizeDomains(draft.domains),
           updatedAt: serverTimestamp(),
         },
         { merge: true },

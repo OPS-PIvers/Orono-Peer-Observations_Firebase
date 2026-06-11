@@ -59,6 +59,15 @@ describe('resolveSteps', () => {
     expect(resolveSteps({ steps: custom } as never)).toEqual(custom);
   });
 
+  it('treats an explicitly emptied steps array as authoritative', () => {
+    expect(resolveSteps({ steps: [] } as never)).toEqual([]);
+  });
+
+  it('falls back to defaults only when the steps field is missing entirely', () => {
+    expect(resolveSteps({} as never).map((s) => s.id)).toEqual(DEFAULT_STEPS.map((s) => s.id));
+    expect(resolveSteps(undefined).map((s) => s.id)).toEqual(DEFAULT_STEPS.map((s) => s.id));
+  });
+
   it('carries legacy enable/order/label overrides onto the matching seed', () => {
     const steps = resolveSteps({
       checkpoints: { signup: { enabled: false, order: 5, titleOverride: 'Pick a slot' } },

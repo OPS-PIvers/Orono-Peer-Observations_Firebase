@@ -51,6 +51,9 @@ interface BulkEditDialogProps {
   /** Selected staff rows. Pulled by the page so we can compute per-row patches
    *  for set-union/set-difference fields. */
   selectedRows: (Staff & { id: string })[];
+  /** Called after a successful apply, before the dialog closes. The Staff
+   *  table is a one-shot read (no live listener), so the page clears the
+   *  selection and refetches the list here. */
   onApplied: () => void;
 }
 

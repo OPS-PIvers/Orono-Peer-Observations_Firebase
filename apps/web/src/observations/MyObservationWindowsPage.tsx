@@ -98,7 +98,7 @@ export function MyObservationWindowsPage() {
 
   async function cancel(w: ObservationWindow & { id: string }) {
     const reason = window.prompt(
-      `Cancel this observation window? This notifies invitees. Optional reason:`,
+      `Cancel this observation window? Existing bookings are cancelled and invitees are emailed. Optional reason:`,
       '',
     );
     if (reason === null) return;

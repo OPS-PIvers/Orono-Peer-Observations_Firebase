@@ -2,15 +2,35 @@ import type { ModuleItem } from '@ops/shared';
 import type { CheckpointWithStatus } from './deriveCheckpoints';
 
 const SOON_WINDOW_DAYS = 7;
+const MS_PER_DAY = 86_400_000;
 
-function parseDate(value: string | undefined): Date | null {
+/**
+ * Parse a yyyy-mm-dd calendar date as *local* midnight. `new Date('yyyy-mm-dd')`
+ * parses as UTC midnight, which renders one day early in every timezone west of
+ * UTC (e.g. America/Chicago). Returns null for missing, malformed, or
+ * out-of-range values.
+ */
+export function parseLocalDate(value: string | undefined): Date | null {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const d = new Date(year, month - 1, day);
+  // Reject rollover (e.g. 2026-13-40 would silently become 2027-02-09).
+  const valid = d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+  return valid ? d : null;
 }
 
 function shortLabel(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** Format a yyyy-mm-dd due date as the calendar day the admin picked, e.g. "Jun 1". */
+export function formatDueDate(value: string | undefined): string {
+  const d = parseLocalDate(value);
+  return d ? shortLabel(d) : '';
 }
 
 /**
@@ -24,16 +44,19 @@ export function deriveModuleTasks(args: {
   now?: Date;
 }): CheckpointWithStatus[] {
   const now = args.now ?? new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return args.materials
     .filter((m) => m.kind === 'material')
     .map((m) => {
-      const due = parseDate(m.dueDate);
+      const due = parseLocalDate(m.dueDate);
       const done = args.doneItemIds.has(m.itemId);
       let status: CheckpointWithStatus['status'] = 'upcoming';
       if (done) {
         status = 'done';
       } else if (due) {
-        const days = (due.getTime() - now.getTime()) / 86_400_000;
+        // Whole calendar days from local midnight today to the due date
+        // (rounded to absorb DST-shifted day lengths).
+        const days = Math.round((due.getTime() - startOfToday.getTime()) / MS_PER_DAY);
         status = days <= SOON_WINDOW_DAYS ? 'soon' : 'upcoming';
       }
       return {

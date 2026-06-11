@@ -2,7 +2,13 @@ import { useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
 import { Trash2, Upload } from 'lucide-react';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, OPS_BRAND, type AppSettings } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  OPS_BRAND,
+  PRIMARY_COLOR_HEX_PATTERN,
+  type AppSettings,
+} from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
@@ -26,6 +32,7 @@ export function BrandingPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [colorError, setColorError] = useState<string | null>(null);
 
   // Hydrate once; later snapshots would clobber in-progress edits. Issue #3.
   useHydratedDraft(SETTINGS_PATH, data?.branding ?? null, (branding) => {
@@ -38,6 +45,14 @@ export function BrandingPage() {
   if (loading && !data) return <p className="text-muted-foreground">Loading branding…</p>;
 
   async function save() {
+    // Empty input means "use the default"; anything else must be a 6-digit
+    // hex color — the same shape the shared branding schema enforces.
+    const nextColor = primaryColor.trim() || OPS_BRAND.defaultPrimaryColor;
+    if (!PRIMARY_COLOR_HEX_PATTERN.test(nextColor)) {
+      setColorError('Enter a 6-digit hex color like #2d3f89.');
+      return;
+    }
+    setColorError(null);
     setSaving(true);
     setSaveError(null);
     try {
@@ -46,7 +61,7 @@ export function BrandingPage() {
         {
           branding: {
             appName: appName.trim() || OPS_BRAND.defaultAppName,
-            primaryColor: primaryColor || OPS_BRAND.defaultPrimaryColor,
+            primaryColor: nextColor,
             logoUrl,
             iconUrl,
           },
@@ -97,20 +112,35 @@ export function BrandingPage() {
               <input
                 id="primaryColor"
                 type="color"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
+                value={PRIMARY_COLOR_HEX_PATTERN.test(primaryColor) ? primaryColor : '#000000'}
+                onChange={(e) => {
+                  setPrimaryColor(e.target.value);
+                  setColorError(null);
+                }}
                 className="border-input h-10 w-14 cursor-pointer rounded-md border"
               />
               <Input
                 value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
+                onChange={(e) => {
+                  setPrimaryColor(e.target.value);
+                  setColorError(null);
+                }}
                 className="font-mono"
                 placeholder="#2d3f89"
+                aria-label="Primary color hex value"
+                aria-invalid={colorError ? true : undefined}
+                aria-describedby={colorError ? 'primaryColorError' : undefined}
               />
             </div>
-            <p className="text-muted-foreground text-xs">
-              Default is OPS Primary Blue. Changes apply on next page load.
-            </p>
+            {colorError ? (
+              <p id="primaryColorError" role="alert" className="text-ops-red-dark text-xs">
+                {colorError}
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-xs">
+                Default is OPS Primary Blue. Changes re-theme the app immediately after saving.
+              </p>
+            )}
           </div>
 
           <LogoUploader

@@ -10,6 +10,7 @@ import {
 } from '@ops/shared';
 
 export const APP_URL = 'https://observations.orono.k12.mn.us';
+/** Fallback sender — appSettings/global.outboundEmailAddress overrides this at send time. */
 const FROM_EMAIL = 'observations@orono.k12.mn.us';
 
 /** Variable bag passed to substituteVariables. Undefined values render as ''. */
@@ -67,17 +68,24 @@ export async function loadActiveTemplate(
   return { id: doc.id, ...(doc.data() as EmailTemplate) };
 }
 
-/** Load branding bits needed to render the email shell. */
+/**
+ * Load branding bits needed to render the email shell, plus the sender
+ * address. One settings read serves both: the from address comes from the
+ * admin-editable appSettings/global.outboundEmailAddress, falling back to
+ * FROM_EMAIL when unset or blank.
+ */
 async function loadEmailBranding(
   db: Firestore,
-): Promise<{ appName: string; logoUrl: string | null }> {
+): Promise<{ appName: string; logoUrl: string | null; fromEmail: string }> {
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
-  const branding = snap.data()?.['branding'] as
-    | { appName?: string; logoUrl?: string | null }
-    | undefined;
+  const data = snap.data();
+  const branding = data?.['branding'] as { appName?: string; logoUrl?: string | null } | undefined;
+  const outbound = data?.['outboundEmailAddress'] as string | undefined;
   return {
     appName: branding?.appName ?? 'Orono Peer Observations',
     logoUrl: branding?.logoUrl ?? null,
+    fromEmail:
+      typeof outbound === 'string' && outbound.trim() !== '' ? outbound.trim() : FROM_EMAIL,
   };
 }
 
@@ -107,14 +115,14 @@ export async function sendEmail(args: {
 
   await db.collection(COLLECTIONS.mail).doc(mailDocId).set({
     to: recipients,
-    from: FROM_EMAIL,
+    from: branding.fromEmail,
     message: { subject, html: wrappedHtml },
     createdAt: FieldValue.serverTimestamp(),
   });
 
   await db.collection(COLLECTIONS.auditLog).add({
     timestamp: FieldValue.serverTimestamp(),
-    userEmail: FROM_EMAIL,
+    userEmail: branding.fromEmail,
     action: AUDIT_ACTIONS.emailSent,
     target: `mail/${mailDocId}`,
     details: {

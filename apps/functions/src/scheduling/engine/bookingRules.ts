@@ -1,5 +1,5 @@
 import { OBSERVATION_SLOT_STATUS } from '@ops/shared';
-import type { ObservationSlot, Staff, WindowInvitee } from '@ops/shared';
+import type { ObservationSlot, SignupFieldAnswer, Staff, WindowInvitee } from '@ops/shared';
 
 /**
  * Pure booking-policy helpers shared by the booking / assignment callables.
@@ -92,6 +92,22 @@ export function preferenceShouldRevert(
 export function meetsLeadTime(slotStartMs: number, nowMs: number, leadTimeHours: number): boolean {
   const leadMs = leadTimeHours * 60 * 60 * 1000;
   return slotStartMs - nowMs >= leadMs;
+}
+
+/**
+ * The fieldIds of detail answers that reference a sign-up field the PE did
+ * NOT select for the window (`window.signupFieldIds`).
+ *
+ * Both booking callables (bookObservationSlot and submitDayPreference)
+ * reject submissions containing any of these, so stored answers always
+ * match the per-window field selection rather than the global collection.
+ */
+export function unknownAnswerFieldIds(
+  answers: readonly Pick<SignupFieldAnswer, 'fieldId'>[],
+  windowSignupFieldIds: readonly string[],
+): string[] {
+  const allowed = new Set(windowSignupFieldIds);
+  return answers.filter((a) => !allowed.has(a.fieldId)).map((a) => a.fieldId);
 }
 
 /**

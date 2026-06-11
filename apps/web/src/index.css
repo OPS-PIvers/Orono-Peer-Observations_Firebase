@@ -13,11 +13,17 @@
  */
 
 @theme {
-  /* OPS Tech brand colors — verbatim from DESIGN.md ----------------------- */
-  --color-ops-blue-dark: #1d2a5d;
-  --color-ops-blue: #2d3f89;
-  --color-ops-blue-light: #4356a0;
-  --color-ops-blue-lighter: #eaecf5;
+  /* OPS Tech brand colors — fallbacks verbatim from DESIGN.md ------------- */
+  /* The blue family routes through the --ops-brand-* custom properties that
+     BrandingProvider.tsx sets on <html> when an admin saves a custom primary
+     color (Admin → Branding, /appSettings/global). With no override the
+     fallbacks keep the stock OPS palette, and the shadcn semantic tokens
+     below (primary, ring, accent) follow automatically via their var()
+     chains. */
+  --color-ops-blue-dark: var(--ops-brand-primary-dark, #1d2a5d);
+  --color-ops-blue: var(--ops-brand-primary, #2d3f89);
+  --color-ops-blue-light: var(--ops-brand-primary-light, #4356a0);
+  --color-ops-blue-lighter: var(--ops-brand-primary-lighter, #eaecf5);
 
   --color-ops-red-dark: #7a1718;
   --color-ops-red: #ad2122;

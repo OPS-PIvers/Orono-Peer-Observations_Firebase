@@ -31,8 +31,8 @@ import { colorFor } from './component-colors';
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
 const geminiTagScriptFn = httpsCallable<
-  { observationId: string },
-  { taggedCount: number; skippedCount: number }
+  { observationId: string; scriptDoc: TiptapDoc },
+  { taggedCount: number; skippedCount: number; scriptDoc: TiptapDoc }
 >(functions, 'geminiTagScript');
 
 export interface ScriptEditorProps {
@@ -167,8 +167,30 @@ export function ScriptEditor({
     setAutoTagError(null);
     setAutoTagResult(null);
     try {
-      const res = await geminiTagScriptFn({ observationId });
-      setAutoTagResult(res.data);
+      // Send the editor's current content — it can be ahead of Firestore by
+      // up to the autosave debounce, and tags must land on exactly what the
+      // observer is looking at.
+      const sentDoc: TiptapDoc = editor.getJSON();
+      const res = await geminiTagScriptFn({ observationId, scriptDoc: sentDoc });
+      if (JSON.stringify(editor.getJSON()) !== JSON.stringify(sentDoc)) {
+        // The script changed during the Gemini round-trip. Applying the
+        // tagged doc now would silently drop those keystrokes — keep the
+        // local text (the next autosave overwrites the server's tagged copy)
+        // and ask the observer to re-run.
+        setAutoTagError(
+          'the script changed while tagging — your text was kept, run Auto-tag again',
+        );
+        return;
+      }
+      // Replace the editor content with the tagged doc. emitUpdate routes it
+      // through onUpdate → onChange, so the parent draft (and the next
+      // autosave flush) carries the tags instead of writing the stale
+      // untagged local doc back over them.
+      editor.commands.setContent(res.data.scriptDoc as Content, { emitUpdate: true });
+      setAutoTagResult({
+        taggedCount: res.data.taggedCount,
+        skippedCount: res.data.skippedCount,
+      });
     } catch (err) {
       setAutoTagError(err instanceof Error ? err.message : 'Auto-tag failed');
     } finally {

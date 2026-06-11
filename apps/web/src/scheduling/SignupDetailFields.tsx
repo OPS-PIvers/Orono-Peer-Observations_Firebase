@@ -30,6 +30,20 @@ export interface SignupDetailFieldsProps {
   onChange: (fieldId: string, value: string) => void;
 }
 
+/**
+ * Restrict the full /signupFields collection to the fields the PE selected
+ * for a window (`window.signupFieldIds`). Unselected fields must never be
+ * rendered or gate submission — both booking callables reject answers that
+ * reference fields outside the window's selection.
+ */
+export function windowSignupFields(
+  allFields: SignupField[],
+  windowFieldIds: string[],
+): SignupField[] {
+  const selected = new Set(windowFieldIds);
+  return allFields.filter((f) => selected.has(f.fieldId));
+}
+
 /** Active fields whose `appliesTo` matches the mode ('both' always matches). */
 export function applicableSignupFields(fields: SignupField[], mode: BookingMode): SignupField[] {
   return fields

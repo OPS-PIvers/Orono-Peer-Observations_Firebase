@@ -2,13 +2,14 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_STATUS,
   isAdminRole,
   roleYearMappingDocId,
+  type DriveFileRef,
   type Observation,
   type RoleYearMapping,
   type Rubric,
@@ -16,6 +17,7 @@ import {
 import {
   ensureObservationFolder,
   getDriveLinks,
+  shareObservationFolderWithObserver,
   shareWithUser,
   uploadFileToFolder,
 } from '../lib/drive.js';
@@ -41,8 +43,9 @@ interface FinalizeRequest {
  *   3. POST the observation payload to the Cloud Run pdf-renderer; receive
  *      a PDF buffer.
  *   4. Ensure the observation's Drive folder exists, upload the PDF.
- *   5. Share the folder with the observed staff member as a Reader (no
- *      email — Drive's notification-email default is suppressed).
+ *   5. Share the folder with the observed staff member and the observer as
+ *      Readers (no email — Drive's notification-email default is
+ *      suppressed).
  *   6. Flip status to Finalized, stamp finalizedAt, store pdfDriveFileId.
  *   7. Write an /auditLog entry.
  *   8. Send the observation.finalized email template (non-blocking).
@@ -114,11 +117,13 @@ export const finalizeObservation = onCall(
 
       // The renderer expects a human-readable role label in `observedRole`,
       // not the slug we now store. Override at the renderer boundary so the
-      // template doesn't need to know about the lookup.
+      // template doesn't need to know about the lookup. Date fields are
+      // normalized to real Dates (ISO strings on the wire) for the same
+      // reason — see toRendererObservation.
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await renderObservationPdf({
-          observation: { ...obs, observationId: obs.id, observedRole: role.displayName },
+          observation: toRendererObservation(obs, role.displayName),
           rubric,
           activeComponentIds,
         });
@@ -152,6 +157,14 @@ export const finalizeObservation = onCall(
           email: obs.observedEmail,
           role: 'reader',
           sendNotificationEmail: false,
+        });
+        // The observer needs Reader too: the parent folder is shared only
+        // with admins and the service account, and Peer Evaluators are not
+        // admins, so without this grant the Finalized banner's "Open PDF" /
+        // "Open Drive folder" links land on Drive's request-access page.
+        await shareObservationFolderWithObserver({
+          folderId,
+          observerEmail: obs.observerEmail,
         });
         const links = await getDriveLinks(pdfFileId);
         webViewLink = links.webViewLink;
@@ -235,4 +248,55 @@ export const finalizeObservation = onCall(
 
 function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Coerce a Firestore value to a real `Date`. Observation date fields are
+ * typed `Date` but arrive from the Admin SDK as `Timestamp`s at runtime;
+ * left as-is they survive the gaxios JSON POST to the pdf-renderer as
+ * `{_seconds,_nanoseconds}` blobs the template can't format.
+ */
+function toDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return value;
+  if (value instanceof Timestamp) return value.toDate();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return undefined;
+}
+
+/**
+ * Build the observation payload for the pdf-renderer: swap the role slug for
+ * its display name and normalize every date the PDF renders to a real `Date`
+ * (serialized as an ISO string on the wire).
+ *
+ * `finalizedAt` is stamped to "now": the claim transaction already wrote a
+ * server timestamp, but `obs` is the pre-claim snapshot where it still reads
+ * null — without this the PDF's "Finalized" row never renders.
+ */
+function toRendererObservation(
+  obs: Observation & { id: string },
+  roleDisplayName: string,
+): Observation {
+  const normalized: Observation = {
+    ...obs,
+    observationId: obs.id,
+    observedRole: roleDisplayName,
+    observationDate: toDate(obs.observationDate) ?? obs.observationDate,
+    finalizedAt: toDate(obs.finalizedAt) ?? new Date(),
+  };
+  const preObsDate = toDate(obs.preObsDate);
+  if (preObsDate) normalized.preObsDate = preObsDate;
+  const postObsDate = toDate(obs.postObsDate);
+  if (postObsDate) normalized.postObsDate = postObsDate;
+  if (obs.evidenceLinks) {
+    normalized.evidenceLinks = Object.fromEntries(
+      Object.entries(obs.evidenceLinks).map(([componentId, refs]): [string, DriveFileRef[]] => [
+        componentId,
+        refs.map((ref) => ({ ...ref, uploadedAt: toDate(ref.uploadedAt) ?? ref.uploadedAt })),
+      ]),
+    );
+  }
+  return normalized;
 }

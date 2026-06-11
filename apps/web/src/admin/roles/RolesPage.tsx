@@ -363,25 +363,32 @@ function RoleDialog({ open, onOpenChange, mode, existing }: RoleDialogProps) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.isSpecialAccess}
-                onChange={(e) => setForm((f) => ({ ...f, isSpecialAccess: e.target.checked }))}
-                className="h-4 w-4"
-              />
-              Special access (can use filter UI / view all observations)
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-                className="h-4 w-4"
-              />
-              Active
-            </label>
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-6">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.isSpecialAccess}
+                  onChange={(e) => setForm((f) => ({ ...f, isSpecialAccess: e.target.checked }))}
+                  className="h-4 w-4"
+                />
+                Special access (can use filter UI / view all observations)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                  className="h-4 w-4"
+                />
+                Active
+              </label>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Special access takes effect at each user’s next sign-in. The built-in Administrator,
+              Peer Evaluator, and Full Access roles always keep it. Admin pages are separate — they
+              require an admin role or per-staff admin access, not this checkbox.
+            </p>
           </div>
 
           {error ? (

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -44,6 +44,18 @@ export function ModuleBuilderPage() {
 
   const sections = useMemo<ModuleSection[]>(() => module?.sections ?? [], [module]);
 
+  // Latest-known sections array. Every mutation is computed against this ref
+  // (never against a render-time `sections` closure), so an interleaved write
+  // — e.g. a debounced rich-text flush firing after another section was added,
+  // renamed, or moved — can't resurrect a stale array and silently wipe newer
+  // edits. The ref is updated eagerly on each local write and re-synced when
+  // the Firestore snapshot delivers (latency compensation echoes local writes
+  // back in order, so the snapshot never regresses behind our own writes).
+  const sectionsRef = useRef<ModuleSection[]>(sections);
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
+
   function patchModule(patch: Partial<ModuleDoc>) {
     void setDoc(
       doc(db, COLLECTIONS.modules, moduleId),
@@ -52,34 +64,42 @@ export function ModuleBuilderPage() {
     );
   }
 
-  function setSections(next: ModuleSection[]) {
+  function updateSections(updater: (current: ModuleSection[]) => ModuleSection[]) {
+    const next = updater(sectionsRef.current);
+    if (next === sectionsRef.current) return; // updater declined — nothing to write
+    sectionsRef.current = next;
     patchModule({ sections: next });
   }
 
   function addSection(type: ModuleSectionType) {
-    setSections([...sections, { id: newSectionId(), type, title: '', body: '' }]);
+    updateSections((current) => [...current, { id: newSectionId(), type, title: '', body: '' }]);
   }
 
   function patchSection(id: string, patch: Partial<ModuleSection>) {
-    setSections(sections.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    updateSections((current) =>
+      // A flush for a since-deleted section is a no-op rather than a rewrite.
+      current.some((s) => s.id === id)
+        ? current.map((s) => (s.id === id ? { ...s, ...patch } : s))
+        : current,
+    );
   }
 
   function moveSection(id: string, dir: -1 | 1) {
-    const idx = sections.findIndex((s) => s.id === id);
-    const swap = idx + dir;
-    if (idx < 0 || swap < 0 || swap >= sections.length) return;
-    const next = [...sections];
-    // Guard already ensures idx and swap are valid indices.
-    const swapped = next.map((s, i) => {
-      if (i === idx) return next[swap] ?? s;
-      if (i === swap) return next[idx] ?? s;
-      return s;
+    updateSections((current) => {
+      const idx = current.findIndex((s) => s.id === id);
+      const swap = idx + dir;
+      if (idx < 0 || swap < 0 || swap >= current.length) return current;
+      // Guard already ensures idx and swap are valid indices.
+      return current.map((s, i) => {
+        if (i === idx) return current[swap] ?? s;
+        if (i === swap) return current[idx] ?? s;
+        return s;
+      });
     });
-    setSections(swapped);
   }
 
   function deleteSection(id: string) {
-    setSections(sections.filter((s) => s.id !== id));
+    updateSections((current) => current.filter((s) => s.id !== id));
   }
 
   if (!module) {

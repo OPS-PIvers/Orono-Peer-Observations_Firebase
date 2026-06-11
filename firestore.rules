@@ -87,10 +87,17 @@ service cloud.firestore {
 
     // --- /staff/{email} ------------------------------------------------------
     // Own doc: read only. Admins: full read/write. Special-access (PE): read
-    // all (needed for the filter UI to list potential observees).
+    // all (needed for the filter UI to list potential observees). Any domain
+    // user may list ONLY active administrators (the Profile "My
+    // Administrators" card) — the query must filter on
+    // role == 'administrator' AND isActive == true or Firestore can't prove
+    // the resource.data conditions and rejects the whole list.
     match /staff/{email} {
       allow get: if isCurrentUserEmail(email) || hasSpecialAccess();
-      allow list: if hasSpecialAccess();
+      allow list: if hasSpecialAccess()
+        || (isFromOronoDomain()
+            && resource.data.role == 'administrator'
+            && resource.data.isActive == true);
       allow create, update, delete: if isAdmin();
 
       // Per-staff module completion. Only the owner (or admin) reads/writes.
@@ -276,6 +283,16 @@ service cloud.firestore {
           && unchanged('slotId')
           && unchanged('scheduledStartAt')
           && unchanged('scheduledEndAt')
+          // Drive linkage + server-produced artifacts are server-managed
+          // (callables/triggers write them via the Admin SDK). A spoofed
+          // driveFolderId could point Draft-delete cleanup at the
+          // district-wide parent folder; a spoofed pdfDriveFileId would
+          // change where "View PDF" sends the observed staff member.
+          && unchanged('driveFolderId')
+          && unchanged('pdfDriveFileId')
+          && unchanged('audioDriveFileIds')
+          && unchanged('transcripts')
+          && unchanged('evidenceLinks')
         )
         || (
           isCurrentUserEmail(resource.data.observedEmail)

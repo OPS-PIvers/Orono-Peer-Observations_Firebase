@@ -4,6 +4,7 @@ import {
   EVENT_EVALUATORS,
   resolveObservation,
   responseProgress,
+  type DashboardObservation,
   type DeriveContext,
 } from './dashboardEvents';
 
@@ -74,22 +75,35 @@ function evalDone(
   return EVENT_EVALUATORS[doneWhen](ctx, obs, now).satisfied;
 }
 
+/** Routable id for an observation. Legacy manually created docs lack the
+ *  denormalized `observationId` field (Firestore reads bypass Zod defaults),
+ *  so fall back to the snapshot doc id the dashboard hooks attach — they are
+ *  identical whenever both exist. */
+function observationLinkId(obs: DashboardObservation | null): string {
+  if (!obs) return '';
+  return obs.observationId || (obs.id ?? '');
+}
+
 function resolveButton(
   step: DashboardStep,
   ctx: DeriveContext,
-  obs: Observation | null,
+  obs: DashboardObservation | null,
 ): { ctaUrl: string; ackObservationId?: string } {
   switch (step.buttonTarget) {
-    case 'observation':
-      return { ctaUrl: obs ? `/observations/${obs.observationId}` : '' };
+    case 'observation': {
+      const id = observationLinkId(obs);
+      return { ctaUrl: id ? `/observations/${id}` : '' };
+    }
     case 'booking': {
       const booking = ctx.openBooking
         ? `/book/${ctx.openBooking.windowId}?token=${ctx.openBooking.token}`
         : '';
       return { ctaUrl: booking || (ctx.appSettings?.signupLink ?? '') };
     }
-    case 'acknowledge':
-      return obs ? { ctaUrl: '', ackObservationId: obs.observationId } : { ctaUrl: '' };
+    case 'acknowledge': {
+      const id = observationLinkId(obs);
+      return id ? { ctaUrl: '', ackObservationId: id } : { ctaUrl: '' };
+    }
     case 'fixedUrl':
       return { ctaUrl: step.buttonUrl };
     case 'none':

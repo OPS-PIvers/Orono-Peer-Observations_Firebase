@@ -57,6 +57,11 @@ export type ComponentTag = z.infer<typeof componentTag>;
 /** Work product answers (replaces the deprecated WorkProductAnswers sheet). */
 export const workProductAnswer = z.object({
   questionId: z.string().min(1),
+  /** Question text snapshotted when the answer is saved, so historical
+   *  answers survive the question being edited, deactivated, retyped, or
+   *  deleted from the bank. Absent on answers saved before this field
+   *  existed — viewers fall back to a generic label for those. */
+  questionText: z.string().optional(),
   answer: z.string().default(''),
   updatedAt: isoDate,
 });

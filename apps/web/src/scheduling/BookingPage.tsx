@@ -23,7 +23,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { functions } from '@/lib/firebase';
 import { SlotGrid } from './SlotGrid';
-import { SignupDetailFields, buildDetailAnswers, signupFieldsComplete } from './SignupDetailFields';
+import {
+  SignupDetailFields,
+  buildDetailAnswers,
+  signupFieldsComplete,
+  windowSignupFields,
+} from './SignupDetailFields';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
 
 interface BookResult {
@@ -103,7 +108,13 @@ export function BookingPage() {
       : '';
   const { data: existingPref } = useFirestoreDoc<ObservationPreference>(prefPath);
 
-  const fields = useMemo(() => signupFields ?? [], [signupFields]);
+  // Only the fields the PE selected for this window — never the whole
+  // collection. The callables reject answers to unselected fields, so
+  // rendering (or required-gating on) them would make submission impossible.
+  const fields = useMemo(
+    () => windowSignupFields(signupFields ?? [], windowDoc?.signupFieldIds ?? []),
+    [signupFields, windowDoc],
+  );
   const [answers, setAnswers] = useState<Record<string, string>>({});
   function setAnswer(fieldId: string, value: string) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));

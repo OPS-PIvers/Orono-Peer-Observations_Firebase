@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ComponentColor, TiptapDoc } from '@ops/shared';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { OBSERVATION_STATUS, type ComponentColor, type TiptapDoc } from '@ops/shared';
 import {
   applyTagsToScriptDoc,
   extractParagraphs,
@@ -113,6 +114,88 @@ describe('applyTagsToScriptDoc index alignment', () => {
       colorMap,
     );
     expect(taggedSpans(out)).toEqual([]);
+  });
+});
+
+// ── geminiTagScript helpers ──────────────────────────────────────────────────
+// The callable's module registers Firebase params/handlers at import time, so
+// (like index.test.ts) set fake env first and import dynamically.
+async function importGeminiTagScript() {
+  process.env['FIREBASE_CONFIG'] = JSON.stringify({ projectId: 'test' });
+  process.env['GCLOUD_PROJECT'] = 'test';
+  return import('./geminiTagScript.js');
+}
+
+async function importBuildAutoTagResult() {
+  const mod = await importGeminiTagScript();
+  return mod.buildAutoTagResult;
+}
+
+describe('buildAutoTagResult (geminiTagScript response shape)', () => {
+  it('returns counts plus the tagged scriptDoc the editor re-hydrates from', async () => {
+    const buildAutoTagResult = await importBuildAutoTagResult();
+    const result = buildAutoTagResult(
+      mixedDoc,
+      extractParagraphs(mixedDoc),
+      [
+        { paragraphIndex: 0, text: 'First para', componentId: 'c1' },
+        // Skipped: not a verbatim substring of paragraph 1.
+        { paragraphIndex: 1, text: 'not in the paragraph', componentId: 'c1' },
+        // Skipped: component not assigned for this role/year.
+        { paragraphIndex: 3, text: 'A quote', componentId: 'unassigned' },
+      ],
+      new Set(['c1']),
+      colorMap,
+    );
+    expect(result.taggedCount).toBe(1);
+    expect(result.skippedCount).toBe(2);
+    expect(taggedSpans(result.scriptDoc)).toEqual([{ text: 'First para', componentId: 'c1' }]);
+  });
+
+  it('skips whitespace-only and out-of-range suggestions, returning the doc untagged', async () => {
+    const buildAutoTagResult = await importBuildAutoTagResult();
+    const result = buildAutoTagResult(
+      mixedDoc,
+      extractParagraphs(mixedDoc),
+      [
+        { paragraphIndex: 99, text: 'First para', componentId: 'c1' },
+        // A single space IS a verbatim substring of 'First para' — only the
+        // whitespace-only guard rejects it.
+        { paragraphIndex: 0, text: ' ', componentId: 'c1' },
+      ],
+      new Set(['c1']),
+      colorMap,
+    );
+    expect(result.taggedCount).toBe(0);
+    expect(result.skippedCount).toBe(2);
+    expect(taggedSpans(result.scriptDoc)).toEqual([]);
+  });
+});
+
+// ── geminiTagScript.assertDraftForAutoTag ────────────────────────────────────
+// Finalized observations must stay immutable through every server entry point.
+// The callable writes scriptDoc with the Admin SDK (which bypasses the rules
+// that lock Finalized docs), so it enforces the Draft-only invariant itself.
+describe('assertDraftForAutoTag (Finalized observation guard)', () => {
+  it('lets a Draft observation through', async () => {
+    const { assertDraftForAutoTag } = await importGeminiTagScript();
+    expect(() => {
+      assertDraftForAutoTag(OBSERVATION_STATUS.draft);
+    }).not.toThrow();
+  });
+
+  it('throws failed-precondition for a Finalized observation', async () => {
+    const { assertDraftForAutoTag } = await importGeminiTagScript();
+    let caught: unknown;
+    try {
+      assertDraftForAutoTag(OBSERVATION_STATUS.finalized);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(HttpsError);
+    const err = caught as HttpsError;
+    expect(err.code).toBe('failed-precondition');
+    expect(err.message).toMatch(/finalized/i);
   });
 });
 

@@ -379,9 +379,15 @@ export function applyLegacyOverride(
   /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 }
 
-/** Resolve the effective step list from a (possibly legacy) config doc. */
+/** Resolve the effective step list from a (possibly legacy) config doc.
+ *
+ *  A saved `steps` field is authoritative — including an explicitly emptied
+ *  list (admins can delete every step, and staff then see no checkpoint
+ *  cards). Firestore reads bypass Zod defaults, so older docs may lack the
+ *  field entirely; only then do we fall back to the legacy checkpoints /
+ *  built-in defaults. */
 export function resolveSteps(config: DashboardConfig | null | undefined): DashboardStep[] {
-  if (config?.steps && config.steps.length > 0) return config.steps;
+  if (config && Array.isArray(config.steps)) return config.steps;
   const legacy = config?.checkpoints;
   return DEFAULT_STEPS.map((seed) =>
     applyLegacyOverride(seed, legacy?.[seed.id as CheckpointTypeKey]),

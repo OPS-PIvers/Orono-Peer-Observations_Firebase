@@ -29,7 +29,7 @@ const WP_QUESTIONS_CONSTRAINTS = [
  * Answers are debounced and autosaved to Firestore.
  */
 export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProps) {
-  const { data: questions } = useFirestoreCollection<WorkProductQuestion>(
+  const { data: questions, error: questionsError } = useFirestoreCollection<WorkProductQuestion>(
     COLLECTIONS.workProductQuestions,
     WP_QUESTIONS_CONSTRAINTS,
   );
@@ -55,13 +55,33 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
     };
   }, []);
 
+  // Question text snapshots, keyed by questionId. Previously-stored
+  // snapshots (from answers whose question has since been deactivated,
+  // retyped, or deleted) are overlaid with the live bank so each save
+  // persists the text the staff member actually answered.
+  const questionTextsRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const a of observation.workProductAnswers ?? []) {
+      if (a.questionText !== undefined) map[a.questionId] = a.questionText;
+    }
+    for (const q of questions ?? []) {
+      map[q.questionId] = q.text;
+    }
+    questionTextsRef.current = map;
+  }, [observation.workProductAnswers, questions]);
+
   const flushNow = useCallback(() => {
     const next: WorkProductAnswer[] = Object.entries(answersRef.current).map(
-      ([questionId, answer]) => ({
-        questionId,
-        answer,
-        updatedAt: new Date(),
-      }),
+      ([questionId, answer]) => {
+        const questionText = questionTextsRef.current[questionId];
+        return {
+          questionId,
+          answer,
+          updatedAt: new Date(),
+          ...(questionText !== undefined ? { questionText } : {}),
+        };
+      },
     );
     setDoc(
       doc(db, COLLECTIONS.observations, observation.id),
@@ -126,7 +146,14 @@ export function WorkProductAnswerForm({ observation }: WorkProductAnswerFormProp
 
       {/* Questions */}
       <div className="space-y-5 px-5 py-4">
-        {sorted.length === 0 ? (
+        {questionsError ? (
+          <div
+            role="alert"
+            className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+          >
+            Failed to load questions: {questionsError.message}
+          </div>
+        ) : sorted.length === 0 ? (
           <p className="text-muted-foreground text-sm">No questions configured yet.</p>
         ) : (
           sorted.map((q, idx) => {

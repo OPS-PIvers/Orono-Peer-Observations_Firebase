@@ -10,7 +10,31 @@ vi.mock('@/lib/firebase', () => ({
   functionsHttpUrl: vi.fn(),
 }));
 
-import { formatRelative, observationsCapNotice } from './ObservationsListPage';
+import {
+  formatRelative,
+  hasMoreObservations,
+  nextObservationsPageSize,
+  observationsCapNotice,
+} from './ObservationsListPage';
+
+describe('hasMoreObservations', () => {
+  it('is false while the loaded count is below the query window', () => {
+    expect(hasMoreObservations(0, 200)).toBe(false);
+    expect(hasMoreObservations(199, 200)).toBe(false);
+  });
+
+  it('is true once the loaded count fills the query window', () => {
+    expect(hasMoreObservations(200, 200)).toBe(true);
+    expect(hasMoreObservations(400, 400)).toBe(true);
+  });
+});
+
+describe('nextObservationsPageSize', () => {
+  it('widens the window by one page step per call', () => {
+    expect(nextObservationsPageSize(200, 200)).toBe(400);
+    expect(nextObservationsPageSize(400, 200)).toBe(600);
+  });
+});
 
 describe('observationsCapNotice', () => {
   it('returns null below the cap', () => {
@@ -22,6 +46,18 @@ describe('observationsCapNotice', () => {
     const notice = observationsCapNotice(200, 200);
     expect(notice).toContain('200');
     expect(notice).toMatch(/most recently modified/i);
+  });
+
+  it('is honest that search only covers the loaded window and points at load more', () => {
+    const notice = observationsCapNotice(200, 200);
+    expect(notice).toMatch(/search only filters these loaded results/i);
+    expect(notice).toMatch(/load more/i);
+    expect(notice).not.toMatch(/search to reach older/i);
+  });
+
+  it('reflects a widened window after load-more clicks', () => {
+    expect(observationsCapNotice(400, 400)).toContain('400');
+    expect(observationsCapNotice(399, 400)).toBeNull();
   });
 });
 

@@ -63,7 +63,12 @@ export const RubricRow = memo(function RubricRow({
 }: RubricRowProps) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
-  const readOnly = mode.kind !== 'edit' || mode.readOnly;
+  // Assignment matters in both modes: view mode badges assigned rows;
+  // edit mode renders unassigned rows (visible only in Full Rubric view)
+  // reference-only, so a score can't land on a component the finalized
+  // PDF would silently drop.
+  const isAssigned = mode.assignedComponentIds.has(component.id);
+  const readOnly = mode.kind !== 'edit' || mode.readOnly || !isAssigned;
   const isEdit = mode.kind === 'edit';
 
   const evidenceFiles: DriveFileRef[] =
@@ -108,28 +113,26 @@ export const RubricRow = memo(function RubricRow({
     }
   }
 
-  const isAssigned = mode.kind === 'view' ? mode.assignedComponentIds.has(component.id) : true;
-
   function handleSelectProficiency(level: ProficiencyLevel) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     const next = entry.proficiency === level ? null : level;
     mode.onProficiency(component.id, next);
   }
 
   function handleToggleLookFor(lookForId: string) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     mode.onToggleLookFor(component.id, lookForId);
   }
 
   function handleNotesChange(doc: TiptapDoc) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     mode.onNotesChange(component.id, doc);
   }
 
   const panelId = `panel-${storageScope}-${component.id}`;
   const showLookForsChip = component.lookFors.length > 0;
-  const showNotesChip = isEdit;
-  const showEvidenceChip = isEdit;
+  const showNotesChip = isEdit && isAssigned;
+  const showEvidenceChip = isEdit && isAssigned;
 
   const chipStrip = (
     <div className="flex flex-nowrap items-center gap-1">
@@ -239,6 +242,10 @@ export const RubricRow = memo(function RubricRow({
               </span>
             )}
 
+            {isEdit && !isAssigned && (
+              <span className="text-[10px] text-white/60 italic">Not assigned for this cycle</span>
+            )}
+
             {chipStrip}
           </div>
         </div>
@@ -247,7 +254,7 @@ export const RubricRow = memo(function RubricRow({
         {PROFICIENCY_LEVELS.map((level) => {
           const text = component.proficiencyLevels[level];
           const selected = entry.proficiency === level;
-          const interactive = mode.kind === 'edit' && !mode.readOnly;
+          const interactive = mode.kind === 'edit' && !mode.readOnly && isAssigned;
           return (
             <DescriptorCell
               key={level}
@@ -825,17 +832,20 @@ export function MobileComponentBody({
 }) {
   const entry = mode.kind === 'edit' ? (mode.entries[component.id] ?? EMPTY_ENTRY) : EMPTY_ENTRY;
   const notesDoc = mode.kind === 'edit' ? mode.notes[component.id] : undefined;
-  const readOnly = mode.kind !== 'edit' || mode.readOnly;
+  // Unassigned components (visible only in Full Rubric view) are
+  // reference-only in edit mode — see the matching logic in RubricRow.
+  const isAssigned = mode.assignedComponentIds.has(component.id);
+  const readOnly = mode.kind !== 'edit' || mode.readOnly || !isAssigned;
   const isEdit = mode.kind === 'edit';
   const evidenceFiles: DriveFileRef[] =
     mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
   const notesHasContent = hasTiptapContent(notesDoc);
   const selectedLookForCount = mode.kind === 'edit' ? entry.selectedLookForIds.length : 0;
   const selectedLevel = mode.kind === 'edit' ? entry.proficiency : null;
-  const interactive = mode.kind === 'edit' && !mode.readOnly;
+  const interactive = mode.kind === 'edit' && !mode.readOnly && isAssigned;
   const showLookForsRow = component.lookFors.length > 0;
-  const showNotesRow = isEdit;
-  const showEvidenceRow = isEdit;
+  const showNotesRow = isEdit && isAssigned;
+  const showEvidenceRow = isEdit && isAssigned;
 
   const [section, setSection] = useState<MobileSection>(null);
   const [level, setLevel] = useState<ProficiencyLevel | null>(null);
@@ -848,18 +858,18 @@ export function MobileComponentBody({
   }
 
   function handleSelectProficiency(lvl: ProficiencyLevel) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     const next = entry.proficiency === lvl ? null : lvl;
     mode.onProficiency(component.id, next);
   }
 
   function handleToggleLookFor(lookForId: string) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     mode.onToggleLookFor(component.id, lookForId);
   }
 
   function handleNotesChange(doc: TiptapDoc) {
-    if (mode.kind !== 'edit' || mode.readOnly) return;
+    if (mode.kind !== 'edit' || mode.readOnly || !isAssigned) return;
     mode.onNotesChange(component.id, doc);
   }
 

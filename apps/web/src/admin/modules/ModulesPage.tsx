@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoreVertical, Plus } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -166,8 +166,9 @@ export function ModulesPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setEditing(r)}>Edit details</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void navigate(`/admin/modules/${r.moduleId}`)}>
-                Edit
+                Open builder
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(r)}>
                 Delete
@@ -235,10 +236,8 @@ const emptyForm: ModuleFormState = {
   autoEnable: null,
 };
 
-function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps) {
-  const { user } = useAuth();
-
-  const initial: ModuleFormState = existing
+function formStateFor(existing: ModuleDialogProps['existing']): ModuleFormState {
+  return existing
     ? {
         displayName: existing.displayName,
         moduleId: existing.moduleId,
@@ -248,24 +247,26 @@ function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps)
         autoEnable: existing.autoEnable ?? null,
       }
     : emptyForm;
+}
 
-  const [form, setForm] = useState<ModuleFormState>(initial);
+function ModuleDialog({ open, onOpenChange, mode, existing }: ModuleDialogProps) {
+  const { user } = useAuth();
+
+  const [form, setForm] = useState<ModuleFormState>(() => formStateFor(existing));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  if (open && form.moduleId !== (existing?.moduleId ?? '') && existing) {
-    setForm({
-      displayName: existing.displayName,
-      moduleId: existing.moduleId,
-      description: existing.description,
-      color: existing.color,
-      isActive: existing.isActive,
-      autoEnable: existing.autoEnable ?? null,
-    });
+  // Re-sync the form whenever the dialog opens (or the target row changes
+  // while open). A render-time `moduleId !== existing.moduleId` check is not
+  // enough: reopening the SAME row after a cancel or failed save would keep
+  // the stale edits from last time.
+  useEffect(() => {
+    if (!open) return;
+    setForm(formStateFor(existing));
     setError(null);
     setConfirmingDelete(false);
-  }
+  }, [open, existing]);
 
   function autoSlug(name: string) {
     if (mode === 'create') {

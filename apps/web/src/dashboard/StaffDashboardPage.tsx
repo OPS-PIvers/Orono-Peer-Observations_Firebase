@@ -10,6 +10,7 @@ import {
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
+  schoolYearStart,
   staffMatchesAutoEnable,
   type AppSettings,
   type DashboardConfig,
@@ -21,6 +22,7 @@ import {
   type ObservationWindow,
   type Role,
   type Staff,
+  type WorkProductQuestion,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -36,6 +38,10 @@ import {
 } from './deriveCheckpoints';
 import { deriveModuleTasks } from './deriveModuleTasks';
 import { fetchModuleMaterials } from './moduleMaterials';
+
+// Mirrors the staff answer forms (WorkProductAnswerForm / InstructionalRoundAnswerForm),
+// which only show active questions — the progress denominator must match.
+const ACTIVE_QUESTION_CONSTRAINTS = [where('isActive', '==', true)];
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -54,9 +60,7 @@ function yearTierLabelFor(year: number): string {
 }
 
 function currentSchoolYearLabel(now: Date = new Date()): string {
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 7 ? year : year - 1;
+  const startYear = schoolYearStart(now).getFullYear();
   return `${String(startYear)} — ${String(startYear + 1)}`;
 }
 
@@ -104,22 +108,27 @@ export function StaffDashboardPage() {
     queryFn: () => fetchModuleMaterials(assignedModuleIds),
   });
 
+  // Scope finalized observations to the current school-year cycle (Aug 1
+  // boundary, matching the hero's "2025 — 2026" label) — a prior year's
+  // finalized observation must not mark this year's checkpoints done.
+  const cycleStart = useMemo(() => schoolYearStart(), []);
   const finalizedConstraints = useMemo(
     () =>
       emailLower
         ? [
             where('observedEmail', '==', emailLower),
             where('status', '==', OBSERVATION_STATUS.finalized),
+            where('finalizedAt', '>=', cycleStart),
             orderBy('finalizedAt', 'desc'),
             limit(10),
           ]
         : [],
-    [emailLower],
+    [emailLower, cycleStart],
   );
   const { data: finalizedObs } = useFirestoreCollection<Observation>(
     emailLower ? COLLECTIONS.observations : '',
     finalizedConstraints,
-    [emailLower],
+    [emailLower, cycleStart.getTime()],
   );
 
   const windowConstraints = useMemo(
@@ -162,7 +171,24 @@ export function StaffDashboardPage() {
     hasWorkProduct,
     hasInstructionalRound,
   } = useActiveObservationTypes();
-  const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
+  const { data: activeQuestions } = useFirestoreCollection<WorkProductQuestion>(
+    COLLECTIONS.workProductQuestions,
+    ACTIVE_QUESTION_CONSTRAINTS,
+  );
+
+  // Partition the active question bank by type so each step's "X of N answered"
+  // denominator matches the question set the staff member actually sees in the
+  // corresponding form. Firestore reads bypass Zod defaults, so legacy docs
+  // missing `type` count as work-product (the schema default).
+  const questionCounts = useMemo(() => {
+    let workProduct = 0;
+    let instructionalRound = 0;
+    for (const q of activeQuestions ?? []) {
+      if (q.type === 'instructional-round') instructionalRound += 1;
+      else workProduct += 1;
+    }
+    return { workProduct, instructionalRound };
+  }, [activeQuestions]);
 
   const finalizedStandard = useMemo(
     () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
@@ -178,8 +204,8 @@ export function StaffDashboardPage() {
       instructionalRoundDraft: irDraft,
       finalizedWorkProduct: null,
       finalizedInstructionalRound: null,
-      workProductQuestionsCount: wpQuestions.data?.length ?? 0,
-      instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
+      workProductQuestionsCount: questionCounts.workProduct,
+      instructionalRoundQuestionsCount: questionCounts.instructionalRound,
       appSettings: appSettings ?? null,
       openBooking,
       hasBookedSlot,
@@ -193,7 +219,7 @@ export function StaffDashboardPage() {
     standardDraft,
     wpDraft,
     irDraft,
-    wpQuestions.data,
+    questionCounts,
     appSettings,
     openBooking,
     hasBookedSlot,

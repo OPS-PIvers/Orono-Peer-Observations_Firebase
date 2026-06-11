@@ -30,7 +30,7 @@ type StatusFilter = ObservationStatus | 'all';
 
 // Cap the query so the page never fetches and renders an unbounded result
 // set. The vast majority of use is recent work; older records are reachable
-// by tightening the status filter or searching.
+// via "Load more", which widens the live query window one page at a time.
 const OBSERVATIONS_PAGE_LIMIT = 200;
 
 /**
@@ -61,13 +61,18 @@ export function ObservationsListPage() {
   const [search, setSearch] = useState('');
   const [showAllPEs, setShowAllPEs] = useState(false);
 
+  // "Load more" widens the live query window one page at a time. The window
+  // is keyed to the current filter selection (derived during render, no
+  // effect) so switching filters snaps back to a single page instead of
+  // carrying an inflated limit across unrelated views.
+  const filterKey = `${statusFilter}|${String(showAllPEs)}`;
+  const [pageWindow, setPageWindow] = useState({ filterKey, size: OBSERVATIONS_PAGE_LIMIT });
+  const pageSize = pageWindow.filterKey === filterKey ? pageWindow.size : OBSERVATIONS_PAGE_LIMIT;
+
   // Constraints stay stable per filter selection. Admins default to "all
   // PEs"; non-admin PEs default to "just mine" with a toggle to widen.
   const constraints = useMemo<QueryConstraint[]>(() => {
-    const cs: QueryConstraint[] = [
-      orderBy('lastModifiedAt', 'desc'),
-      limit(OBSERVATIONS_PAGE_LIMIT),
-    ];
+    const cs: QueryConstraint[] = [orderBy('lastModifiedAt', 'desc'), limit(pageSize)];
     if (statusFilter !== 'all') {
       cs.unshift(where('status', '==', statusFilter));
     }
@@ -75,7 +80,7 @@ export function ObservationsListPage() {
       cs.unshift(where('observerEmail', '==', user.email.toLowerCase()));
     }
     return cs;
-  }, [statusFilter, showAllPEs, isAdmin, user?.email]);
+  }, [statusFilter, showAllPEs, isAdmin, user?.email, pageSize]);
 
   const {
     data: observations,
@@ -86,6 +91,7 @@ export function ObservationsListPage() {
     showAllPEs,
     isAdmin,
     user?.email?.toLowerCase() ?? '',
+    pageSize,
   ]);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
@@ -110,7 +116,7 @@ export function ObservationsListPage() {
     [filtered],
   );
 
-  const capNotice = observationsCapNotice(observations?.length ?? 0, OBSERVATIONS_PAGE_LIMIT);
+  const capNotice = observationsCapNotice(observations?.length ?? 0, pageSize);
 
   return (
     <PageHeader
@@ -160,12 +166,6 @@ export function ObservationsListPage() {
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load observations: {error.message}
-        </div>
-      ) : null}
-
-      {capNotice ? (
-        <div className="text-muted-foreground bg-muted/40 mb-3 rounded-md px-3 py-2 text-xs">
-          {capNotice}
         </div>
       ) : null}
 
@@ -248,6 +248,24 @@ export function ObservationsListPage() {
           </TableBody>
         </Table>
       </div>
+
+      {capNotice ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-muted-foreground text-xs">{capNotice}</p>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setPageWindow({
+                filterKey,
+                size: nextObservationsPageSize(pageSize, OBSERVATIONS_PAGE_LIMIT),
+              })
+            }
+            disabled={loading}
+          >
+            {loading ? 'Loading…' : `Load ${String(OBSERVATIONS_PAGE_LIMIT)} more`}
+          </Button>
+        </div>
+      ) : null}
     </PageHeader>
   );
 }
@@ -268,12 +286,27 @@ function StatusBadge({ status }: { status: ObservationStatus }) {
 }
 
 /**
- * When the loaded result set has hit the page cap, returns a notice telling
- * the user older records exist beyond the window; otherwise `null`.
+ * True when the loaded snapshot filled the requested query window, meaning
+ * observations older than the window likely exist on the server.
  */
-export function observationsCapNotice(loadedCount: number, pageLimit: number): string | null {
-  if (loadedCount < pageLimit) return null;
-  return `Showing the ${String(pageLimit)} most recently modified observations. Narrow the status filter or search to reach older ones.`;
+export function hasMoreObservations(loadedCount: number, pageSize: number): boolean {
+  return loadedCount >= pageSize;
+}
+
+/** Query window size after a "Load more" click: one more page. */
+export function nextObservationsPageSize(current: number, step: number): number {
+  return current + step;
+}
+
+/**
+ * When the loaded result set has filled the query window, returns a notice
+ * that is honest about what search covers: search only filters the loaded
+ * window, and "Load more" is how older records become reachable. Returns
+ * `null` while everything matching the filters is already loaded.
+ */
+export function observationsCapNotice(loadedCount: number, pageSize: number): string | null {
+  if (!hasMoreObservations(loadedCount, pageSize)) return null;
+  return `Showing the ${String(pageSize)} most recently modified observations. Search only filters these loaded results — load more to include older ones.`;
 }
 
 export function formatRelative(value: Observation['lastModifiedAt']): string {

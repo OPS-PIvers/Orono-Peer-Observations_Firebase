@@ -19,6 +19,7 @@ export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
+export { sweepStaleTranscriptionJobs } from './transcription/sweepStaleTranscriptionJobs.js';
 export { backfillScriptTagColors } from './observations/backfillScriptTagColors.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { geminiTagScript } from './observations/geminiTagScript.js';
@@ -29,6 +30,7 @@ export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
+export { backfillObservationIds } from './scripts/backfillObservationIds.js';
 export { createObservationWindow } from './scheduling/createObservationWindow.js';
 export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js';
 export { expireObservationWindows } from './scheduling/expireObservationWindows.js';

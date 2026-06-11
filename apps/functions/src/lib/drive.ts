@@ -135,9 +135,64 @@ export async function shareWithUser(args: {
   }
 }
 
+/**
+ * Grant the observation's observer Reader access on its Drive folder so the
+ * observer-facing links the app renders (Finalized banner "Open PDF" /
+ * "Open Drive folder", StaffPersonPage "View PDF", evidence chips) actually
+ * open. The district parent folder is shared only with the service account
+ * and admins — Peer Evaluators are not admins, so without this per-folder
+ * grant every observer link lands on Drive's request-access page.
+ *
+ * Idempotent ({@link shareWithUser} dedupes existing grants) and deliberately
+ * best-effort: a failed grant is logged, never thrown, so a Drive permissions
+ * hiccup (or a suspended observer account when an admin finalizes on their
+ * behalf) can't fail an evidence/audio upload or brick finalization. Every
+ * call site (evidence upload, audio upload, finalize) re-attempts the grant,
+ * so a missed grant heals on the next Drive interaction.
+ */
+export async function shareObservationFolderWithObserver(args: {
+  folderId: string;
+  observerEmail: string;
+}): Promise<void> {
+  try {
+    await shareWithUser({
+      fileId: args.folderId,
+      email: args.observerEmail,
+      role: 'reader',
+      sendNotificationEmail: false,
+    });
+  } catch (err) {
+    logger.warn('shareObservationFolderWithObserver: share failed (non-fatal)', {
+      folderId: args.folderId,
+      observerEmail: args.observerEmail,
+      err,
+    });
+  }
+}
+
 export interface DriveLink {
   webViewLink: string;
   webContentLink: string | null;
+}
+
+/**
+ * Guard for {@link deleteDriveFolder}: cleanup may only remove a folder
+ * that actually lives inside the expected observations parent folder.
+ * Refuses the parent folder itself and any folder whose parents don't
+ * include it — `driveFolderId` is server-managed, but if a spoofed value
+ * ever reached cleanup (e.g. pointing at the district-wide parent, or at
+ * another observation's tree) a permanent recursive delete would be
+ * catastrophic. Exported for unit tests.
+ */
+export function canDeleteObservationFolder(args: {
+  folderId: string;
+  parents: readonly string[];
+  expectedParentFolderId: string;
+}): boolean {
+  return (
+    args.folderId !== args.expectedParentFolderId &&
+    args.parents.includes(args.expectedParentFolderId)
+  );
 }
 
 /**
@@ -146,10 +201,36 @@ export interface DriveLink {
  * deletion is unconditional. Pages through children so folders with
  * more than one page of files are cleared completely. Logs (but does
  * not propagate) per-child failures so the parent delete still runs;
- * a missing parent (404) is treated as success.
+ * a missing folder (404) is treated as success.
+ *
+ * Defense in depth: before deleting anything, verifies the folder is a
+ * direct child of `expectedParentFolderId` (the district observations
+ * parent). A folder living anywhere else is refused and logged, never
+ * deleted.
  */
-export async function deleteDriveFolder(folderId: string): Promise<void> {
+export async function deleteDriveFolder(
+  folderId: string,
+  expectedParentFolderId: string,
+): Promise<void> {
   const drive = getDriveClient();
+
+  let parents: string[];
+  try {
+    const meta = await drive.files.get({ fileId: folderId, fields: 'id, parents' });
+    parents = meta.data.parents ?? [];
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return; // already gone — nothing to clean up
+    throw err;
+  }
+  if (!canDeleteObservationFolder({ folderId, parents, expectedParentFolderId })) {
+    logger.error(
+      'deleteDriveFolder: folder is not under the observations parent; refusing to delete',
+      { folderId, parents, expectedParentFolderId },
+    );
+    return;
+  }
+
   // List immediate children so we can delete them before the folder,
   // ensuring no orphaned files remain accessible from other contexts.
   let pageToken: string | undefined;

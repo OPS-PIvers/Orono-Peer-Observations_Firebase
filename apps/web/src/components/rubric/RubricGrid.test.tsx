@@ -167,6 +167,7 @@ describe('<RubricGrid> edit mode', () => {
   ): RubricGridMode {
     return {
       kind: 'edit',
+      assignedComponentIds: new Set(['1a', '1b', '2a']),
       entries: {},
       notes: {},
       evidenceLinks: {},
@@ -317,5 +318,104 @@ describe('<RubricGrid> edit mode', () => {
     });
     expect(selected).toHaveAttribute('aria-selected', 'true');
     expect(selected.className).toMatch(/bg-ops-blue/);
+  });
+});
+
+describe('<RubricGrid> edit mode — unassigned components (Full Rubric view)', () => {
+  function editMode(
+    overrides: Partial<Extract<RubricGridMode, { kind: 'edit' }>> = {},
+  ): RubricGridMode {
+    return {
+      kind: 'edit',
+      assignedComponentIds: new Set(['1a']),
+      entries: {},
+      notes: {},
+      evidenceLinks: {},
+      observationId: 'test-obs',
+      readOnly: false,
+      onProficiency: vi.fn(),
+      onToggleLookFor: vi.fn(),
+      onNotesChange: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it('renders unassigned descriptor cells non-interactive and ignores clicks', async () => {
+    const onProficiency = vi.fn();
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        mode={editMode({ onProficiency })}
+        storageScope="test-edit-unassigned"
+      />,
+    );
+    // The assigned component (1a) stays clickable…
+    const assignedCell = screen.getByRole('gridcell', {
+      name: /proficient — Proficient 1a description/i,
+    });
+    expect(assignedCell.tagName).toBe('BUTTON');
+    // …while the unassigned ones (1b, 2a) are reference-only.
+    const unassignedCell = screen.getByRole('gridcell', {
+      name: /proficient — Proficient 1b/i,
+    });
+    expect(unassignedCell.tagName).not.toBe('BUTTON');
+    await userEvent.click(unassignedCell);
+    expect(onProficiency).not.toHaveBeenCalled();
+  });
+
+  it('shows the "Not assigned for this cycle" note on unassigned rows only', () => {
+    render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-note" />);
+    // 1b and 2a are unassigned; 1a is assigned.
+    expect(screen.getAllByText('Not assigned for this cycle')).toHaveLength(2);
+    const assignedRow = screen
+      .getByText('Demonstrating Knowledge of Content')
+      .closest('[data-component-row]');
+    if (!(assignedRow instanceof HTMLElement)) throw new Error('expected component row to exist');
+    expect(within(assignedRow).queryByText('Not assigned for this cycle')).not.toBeInTheDocument();
+  });
+
+  it('hides the Notes and Evidence chips on unassigned rows', () => {
+    render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-chips" />);
+    // Only the assigned 1a row keeps its Notes/Evidence chips.
+    expect(screen.getAllByRole('button', { name: /^Notes$/ })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Evidence$/ })).toHaveLength(1);
+  });
+
+  it('disables look-for checkboxes on unassigned rows', async () => {
+    const onToggleLookFor = vi.fn();
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        // 1a (the only component with look-fors) is NOT assigned here.
+        mode={editMode({ assignedComponentIds: new Set(['2a']), onToggleLookFor })}
+        storageScope="test-edit-lf-unassigned"
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Look-fors/ }));
+    const checkbox = screen.getByRole('checkbox', { name: 'Look-for one' });
+    expect(checkbox).toBeDisabled();
+    await userEvent.click(checkbox);
+    expect(onToggleLookFor).not.toHaveBeenCalled();
+  });
+
+  it('still displays a previously persisted score on an unassigned row (read-only)', () => {
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        mode={editMode({
+          entries: {
+            '1b': {
+              proficiency: 'basic',
+              selectedLookForIds: [],
+              scratchNotes: '',
+            } satisfies ObservationComponentEntry,
+          },
+        })}
+        storageScope="test-edit-legacy-score"
+      />,
+    );
+    const cell = screen.getByRole('gridcell', { name: /basic — Basic 1b/i });
+    expect(cell.tagName).not.toBe('BUTTON');
+    expect(cell).toHaveAttribute('aria-selected', 'true');
   });
 });

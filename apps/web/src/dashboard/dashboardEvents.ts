@@ -16,16 +16,22 @@ import {
  * touching the interpreter.
  */
 
+/** Observation as the dashboard hooks deliver it — the Firestore snapshot doc
+ *  id is attached on read. Legacy manually created docs were written without
+ *  the denormalized `observationId` field, so consumers that build CTA links
+ *  fall back to this doc id (the two are identical when both exist). */
+export type DashboardObservation = Observation & { id?: string };
+
 /** Context passed to the interpreter — every observation + scheduling signal
  *  the dashboard already loads. Lives here so the registry and interpreter
  *  share one definition (deriveCheckpoints re-exports it). */
 export interface DeriveContext {
-  finalizedStandard: Observation[];
-  standardDraft: Observation | null;
-  workProductDraft: Observation | null;
-  instructionalRoundDraft: Observation | null;
-  finalizedWorkProduct: Observation | null;
-  finalizedInstructionalRound: Observation | null;
+  finalizedStandard: DashboardObservation[];
+  standardDraft: DashboardObservation | null;
+  workProductDraft: DashboardObservation | null;
+  instructionalRoundDraft: DashboardObservation | null;
+  finalizedWorkProduct: DashboardObservation | null;
+  finalizedInstructionalRound: DashboardObservation | null;
   workProductQuestionsCount: number;
   instructionalRoundQuestionsCount: number;
   appSettings: AppSettings | null;
@@ -50,19 +56,41 @@ export function toDate(value: Date | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/** Pick the observation a step tracks: finalized first, else draft. */
-export function resolveObservation(ctx: DeriveContext, kind: WatchedKind): Observation | null {
+/** Standard-kind resolution: the finalized observation wins UNLESS an active
+ *  draft was created after it was finalized. Staff observed more than once a
+ *  year (e.g. probationary) get a second draft mid-year — the step sequence
+ *  must restart and track that new cycle instead of staying pinned to the
+ *  first finalized observation. */
+function resolveStandard(ctx: DeriveContext): DashboardObservation | null {
+  const finalized = ctx.finalizedStandard[0] ?? null;
+  const draft = ctx.standardDraft;
+  if (!finalized) return draft;
+  if (!draft) return finalized;
+  const draftCreatedAt = toDate(draft.createdAt);
+  const finalizedAt = toDate(finalized.finalizedAt);
+  if (draftCreatedAt && finalizedAt && draftCreatedAt.getTime() > finalizedAt.getTime()) {
+    return draft;
+  }
+  return finalized;
+}
+
+/** Pick the observation a step tracks: finalized first, else draft — except
+ *  for the standard kind, where a draft newer than the finalized observation
+ *  restarts the cycle (see resolveStandard). */
+export function resolveObservation(
+  ctx: DeriveContext,
+  kind: WatchedKind,
+): DashboardObservation | null {
   switch (kind) {
     case 'standard':
-      return ctx.finalizedStandard[0] ?? ctx.standardDraft ?? null;
+      return resolveStandard(ctx);
     case 'workProduct':
       return ctx.finalizedWorkProduct ?? ctx.workProductDraft ?? null;
     case 'instructionalRound':
       return ctx.finalizedInstructionalRound ?? ctx.instructionalRoundDraft ?? null;
     case 'any':
       return (
-        ctx.finalizedStandard[0] ??
-        ctx.standardDraft ??
+        resolveStandard(ctx) ??
         ctx.workProductDraft ??
         ctx.instructionalRoundDraft ??
         ctx.finalizedWorkProduct ??

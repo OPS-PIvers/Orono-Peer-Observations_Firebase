@@ -29,6 +29,10 @@ const SWEEP_BATCH_SIZE = 50;
  * Gemini auto-deletes files after 48 hours regardless, so this is
  * defense-in-depth to keep the project quota tidy.
  *
+ * This sweep only reclaims leaked files — it does NOT touch job status.
+ * Moving abandoned Pending/Running jobs to Failed is owned by the hourly
+ * sweepStaleTranscriptionJobs.
+ *
  * Runs at 04:15 America/Chicago — after pruneAuditLog (03:05).
  */
 export const pruneOrphanGeminiFiles = onSchedule(

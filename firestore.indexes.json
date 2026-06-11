@@ -116,6 +116,15 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "startUTC", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "workProductQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

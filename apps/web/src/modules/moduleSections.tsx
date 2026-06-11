@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
+import { formatDueDate } from '@/dashboard/deriveModuleTasks';
 import { parseTiptapBody } from './moduleBody';
 
 function sectionItems(items: ModuleItem[], sectionId: string, kind: ModuleItem['kind']) {
@@ -116,7 +117,9 @@ export function MaterialsSection({
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{m.title}</span>
                       {done ? <Badge tone="active">Done</Badge> : null}
-                      {!done && m.dueDate ? <Badge tone="warning">Due {m.dueDate}</Badge> : null}
+                      {!done && m.dueDate ? (
+                        <Badge tone="warning">Due {formatDueDate(m.dueDate) || m.dueDate}</Badge>
+                      ) : null}
                     </div>
                     {m.description ? (
                       <p className="text-muted-foreground mt-0.5 text-sm">{m.description}</p>

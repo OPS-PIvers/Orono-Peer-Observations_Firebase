@@ -170,7 +170,7 @@ export function SettingsPage() {
 
         <Field
           label="Outbound email address"
-          help="Notifications send-as this address via the Trigger Email extension."
+          help="All notifications send-as this address. It must be authorized in the Trigger Email extension's SMTP configuration or sends will fail. Leave blank to use observations@orono.k12.mn.us."
         >
           <Input
             type="email"

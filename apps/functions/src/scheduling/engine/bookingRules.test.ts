@@ -9,6 +9,7 @@ import {
   meetsLeadTime,
   preferenceShouldRevert,
   resolveObservedIdentity,
+  unknownAnswerFieldIds,
 } from './bookingRules.js';
 
 const HOUR = 60 * 60 * 1000;
@@ -175,6 +176,37 @@ describe('bookedSlotObservationIds', () => {
   it('skips booked slots that never spawned an observation', () => {
     const slots = [slot({ status: 'booked', observationId: null })];
     expect(bookedSlotObservationIds(slots)).toEqual([]);
+  });
+});
+
+describe('unknownAnswerFieldIds', () => {
+  const answer = (fieldId: string) => ({ fieldId });
+
+  it('accepts answers that all reference window-selected fields', () => {
+    expect(
+      unknownAnswerFieldIds(
+        [answer('grade-level'), answer('subject')],
+        ['grade-level', 'subject', 'period'],
+      ),
+    ).toEqual([]);
+  });
+
+  it('returns the fieldIds missing from the window selection', () => {
+    expect(
+      unknownAnswerFieldIds(
+        [answer('grade-level'), answer('rogue'), answer('also-rogue')],
+        ['grade-level'],
+      ),
+    ).toEqual(['rogue', 'also-rogue']);
+  });
+
+  it('flags every answer when the window selected no fields', () => {
+    expect(unknownAnswerFieldIds([answer('grade-level')], [])).toEqual(['grade-level']);
+  });
+
+  it('accepts an empty answer list regardless of the selection', () => {
+    expect(unknownAnswerFieldIds([], [])).toEqual([]);
+    expect(unknownAnswerFieldIds([], ['grade-level'])).toEqual([]);
   });
 });
 

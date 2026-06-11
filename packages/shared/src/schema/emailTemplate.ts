@@ -20,6 +20,7 @@ export const EMAIL_TRIGGER_TYPES = [
   'scheduling.bookingConfirmation',
   'scheduling.assignmentNotice',
   'scheduling.bookingCancelled',
+  'scheduling.windowCancelled',
   'scheduling.windowExpired',
 ] as const;
 export type EmailTriggerType = (typeof EMAIL_TRIGGER_TYPES)[number];
