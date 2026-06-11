@@ -52,7 +52,7 @@ app.post('/render-observation', async (c) => {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: RENDER_TIMEOUT_MS });
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: RENDER_TIMEOUT_MS });
     const pdf = await page.pdf({
       format: 'Letter',
       printBackground: true,

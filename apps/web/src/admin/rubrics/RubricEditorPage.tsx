@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import {
   COLLECTIONS,
   flattenRubricComponentIds,
+  rubricInput,
+  type Role,
+  type RoleYearMapping,
   type Rubric,
   type RubricComponent,
   type RubricDomain,
 } from '@ops/shared';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 import { RubricGridEditor } from './RubricGridEditor';
 
@@ -71,11 +78,51 @@ function sanitizeDomains(domains: RubricDomain[]): RubricDomain[] {
   }));
 }
 
+/**
+ * Remove domains that have zero components. This allows the form to work
+ * more naturally — admins can add a domain, then add components to it,
+ * without the schema blocking them at save time.
+ */
+function pruneEmptyDomains(domains: RubricDomain[]): RubricDomain[] {
+  return domains.filter((d) => d.components.length > 0);
+}
+
+/**
+ * Map Zod validation errors to human-readable messages that identify
+ * the domain/component and the field that failed.
+ */
+function formatValidationErrors(errors: { path: string; message: string }[]): string[] {
+  return errors.map((err) => {
+    const pathParts = err.path.split(/[[\].]+/).filter(Boolean);
+
+    // Identify the context (which domain/component)
+    if (pathParts[0] === 'domains' && pathParts[1]) {
+      const domainIdx = parseInt(pathParts[1], 10);
+      return `Domain ${domainIdx + 1}: ${err.message}`;
+    }
+    if (
+      pathParts[0] === 'domains' &&
+      pathParts[1] &&
+      pathParts[2] === 'components' &&
+      pathParts[3]
+    ) {
+      const domainIdx = parseInt(pathParts[1], 10);
+      const componentIdx = parseInt(pathParts[3], 10);
+      return `Domain ${domainIdx + 1}, Component ${componentIdx + 1}: ${err.message}`;
+    }
+    return `${pathParts[0] ?? 'Rubric'}: ${err.message}`;
+  });
+}
+
 export function RubricEditorPage() {
   const { rubricId } = useParams<{ rubricId: string }>();
   const navigate = useNavigate();
   const { data, loading, error } = useFirestoreDoc<Rubric>(
     `${COLLECTIONS.rubrics}/${rubricId ?? ''}`,
+  );
+  const { data: allRoles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: allMappings } = useFirestoreCollection<RoleYearMapping>(
+    COLLECTIONS.roleYearMappings,
   );
 
   const [draft, setDraft] = useState<DraftRubric | null>(null);
@@ -91,6 +138,8 @@ export function RubricEditorPage() {
     setDraft(src);
     setDirty(false);
   });
+
+  useUnsavedChangesGuard(dirty);
 
   if (!rubricId) {
     return (
@@ -190,13 +239,70 @@ export function RubricEditorPage() {
 
   function addDomain() {
     if (!draft) return;
-    const nextDomainId = String(draft.domains.length + 1);
+    // Find the lowest digit 1-9 not yet used as a domain ID.
+    const usedIds = new Set(draft.domains.map((d) => d.id));
+    let nextDomainId: string | null = null;
+    for (let i = 1; i <= 9; i++) {
+      const candidate = String(i);
+      if (!usedIds.has(candidate)) {
+        nextDomainId = candidate;
+        break;
+      }
+    }
+    if (!nextDomainId) return; // All 9 domain slots are used
     const newDomain: RubricDomain = {
       id: nextDomainId,
       name: `Domain ${nextDomainId}`,
       components: [],
     };
     update({ ...draft, domains: [...draft.domains, newDomain] });
+  }
+
+  function removeDomain(domainId: string) {
+    if (!draft) return;
+    const next: DraftRubric = {
+      ...draft,
+      domains: draft.domains.filter((d) => d.id !== domainId),
+    };
+    update(next);
+  }
+
+  function reorderDomain(domainId: string, direction: 'up' | 'down') {
+    if (!draft) return;
+    const idx = draft.domains.findIndex((d) => d.id === domainId);
+    if (idx === -1) return;
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= draft.domains.length) return;
+    const next = [...draft.domains];
+    const temp = next[idx];
+    const swap = next[newIdx];
+    if (!temp || !swap) return;
+    next[idx] = swap;
+    next[newIdx] = temp;
+    update({ ...draft, domains: next });
+  }
+
+  function reorderComponent(componentId: string, direction: 'up' | 'down') {
+    if (!draft) return;
+    const domainIdx = draft.domains.findIndex((d) =>
+      d.components.some((c) => c.id === componentId),
+    );
+    if (domainIdx === -1) return;
+    const domain = draft.domains[domainIdx];
+    if (!domain) return;
+    const compIdx = domain.components.findIndex((c) => c.id === componentId);
+    const newCompIdx = direction === 'up' ? compIdx - 1 : compIdx + 1;
+    if (newCompIdx < 0 || newCompIdx >= domain.components.length) return;
+    const nextComponents = [...domain.components];
+    const temp = nextComponents[compIdx];
+    const swap = nextComponents[newCompIdx];
+    if (!temp || !swap) return;
+    nextComponents[compIdx] = swap;
+    nextComponents[newCompIdx] = temp;
+    const nextDomains = draft.domains.map((d, i) =>
+      i === domainIdx ? { ...d, components: nextComponents } : d,
+    );
+    update({ ...draft, domains: nextDomains });
   }
 
   function findComponent(id: string): RubricComponent | null {
@@ -240,9 +346,36 @@ export function RubricEditorPage() {
       );
       return;
     }
+
+    // Validate against the shared schema before saving
+    const sanitized = sanitizeDomains(draft.domains);
+    const payload = {
+      rubricId: draft.rubricId,
+      displayName: draft.displayName,
+      domains: pruneEmptyDomains(sanitized),
+    };
+
+    const validationResult = rubricInput.safeParse(payload);
+    if (!validationResult.success) {
+      const validationErrors = validationResult.error.issues.map((err) => ({
+        path: err.path.map(String).join(''),
+        message: err.message,
+      }));
+      const messages = formatValidationErrors(validationErrors);
+      setSaveError(messages.join('\n'));
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     try {
+      // Detect which component IDs were deleted from the original rubric
+      const originalComponentIds = new Set(flattenRubricComponentIds(data ?? draft));
+      const newComponentIds = new Set(flattenRubricComponentIds(validationResult.data));
+      const deletedIds = new Set(
+        Array.from(originalComponentIds).filter((id) => !newComponentIds.has(id)),
+      );
+
       // Explicit field list — don't write back the `id` injected by
       // useFirestoreDoc, and let createdAt stay untouched via merge.
       await setDoc(
@@ -250,13 +383,59 @@ export function RubricEditorPage() {
         {
           rubricId: draft.rubricId,
           displayName: draft.displayName,
-          domains: sanitizeDomains(draft.domains),
+          domains: validationResult.data.domains,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
+
+      // If components were deleted, prune them from all roleYearMappings
+      // that reference this rubric
+      if (deletedIds.size > 0 && allRoles && allMappings) {
+        const rolesWithThisRubric = allRoles.filter((r) => r.rubricId === draft.rubricId);
+        if (rolesWithThisRubric.length > 0) {
+          let totalPruned = 0;
+          const batchUpdates: { id: string; ids: string[] }[] = [];
+
+          for (const role of rolesWithThisRubric) {
+            for (const mapping of allMappings) {
+              if (mapping.roleId === role.roleId) {
+                const prunedIds = mapping.assignedComponentIds.filter((id) => !deletedIds.has(id));
+                const prunedInThisMapping = mapping.assignedComponentIds.length - prunedIds.length;
+                if (prunedInThisMapping > 0) {
+                  totalPruned += prunedInThisMapping;
+                  batchUpdates.push({ id: mapping.id, ids: prunedIds.sort() });
+                }
+              }
+            }
+          }
+
+          if (totalPruned > 0) {
+            const batch = writeBatch(db);
+            for (const update of batchUpdates) {
+              batch.set(
+                doc(db, `${COLLECTIONS.roleYearMappings}/${update.id}`),
+                {
+                  assignedComponentIds: update.ids,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true },
+              );
+            }
+            await batch.commit();
+          }
+        }
+      }
+
       setSavedAt(new Date());
       setDirty(false);
+      if (deletedIds.size > 0) {
+        setSaveError(
+          `Saved rubric. Pruned ${String(deletedIds.size)} component${deletedIds.size === 1 ? '' : 's'} from role/year mappings.`,
+        );
+        // Clear the message after a brief delay so it doesn't stay permanently
+        setTimeout(() => setSaveError(null), 5000);
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -269,7 +448,20 @@ export function RubricEditorPage() {
   return (
     <PageHeader
       variant="dark"
-      title={draft.displayName}
+      title={
+        <div className="flex min-w-0 flex-col gap-1">
+          <Label htmlFor="rubric-display-name" className="sr-only">
+            Rubric display name
+          </Label>
+          <Input
+            id="rubric-display-name"
+            value={draft.displayName}
+            onChange={(e) => update({ ...draft, displayName: e.target.value })}
+            placeholder="Rubric display name"
+            className="font-heading h-9 border-white/20 bg-white/10 text-xl font-bold text-white placeholder:text-white/50 focus-visible:border-white/60 focus-visible:ring-white/40"
+          />
+        </div>
+      }
       subtitle={`${String(draft.domains.length)} domain${draft.domains.length === 1 ? '' : 's'}, ${String(componentCount)} component${componentCount === 1 ? '' : 's'}${dirty ? ' • unsaved changes' : ''}`}
       actions={
         <div className="flex items-center gap-2">
@@ -304,10 +496,13 @@ export function RubricEditorPage() {
       <RubricGridEditor
         draft={draft}
         onUpdateDomain={updateDomain}
+        onRemoveDomain={removeDomain}
+        onReorderDomain={reorderDomain}
         onAddDomain={addDomain}
         onAddComponent={addComponent}
         onUpdateComponent={updateComponent}
         onRemoveComponent={removeComponent}
+        onReorderComponent={reorderComponent}
         onAddLookFor={addLookFor}
         onUpdateLookFor={updateLookFor}
         onRemoveLookFor={removeLookFor}

@@ -116,15 +116,25 @@ export function DashboardSettingsPage() {
           )}
         >
           {tab === 'layout' ? (
-            <SectionTilesEditor value={draft.draft.sections} onChange={draft.setSections} />
+            <SectionTilesEditor
+              value={draft.draft.sections}
+              onChange={draft.setSections}
+              cycleCloseDate={draft.draft.cycleCloseDate}
+              onCycleCloseDateChange={draft.setCycleCloseDate}
+            />
           ) : null}
           {tab === 'steps' ? (
-            <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} />
+            <CycleStepsEditor
+              value={draft.draft.steps}
+              onChange={draft.setSteps}
+              errors={draft.stepErrors}
+            />
           ) : null}
           {tab === 'materials' ? (
             <QuickMaterialsEditor
               value={draft.draft.quickMaterials}
               onChange={draft.setQuickMaterials}
+              errors={draft.quickMaterialErrors}
             />
           ) : null}
         </div>
@@ -138,6 +148,7 @@ export function DashboardSettingsPage() {
             sections={draft.draft.sections}
             steps={draft.draft.steps}
             quickMaterials={draft.draft.quickMaterials}
+            cycleCloseDate={draft.draft.cycleCloseDate}
           />
         </div>
       </div>

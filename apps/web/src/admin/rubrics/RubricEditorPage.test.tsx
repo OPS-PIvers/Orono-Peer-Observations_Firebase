@@ -13,21 +13,47 @@ interface SavedRubricPayload {
 
 // Hoisted so the vi.mock factories below (which Vitest lifts to the top of
 // the file) can reference them without hitting the TDZ.
-const { setDocMock, docHolder } = vi.hoisted(() => ({
-  setDocMock: vi.fn<
-    (
-      ref: { path: string },
-      payload: SavedRubricPayload,
-      options: { merge: boolean },
-    ) => Promise<void>
-  >(() => Promise.resolve()),
-  docHolder: { current: null as (Rubric & { id: string }) | null },
-}));
+const { setDocMock, writeBatchMock, docHolder, rolesHolder, mappingsHolder } = vi.hoisted(() => {
+  interface Role {
+    id: string;
+    rubricId: string;
+    displayName: string;
+    roleId: string;
+  }
+
+  interface Mapping {
+    id: string;
+    roleId: string;
+    year: number;
+    assignedComponentIds: string[];
+  }
+
+  const createMockBatch = () => ({
+    set: vi.fn(),
+    commit: vi.fn(() => Promise.resolve()),
+  });
+  const writeBatchMock = vi.fn<() => ReturnType<typeof createMockBatch>>(createMockBatch);
+
+  return {
+    setDocMock: vi.fn<
+      (
+        ref: { path: string },
+        payload: SavedRubricPayload,
+        options: { merge: boolean },
+      ) => Promise<void>
+    >(() => Promise.resolve()),
+    writeBatchMock,
+    docHolder: { current: null as (Rubric & { id: string }) | null },
+    rolesHolder: { current: null as Role[] | null },
+    mappingsHolder: { current: null as Mapping[] | null },
+  };
+});
 
 vi.mock('firebase/firestore', () => ({
   setDoc: setDocMock,
   doc: (_db: unknown, path: string) => ({ path }),
   serverTimestamp: () => 'server-timestamp',
+  writeBatch: writeBatchMock,
 }));
 
 // Mock all of '@/lib/firebase' so RubricRow's module-level httpsCallable
@@ -43,6 +69,41 @@ vi.mock('@/lib/firebase', () => ({
 
 vi.mock('@/hooks/useFirestoreDoc', () => ({
   useFirestoreDoc: () => ({ data: docHolder.current, loading: false, error: null }),
+}));
+
+vi.mock('@/hooks/useFirestoreCollection', () => ({
+  useFirestoreCollection: (path: string) => {
+    if (path === 'roles') {
+      return { data: rolesHolder.current, loading: false, error: null };
+    }
+    if (path === 'roleYearMappings') {
+      return { data: mappingsHolder.current, loading: false, error: null };
+    }
+    return { data: null, loading: false, error: null };
+  },
+}));
+
+// useHydratedDraft calls the callback once per key change, not on every
+// render. Replicate that behaviour with a ref so the draft is populated
+// without an infinite-render loop.
+vi.mock('@/hooks/useHydratedDraft', async () => {
+  const { useRef, useEffect } = await import('react');
+  return {
+    useHydratedDraft: (key: string | null, data: unknown, cb: (d: unknown) => void) => {
+      const hydratedKey = useRef<string | null>(null);
+      useEffect(() => {
+        if (key !== null && key !== hydratedKey.current && data) {
+          hydratedKey.current = key;
+          cb(data);
+        }
+      }, [key, data, cb]);
+    },
+  };
+});
+
+// useUnsavedChangesGuard registers a beforeunload guard — no-op in tests.
+vi.mock('@/hooks/useUnsavedChangesGuard', () => ({
+  useUnsavedChangesGuard: () => undefined,
 }));
 
 import { RubricEditorPage } from './RubricEditorPage';
@@ -240,5 +301,286 @@ describe('RubricEditorPage component IDs', () => {
 
     expect(await screen.findByText(/duplicate component ID \(1a\)/)).toBeInTheDocument();
     expect(setDocMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('RubricEditorPage schema validation', () => {
+  it('refuses to save a rubric with an empty component title', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Clear the title of component 1a
+    const titleInput = screen.getByDisplayValue('Knowledge of content');
+    await user.tripleClick(titleInput);
+    await user.keyboard('[Backspace]');
+
+    await user.click(screen.getByRole('button', { name: 'Save rubric' }));
+
+    expect(await screen.findByText(/Component.*title/i)).toBeInTheDocument();
+    expect(setDocMock).not.toHaveBeenCalled();
+  });
+
+  it('removes empty domains at save time', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Add a new domain (which starts with zero components)
+    await user.click(screen.getByRole('button', { name: 'Add domain' }));
+
+    // Make a dirty change so we can save
+    const titleInput = screen.getByDisplayValue('Knowledge of content');
+    await user.type(titleInput, 'x');
+
+    // Save should succeed after pruning the empty domain
+    const payload = await saveRubric(user);
+    expect(payload.domains.length).toBe(1); // Only domain 1 remains (empty domain was pruned)
+  });
+
+  it('displays validation errors in the save error banner', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Create an error
+    const titleInput = screen.getByDisplayValue('Knowledge of content');
+    await user.tripleClick(titleInput);
+    await user.keyboard('[Backspace]');
+
+    await user.click(screen.getByRole('button', { name: 'Save rubric' }));
+
+    // The error should appear in the existing saveError banner
+    const errorBanner = await screen.findByText(/Component.*title/i);
+    expect(errorBanner).toBeInTheDocument();
+    // Verify setDoc was not called, meaning the validation blocked the save
+    expect(setDocMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Multi-domain fixture ─────────────────────────────────────────────────────
+
+function makeTwoDomainRubricDoc(): Rubric & { id: string } {
+  return {
+    id: 'teacher',
+    rubricId: 'teacher',
+    displayName: 'Teacher Rubric',
+    domains: [
+      {
+        id: '1',
+        name: 'Planning',
+        components: [
+          {
+            id: '1a',
+            title: 'Knowledge of content',
+            proficiencyLevels: { developing: '', basic: '', proficient: '', distinguished: '' },
+            lookFors: [],
+          },
+          {
+            id: '1b',
+            title: 'Knowing students',
+            proficiencyLevels: { developing: '', basic: '', proficient: '', distinguished: '' },
+            lookFors: [],
+          },
+        ],
+      },
+      {
+        id: '2',
+        name: 'Classroom Environment',
+        components: [
+          {
+            id: '2a',
+            title: 'Classroom culture',
+            proficiencyLevels: { developing: '', basic: '', proficient: '', distinguished: '' },
+            lookFors: [],
+          },
+        ],
+      },
+    ],
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  };
+}
+
+describe('RubricEditorPage displayName editing', () => {
+  it('saves with the updated display name after editing the title input', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // The display-name input is pre-filled with 'Teacher Rubric'
+    const nameInput = screen.getByDisplayValue('Teacher Rubric');
+    // Select-all and type replacement text
+    await user.tripleClick(nameInput);
+    await user.keyboard('[Backspace]');
+    await user.type(nameInput, 'Updated Name');
+
+    const payload = await saveRubric(user);
+    expect(payload.displayName).toBe('Updated Name');
+  });
+});
+
+describe('RubricEditorPage domain deletion', () => {
+  beforeEach(() => {
+    docHolder.current = makeTwoDomainRubricDoc();
+  });
+
+  it('deletes a domain after clicking Yes in the confirmation strip', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Click delete on domain 2
+    await user.click(screen.getByRole('button', { name: 'Delete domain 2' }));
+    // Confirmation strip appears — click yes
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+
+    // Domain 2 header should be gone
+    expect(screen.queryByDisplayValue('Classroom Environment')).not.toBeInTheDocument();
+
+    // Save to confirm the write excludes domain 2
+    const payload = await saveRubric(user);
+    expect(payload.domains.map((d) => d.id)).toEqual(['1']);
+  });
+
+  it('cancels domain deletion when Cancel is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Delete domain 2' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // Domain 2 should still be visible
+    expect(screen.getByDisplayValue('Classroom Environment')).toBeInTheDocument();
+  });
+});
+
+describe('RubricEditorPage reordering', () => {
+  beforeEach(() => {
+    docHolder.current = makeTwoDomainRubricDoc();
+  });
+
+  it('moves domain 2 above domain 1 using the move-up button, persisting order on save', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Move domain 2 up' }));
+
+    const payload = await saveRubric(user);
+    // After moving domain 2 up, the save order should be [2, 1]
+    expect(payload.domains.map((d) => d.id)).toEqual(['2', '1']);
+  });
+
+  it('moves component 1a down within domain 1, persisting order on save', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Move component 1a down' }));
+
+    const payload = await saveRubric(user);
+    const domain1 = payload.domains.find((d) => d.id === '1');
+    expect(domain1?.components.map((c) => c.id)).toEqual(['1b', '1a']);
+  });
+
+  it('move-up is disabled for the first domain', () => {
+    renderPage();
+
+    const moveUpDomain1 = screen.getByRole('button', { name: 'Move domain 1 up' });
+    expect(moveUpDomain1).toBeDisabled();
+  });
+
+  it('move-down is disabled for the last component in a domain', () => {
+    renderPage();
+
+    const moveDownLast = screen.getByRole('button', { name: 'Move component 1b down' });
+    expect(moveDownLast).toBeDisabled();
+  });
+});
+
+describe('RubricEditorPage roleYearMappings pruning', () => {
+  beforeEach(() => {
+    docHolder.current = makeTwoDomainRubricDoc();
+    // Set up roles and mappings with component assignments
+    rolesHolder.current = [
+      { id: 'teacher-id', rubricId: 'teacher', displayName: 'Teacher', roleId: 'teacher' },
+    ];
+    mappingsHolder.current = [
+      {
+        id: 'teacher-1',
+        roleId: 'teacher',
+        year: 1,
+        assignedComponentIds: ['1a', '1b', '2a'],
+      },
+      {
+        id: 'teacher-2',
+        roleId: 'teacher',
+        year: 2,
+        assignedComponentIds: ['1a', '2a'],
+      },
+    ];
+    writeBatchMock.mockClear();
+  });
+
+  it('prunes deleted component IDs from roleYearMappings when saving a rubric with deleted components', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Delete component 2a
+    await user.click(screen.getByRole('button', { name: 'Delete component 2a' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+
+    const payload = await saveRubric(user);
+
+    // Verify the rubric save succeeded and domain 2 was pruned (it had no components after deletion)
+    expect(payload.domains.map((d) => d.id)).toEqual(['1']);
+
+    // Verify writeBatch was called to update mappings
+    expect(writeBatchMock).toHaveBeenCalled();
+  });
+
+  it('does not call writeBatch when no components are deleted', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Just edit a title without deleting
+    await user.type(screen.getByDisplayValue('Knowledge of content'), '!');
+
+    await saveRubric(user);
+
+    // writeBatch should not have been called since no deletions occurred
+    expect(writeBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not call writeBatch when there are no roles using this rubric', async () => {
+    rolesHolder.current = []; // No roles use this rubric
+    const user = userEvent.setup();
+    renderPage();
+
+    // Delete component 2a
+    await user.click(screen.getByRole('button', { name: 'Delete component 2a' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+
+    await saveRubric(user);
+
+    // writeBatch should not be called if there are no roles to update
+    expect(writeBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not call writeBatch when all mappings have no deleted component IDs', async () => {
+    // Set up mappings that don't contain component 2a
+    mappingsHolder.current = [
+      {
+        id: 'teacher-1',
+        roleId: 'teacher',
+        year: 1,
+        assignedComponentIds: ['1a', '1b'],
+      },
+    ];
+    const user = userEvent.setup();
+    renderPage();
+
+    // Delete component 2a
+    await user.click(screen.getByRole('button', { name: 'Delete component 2a' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+
+    await saveRubric(user);
+
+    // writeBatch should not be called since no mappings actually contain 2a
+    expect(writeBatchMock).not.toHaveBeenCalled();
   });
 });

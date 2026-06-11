@@ -2,6 +2,15 @@ import { useEffect, type ReactNode } from 'react';
 import { OPS_BRAND } from '@ops/shared';
 import { useBranding } from '@/hooks/useBranding';
 
+const BRANDING_CACHE_KEY = 'ops-branding-cache';
+
+export interface BrandingCache {
+  appName: string;
+  primaryColor: string;
+  logoUrl: string | null;
+  iconUrl: string | null;
+}
+
 /**
  * CSS custom properties this provider manages on `<html>`. The Tailwind
  * `@theme` block in index.css maps the ops-blue brand tokens onto these with
@@ -56,19 +65,64 @@ export function derivePrimaryShades(primary: string): PrimaryShades {
 }
 
 /**
- * Applies the admin-configured branding primary color (Admin → Branding,
- * stored on `/appSettings/global`) to the signed-in app chrome by writing
- * CSS custom properties on `document.documentElement`. index.css maps the
- * ops-blue Tailwind tokens — and through them the shadcn `primary`, `ring`,
- * and `accent` semantic tokens — onto these variables, so the header,
- * primary buttons, and accents re-theme without per-component wiring.
+ * Persists branding to localStorage so pre-auth screens (like SignInScreen)
+ * can access it. Reads from localStorage using a fallback chain:
+ * cached value → packaged default.
+ */
+function isBrandingCache(value: unknown): value is BrandingCache {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v['appName'] === 'string' &&
+    typeof v['primaryColor'] === 'string' &&
+    (v['logoUrl'] === null || typeof v['logoUrl'] === 'string') &&
+    (v['iconUrl'] === null || typeof v['iconUrl'] === 'string')
+  );
+}
+
+export function getBrandingCache(): BrandingCache {
+  try {
+    const cached = localStorage.getItem(BRANDING_CACHE_KEY);
+    if (cached) {
+      const parsed: unknown = JSON.parse(cached);
+      if (isBrandingCache(parsed)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore JSON parse errors; fall back to defaults
+  }
+  return {
+    appName: OPS_BRAND.defaultAppName,
+    primaryColor: OPS_BRAND.defaultPrimaryColor,
+    logoUrl: null,
+    iconUrl: null,
+  };
+}
+
+/**
+ * Applies the admin-configured branding (Admin → Branding, stored on
+ * `/appSettings/global`) to the signed-in app chrome and document metadata:
+ *
+ * - Sets `document.title` to the configured appName so the browser tab
+ *   reflects the school's branding.
+ * - Updates the favicon (`<link rel="icon">`) to the iconUrl when present,
+ *   reverting to the packaged default when null.
+ * - Writes CSS custom properties on `document.documentElement` for the
+ *   primary color. index.css maps the ops-blue Tailwind tokens — and through
+ *   them the shadcn `primary`, `ring`, and `accent` semantic tokens — onto
+ *   these variables, so the header, primary buttons, and accents re-theme
+ *   without per-component wiring.
  *
  * `useBranding()` guarantees a valid hex (invalid stored values fall back to
  * the OPS default). When the color is the stock OPS blue the overrides are
  * removed entirely so the exact DESIGN.md token values apply.
+ *
+ * Also persists the resolved branding (appName, logoUrl, primaryColor, iconUrl)
+ * to localStorage so that pre-auth screens like SignInScreen can access it.
  */
 export function BrandingProvider({ children }: { children: ReactNode }) {
-  const { primaryColor } = useBranding();
+  const { appName, primaryColor, logoUrl, iconUrl } = useBranding();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -77,15 +131,43 @@ export function BrandingProvider({ children }: { children: ReactNode }) {
     };
     if (primaryColor.toLowerCase() === OPS_BRAND.defaultPrimaryColor) {
       clear();
-      return;
+    } else {
+      const shades = derivePrimaryShades(primaryColor);
+      root.style.setProperty('--ops-brand-primary', shades.base);
+      root.style.setProperty('--ops-brand-primary-dark', shades.dark);
+      root.style.setProperty('--ops-brand-primary-light', shades.light);
+      root.style.setProperty('--ops-brand-primary-lighter', shades.lighter);
     }
-    const shades = derivePrimaryShades(primaryColor);
-    root.style.setProperty('--ops-brand-primary', shades.base);
-    root.style.setProperty('--ops-brand-primary-dark', shades.dark);
-    root.style.setProperty('--ops-brand-primary-light', shades.light);
-    root.style.setProperty('--ops-brand-primary-lighter', shades.lighter);
+
+    // Persist to localStorage for pre-auth access (SignInScreen, etc.)
+    try {
+      localStorage.setItem(
+        BRANDING_CACHE_KEY,
+        JSON.stringify({ appName, primaryColor, logoUrl, iconUrl }),
+      );
+    } catch {
+      // Ignore localStorage errors (quota exceeded, private browsing, etc.)
+    }
+
     return clear;
-  }, [primaryColor]);
+  }, [appName, primaryColor, logoUrl, iconUrl]);
+
+  // Set document.title to the configured appName.
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
+
+  // Update the favicon to the configured iconUrl, or revert to the packaged default.
+  useEffect(() => {
+    let faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!faviconLink) {
+      faviconLink = document.createElement('link');
+      faviconLink.rel = 'icon';
+      faviconLink.type = 'image/png';
+      document.head.appendChild(faviconLink);
+    }
+    faviconLink.href = iconUrl ?? '/brand/torch-icon.png';
+  }, [iconUrl]);
 
   return <>{children}</>;
 }

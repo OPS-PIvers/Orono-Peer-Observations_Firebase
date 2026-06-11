@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  DEFAULT_CYCLE_CLOSE_MONTH_DAY,
+  type CycleCloseMonthDay,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
   type DashboardStep,
@@ -18,6 +20,20 @@ import {
 } from './previewSampleData';
 
 /**
+ * Format a stored MM-DD value (e.g. '05-15') into a short human label
+ * ('May 15') for display in the stat bar. Falls back to 'May 15' if the
+ * value is missing or unparseable.
+ */
+export function formatCycleCloseLabel(monthDay: CycleCloseMonthDay | undefined): string {
+  const value = monthDay ?? DEFAULT_CYCLE_CLOSE_MONTH_DAY;
+  // Anchor to a fixed year (ISO parsing requires a full date). 2000 is a
+  // leap year so Feb 29 is valid if anyone ever configures it.
+  const dt = new Date(`2000-${value}T00:00:00`);
+  if (isNaN(dt.getTime())) return 'May 15';
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
+/**
  * Right-column live preview. Renders <DashboardView> with the admin's
  * *draft* sections/checkpoints/quick-materials plus a synthesized sample
  * staff member so the preview always reflects what a typical user sees
@@ -31,10 +47,17 @@ export interface DashboardPreviewProps {
   sections: DashboardSectionsConfig;
   steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
+  cycleCloseDate: CycleCloseMonthDay;
 }
 
-export function DashboardPreview({ sections, steps, quickMaterials }: DashboardPreviewProps) {
+export function DashboardPreview({
+  sections,
+  steps,
+  quickMaterials,
+  cycleCloseDate,
+}: DashboardPreviewProps) {
   const tasks = useMemo(() => buildSampleCheckpoints(steps), [steps]);
+  const cycleCloseLabel = useMemo(() => formatCycleCloseLabel(cycleCloseDate), [cycleCloseDate]);
 
   return (
     <PreviewFrame>
@@ -43,7 +66,7 @@ export function DashboardPreview({ sections, steps, quickMaterials }: DashboardP
         firstName={SAMPLE_FIRST_NAME}
         yearTierLabel={SAMPLE_YEAR_TIER_LABEL}
         cycleYearLabel="2025 — 2026"
-        cycleCloseLabel="May 15"
+        cycleCloseLabel={cycleCloseLabel}
         sections={sections}
         tasks={tasks}
         quickMaterials={quickMaterials}

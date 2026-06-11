@@ -30,7 +30,9 @@ export default tseslint.config(
       '.claude/**',
       // Standalone Node ESM scripts run directly via `node script.mjs`.
       // They aren't part of any tsconfig and don't need typed linting.
-      'scripts/**/*.mjs',
+      // Matches both the top-level scripts/ dir and per-workspace ones
+      // (e.g. apps/pdf-renderer/scripts/generate-fonts.mjs).
+      '**/scripts/**/*.mjs',
     ],
   },
 
@@ -47,6 +49,7 @@ export default tseslint.config(
         project: [
           './apps/web/tsconfig.app.json',
           './apps/web/tsconfig.node.json',
+          './apps/web/tsconfig.e2e.json',
           './apps/functions/tsconfig.json',
           './apps/pdf-renderer/tsconfig.json',
           './packages/shared/tsconfig.json',

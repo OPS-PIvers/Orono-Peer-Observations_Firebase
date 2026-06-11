@@ -36,6 +36,37 @@ export function incompleteReminderMailDocId(observationId: string, runDateYMD: s
 }
 
 /**
+ * Decide whether the daily scheduler should send an incomplete-WP/IR reminder
+ * for this observation today.
+ *
+ * Logic:
+ *   - The *first* reminder fires on the day that is exactly `scheduledDays`
+ *     after the observation was created (day 0 of nudges).
+ *   - Each subsequent day is nudge day 1, 2, …, up to (maxReminders - 1).
+ *   - On day `maxReminders` and beyond the function returns false — the cap
+ *     has been reached and no more emails are sent.
+ *
+ * This is a pure function so it can be unit-tested without Firestore.
+ *
+ * @param daysSinceCreation  Calendar days between the observation's creation
+ *                           date and the current run date (Chicago dates).
+ * @param scheduledDays      Days after creation before the first reminder fires
+ *                           (matches EmailTemplate.scheduledDays, e.g. 3).
+ * @param maxReminders       Maximum number of nudges to send in total
+ *                           (matches EmailTemplate.maxReminders, e.g. 5).
+ * @returns true when a reminder should be sent today.
+ */
+export function shouldSendIncompleteReminder(
+  daysSinceCreation: number,
+  scheduledDays: number,
+  maxReminders: number,
+): boolean {
+  // Days into the nudge window: 0 = first eligible day, 1 = second, etc.
+  const nudgeDay = daysSinceCreation - scheduledDays;
+  return nudgeDay >= 0 && nudgeDay < maxReminders;
+}
+
+/**
  * /mail doc id for a staff-invite email.
  *
  * Includes the send timestamp so re-inviting a staff member (e.g. after a
@@ -70,6 +101,12 @@ export function resendWindowInviteMailDocId(
 /**
  * Load an active template for a given trigger type.
  * Returns null if no active template exists for this trigger.
+ *
+ * When multiple active templates share a trigger (which the admin UI
+ * discourages with a warning), this picks the most-recently-updated one
+ * deterministically rather than letting Firestore choose arbitrarily.
+ * The compound index on (triggerType ASC, isActive ASC, updatedAt DESC) in
+ * firestore.indexes.json backs this query.
  */
 export async function loadActiveTemplate(
   db: Firestore,
@@ -79,6 +116,7 @@ export async function loadActiveTemplate(
     .collection(COLLECTIONS.emailTemplates)
     .where('triggerType', '==', triggerType)
     .where('isActive', '==', true)
+    .orderBy('updatedAt', 'desc')
     .limit(1)
     .get();
   if (snap.empty) return null;

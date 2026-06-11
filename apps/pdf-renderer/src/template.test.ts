@@ -69,7 +69,6 @@ function makeObservation(overrides: Partial<Observation> = {}): Observation {
     observationDate: new Date(OBSERVATION_DATE_ISO),
     observationData: {},
     componentNotes: {},
-    componentTags: [],
     audioDriveFileIds: [],
     transcripts: {},
     driveFolderId: null,

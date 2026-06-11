@@ -82,6 +82,12 @@ export const QM_FIELD_URL = 'URL';
 export const QM_ICON_PICKER = 'Icon';
 export const QM_REMOVE = 'Remove material';
 
+// ── Cycle close date ────────────────────────────────────────────────────────
+
+export const CYCLE_DATE_HEADING = 'Cycle close date';
+export const CYCLE_DATE_BLURB =
+  "The deadline shown in every staff member's welcome banner stat row. Defaults to May 15 — change it here if your district uses a different date.";
+
 // ── Section tiles ───────────────────────────────────────────────────────────
 
 export const ST_HEADING = 'Page layout';

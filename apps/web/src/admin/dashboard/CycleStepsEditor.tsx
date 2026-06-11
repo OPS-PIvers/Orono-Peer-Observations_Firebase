@@ -72,13 +72,18 @@ const CS_EMPTY =
 export function CycleStepsEditor({
   value,
   onChange,
+  errors = [],
 }: {
   value: DashboardStep[];
   onChange: (next: DashboardStep[]) => void;
+  errors?: { itemIndex: number; message: string }[];
 }) {
   const steps = [...value].sort((a, b) => a.order - b.order);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // Map errors to step ids for quick lookup
+  const errorsByStepIndex = new Map(errors.map((e) => [e.itemIndex, e.message]));
 
   function commit(next: DashboardStep[]) {
     onChange(next.map((s, idx) => ({ ...s, order: idx })));
@@ -165,12 +170,18 @@ export function CycleStepsEditor({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <ul className="space-y-2">
-            {steps.map((step) => {
+            {steps.map((step, stepIdx) => {
               const isExpanded = expanded.has(step.id);
+              const stepError = errorsByStepIndex.get(stepIdx);
               return (
                 <SortableItem key={step.id} id={step.id}>
                   {({ dragHandleProps }) => (
-                    <li className="border-border bg-background rounded-lg border">
+                    <li
+                      className={cn(
+                        'border-border bg-background rounded-lg border',
+                        stepError && 'border-destructive',
+                      )}
+                    >
                       <div className="flex items-start gap-2 p-3">
                         <GripHandle dragHandleProps={dragHandleProps} />
                         <div className="min-w-0 flex-1">
@@ -185,6 +196,9 @@ export function CycleStepsEditor({
                           <p className="text-muted-foreground mt-0.5 text-xs">
                             {SHOW_WHEN_LABELS[step.showWhen]} · {DONE_WHEN_LABELS[step.doneWhen]}
                           </p>
+                          {stepError ? (
+                            <p className="text-destructive mt-1 text-xs font-medium">{stepError}</p>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => toggleExpand(step.id)}
@@ -210,21 +224,25 @@ export function CycleStepsEditor({
                             label={CS_FIELD_TITLE}
                             value={step.title}
                             onChange={(v) => updateStep(step.id, { title: v })}
+                            maxLength={160}
                           />
                           <TextField
                             label={CS_FIELD_CHIP}
                             value={step.chipLabel}
                             onChange={(v) => updateStep(step.id, { chipLabel: v })}
+                            maxLength={40}
                           />
                           <TextField
                             label={CS_FIELD_DESC}
                             value={step.description}
                             onChange={(v) => updateStep(step.id, { description: v })}
+                            maxLength={400}
                           />
                           <TextField
                             label={CS_FIELD_BUTTON}
                             value={step.buttonLabel}
                             onChange={(v) => updateStep(step.id, { buttonLabel: v })}
+                            maxLength={40}
                           />
                           <SelectField
                             label={CS_FIELD_CHIP_STYLE}
@@ -298,6 +316,7 @@ export function CycleStepsEditor({
                               label={CS_FIELD_BUTTON_URL}
                               value={step.buttonUrl}
                               onChange={(v) => updateStep(step.id, { buttonUrl: v })}
+                              maxLength={2048}
                             />
                           ) : null}
                           <label className="flex items-center gap-2 text-xs font-medium">
@@ -359,10 +378,12 @@ function TextField({
   label,
   value,
   onChange,
+  maxLength,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  maxLength?: number;
 }) {
   return (
     <div className="grid gap-1">
@@ -371,6 +392,7 @@ function TextField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={CS_PLACEHOLDER_DEFAULT}
+        maxLength={maxLength}
       />
     </div>
   );

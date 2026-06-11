@@ -17,6 +17,29 @@ export function roleDisplayName(
 }
 
 /**
+ * Resolve a role from the loaded /roles collection by roleId slug (fast path)
+ * or by displayName equality (legacy fallback for un-migrated docs).
+ *
+ * Mirrors the server-side resolveRole logic so legacy observations remain
+ * viewable in the editor.
+ *
+ * Returns the matched role or null if no match is found.
+ */
+export function resolveRole(
+  roles: readonly Role[] | null | undefined,
+  roleValue: string | null | undefined,
+): Role | null {
+  if (!roleValue || !roles) return null;
+
+  // Fast path: match by roleId slug.
+  const bySlug = roles.find((r) => r.roleId === roleValue);
+  if (bySlug) return bySlug;
+
+  // Legacy fallback: match by displayName equality.
+  return roles.find((r) => r.displayName === roleValue) ?? null;
+}
+
+/**
  * True if `value` matches a known roleId in the loaded /roles collection.
  * Useful for the StaffDialog dropdown's "unmapped" branch — a non-empty
  * value that isn't in the active list still needs to render so the admin

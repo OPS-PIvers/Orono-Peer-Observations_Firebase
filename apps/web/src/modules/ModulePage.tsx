@@ -6,7 +6,7 @@ import {
   MODULE_CONTENT_SUBCOLLECTION,
   MODULE_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
-  staffMatchesAutoEnable,
+  staffHasModule,
   type ModuleDoc,
   type ModuleItem,
   type ModuleProgress,
@@ -69,13 +69,9 @@ export function ModulePage() {
 
   const isAssigned = useMemo(() => {
     if (claims.isAdmin) return true;
-    if (!myStaff) return false;
-    return (
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-      (myStaff.modules ?? []).includes(moduleId) ||
-      staffMatchesAutoEnable(myStaff, module?.autoEnable ?? null)
-    );
-  }, [claims.isAdmin, myStaff, moduleId, module]);
+    if (!myStaff || !module) return false;
+    return staffHasModule(myStaff, module);
+  }, [claims.isAdmin, myStaff, module]);
 
   function toggleDone(item: ModuleItem, done: boolean) {
     const ref = doc(

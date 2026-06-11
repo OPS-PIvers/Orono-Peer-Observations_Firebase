@@ -120,20 +120,29 @@ export function RoleYearMappingsPage() {
   }
 
   async function save() {
-    if (!draft || !selectedRole) return;
+    if (!draft || !selectedRole || !selectedRubric) return;
     setSaving(true);
     setSaveError(null);
     try {
+      // Prune stale component IDs that no longer exist in the rubric
+      const validComponentIds = new Set(flattenRubricComponentIds(selectedRubric));
       const batch = writeBatch(db);
+      let prunedCount = 0;
+
       for (const year of OBSERVATION_YEARS) {
         const docId = roleYearMappingDocId(selectedRole.roleId, year);
-        const ids = Array.from(draft.get(year) ?? []).sort();
+        const currentIds = draft.get(year) ?? new Set<string>();
+        // Filter out any IDs that are not in the current rubric
+        const prunedIds = Array.from(currentIds).filter((id) => validComponentIds.has(id));
+        const prunedInThisYear = currentIds.size - prunedIds.length;
+        prunedCount += prunedInThisYear;
+
         batch.set(
           doc(db, `${COLLECTIONS.roleYearMappings}/${docId}`),
           {
             roleId: selectedRole.roleId,
             year,
-            assignedComponentIds: ids,
+            assignedComponentIds: prunedIds.sort(),
             updatedAt: serverTimestamp(),
           },
           { merge: true },
@@ -142,6 +151,13 @@ export function RoleYearMappingsPage() {
       await batch.commit();
       setSavedAt(new Date());
       setDirty(false);
+      if (prunedCount > 0) {
+        setSaveError(
+          `Saved. Pruned ${String(prunedCount)} stale component ID${prunedCount === 1 ? '' : 's'} (no longer in rubric).`,
+        );
+        // Clear the message after a brief delay so it doesn't stay permanently
+        setTimeout(() => setSaveError(null), 5000);
+      }
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {

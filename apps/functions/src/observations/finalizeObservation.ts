@@ -16,8 +16,10 @@ import {
   type Rubric,
 } from '@ops/shared';
 import {
+  deleteDriveFile,
   ensureObservationFolder,
   getDriveLinks,
+  revokeUserPermission,
   shareObservationFolderWithObserver,
   shareWithUser,
   uploadFileToFolder,
@@ -185,6 +187,14 @@ export const finalizeObservation = onCall(
         throw new HttpsError('internal', 'PDF rendering failed.');
       }
 
+      // Track Drive side effects so the catch block can clean up after a
+      // partial failure: an uploaded PDF that wasn't committed to Firestore
+      // (orphan) and a share granted before a later step failed (lingering
+      // access on a Draft). Both are best-effort; failures are logged, not
+      // re-thrown.
+      let resolvedFolderId: string | null = null;
+      let uploadedPdfFileId: string | null = null;
+      let observedShareGranted = false;
       let folderId: string;
       let pdfFileId: string;
       let webViewLink = '';
@@ -195,6 +205,7 @@ export const finalizeObservation = onCall(
           parentFolderId: parentFolderId,
           existingFolderId: obs.driveFolderId,
         });
+        resolvedFolderId = folderId;
         const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
         const uploaded = await uploadFileToFolder({
           folderId,
@@ -203,6 +214,7 @@ export const finalizeObservation = onCall(
           body: pdfBuffer,
         });
         pdfFileId = uploaded.fileId;
+        uploadedPdfFileId = pdfFileId;
         // Grant the observed staff Reader on the folder so they can browse
         // both the PDF and any audio recordings inside.
         await shareWithUser({
@@ -211,6 +223,7 @@ export const finalizeObservation = onCall(
           role: 'reader',
           sendNotificationEmail: false,
         });
+        observedShareGranted = true;
         // The observer needs Reader too: the parent folder is shared only
         // with admins and the service account, and Peer Evaluators are not
         // admins, so without this grant the Finalized banner's "Open PDF" /
@@ -223,6 +236,25 @@ export const finalizeObservation = onCall(
         webViewLink = links.webViewLink;
       } catch (err) {
         logger.error('finalizeObservation: Drive ops failed', err);
+        // Best-effort cleanup: delete the orphan PDF (avoids accumulating
+        // duplicate near-identical files on re-finalize) and revoke the
+        // observed staff's share (avoids leaving them with Reader access on
+        // a folder that is reverting to Draft).
+        if (uploadedPdfFileId !== null) {
+          const orphanId = uploadedPdfFileId;
+          await deleteDriveFile(orphanId).catch((cleanupErr: unknown) => {
+            logger.warn('finalizeObservation: orphan PDF cleanup failed (non-fatal)', {
+              fileId: orphanId,
+              err: cleanupErr,
+            });
+          });
+        }
+        if (observedShareGranted && resolvedFolderId !== null) {
+          await revokeUserPermission({
+            fileId: resolvedFolderId,
+            email: obs.observedEmail,
+          });
+        }
         throw new HttpsError('internal', 'Drive upload or share failed.');
       }
 

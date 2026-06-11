@@ -44,6 +44,13 @@ export const staff = z.object({
   isActive: z.boolean().default(true),
   /** Grants admin-console access independent of professional role. */
   hasAdminAccess: z.boolean().default(false),
+  /**
+   * Module IDs that are excluded from auto-enable rules for this staff member.
+   * When a module's `autoEnable` rule would normally include this staff member,
+   * an entry here lets an admin carve out a per-person exception ("all Year-2
+   * staff except Jane"). Manual assignments in `modules` are unaffected.
+   */
+  moduleExclusions: z.array(slugId).default([]),
   createdAt: isoDate,
   updatedAt: isoDate,
 });

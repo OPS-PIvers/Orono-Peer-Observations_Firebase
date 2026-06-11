@@ -4,10 +4,12 @@ import { Navigate } from 'react-router-dom';
 import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/auth/AuthProvider';
+import { getBrandingCache } from '@/components/BrandingProvider';
 import { Button } from '@/components/ui/button';
 
 export function SignInScreen() {
   const { status } = useAuth();
+  const branding = getBrandingCache();
   const [error, setError] = useState<string | null>(() => {
     // On initial render, check if there's a stored rejection message from
     // a previous sign-in attempt (e.g., in a redirect scenario).
@@ -94,7 +96,7 @@ export function SignInScreen() {
       <div className="border-border bg-background w-full max-w-md rounded-lg border p-8 shadow-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <img
-            src="/brand/primary-logo.png"
+            src={branding.logoUrl ?? '/brand/primary-logo.png'}
             alt="Orono Technology"
             className="mb-6 h-auto w-64"
             onError={(e) => {
@@ -103,7 +105,7 @@ export function SignInScreen() {
             }}
           />
           <h1 className="font-heading text-ops-blue-dark text-2xl font-semibold">
-            Peer Observations
+            {branding.appName}
           </h1>
           <p className="text-muted-foreground mt-2 text-sm">
             Sign in with your <code className="bg-muted rounded px-1">@{ALLOWED_EMAIL_DOMAIN}</code>{' '}

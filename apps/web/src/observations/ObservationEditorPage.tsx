@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2, RefreshCw } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, limit, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -20,6 +20,7 @@ import {
   type Rubric,
   type RubricComponent,
   type RubricDomain,
+  type Staff,
   type TiptapDoc,
   type TranscriptionJob,
   type WorkProductAnswer,
@@ -50,7 +51,8 @@ import {
   type AssignmentMode,
   type RubricGridMode,
 } from '@/components/rubric';
-import { roleDisplayName } from '@/utils/roleLookup';
+import { roleDisplayName, resolveRole } from '@/utils/roleLookup';
+import { yearLabel } from '@/utils/staffFormatting';
 import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
 import { MeetingNotesSection } from './MeetingNotesSection';
@@ -159,6 +161,68 @@ export function computeCompleteness(
   };
 }
 
+/**
+ * Snapshot fields from an observation that may become stale after an admin
+ * corrects the staff record.
+ */
+export interface StaffSnapshot {
+  name: string;
+  role: string;
+  year: number;
+  buildings: readonly string[];
+}
+
+/**
+ * A detected mismatch between a draft observation's staff snapshot and the
+ * current staff record. Each changed field carries a human-readable label
+ * showing old → new so the banner can render a concise diff.
+ */
+export interface StaffMismatch {
+  hasChanges: boolean;
+  /** e.g. "Jane Smith → Jane Doe" */
+  nameDiff: string | null;
+  /** e.g. "teacher → specialist" (or resolved display names) */
+  roleDiff: string | null;
+  /** e.g. "Y2 → P1" */
+  yearDiff: string | null;
+  /** e.g. "OES, OMS → OHS" */
+  buildingsDiff: string | null;
+}
+
+/**
+ * Compare an observation's staff snapshot against the live staff record.
+ * Returns a {@link StaffMismatch} describing what changed. Pure function —
+ * safe to call in useMemo and in unit tests.
+ *
+ * @param snapshot    - Denormalized values currently stored on the observation.
+ * @param live        - Current values from the /staff/{email} document.
+ * @param resolveRole - Optional callback to resolve a roleId to a display name.
+ */
+export function computeStaffMismatch(
+  snapshot: StaffSnapshot,
+  live: StaffSnapshot,
+  resolveRole: (roleId: string) => string = (id) => id,
+): StaffMismatch {
+  const nameDiff = snapshot.name !== live.name ? `${snapshot.name} → ${live.name}` : null;
+
+  const snapshotRoleLabel = resolveRole(snapshot.role);
+  const liveRoleLabel = resolveRole(live.role);
+  const roleDiff = snapshot.role !== live.role ? `${snapshotRoleLabel} → ${liveRoleLabel}` : null;
+
+  const yearDiff =
+    snapshot.year !== live.year ? `${yearLabel(snapshot.year)} → ${yearLabel(live.year)}` : null;
+
+  const snapshotBuildings = [...snapshot.buildings].sort().join(', ');
+  const liveBuildings = [...live.buildings].sort().join(', ');
+  const buildingsDiff =
+    snapshotBuildings !== liveBuildings ? `${snapshotBuildings} → ${liveBuildings}` : null;
+
+  const hasChanges =
+    nameDiff !== null || roleDiff !== null || yearDiff !== null || buildingsDiff !== null;
+
+  return { hasChanges, nameDiff, roleDiff, yearDiff, buildingsDiff };
+}
+
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
@@ -191,11 +255,19 @@ export function ObservationEditorPage() {
       ? Math.ceil(60_000 / savesPerMinute)
       : Math.ceil(60_000 / DEFAULT_SAVES_PER_MINUTE);
 
+  // Load the live /staff/{observedEmail} doc to detect stale snapshots.
+  // Observers are PEs with hasSpecialAccess and can read any staff doc.
+  // If the read fails (permissions or missing doc), staffDoc is null and
+  // no mismatch banner appears — correct degraded behavior.
+  const staffDocPath = observation ? `${COLLECTIONS.staff}/${observation.observedEmail}` : '';
+  const { data: staffDoc } = useFirestoreDoc<Staff>(staffDocPath);
+
   // Derive rubric for this observation (looked up via the observed role
-  // slug → role doc → rubricId).
+  // slug → role doc → rubricId). Falls back to displayName match for
+  // legacy un-migrated observations.
   const rubric = useMemo<Rubric | null>(() => {
     if (!observation || !roles || !rubrics) return null;
-    const role = roles.find((r) => r.roleId === observation.observedRole);
+    const role = resolveRole(roles, observation.observedRole);
     if (!role) return null;
     return rubrics.find((rb) => rb.id === role.rubricId) ?? null;
   }, [observation, roles, rubrics]);
@@ -204,7 +276,7 @@ export function ObservationEditorPage() {
 
   const mappingPath = observation
     ? (() => {
-        const role = roles?.find((r) => r.roleId === observation.observedRole);
+        const role = resolveRole(roles, observation.observedRole);
         if (!role) return null;
         return `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId(role.roleId, observation.observedYear)}`;
       })()
@@ -423,13 +495,65 @@ export function ObservationEditorPage() {
     [draft.observationData, assignedComponentIds, observation],
   );
 
+  // Compare snapshot fields on the observation against the live staff record.
+  // Only relevant for draft observations — finalized observations are frozen.
+  const staffMismatch = useMemo<StaffMismatch | null>(() => {
+    if (!observation || !staffDoc) return null;
+    if (observation.status !== OBSERVATION_STATUS.draft) return null;
+    const snapshot: StaffSnapshot = {
+      name: observation.observedName,
+      role: observation.observedRole,
+      year: observation.observedYear,
+      buildings: observation.observedBuildings,
+    };
+    const live: StaffSnapshot = {
+      name: staffDoc.name,
+      role: staffDoc.role,
+      year: staffDoc.year,
+      buildings: staffDoc.buildings,
+    };
+    const mismatch = computeStaffMismatch(snapshot, live, (roleId) =>
+      roleDisplayName(roles, roleId),
+    );
+    return mismatch.hasChanges ? mismatch : null;
+  }, [observation, staffDoc, roles]);
+
+  // Resync the observation's staff snapshot from the live staff record.
+  // Patches observedName/Role/Year/Buildings on the draft; the rubric/mapping
+  // path recomputes automatically because it derives from those observation
+  // fields via the useMemos above.
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  const handleSyncStaffSnapshot = useCallback(async () => {
+    if (!observation || !staffDoc) return;
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      await setDoc(
+        doc(db, `${COLLECTIONS.observations}/${observation.id}`),
+        {
+          observedName: staffDoc.name,
+          observedRole: staffDoc.role,
+          observedYear: staffDoc.year,
+          observedBuildings: staffDoc.buildings,
+          lastModifiedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }, [observation, staffDoc]);
+
   const updateEntry = useCallback(
     (componentId: string, patch: Partial<ObservationComponentEntry>) => {
       if (!canEdit) return;
       const existing: ObservationComponentEntry = draftRef.current.observationData[componentId] ?? {
         proficiency: null,
         selectedLookForIds: [],
-        scratchNotes: '',
       };
       const nextEntries: ComponentEntries = {
         ...draftRef.current.observationData,
@@ -449,7 +573,6 @@ export function ObservationEditorPage() {
       const existing: ObservationComponentEntry = draftRef.current.observationData[componentId] ?? {
         proficiency: null,
         selectedLookForIds: [],
-        scratchNotes: '',
       };
       const set = new Set(existing.selectedLookForIds);
       if (set.has(lookForId)) set.delete(lookForId);
@@ -767,6 +890,15 @@ export function ObservationEditorPage() {
           <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
             This observation is finalized and read-only.
           </div>
+        ) : null}
+
+        {staffMismatch ? (
+          <StaffMismatchBanner
+            mismatch={staffMismatch}
+            syncing={syncing}
+            syncError={syncError}
+            onSync={() => void handleSyncStaffSnapshot()}
+          />
         ) : null}
 
         <MeetingNotesSection
@@ -1247,6 +1379,72 @@ function FinalizedBanner({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Banner shown when the observation's staff snapshot (role, year, name,
+ * buildings) differs from the live /staff/{email} document. Offers a
+ * one-click resync so the rubric component set and metadata are correct
+ * before the observer finalizes. Only shown for draft observations.
+ */
+function StaffMismatchBanner({
+  mismatch,
+  syncing,
+  syncError,
+  onSync,
+}: {
+  mismatch: StaffMismatch;
+  syncing: boolean;
+  syncError: string | null;
+  onSync: () => void;
+}) {
+  const diffs = [
+    mismatch.nameDiff,
+    mismatch.roleDiff,
+    mismatch.yearDiff,
+    mismatch.buildingsDiff,
+  ].filter((d): d is string => d !== null);
+
+  return (
+    <div
+      role="alert"
+      className="rounded-lg border-l-4 border-l-yellow-400 bg-yellow-50 px-4 py-3 text-sm text-yellow-900"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="font-semibold">Staff record changed</p>
+          <ul className="list-inside list-disc space-y-0.5 text-yellow-800">
+            {diffs.map((diff) => (
+              <li key={diff}>{diff}</li>
+            ))}
+          </ul>
+          <p className="text-yellow-700">
+            Syncing updates the rubric component set for this observation.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onSync}
+          disabled={syncing}
+          className="shrink-0 border-yellow-400 bg-yellow-50 text-yellow-900 hover:bg-yellow-100"
+        >
+          {syncing ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              Syncing…
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Sync from staff record
+            </>
+          )}
+        </Button>
+      </div>
+      {syncError ? <p className="mt-2 text-xs text-red-700">{syncError}</p> : null}
     </div>
   );
 }

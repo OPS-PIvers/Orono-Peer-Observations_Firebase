@@ -137,7 +137,6 @@ export function CreateObservationDialog({
         observationData: {},
         componentNotes: {},
         evidenceLinks: {},
-        componentTags: [],
         workProductAnswers: [],
         audioDriveFileIds: [],
         transcripts: {},

@@ -2,18 +2,28 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
-import { doc, limit, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import {
+  deleteDoc,
+  doc,
+  limit,
+  orderBy,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   DASHBOARD_CONFIG_DOC_ID,
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
+  DEFAULT_CYCLE_CLOSE_MONTH_DAY,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
   schoolYearStart,
-  staffMatchesAutoEnable,
+  staffHasModule,
   type AppSettings,
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
@@ -66,6 +76,19 @@ function currentSchoolYearLabel(now: Date = new Date()): string {
   return `${String(startYear)} — ${String(startYear + 1)}`;
 }
 
+/**
+ * Format a stored MM-DD value (e.g. '05-15') into a short human label
+ * ('May 15') for display in the hero stat bar. Falls back to 'May 15' if
+ * the value is missing or unparseable.
+ */
+function formatCycleCloseLabel(monthDay: string | undefined): string {
+  const value = monthDay ?? DEFAULT_CYCLE_CLOSE_MONTH_DAY;
+  // Anchor to a fixed leap-year so Feb 29 is valid if ever configured.
+  const dt = new Date(`2000-${value}T00:00:00`);
+  if (isNaN(dt.getTime())) return 'May 15';
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+}
+
 export function StaffDashboardPage() {
   const { user } = useAuth();
   const emailLower = user?.email?.toLowerCase() ?? '';
@@ -100,10 +123,9 @@ export function StaffDashboardPage() {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
       if (m.isActive ?? true) activeModules.set(m.moduleId, m);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-    const ids = new Set((staff.modules ?? []).filter((id) => activeModules.has(id)));
+    const ids = new Set<string>();
     for (const m of activeModules.values()) {
-      if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
+      if (staffHasModule(staff, m)) ids.add(m.moduleId);
     }
     return [...ids].slice(0, 30);
   }, [staff, modulesData]);
@@ -249,7 +271,6 @@ export function StaffDashboardPage() {
   ]);
 
   const moduleTasks = useMemo(() => {
-    const done = new Set((moduleProgress ?? []).map((p) => p.itemId));
     // Defense in depth: filter materials to only include items whose owning
     // module is active and whose sectionId still exists on that module. This
     // prevents displaying items from inactive/draft modules or deleted sections
@@ -261,7 +282,7 @@ export function StaffDashboardPage() {
       if (!(module.isActive ?? true)) return false;
       return module.sections.some((s) => s.id === item.sectionId);
     });
-    return deriveModuleTasks({ materials: validMaterials, doneItemIds: done });
+    return deriveModuleTasks({ materials: validMaterials, progress: moduleProgress ?? [] });
   }, [moduleMaterials, moduleProgress, modulesData]);
 
   const allTasks = useMemo(() => [...tasks, ...moduleTasks], [tasks, moduleTasks]);
@@ -296,6 +317,33 @@ export function StaffDashboardPage() {
     },
   });
 
+  const undoMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      const ref = doc(
+        db,
+        COLLECTIONS.staff,
+        emailLower,
+        STAFF_SUBCOLLECTIONS.moduleProgress,
+        itemId,
+      );
+      await deleteDoc(ref);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        predicate: (q) => {
+          if (!Array.isArray(q.queryKey)) return false;
+          const first: unknown = q.queryKey[0];
+          return typeof first === 'string' && first.includes(STAFF_SUBCOLLECTIONS.moduleProgress);
+        },
+      });
+    },
+    onError: (err: unknown) => {
+      toast.error('Failed to undo item completion', {
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    },
+  });
+
   const roleDisplayName = useMemo(() => {
     if (!staff || !roles) return '';
     return roles.find((r) => r.roleId === staff.role)?.displayName ?? staff.role;
@@ -307,10 +355,7 @@ export function StaffDashboardPage() {
       .filter(
         (m) =>
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-          (m.isActive ?? true) &&
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-          ((staff.modules ?? []).includes(m.moduleId) ||
-            staffMatchesAutoEnable(staff, m.autoEnable ?? null)),
+          (m.isActive ?? true) && staffHasModule(staff, m),
       )
       .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
   }, [staff, modulesData]);
@@ -376,7 +421,7 @@ export function StaffDashboardPage() {
       firstName={extractFirstName(staff.name)}
       yearTierLabel={yearTierLabelFor(staff.year)}
       cycleYearLabel={currentSchoolYearLabel()}
-      cycleCloseLabel="May 15"
+      cycleCloseLabel={formatCycleCloseLabel(config?.cycleCloseDate)}
       sections={{ ...DEFAULT_SECTIONS, ...config?.sections }}
       tasks={allTasks}
       quickMaterials={quick?.items ?? []}
@@ -402,6 +447,9 @@ export function StaffDashboardPage() {
             description: err instanceof Error ? err.message : 'Please try again.',
           });
         });
+      }}
+      onUndoModuleItem={(_, itemId) => {
+        undoMutation.mutate(itemId);
       }}
       roleDisplayName={roleDisplayName}
       buildingNames={staff.buildings}

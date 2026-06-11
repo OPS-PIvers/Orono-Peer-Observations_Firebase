@@ -121,7 +121,6 @@ export async function createDraftObservationForBooking(args: {
     observationData: {},
     componentNotes: {},
     evidenceLinks: {},
-    componentTags: [],
     workProductAnswers: [],
     audioDriveFileIds: [],
     transcripts: {},

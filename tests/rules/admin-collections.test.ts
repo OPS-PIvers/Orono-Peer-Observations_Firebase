@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -123,6 +123,36 @@ describe('/emailTemplates — admin only', () => {
     await assertSucceeds(
       setDoc(doc(db, 'emailTemplates/finalizedObservation'), { subject: 'Updated' }),
     );
+  });
+});
+
+describe('/emailTemplates — isSystem delete guard', () => {
+  beforeEach(async () => {
+    await seed('emailTemplates/system-tmpl', {
+      subject: 'System email',
+      isSystem: true,
+      isActive: true,
+    });
+    await seed('emailTemplates/custom-tmpl', {
+      subject: 'Custom email',
+      isSystem: false,
+      isActive: false,
+    });
+  });
+
+  it('admin cannot delete a system template', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertFails(deleteDoc(doc(db, 'emailTemplates/system-tmpl')));
+  });
+
+  it('admin can delete a non-system template', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(deleteDoc(doc(db, 'emailTemplates/custom-tmpl')));
+  });
+
+  it('non-admin cannot delete any template', async () => {
+    const db = testEnv.authenticatedContext('a', claims.teacher()).firestore();
+    await assertFails(deleteDoc(doc(db, 'emailTemplates/custom-tmpl')));
   });
 });
 

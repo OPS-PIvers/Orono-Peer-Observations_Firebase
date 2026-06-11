@@ -8,9 +8,9 @@ import { OBSERVATION_STATUS, OBSERVATION_TYPES } from '../constants.js';
 /**
  * /observations/{observationId} — observation records.
  *
- * Lifecycle: Draft (mutable, only the observer + admins can read/write) →
- * Finalized (immutable; observed staff member gains read access; PDF +
- * Drive folder shared; email sent).
+ * Lifecycle: Draft (mutable by observer + admins; observable staff member has
+ * read access to see what's being drafted) → Finalized (immutable; observed
+ * staff member can acknowledge; PDF + Drive folder shared; email sent).
  *
  * Per-component state lives in three parallel maps keyed on componentId:
  *   - `observationData` — proficiency selection + look-fors selected
@@ -36,23 +36,8 @@ export const observationType = z.enum([
 export const observationComponentEntry = z.object({
   proficiency: proficiencyLevel.nullable().default(null),
   selectedLookForIds: z.array(z.string()).default([]),
-  /** Free-text scratch notes (separate from the rich-text componentNotes
-   *  map below — that one is for formatted long-form prose). */
-  scratchNotes: z.string().default(''),
 });
 export type ObservationComponentEntry = z.infer<typeof observationComponentEntry>;
-
-/** componentTag — links a Tiptap script paragraph to a rubric component.
- *  Stored alongside the script doc so the editor can render highlights. */
-export const componentTag = z.object({
-  /** Stable ID assigned by the editor when the tag is created. */
-  id: z.string().min(1),
-  componentId,
-  /** Tiptap document position (start, end) — opaque to consumers. */
-  from: z.number().int().nonnegative(),
-  to: z.number().int().nonnegative(),
-});
-export type ComponentTag = z.infer<typeof componentTag>;
 
 /** Work product answers (replaces the deprecated WorkProductAnswers sheet). */
 export const workProductAnswer = z.object({
@@ -96,9 +81,9 @@ export const observation = z.object({
   componentNotes: z.record(componentId, tiptapDoc).default({}),
   evidenceLinks: z.record(componentId, z.array(driveFileRef)).optional(),
 
-  // Script editor (live note-taking)
+  // Script editor (live note-taking); paragraph-level marks link spans back to
+  // rubric components. Tags are extracted client-side during rendering, not stored.
   scriptDoc: tiptapDoc.optional(),
-  componentTags: z.array(componentTag).default([]),
 
   // Work product answers (only when type === 'Work Product')
   workProductAnswers: z.array(workProductAnswer).optional(),
@@ -164,7 +149,6 @@ export const observationUpdateInput = observation
     componentNotes: true,
     evidenceLinks: true,
     scriptDoc: true,
-    componentTags: true,
     workProductAnswers: true,
     audioDriveFileIds: true,
     preObsDate: true,
@@ -174,3 +158,26 @@ export const observationUpdateInput = observation
   })
   .partial();
 export type ObservationUpdateInput = z.infer<typeof observationUpdateInput>;
+
+/**
+ * Parse the recorded-at timestamp from an audio filename minted by uploadAudio.
+ * Filenames follow the pattern `audio-YYYY-MM-DDTHH-mm-ss.<ext>` where the
+ * timestamp portion encodes the UTC instant the recording was captured.
+ *
+ * Returns a Date object at the parsed timestamp, or null if the filename
+ * does not match the expected pattern (e.g., hand-created or from an older version).
+ */
+// Pattern: audio-2026-06-10T14-30-45.webm
+// Capture: audio-<YYYY>-<MM>-<DD>T<HH>-<mm>-<ss>.<ext>
+const AUDIO_RECORDED_AT_RE = /^audio-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})\./;
+
+export function parseAudioRecordedAt(fileName: string): Date | null {
+  const match = AUDIO_RECORDED_AT_RE.exec(fileName);
+  if (!match) {
+    return null;
+  }
+  const [, year, month, day, hour, min, sec] = match.map(Number);
+  const isoString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.000Z`;
+  const date = new Date(isoString);
+  return isNaN(date.getTime()) ? null : date;
+}

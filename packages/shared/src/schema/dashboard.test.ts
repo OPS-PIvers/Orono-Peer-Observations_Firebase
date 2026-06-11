@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { dashboardStep, DEFAULT_STEPS, applyLegacyOverride, resolveSteps } from './dashboard.js';
+import {
+  applyLegacyOverride,
+  cycleCloseMonthDay,
+  dashboardConfig,
+  dashboardStep,
+  DEFAULT_CYCLE_CLOSE_MONTH_DAY,
+  DEFAULT_STEPS,
+  resolveSteps,
+} from './dashboard.js';
 
 describe('dashboardStep', () => {
   it('applies defaults for a minimal step', () => {
@@ -83,5 +91,46 @@ describe('applyLegacyOverride', () => {
   it('returns the seed unchanged when no legacy entry', () => {
     const seed = dashboardStep.parse({ id: 'signup', title: 'Default' });
     expect(applyLegacyOverride(seed, undefined)).toEqual(seed);
+  });
+});
+
+describe('cycleCloseMonthDay', () => {
+  it('accepts valid MM-DD strings', () => {
+    expect(cycleCloseMonthDay.parse('05-15')).toBe('05-15');
+    expect(cycleCloseMonthDay.parse('06-01')).toBe('06-01');
+    expect(cycleCloseMonthDay.parse('12-31')).toBe('12-31');
+    expect(cycleCloseMonthDay.parse('01-01')).toBe('01-01');
+  });
+
+  it('rejects invalid formats', () => {
+    expect(() => cycleCloseMonthDay.parse('5-15')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('13-01')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('00-15')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('05-32')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('May 15')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('2025-05-15')).toThrow();
+    expect(() => cycleCloseMonthDay.parse('')).toThrow();
+  });
+
+  it('DEFAULT_CYCLE_CLOSE_MONTH_DAY is a valid MM-DD', () => {
+    expect(cycleCloseMonthDay.parse(DEFAULT_CYCLE_CLOSE_MONTH_DAY)).toBe('05-15');
+  });
+});
+
+describe('dashboardConfig cycleCloseDate', () => {
+  it('is absent on a minimal parse (undefined by default)', () => {
+    const config = dashboardConfig.parse({ updatedAt: new Date() });
+    expect(config.cycleCloseDate).toBeUndefined();
+  });
+
+  it('round-trips a valid MM-DD value', () => {
+    const config = dashboardConfig.parse({ updatedAt: new Date(), cycleCloseDate: '06-01' });
+    expect(config.cycleCloseDate).toBe('06-01');
+  });
+
+  it('rejects an invalid MM-DD in the config', () => {
+    expect(() =>
+      dashboardConfig.parse({ updatedAt: new Date(), cycleCloseDate: 'not-a-date' }),
+    ).toThrow();
   });
 });

@@ -4,6 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import type { Timestamp } from 'firebase-admin/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS } from '@ops/shared';
+import { callerIsAdmin } from '../lib/authz.js';
 import { isStaleTranscriptionJob } from './sweepStaleTranscriptionJobs.js';
 import {
   RATE_LIMIT_KEYS,
@@ -35,13 +36,17 @@ const INFLIGHT_LOOKBACK_LIMIT = 10;
  * Throws an `HttpsError` on any violation so the callable can surface it to
  * the client.
  *
+ * Admins (isAdmin === true) bypass the owner check so they can re-queue any
+ * observation's failed transcription job. The Draft-status and audio-file
+ * membership checks still apply for everyone.
+ *
  * Extracted as a pure function so it can be unit-tested without an emulator.
  */
 export function assertObservationTranscribable(
   obs: { observerEmail: string; audioDriveFileIds: string[]; status: string },
-  opts: { userEmail: string; audioFileId: string },
+  opts: { userEmail: string; audioFileId: string; isAdmin?: boolean },
 ): void {
-  if (obs.observerEmail !== opts.userEmail) {
+  if (!opts.isAdmin && obs.observerEmail !== opts.userEmail) {
     throw new HttpsError('permission-denied', 'Not your observation');
   }
   if (obs.status !== 'Draft') {
@@ -117,7 +122,8 @@ export const requestTranscription = onCall(
       audioDriveFileIds: string[];
       status: string;
     };
-    assertObservationTranscribable(obs, { userEmail, audioFileId });
+    const isAdmin = callerIsAdmin(request.auth.token);
+    assertObservationTranscribable(obs, { userEmail, audioFileId, isAdmin });
 
     // Look for a fresh in-flight job for the same audio. Stale ones (worker
     // died; sweep hasn't failed them yet) are ignored so they can't block

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Trash2, X } from 'lucide-react';
 import {
   PROFICIENCY_LEVELS,
   type ComponentColor,
@@ -33,10 +33,13 @@ interface DraftRubric extends Rubric {
 export interface RubricGridEditorProps {
   draft: DraftRubric;
   onUpdateDomain: (domainId: string, patch: Partial<Omit<RubricDomain, 'components'>>) => void;
+  onRemoveDomain: (domainId: string) => void;
+  onReorderDomain: (domainId: string, direction: 'up' | 'down') => void;
   onAddDomain: () => void;
   onAddComponent: (domainId: string) => void;
   onUpdateComponent: (componentId: string, patch: Partial<RubricComponent>) => void;
   onRemoveComponent: (componentId: string) => void;
+  onReorderComponent: (componentId: string, direction: 'up' | 'down') => void;
   onAddLookFor: (componentId: string) => void;
   onUpdateLookFor: (componentId: string, lookForId: string, text: string) => void;
   onRemoveLookFor: (componentId: string, lookForId: string) => void;
@@ -45,10 +48,13 @@ export interface RubricGridEditorProps {
 export function RubricGridEditor({
   draft,
   onUpdateDomain,
+  onRemoveDomain,
+  onReorderDomain,
   onAddDomain,
   onAddComponent,
   onUpdateComponent,
   onRemoveComponent,
+  onReorderComponent,
   onAddLookFor,
   onUpdateLookFor,
   onRemoveLookFor,
@@ -66,23 +72,29 @@ export function RubricGridEditor({
 
   return (
     <div className="space-y-6">
-      {draft.domains.map((domain) => (
+      {draft.domains.map((domain, domainIdx) => (
         <DomainEditorSection
           key={domain.id}
           domain={domain}
+          isFirst={domainIdx === 0}
+          isLast={domainIdx === draft.domains.length - 1}
           expanded={expanded}
           onToggleExpanded={toggleExpanded}
           onUpdateDomain={(patch) => onUpdateDomain(domain.id, patch)}
+          onRemoveDomain={() => onRemoveDomain(domain.id)}
+          onMoveDomainUp={() => onReorderDomain(domain.id, 'up')}
+          onMoveDomainDown={() => onReorderDomain(domain.id, 'down')}
           onAddComponent={() => onAddComponent(domain.id)}
           onUpdateComponent={onUpdateComponent}
           onRemoveComponent={onRemoveComponent}
+          onReorderComponent={onReorderComponent}
           onAddLookFor={onAddLookFor}
           onUpdateLookFor={onUpdateLookFor}
           onRemoveLookFor={onRemoveLookFor}
         />
       ))}
 
-      <Button variant="outline" onClick={onAddDomain}>
+      <Button variant="outline" onClick={onAddDomain} disabled={draft.domains.length >= 9}>
         <Plus className="h-4 w-4" />
         Add domain
       </Button>
@@ -92,12 +104,18 @@ export function RubricGridEditor({
 
 interface DomainEditorSectionProps {
   domain: RubricDomain;
+  isFirst: boolean;
+  isLast: boolean;
   expanded: Set<string>;
   onToggleExpanded: (componentId: string) => void;
   onUpdateDomain: (patch: Partial<Omit<RubricDomain, 'components'>>) => void;
+  onRemoveDomain: () => void;
+  onMoveDomainUp: () => void;
+  onMoveDomainDown: () => void;
   onAddComponent: () => void;
   onUpdateComponent: (componentId: string, patch: Partial<RubricComponent>) => void;
   onRemoveComponent: (componentId: string) => void;
+  onReorderComponent: (componentId: string, direction: 'up' | 'down') => void;
   onAddLookFor: (componentId: string) => void;
   onUpdateLookFor: (componentId: string, lookForId: string, text: string) => void;
   onRemoveLookFor: (componentId: string, lookForId: string) => void;
@@ -105,24 +123,54 @@ interface DomainEditorSectionProps {
 
 function DomainEditorSection({
   domain,
+  isFirst,
+  isLast,
   expanded,
   onToggleExpanded,
   onUpdateDomain,
+  onRemoveDomain,
+  onMoveDomainUp,
+  onMoveDomainDown,
   onAddComponent,
   onUpdateComponent,
   onRemoveComponent,
+  onReorderComponent,
   onAddLookFor,
   onUpdateLookFor,
   onRemoveLookFor,
 }: DomainEditorSectionProps) {
+  const [confirmingDomainDelete, setConfirmingDomainDelete] = useState(false);
   const accentClass = DOMAIN_ACCENTS[domain.id] ?? 'border-l-ops-blue';
 
   return (
     <section className={cn('overflow-hidden rounded-lg border border-gray-200 shadow-sm')}>
       {/* Domain header — mirrors consumer DomainSection styling but with
-          an editable domain-name input. */}
+          editable name, reorder controls, and a delete button. */}
       <div className={cn('bg-ops-blue-dark border-l-4', accentClass)}>
-        <div className="flex items-center gap-3 px-4 py-2.5">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          {/* Up/down reorder buttons for domain */}
+          <div className="flex shrink-0 flex-col">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onMoveDomainUp}
+              disabled={isFirst}
+              className="h-5 w-5 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30"
+              aria-label={`Move domain ${domain.id} up`}
+            >
+              <ChevronUp className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onMoveDomainDown}
+              disabled={isLast}
+              className="h-5 w-5 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-30"
+              aria-label={`Move domain ${domain.id} down`}
+            >
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </div>
           <span
             aria-hidden="true"
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-white"
@@ -139,7 +187,51 @@ function DomainEditorSection({
             placeholder={`Domain ${domain.id} name`}
             className="font-heading h-9 border-white/20 bg-white/10 text-base font-semibold text-white placeholder:text-white/50 focus-visible:border-white/60 focus-visible:ring-white/40"
           />
+          {/* Delete-domain button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setConfirmingDomainDelete(true)}
+            className="ml-auto h-7 w-7 shrink-0 text-white/70 hover:bg-white/10 hover:text-white"
+            aria-label={`Delete domain ${domain.id}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
+
+        {/* Delete-domain confirmation strip */}
+        {confirmingDomainDelete && (
+          <div className="border-t border-white/20 bg-black/20 px-4 py-3 text-sm text-white">
+            <p className="mb-2">
+              Delete domain <strong>{domain.id}</strong>
+              {domain.components.length > 0
+                ? ` and its ${String(domain.components.length)} component${domain.components.length === 1 ? '' : 's'}`
+                : ''}
+              ? Existing observations referencing these components will keep their data but
+              evaluators won&apos;t see them on the rubric anymore.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setConfirmingDomainDelete(false);
+                  onRemoveDomain();
+                }}
+              >
+                Yes, delete
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmingDomainDelete(false)}
+                className="border-white/30 bg-transparent text-white hover:bg-white/10"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -166,14 +258,18 @@ function DomainEditorSection({
 
         {/* Component rows */}
         <div className={cn(RUBRIC_GRID_MIN_W, 'divide-y divide-gray-200 bg-white')}>
-          {domain.components.map((component) => (
+          {domain.components.map((component, compIdx) => (
             <ComponentRow
               key={component.id}
               component={component}
+              isFirst={compIdx === 0}
+              isLast={compIdx === domain.components.length - 1}
               expanded={expanded.has(component.id)}
               onToggleExpanded={() => onToggleExpanded(component.id)}
               onPatch={(patch) => onUpdateComponent(component.id, patch)}
               onRemove={() => onRemoveComponent(component.id)}
+              onMoveUp={() => onReorderComponent(component.id, 'up')}
+              onMoveDown={() => onReorderComponent(component.id, 'down')}
               onAddLookFor={() => onAddLookFor(component.id)}
               onUpdateLookFor={(lookForId, text) => onUpdateLookFor(component.id, lookForId, text)}
               onRemoveLookFor={(lookForId) => onRemoveLookFor(component.id, lookForId)}
@@ -195,10 +291,14 @@ function DomainEditorSection({
 
 interface ComponentRowProps {
   component: RubricComponent;
+  isFirst: boolean;
+  isLast: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
   onPatch: (patch: Partial<RubricComponent>) => void;
   onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onAddLookFor: () => void;
   onUpdateLookFor: (lookForId: string, text: string) => void;
   onRemoveLookFor: (lookForId: string) => void;
@@ -206,10 +306,14 @@ interface ComponentRowProps {
 
 function ComponentRow({
   component,
+  isFirst,
+  isLast,
   expanded,
   onToggleExpanded,
   onPatch,
   onRemove,
+  onMoveUp,
+  onMoveDown,
   onAddLookFor,
   onUpdateLookFor,
   onRemoveLookFor,
@@ -222,9 +326,34 @@ function ComponentRow({
       <div className={cn('grid', RUBRIC_GRID_COLS)}>
         {/* Component label cell */}
         <div className="flex flex-col gap-1.5 border-r border-gray-200 p-2">
-          <span className="text-muted-foreground font-mono text-[11px] tracking-wide">
-            Component {component.id}
-          </span>
+          <div className="flex items-center gap-1">
+            {/* Up/down reorder buttons for component */}
+            <div className="flex flex-col">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onMoveUp}
+                disabled={isFirst}
+                className="text-muted-foreground h-4 w-5 hover:bg-gray-100 disabled:opacity-30"
+                aria-label={`Move component ${component.id} up`}
+              >
+                <ChevronUp className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onMoveDown}
+                disabled={isLast}
+                className="text-muted-foreground h-4 w-5 hover:bg-gray-100 disabled:opacity-30"
+                aria-label={`Move component ${component.id} down`}
+              >
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </div>
+            <span className="text-muted-foreground font-mono text-[11px] tracking-wide">
+              Component {component.id}
+            </span>
+          </div>
           <Input
             value={component.title}
             onChange={(e) => onPatch({ title: e.target.value })}

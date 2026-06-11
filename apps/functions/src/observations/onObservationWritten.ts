@@ -4,7 +4,12 @@ import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { OBSERVATION_STATUS, OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
+import {
+  COLLECTIONS,
+  OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
+  type EmailTriggerType,
+} from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import { deleteDriveFolder } from '../lib/drive.js';
 import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
@@ -323,7 +328,31 @@ async function handleDeletion(
     }
   }
 
-  // 2. Mark the Sheet row as [DELETED] so the admin log stays accurate.
+  // 2. Delete all transcriptionJobs associated with this observation.
+  //    This prevents terminal-state job docs (which carry transcriptPreview
+  //    fragments) from being retained forever after an observation is deleted.
+  try {
+    const db = getFirestore();
+    const jobsSnap = await db
+      .collection(COLLECTIONS.transcriptionJobs)
+      .where('observationId', '==', observationId)
+      .get();
+    if (!jobsSnap.empty) {
+      const writer = db.batch();
+      for (const doc of jobsSnap.docs) {
+        writer.delete(doc.ref);
+      }
+      await writer.commit();
+      logger.info('onObservationWritten: deleted transcriptionJobs', {
+        observationId,
+        count: jobsSnap.size,
+      });
+    }
+  } catch (err) {
+    logger.warn('onObservationWritten: transcriptionJobs cleanup failed', { observationId, err });
+  }
+
+  // 3. Mark the Sheet row as [DELETED] so the admin log stays accurate.
   if (!sheetId) return;
   try {
     const sheets = getSheetsClient();

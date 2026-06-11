@@ -4,6 +4,7 @@ import {
   type PillColorName,
   type Role,
   type Staff,
+  staffHasModule,
   staffMatchesAutoEnable,
 } from '@ops/shared';
 import { PillSelect, PillMultiSelect, type PillOption } from '@/admin/_shared/PillEditor';
@@ -176,23 +177,31 @@ export function ModuleAccessPill({
 }) {
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const assignedModules = row.modules ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+  const exclusions = row.moduleExclusions ?? [];
 
-  const selected = new Set<string>(assignedModules);
+  const selected = new Set<string>();
   if (row.hasAdminAccess) selected.add(ADMIN_ACCESS);
   for (const m of modules) {
-    if (staffMatchesAutoEnable(row, m.autoEnable ?? null)) selected.add(m.moduleId);
+    if (staffHasModule(row, m)) selected.add(m.moduleId);
   }
 
   const options: PillOption[] = [
     { value: ADMIN_ACCESS, label: 'Admin Console Access', color: ADMIN_PILL_COLOR },
     ...modules.map((m) => {
       const cls = MODULE_COLOR_CLASSES[m.color];
-      const auto = staffMatchesAutoEnable(row, m.autoEnable ?? null);
+      // A module is "locked" (auto-rule applies and no exclusion) when the rule
+      // matches AND the staff member has NOT been excluded. Locked means the pill
+      // shows a lock icon in the UI (cannot be freely toggled off without going
+      // through the exclusion path).
+      const ruleMatches = staffMatchesAutoEnable(row, m.autoEnable ?? null);
+      const excluded = exclusions.includes(m.moduleId);
+      const locked = ruleMatches && !excluded;
       return {
         value: m.moduleId,
         label: m.displayName,
         color: { bg: cls.bg, text: cls.text },
-        ...(auto ? { locked: true } : {}),
+        ...(locked ? { locked: true } : {}),
       };
     }),
   ];
@@ -202,10 +211,29 @@ export function ModuleAccessPill({
       onPatch(row.email, { hasAdminAccess: !row.hasAdminAccess });
       return;
     }
-    // Rule-matched (auto) modules can't be manually removed — the rule wins.
     const mod = modules.find((m) => m.moduleId === value);
-    if (mod && staffMatchesAutoEnable(row, mod.autoEnable ?? null)) return;
-    const next = assignedModules.includes(value)
+    if (!mod) return;
+
+    const ruleMatches = staffMatchesAutoEnable(row, mod.autoEnable ?? null);
+    const currentlyExcluded = exclusions.includes(value);
+    const currentlyManual = assignedModules.includes(value);
+
+    if (ruleMatches) {
+      if (!currentlyExcluded) {
+        // Rule is active and not excluded → toggling OFF adds an exclusion.
+        onPatch(row.email, { moduleExclusions: [...exclusions, value] });
+      } else {
+        // Rule is active but excluded → toggling ON removes the exclusion
+        // (staff re-enters the auto-enabled cohort).
+        onPatch(row.email, {
+          moduleExclusions: exclusions.filter((id) => id !== value),
+        });
+      }
+      return;
+    }
+
+    // No auto-enable rule — toggle the manual modules array as before.
+    const next = currentlyManual
       ? assignedModules.filter((m) => m !== value)
       : [...assignedModules, value];
     onPatch(row.email, { modules: next });

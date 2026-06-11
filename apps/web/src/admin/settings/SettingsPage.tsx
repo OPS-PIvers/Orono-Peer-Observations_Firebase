@@ -6,6 +6,7 @@ import {
   COLLECTIONS,
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODEL_OPTIONS,
+  appSettings,
   type AppSettings,
   type GeminiFeature,
   type GeminiFeatures,
@@ -75,6 +76,31 @@ const GEMINI_FEATURE_META: {
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
+/**
+ * Validate a partial app-settings draft before persisting.
+ *
+ * Empty strings for email/url fields are treated as absent (the field will not
+ * be written). Number inputs with invalid values are caught by the schema.
+ *
+ * Returns an array of human-readable error messages, or an empty array when
+ * the draft is valid.
+ */
+export function validateAppSettingsDraft(draft: Partial<AppSettings>): string[] {
+  // Build a candidate with empty strings coerced to absent so the schema
+  // validators for email and url fields behave correctly (empty = not provided).
+  const candidate: Record<string, unknown> = { ...draft };
+  if (candidate['securityAdminEmail'] === '') delete candidate['securityAdminEmail'];
+  if (candidate['outboundEmailAddress'] === '') delete candidate['outboundEmailAddress'];
+  if (candidate['signupLink'] === '') delete candidate['signupLink'];
+
+  const result = appSettings.partial().safeParse(candidate);
+  if (result.success) return [];
+  return result.error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
+    return `${path}${issue.message}`;
+  });
+}
+
 export function SettingsPage() {
   const { user } = useAuth();
   const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
@@ -92,13 +118,24 @@ export function SettingsPage() {
   if (loading && !data) return <p className="text-muted-foreground">Loading settings…</p>;
 
   async function save() {
+    const validationErrors = validateAppSettingsDraft(form);
+    if (validationErrors.length > 0) {
+      setSaveError(validationErrors.join(' · '));
+      return;
+    }
     setSaving(true);
     setSaveError(null);
+    // Omit empty strings for optional string fields so they are not written
+    // as empty strings into Firestore. Build a clean payload object.
+    const payloadBase: Record<string, unknown> = { ...form };
+    if (payloadBase['securityAdminEmail'] === '') delete payloadBase['securityAdminEmail'];
+    if (payloadBase['outboundEmailAddress'] === '') delete payloadBase['outboundEmailAddress'];
+    if (payloadBase['signupLink'] === '') delete payloadBase['signupLink'];
     try {
       await setDoc(
         doc(db, SETTINGS_PATH),
         {
-          ...form,
+          ...payloadBase,
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -135,9 +172,11 @@ export function SettingsPage() {
             min={1}
             max={168}
             value={form.sessionDurationHours ?? 24}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, sessionDurationHours: Number(e.target.value) }))
-            }
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (val === undefined) return; // keep previous value when cleared
+              setForm((f) => ({ ...f, sessionDurationHours: val }));
+            }}
           />
         </Field>
 
@@ -150,9 +189,11 @@ export function SettingsPage() {
             min={1}
             max={3650}
             value={form.auditLogRetentionDays ?? 365}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, auditLogRetentionDays: Number(e.target.value) }))
-            }
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : undefined;
+              if (val === undefined) return; // keep previous value when cleared
+              setForm((f) => ({ ...f, auditLogRetentionDays: val }));
+            }}
           />
         </Field>
 
@@ -264,7 +305,9 @@ export function SettingsPage() {
               type="number"
               min={1}
               value={form.rateLimits?.observationSavesPerMinute ?? 60}
-              onChange={(e) =>
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                if (val === undefined) return; // keep previous value when cleared
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
@@ -273,10 +316,10 @@ export function SettingsPage() {
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
                     }),
-                    observationSavesPerMinute: Number(e.target.value),
+                    observationSavesPerMinute: val,
                   },
-                }))
-              }
+                }));
+              }}
             />
           </Field>
           <Field
@@ -287,7 +330,9 @@ export function SettingsPage() {
               type="number"
               min={1}
               value={form.rateLimits?.audioUploadsPerHour ?? 20}
-              onChange={(e) =>
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                if (val === undefined) return; // keep previous value when cleared
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
@@ -296,10 +341,10 @@ export function SettingsPage() {
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
                     }),
-                    audioUploadsPerHour: Number(e.target.value),
+                    audioUploadsPerHour: val,
                   },
-                }))
-              }
+                }));
+              }}
             />
           </Field>
           <Field
@@ -310,7 +355,9 @@ export function SettingsPage() {
               type="number"
               min={1}
               value={form.rateLimits?.transcriptionRequestsPerDay ?? 50}
-              onChange={(e) =>
+              onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : undefined;
+                if (val === undefined) return; // keep previous value when cleared
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
@@ -319,10 +366,10 @@ export function SettingsPage() {
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
                     }),
-                    transcriptionRequestsPerDay: Number(e.target.value),
+                    transcriptionRequestsPerDay: val,
                   },
-                }))
-              }
+                }));
+              }}
             />
           </Field>
         </fieldset>

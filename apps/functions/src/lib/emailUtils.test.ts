@@ -5,6 +5,7 @@ import {
   loadSecurityAdminEmail,
   sendEmail,
   sendTemplatedEmail,
+  shouldSendIncompleteReminder,
   staffInviteMailDocId,
   substituteVariables,
 } from './emailUtils.js';
@@ -30,6 +31,53 @@ describe('incompleteReminderMailDocId', () => {
 
   it('embeds the observation id and run date', () => {
     expect(incompleteReminderMailDocId('obs1', '2026-06-08')).toBe('incomplete-obs1-2026-06-08');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shouldSendIncompleteReminder
+// ---------------------------------------------------------------------------
+
+describe('shouldSendIncompleteReminder', () => {
+  // With scheduledDays=3 and maxReminders=5:
+  //   day 0–2  → not yet eligible
+  //   day 3    → nudge 0 (first send)
+  //   day 4    → nudge 1
+  //   day 5    → nudge 2
+  //   day 6    → nudge 3
+  //   day 7    → nudge 4 (last send, maxReminders - 1)
+  //   day 8+   → capped
+
+  it('returns false before the first eligible day', () => {
+    expect(shouldSendIncompleteReminder(0, 3, 5)).toBe(false);
+    expect(shouldSendIncompleteReminder(2, 3, 5)).toBe(false);
+  });
+
+  it('returns true on the first eligible day (nudge day 0)', () => {
+    expect(shouldSendIncompleteReminder(3, 3, 5)).toBe(true);
+  });
+
+  it('returns true on subsequent nudge days within the cap', () => {
+    expect(shouldSendIncompleteReminder(4, 3, 5)).toBe(true);
+    expect(shouldSendIncompleteReminder(5, 3, 5)).toBe(true);
+    expect(shouldSendIncompleteReminder(6, 3, 5)).toBe(true);
+    expect(shouldSendIncompleteReminder(7, 3, 5)).toBe(true);
+  });
+
+  it('returns false once the cap is reached (nudge day >= maxReminders)', () => {
+    expect(shouldSendIncompleteReminder(8, 3, 5)).toBe(false);
+    expect(shouldSendIncompleteReminder(30, 3, 5)).toBe(false);
+  });
+
+  it('returns true for exactly one day when maxReminders=1', () => {
+    expect(shouldSendIncompleteReminder(3, 3, 1)).toBe(true);
+    expect(shouldSendIncompleteReminder(4, 3, 1)).toBe(false);
+  });
+
+  it('handles scheduledDays=0 (immediate first send)', () => {
+    expect(shouldSendIncompleteReminder(0, 0, 3)).toBe(true);
+    expect(shouldSendIncompleteReminder(2, 0, 3)).toBe(true);
+    expect(shouldSendIncompleteReminder(3, 0, 3)).toBe(false);
   });
 });
 
@@ -286,12 +334,14 @@ function fakeDbForTemplatedEmail(
         return {
           where: () => ({
             where: () => ({
-              limit: () => ({
-                get: () =>
-                  Promise.resolve({
-                    empty: templateDocs.length === 0,
-                    docs: templateDocs,
-                  }),
+              orderBy: () => ({
+                limit: () => ({
+                  get: () =>
+                    Promise.resolve({
+                      empty: templateDocs.length === 0,
+                      docs: templateDocs,
+                    }),
+                }),
               }),
             }),
           }),

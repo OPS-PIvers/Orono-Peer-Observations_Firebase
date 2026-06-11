@@ -22,18 +22,21 @@ Data is Cloud Firestore; blob storage is Google Drive (service account + Domain-
 
 ## Commands (run from repo root)
 
-| Command                  | What it does                                                        |
-| ------------------------ | ------------------------------------------------------------------- |
-| `pnpm dev`               | Vite dev server (`@ops/web`)                                        |
-| `pnpm dev:emulators`     | Firestore + Auth + Functions + Storage emulators (imports fixtures) |
-| `pnpm build`             | `pnpm -r build` — all workspaces                                    |
-| `pnpm typecheck`         | `pnpm -r typecheck` — all workspaces                                |
-| `pnpm lint`              | `eslint . --max-warnings 0` (strict; warnings fail)                 |
-| `pnpm format` / `:check` | Prettier write / check                                              |
-| `pnpm test`              | `pnpm -r test` — Vitest per workspace                               |
-| `pnpm test:rules`        | Firestore security-rules tests (needs emulator — see gotchas)       |
-| `pnpm test:e2e`          | Playwright E2E (desktop + iPad viewports)                           |
-| `pnpm validate`          | **typecheck + lint + format:check + test** — the full gate          |
+| Command                    | What it does                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm dev`                 | Vite dev server (`@ops/web`)                                                                    |
+| `pnpm dev:emulators`       | Emulators **with** snapshot import — requires `fixtures/seed` to exist (see below)              |
+| `pnpm dev:emulators:fresh` | Emulators **without** import — use on a fresh checkout; exports snapshot on exit                |
+| `pnpm seed:dev`            | Write synthetic seed data to the running emulator (emulator must already be up)                 |
+| `pnpm build`               | `pnpm -r build` — all workspaces                                                                |
+| `pnpm typecheck`           | `pnpm -r typecheck` — all workspaces                                                            |
+| `pnpm lint`                | `eslint . --max-warnings 0` (strict; warnings fail)                                             |
+| `pnpm format` / `:check`   | Prettier write / check                                                                          |
+| `pnpm test`                | `pnpm -r test` — Vitest per workspace                                                           |
+| `pnpm test:scripts`        | Vitest unit tests for the seed-dev script (validates synthetic data against shared Zod schemas) |
+| `pnpm test:rules`          | Firestore security-rules tests (needs emulator — see gotchas)                                   |
+| `pnpm test:e2e`            | Playwright E2E (desktop + iPad viewports)                                                       |
+| `pnpm validate`            | **typecheck + lint + format:check + test** — the full gate                                      |
 
 ## Required workflow rules
 

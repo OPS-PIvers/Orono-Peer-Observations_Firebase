@@ -457,6 +457,188 @@ describe('module items — collectionGroup query (the dashboard access path)', (
   });
 });
 
+// ---------------------------------------------------------------------------
+// /staff/{email}/moduleProgress — collection-group admin rule
+// ---------------------------------------------------------------------------
+// The new /{path=**}/moduleProgress/{itemId} collection-group rule lets
+// admins run cross-staff queries for the ModuleBuilderPage progress roster.
+// Staff can read/write only their own docs (the per-staff rule handles that);
+// the collection-group rule must NOT expand that to let non-admins read
+// other people's progress.
+describe('/staff/{email}/moduleProgress — collection-group query (admin progress roster)', () => {
+  beforeEach(async () => {
+    await seed('staff/alice@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('staff/alice@orono.k12.mn.us/moduleProgress/i1', {
+      itemId: 'i1',
+      moduleId: 'mentor',
+      status: 'done',
+      completedAt: new Date().toISOString(),
+    });
+    await seed('staff/bob@orono.k12.mn.us', { modules: ['mentor'] });
+    await seed('staff/bob@orono.k12.mn.us/moduleProgress/i1', {
+      itemId: 'i1',
+      moduleId: 'mentor',
+      status: 'done',
+      completedAt: new Date().toISOString(),
+    });
+  });
+
+  it('admin can run a collectionGroup query filtered by moduleId', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(
+      getDocs(query(collectionGroup(db, 'moduleProgress'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('admin can get a single progress doc via the per-staff path', async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertSucceeds(getDoc(doc(db, 'staff/alice@orono.k12.mn.us/moduleProgress/i1')));
+  });
+
+  it('staff can read their own progress doc', async () => {
+    const db = testEnv
+      .authenticatedContext('alice', claims.teacher('alice@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'staff/alice@orono.k12.mn.us/moduleProgress/i1')));
+  });
+
+  it("staff cannot read another person's progress doc via the per-staff path", async () => {
+    const db = testEnv
+      .authenticatedContext('alice', claims.teacher('alice@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'staff/bob@orono.k12.mn.us/moduleProgress/i1')));
+  });
+
+  it('non-admin staff cannot run a cross-staff collectionGroup query', async () => {
+    const db = testEnv
+      .authenticatedContext('alice', claims.teacher('alice@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      getDocs(query(collectionGroup(db, 'moduleProgress'), where('moduleId', '==', 'mentor'))),
+    );
+  });
+
+  it('admin cannot write to a moduleProgress doc via the collection-group path', async () => {
+    // Writes must go through the per-staff rule, which also allows admins —
+    // but the collection-group rule explicitly denies writes to prevent
+    // accidental double-path mutations.
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    // Direct per-staff path write IS allowed by the /staff/{email}/moduleProgress/{itemId} rule.
+    await assertSucceeds(
+      setDoc(doc(db, 'staff/alice@orono.k12.mn.us/moduleProgress/i2'), {
+        itemId: 'i2',
+        moduleId: 'mentor',
+        status: 'done',
+        completedAt: new Date().toISOString(),
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// auto-enable exclusions — moduleExclusions overrides the rule for that staff
+// ---------------------------------------------------------------------------
+describe('/modules/{id}/items — auto-enable exclusion blocks access', () => {
+  beforeEach(async () => {
+    // high-cycle module: auto-enables for cycle status 'high'
+    await seed('modules/high-cycle', {
+      moduleId: 'high-cycle',
+      displayName: 'High Cycle',
+      autoEnable: { dimension: 'status', value: 'high' },
+    });
+    await seed('modules/high-cycle/items/i1', {
+      itemId: 'i1',
+      moduleId: 'high-cycle',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'High cycle packet',
+    });
+    // Staff that matches the rule
+    await seed('staff/high2@orono.k12.mn.us', {
+      year: 2,
+      summativeYear: true,
+      modules: [],
+      moduleExclusions: [],
+    });
+    // Staff that matches the rule but has an exclusion for high-cycle
+    await seed('staff/excluded@orono.k12.mn.us', {
+      year: 2,
+      summativeYear: true,
+      modules: [],
+      moduleExclusions: ['high-cycle'],
+    });
+    // Staff that matches the rule, has an exclusion, but ALSO has a manual assignment
+    await seed('staff/manualoverride@orono.k12.mn.us', {
+      year: 2,
+      summativeYear: true,
+      modules: ['high-cycle'],
+      moduleExclusions: ['high-cycle'],
+    });
+  });
+
+  it('matching staff without exclusion can read an auto-enabled item', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+
+  it('matching staff WITH an exclusion is denied the auto-enabled item', async () => {
+    const db = testEnv
+      .authenticatedContext('e', claims.teacher('excluded@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+
+  it('staff with exclusion but manual assignment can still read the item', async () => {
+    const db = testEnv
+      .authenticatedContext('m', claims.teacher('manualoverride@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+  });
+});
+
+describe('/modules/{id}/content — auto-enable exclusion blocks access', () => {
+  beforeEach(async () => {
+    await seed('modules/high-cycle', {
+      moduleId: 'high-cycle',
+      displayName: 'High Cycle',
+      autoEnable: { dimension: 'status', value: 'high' },
+    });
+    await seed('modules/high-cycle/content/sec-1', {
+      sectionId: 'sec-1',
+      moduleId: 'high-cycle',
+      body: 'High cycle guidance',
+    });
+    await seed('staff/high2@orono.k12.mn.us', {
+      year: 2,
+      summativeYear: true,
+      modules: [],
+      moduleExclusions: [],
+    });
+    await seed('staff/excluded@orono.k12.mn.us', {
+      year: 2,
+      summativeYear: true,
+      modules: [],
+      moduleExclusions: ['high-cycle'],
+    });
+  });
+
+  it('matching staff without exclusion can read auto-enabled content', async () => {
+    const db = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+  });
+
+  it('matching staff WITH an exclusion is denied auto-enabled content', async () => {
+    const db = testEnv
+      .authenticatedContext('e', claims.teacher('excluded@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/high-cycle/content/sec-1')));
+  });
+});
+
 // The module page (/m/{moduleId}) lists /modules/{id}/items directly.
 // Firestore evaluates list queries against the QUERY, not the returned
 // documents, so the rule's `resource.data.moduleId in …` condition is only

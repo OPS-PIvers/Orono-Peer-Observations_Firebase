@@ -34,7 +34,6 @@ const uploadEvidenceFn = httpsCallable<
 export const EMPTY_ENTRY: ObservationComponentEntry = {
   proficiency: null,
   selectedLookForIds: [],
-  scratchNotes: '',
 };
 
 export interface RubricRowProps {

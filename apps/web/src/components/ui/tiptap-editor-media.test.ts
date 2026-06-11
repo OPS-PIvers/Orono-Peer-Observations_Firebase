@@ -1,25 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { isValidYoutubeUrl } from '@tiptap/extension-youtube';
 import { ALLOWED_EMBED_HOSTS } from './tiptap-editor';
 
 /**
- * Unit tests for the media extension helpers in TiptapEditor.
+ * Unit tests for the media embed helpers in TiptapEditor.
  *
  * We test:
  *  1. The ALLOWED_EMBED_HOSTS allowlist — ensures only approved domains are listed.
- *  2. YouTube URL validation (via the extension's isValidYoutubeUrl helper) —
- *     covering the same cases the insertYoutubeEmbed handler checks before
- *     calling editor.commands.setYoutubeVideo.
+ *  2. YouTube URL validation — covering the same cases the embed handler checks
+ *     before accepting a video URL.
  *  3. Google Drive URL recognition — drive.google.com links bypass YouTube
  *     validation, so we assert that they pass the isDrive check.
  *  4. Reject logic for non-allowed embed domains.
  *  5. Image URL security — only https:// URLs should be accepted.
  */
 
-// Mirrors the isDrive + isYoutube guard inside insertYoutubeEmbed.
+// Recognises a YouTube watch/short/embed URL by parsing its host against the
+// allowlist. Mirrors the host check the editor applies to embed URLs.
+function isValidYoutubeUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return ALLOWED_EMBED_HOSTS.some((allowed) => allowed !== 'drive.google.com' && host === allowed);
+}
+
+// Mirrors the isDrive + isYoutube guard inside the embed handler.
 function isAllowedEmbedUrl(url: string): boolean {
   const isDrive = url.includes('drive.google.com');
-  const isYoutube = !!isValidYoutubeUrl(url);
+  const isYoutube = isValidYoutubeUrl(url);
   return isDrive || isYoutube;
 }
 

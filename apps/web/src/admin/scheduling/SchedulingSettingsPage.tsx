@@ -5,6 +5,7 @@ import {
   BOOKING_MODES,
   COLLECTIONS,
   DEFAULT_SCHEDULING_SETTINGS,
+  schedulingSettings,
   type AppSettings,
   type BookingMode,
   type SchedulingSettings,
@@ -19,6 +20,21 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
+
+/**
+ * Validate a scheduling-settings draft before persisting.
+ *
+ * Returns an array of human-readable error messages, or an empty array when
+ * the draft is valid.
+ */
+export function validateSchedulingSettingsDraft(draft: SchedulingSettings): string[] {
+  const result = schedulingSettings.safeParse(draft);
+  if (result.success) return [];
+  return result.error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
+    return `${path}${issue.message}`;
+  });
+}
 
 const MODE_LABELS: Record<BookingMode, string> = {
   direct: 'Direct slot booking',
@@ -91,6 +107,11 @@ export function SchedulingSettingsPage() {
   }
 
   async function save() {
+    const validationErrors = validateSchedulingSettingsDraft(form);
+    if (validationErrors.length > 0) {
+      setSaveError(validationErrors.join(' · '));
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {

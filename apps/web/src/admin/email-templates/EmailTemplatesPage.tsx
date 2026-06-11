@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Mail, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { deleteDoc, doc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, orderBy, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -45,6 +45,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'roleYearMapping.updated': 'Subdomains Assigned',
   'scheduled.preObservation': 'Scheduled: Pre-Observation',
   'scheduled.reminderIncomplete': 'Scheduled: Incomplete Reminder',
+  'scheduled.reminderUnacknowledged': 'Scheduled: Unacknowledged Observation Reminder',
   'scheduling.windowInvite': 'Scheduling: Window Invite',
   'scheduling.bookingConfirmation': 'Scheduling: Booking Confirmed',
   'scheduling.bookingRescheduled': 'Scheduling: Booking Rescheduled',
@@ -53,6 +54,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduling.bookingCancelled': 'Scheduling: Booking Cancelled',
   'scheduling.windowCancelled': 'Scheduling: Window Cancelled',
   'scheduling.windowExpired': 'Scheduling: Window Expired',
+  'scheduling.preferenceSubmitted': 'Scheduling: Day Preference Submitted',
 };
 
 const RECIPIENT_LABELS: Record<EmailRecipientType, string> = {
@@ -62,7 +64,8 @@ const RECIPIENT_LABELS: Record<EmailRecipientType, string> = {
   admin: 'To: Admin',
 };
 
-const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
+/** Exported for drift-prevention tests only — not part of the public API. */
+export const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
   manual: [
     'observedName',
     'observedEmail',
@@ -112,11 +115,12 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'signInLink',
     'appName',
   ],
-  'staff.created': ['staffName', 'staffEmail', 'staffRole', 'signInLink', 'appName'],
+  'staff.created': ['staffName', 'staffEmail', 'staffRole', 'staffYear', 'signInLink', 'appName'],
   'roleYearMapping.updated': [
     'staffName',
     'staffEmail',
     'staffRole',
+    'staffYear',
     'assignedComponentCount',
     'assignedDomainList',
     'signInLink',
@@ -126,15 +130,36 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observedName',
     'observedEmail',
     'observerName',
+    'observerEmail',
     'observationDate',
     'observationName',
+    'observedRole',
+    'observedYear',
+    'observationType',
     'signInLink',
     'appName',
   ],
   'scheduled.reminderIncomplete': [
     'observedName',
     'observedEmail',
+    'observedRole',
     'observationType',
+    'observationName',
+    'signInLink',
+    'appName',
+  ],
+  'scheduled.reminderUnacknowledged': [
+    'observedName',
+    'observedEmail',
+    'observedRole',
+    'observedYear',
+    'observerName',
+    'observerEmail',
+    'observationDate',
+    'observationName',
+    'observationType',
+    'pdfDriveLink',
+    'driveFolderLink',
     'signInLink',
     'appName',
   ],
@@ -142,6 +167,10 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observedName',
     'observedEmail',
     'observerName',
+    'observerEmail',
+    'staffName',
+    'staffEmail',
+    'staffRole',
     'bookingLink',
     'buildingName',
     'windowStartLocal',
@@ -204,8 +233,12 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observedName',
     'observedEmail',
     'observerName',
+    'observerEmail',
     'slotDateLocal',
     'slotStartLocal',
+    'slotEndLocal',
+    'slotPeriodName',
+    'buildingName',
     'cancellationReason',
     'signInLink',
     'appName',
@@ -226,6 +259,15 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observerName',
     'windowStartLocal',
     'windowEndLocal',
+    'signInLink',
+    'appName',
+  ],
+  'scheduling.preferenceSubmitted': [
+    'observerName',
+    'staffName',
+    'windowStartLocal',
+    'windowEndLocal',
+    'preferredDateLocal',
     'signInLink',
     'appName',
   ],
@@ -250,6 +292,7 @@ const SAMPLE_VARS: Record<TemplateVariable, string> = {
   staffName: 'Alex Smith',
   staffEmail: 'alex.smith@orono.k12.mn.us',
   staffRole: 'Teacher',
+  staffYear: '2',
   assignedDomainList: '3 components assigned',
   assignedComponentCount: '3',
   signupLink: 'https://calendly.com/example',
@@ -262,6 +305,7 @@ const SAMPLE_VARS: Record<TemplateVariable, string> = {
   cancellationReason: 'Schedule conflict',
   windowStartLocal: 'May 18, 2026',
   windowEndLocal: 'May 29, 2026',
+  preferredDateLocal: 'Wednesday, May 20, 2026',
 };
 
 // ── Callable ───────────────────────────────────────────────────────────────
@@ -323,12 +367,42 @@ export function EmailTemplatesPage() {
   }
 
   async function toggleActive(t: TemplateDoc) {
+    const activating = !t.isActive;
     try {
-      await setDoc(
-        doc(db, COLLECTIONS.emailTemplates, t.id),
-        { isActive: !t.isActive, updatedAt: serverTimestamp() },
-        { merge: true },
-      );
+      // When activating a non-manual template, check whether another active
+      // template already covers the same trigger. If so, deactivate it in the
+      // same batch so there is never more than one active template per trigger.
+      const conflict =
+        activating && t.triggerType !== 'manual'
+          ? (templates ?? []).find(
+              (other) => other.id !== t.id && other.triggerType === t.triggerType && other.isActive,
+            )
+          : undefined;
+
+      if (conflict) {
+        const batch = writeBatch(db);
+        batch.set(
+          doc(db, COLLECTIONS.emailTemplates, conflict.id),
+          { isActive: false, updatedAt: serverTimestamp() },
+          { merge: true },
+        );
+        batch.set(
+          doc(db, COLLECTIONS.emailTemplates, t.id),
+          { isActive: true, updatedAt: serverTimestamp() },
+          { merge: true },
+        );
+        await batch.commit();
+        toast.warning(`"${conflict.name}" was deactivated`, {
+          description: `Only one active template is allowed per trigger. "${t.name}" is now active for "${TRIGGER_LABELS[t.triggerType]}".`,
+          icon: <AlertTriangle className="h-4 w-4" />,
+        });
+      } else {
+        await setDoc(
+          doc(db, COLLECTIONS.emailTemplates, t.id),
+          { isActive: activating, updatedAt: serverTimestamp() },
+          { merge: true },
+        );
+      }
     } catch (err) {
       toast.error('Failed to update template', {
         description: err instanceof Error ? err.message : 'Please try again.',
@@ -341,6 +415,22 @@ export function EmailTemplatesPage() {
     setSaving(true);
     setSaveError(null);
     try {
+      // Warn when saving would leave this template active with the same
+      // non-manual trigger as another active template. The conflict is only a
+      // warning here — the admin chose to save — but it surfaces the ambiguity
+      // so they can resolve it deliberately. (toggleActive enforces uniqueness
+      // atomically when activating; this catches trigger-reassignment cases.)
+      const savedTrigger = editForm.triggerType ?? 'manual';
+      const currentTemplate = (templates ?? []).find((t) => t.id === editForm.id);
+      const willBeActive = currentTemplate?.isActive ?? false;
+      const conflict =
+        willBeActive && savedTrigger !== 'manual'
+          ? (templates ?? []).find(
+              (other) =>
+                other.id !== editForm.id && other.triggerType === savedTrigger && other.isActive,
+            )
+          : undefined;
+
       await setDoc(
         doc(db, COLLECTIONS.emailTemplates, editForm.id),
         {
@@ -351,10 +441,19 @@ export function EmailTemplatesPage() {
           triggerType: editForm.triggerType,
           recipient: editForm.recipient,
           scheduledDays: editForm.scheduledDays,
+          maxReminders: editForm.maxReminders,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
+
+      if (conflict) {
+        toast.warning('Duplicate active trigger', {
+          description: `"${conflict.name}" is also active for "${TRIGGER_LABELS[savedTrigger]}". Deactivate one to avoid ambiguity.`,
+          icon: <AlertTriangle className="h-4 w-4" />,
+        });
+      }
+
       setExpandedId(null);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
@@ -375,6 +474,7 @@ export function EmailTemplatesPage() {
       triggerType: 'manual',
       recipient: 'observed',
       scheduledDays: 3,
+      maxReminders: 5,
       isActive: false,
       isSystem: false,
       createdAt: serverTimestamp(),
@@ -626,6 +726,10 @@ function TemplateRow({
     TRIGGER_VARIABLES as Partial<Record<EmailTriggerType, TemplateVariable[]>>
   )[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
   const isScheduled = triggerType.startsWith('scheduled.');
+  // Show the "Max sends" field for any capped scheduled reminder trigger.
+  const isCappedReminder =
+    triggerType === 'scheduled.reminderIncomplete' ||
+    triggerType === 'scheduled.reminderUnacknowledged';
 
   return (
     <div>
@@ -749,6 +853,27 @@ function TemplateRow({
               </div>
             ) : null}
           </div>
+
+          {isCappedReminder ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid gap-1.5 sm:col-start-3">
+                <Label htmlFor={`max-reminders-${t.id}`}>Max sends</Label>
+                <Input
+                  id={`max-reminders-${t.id}`}
+                  type="number"
+                  min={1}
+                  value={editForm.maxReminders ?? t.maxReminders}
+                  onChange={(e) =>
+                    onFormChange({ ...editForm, maxReminders: Number(e.target.value) })
+                  }
+                  aria-describedby={`max-reminders-hint-${t.id}`}
+                />
+                <p id={`max-reminders-hint-${t.id}`} className="text-muted-foreground text-xs">
+                  Stop sending after this many daily reminders per observation.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {/* Body editor — visual with variable pills, raw-HTML fallback */}
           <EmailBodyField

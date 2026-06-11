@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ClipboardList, Mail } from 'lucide-react';
-import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, orderBy, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  STAFF_SUBCOLLECTIONS,
   type EmailTemplate,
+  type ModuleDoc,
+  type ModuleProgress,
   type Observation,
   type ObservationStatus,
   type Role,
@@ -116,8 +119,36 @@ export function StaffPersonPage() {
     MANUAL_TEMPLATE_CONSTRAINTS,
   );
 
+  // Module docs — needed to map moduleId → displayName in the progress card.
+  const { data: moduleDocs } = useFirestoreCollection<ModuleDoc>(
+    isAdmin ? COLLECTIONS.modules : '',
+  );
+
+  // Admin module-progress summary: one-shot read of the staff member's
+  // moduleProgress subcollection. Only fires for admins. Re-fetches when the
+  // viewed person's email changes.
+  const [moduleProgress, setModuleProgress] = useState<(ModuleProgress & { id: string })[] | null>(
+    null,
+  );
+  const [moduleProgressLoading, setModuleProgressLoading] = useState(false);
+  useEffect(() => {
+    if (!isAdmin || !email) {
+      setModuleProgress(null);
+      return;
+    }
+    setModuleProgressLoading(true);
+    void getDocs(collection(db, COLLECTIONS.staff, email, STAFF_SUBCOLLECTIONS.moduleProgress))
+      .then((snap) => {
+        setModuleProgress(snap.docs.map((d) => ({ ...(d.data() as ModuleProgress), id: d.id })));
+      })
+      .finally(() => {
+        setModuleProgressLoading(false);
+      });
+  }, [isAdmin, email]);
+
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [confirmingNewObservation, setConfirmingNewObservation] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -242,6 +273,11 @@ export function StaffPersonPage() {
       subtitle={
         <span className="flex flex-wrap items-center gap-2">
           <span>{roleDisplayName(roles, staffMember.role)}</span>
+          {!staffMember.isActive ? (
+            <span className="inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-800">
+              Archived
+            </span>
+          ) : null}
           <span
             className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${yearBadgeClass(staffMember.year)}`}
           >
@@ -306,12 +342,46 @@ export function StaffPersonPage() {
             ) : null}
           </div>
 
-          <Button
-            onClick={() => setDialogOpen(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
-            New Observation
-          </Button>
+          {!staffMember.isActive && confirmingNewObservation ? (
+            <div className="flex items-center gap-2 text-sm text-white/80">
+              <span>Create observation for archived staff?</span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setConfirmingNewObservation(false);
+                  setDialogOpen(true);
+                }}
+                className="text-ops-blue-dark bg-white hover:bg-white/90"
+              >
+                Proceed
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmingNewObservation(false)}
+                className="text-white/80 hover:bg-white/10 hover:text-white"
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={() => {
+                if (!staffMember.isActive) {
+                  setConfirmingNewObservation(true);
+                } else {
+                  setDialogOpen(true);
+                }
+              }}
+              className={
+                !staffMember.isActive
+                  ? 'text-ops-gray-dark bg-gray-200 hover:bg-gray-300'
+                  : 'text-ops-blue-dark bg-white hover:bg-white/90'
+              }
+            >
+              New Observation
+            </Button>
+          )}
         </div>
       }
     >
@@ -344,7 +414,18 @@ export function StaffPersonPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
-          <Button onClick={() => setDialogOpen(true)}>Start first observation</Button>
+          <Button
+            onClick={() => {
+              if (!staffMember.isActive) {
+                setConfirmingNewObservation(true);
+              } else {
+                setDialogOpen(true);
+              }
+            }}
+            variant={!staffMember.isActive ? 'outline' : 'default'}
+          >
+            Start first observation
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -361,6 +442,17 @@ export function StaffPersonPage() {
           ))}
         </div>
       )}
+
+      {/* Admin: module progress card (only shown to admins) */}
+      {isAdmin ? (
+        <StaffModuleProgressCard
+          staffEmail={email ?? ''}
+          staffModules={staffMember.modules}
+          moduleDocs={moduleDocs ?? []}
+          progress={moduleProgress}
+          loading={moduleProgressLoading}
+        />
+      ) : null}
 
       {/* New observation dialog */}
       {dialogOpen ? (
@@ -416,6 +508,115 @@ export function StaffPersonPage() {
         </Dialog>
       ) : null}
     </PageHeader>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Module progress card (admin only)
+// ---------------------------------------------------------------------------
+
+function formatCompletedAt(value: ModuleProgress['completedAt']): string {
+  const raw = value as unknown;
+  let date: Date | null = null;
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    'toDate' in raw &&
+    typeof (raw as Record<string, unknown>)['toDate'] === 'function'
+  ) {
+    date = (raw as { toDate: () => Date }).toDate();
+  } else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  return date ? date.toLocaleDateString() : '—';
+}
+
+interface StaffModuleProgressCardProps {
+  staffEmail: string;
+  /** Module IDs explicitly assigned on the staff doc. */
+  staffModules: string[];
+  moduleDocs: (ModuleDoc & { id: string })[];
+  progress: (ModuleProgress & { id: string })[] | null;
+  loading: boolean;
+}
+
+function StaffModuleProgressCard({
+  staffModules,
+  moduleDocs,
+  progress,
+  loading,
+}: StaffModuleProgressCardProps) {
+  // Map moduleId → displayName for rendering.
+  // Hooks must be called unconditionally (before any early return).
+  const moduleNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of moduleDocs) {
+      map.set(m.moduleId, m.displayName);
+    }
+    return map;
+  }, [moduleDocs]);
+
+  // Group completed item IDs by module.
+  const completedByModule = useMemo(() => {
+    const map = new Map<string, { itemIds: Set<string>; latestAt: string }>();
+    for (const p of progress ?? []) {
+      const existing = map.get(p.moduleId);
+      if (existing) {
+        existing.itemIds.add(p.itemId);
+      } else {
+        map.set(p.moduleId, {
+          itemIds: new Set([p.itemId]),
+          latestAt: formatCompletedAt(p.completedAt),
+        });
+      }
+    }
+    return map;
+  }, [progress]);
+
+  // Only show the card if this staff member is assigned to any modules.
+  if (staffModules.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-semibold text-gray-700">Module progress</h3>
+      {loading ? (
+        <div className="animate-pulse space-y-2">
+          {staffModules.map((id) => (
+            <div key={id} className="h-10 rounded-lg bg-gray-100" />
+          ))}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          {staffModules.map((moduleId, idx) => {
+            const entry = completedByModule.get(moduleId);
+            const doneName = moduleNames.get(moduleId) ?? moduleId;
+            return (
+              <div
+                key={moduleId}
+                className={`flex items-center justify-between px-4 py-2.5 text-sm ${
+                  idx < staffModules.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
+              >
+                <span className="font-medium text-gray-800">{doneName}</span>
+                <span className="text-muted-foreground text-xs">
+                  {entry ? (
+                    <>
+                      {String(entry.itemIds.size)} item
+                      {entry.itemIds.size !== 1 ? 's' : ''} done · last {entry.latestAt}
+                    </>
+                  ) : (
+                    'No items completed'
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -13,7 +13,12 @@ vi.mock('@/hooks/useFirestoreDoc', () => ({
   useFirestoreDoc: useFirestoreDocMock,
 }));
 
-import { BRAND_CSS_VARS, BrandingProvider, derivePrimaryShades } from './BrandingProvider';
+import {
+  BRAND_CSS_VARS,
+  BrandingProvider,
+  derivePrimaryShades,
+  getBrandingCache,
+} from './BrandingProvider';
 
 /** Builds a schema-complete `/appSettings/global` doc with the given primary color. */
 function settingsDoc(primaryColor: string): AppSettings & { id: string } {
@@ -46,6 +51,7 @@ function expectNoBrandVars() {
 beforeEach(() => {
   useFirestoreDocMock.mockReset();
   document.documentElement.removeAttribute('style');
+  localStorage.clear();
 });
 
 describe('derivePrimaryShades', () => {
@@ -146,5 +152,205 @@ describe('BrandingProvider', () => {
     unmount();
 
     expectNoBrandVars();
+  });
+
+  it('persists branding to localStorage when loaded from Firestore', () => {
+    const doc = settingsDoc('#7a1718');
+    doc.branding.appName = 'Custom App Name';
+    doc.branding.logoUrl = 'https://example.com/logo.png';
+    doc.branding.iconUrl = 'https://example.com/icon.png';
+    mockSnapshot(doc);
+
+    render(<BrandingProvider>{null}</BrandingProvider>);
+
+    const cached = JSON.parse(localStorage.getItem('ops-branding-cache') ?? '{}');
+    expect(cached).toEqual({
+      appName: 'Custom App Name',
+      primaryColor: '#7a1718',
+      logoUrl: 'https://example.com/logo.png',
+      iconUrl: 'https://example.com/icon.png',
+    });
+  });
+
+  it('updates localStorage when branding changes', () => {
+    mockSnapshot(settingsDoc('#7a1718'));
+    const { rerender } = render(<BrandingProvider>{null}</BrandingProvider>);
+
+    const doc = settingsDoc('#ad2122');
+    doc.branding.appName = 'Updated Name';
+    mockSnapshot(doc);
+    rerender(<BrandingProvider>{null}</BrandingProvider>);
+
+    const cached = JSON.parse(localStorage.getItem('ops-branding-cache') ?? '{}');
+    expect(cached.primaryColor).toBe('#ad2122');
+    expect(cached.appName).toBe('Updated Name');
+  });
+});
+
+describe('getBrandingCache', () => {
+  it('returns cached branding when localStorage has valid data', () => {
+    const cached = {
+      appName: 'Custom App Name',
+      primaryColor: '#7a1718',
+      logoUrl: 'https://example.com/logo.png',
+      iconUrl: 'https://example.com/icon.png',
+    };
+    localStorage.setItem('ops-branding-cache', JSON.stringify(cached));
+
+    const result = getBrandingCache();
+
+    expect(result).toEqual(cached);
+  });
+
+  it('returns defaults when localStorage is empty', () => {
+    const result = getBrandingCache();
+
+    expect(result).toEqual({
+      appName: OPS_BRAND.defaultAppName,
+      primaryColor: OPS_BRAND.defaultPrimaryColor,
+      logoUrl: null,
+      iconUrl: null,
+    });
+  });
+
+  it('returns defaults when localStorage has invalid JSON', () => {
+    localStorage.setItem('ops-branding-cache', 'not valid json');
+
+    const result = getBrandingCache();
+
+    expect(result).toEqual({
+      appName: OPS_BRAND.defaultAppName,
+      primaryColor: OPS_BRAND.defaultPrimaryColor,
+      logoUrl: null,
+      iconUrl: null,
+    });
+  });
+
+  it('returns defaults when localStorage has partially invalid data', () => {
+    const invalid = {
+      appName: 123, // Should be string
+      primaryColor: '#7a1718',
+      logoUrl: null,
+      iconUrl: null,
+    };
+    localStorage.setItem('ops-branding-cache', JSON.stringify(invalid));
+
+    const result = getBrandingCache();
+
+    expect(result).toEqual({
+      appName: OPS_BRAND.defaultAppName,
+      primaryColor: OPS_BRAND.defaultPrimaryColor,
+      logoUrl: null,
+      iconUrl: null,
+    });
+  });
+
+  it('allows logoUrl and iconUrl to be null in cached data', () => {
+    const cached = {
+      appName: 'Custom App Name',
+      primaryColor: '#7a1718',
+      logoUrl: null,
+      iconUrl: null,
+    };
+    localStorage.setItem('ops-branding-cache', JSON.stringify(cached));
+
+    const result = getBrandingCache();
+
+    expect(result).toEqual(cached);
+  });
+});
+
+describe('BrandingProvider side effects', () => {
+  it('sets document.title to the configured appName', () => {
+    mockSnapshot(settingsDoc(OPS_BRAND.defaultPrimaryColor));
+    const doc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    doc.branding.appName = 'Acme School District';
+    mockSnapshot(doc);
+
+    render(<BrandingProvider>{null}</BrandingProvider>);
+
+    expect(document.title).toBe('Acme School District');
+  });
+
+  it('updates document.title when appName changes', () => {
+    mockSnapshot(settingsDoc(OPS_BRAND.defaultPrimaryColor));
+    const { rerender } = render(<BrandingProvider>{null}</BrandingProvider>);
+    expect(document.title).toBe('Orono Peer Observations');
+
+    const doc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    doc.branding.appName = 'Updated District';
+    mockSnapshot(doc);
+    rerender(<BrandingProvider>{null}</BrandingProvider>);
+
+    expect(document.title).toBe('Updated District');
+  });
+
+  it('sets the favicon href to iconUrl when present', () => {
+    const doc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    doc.branding.iconUrl = 'https://example.com/custom-icon.png';
+    mockSnapshot(doc);
+
+    render(<BrandingProvider>{null}</BrandingProvider>);
+
+    const faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(faviconLink).not.toBeNull();
+    if (faviconLink) {
+      expect(faviconLink.href).toBe('https://example.com/custom-icon.png');
+    }
+  });
+
+  it('reverts favicon to default when iconUrl is null', () => {
+    mockSnapshot(settingsDoc(OPS_BRAND.defaultPrimaryColor));
+
+    render(<BrandingProvider>{null}</BrandingProvider>);
+
+    const faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(faviconLink).not.toBeNull();
+    if (faviconLink) {
+      expect(faviconLink.href).toContain('/brand/torch-icon.png');
+    }
+  });
+
+  it('updates favicon href when iconUrl changes', () => {
+    const doc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    doc.branding.iconUrl = 'https://example.com/old-icon.png';
+    mockSnapshot(doc);
+
+    const { rerender } = render(<BrandingProvider>{null}</BrandingProvider>);
+
+    let faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(faviconLink).not.toBeNull();
+    if (faviconLink) {
+      expect(faviconLink.href).toBe('https://example.com/old-icon.png');
+    }
+
+    const updatedDoc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    updatedDoc.branding.iconUrl = 'https://example.com/new-icon.png';
+    mockSnapshot(updatedDoc);
+    rerender(<BrandingProvider>{null}</BrandingProvider>);
+
+    faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(faviconLink).not.toBeNull();
+    if (faviconLink) {
+      expect(faviconLink.href).toBe('https://example.com/new-icon.png');
+    }
+  });
+
+  it('creates favicon link if it does not exist', () => {
+    // Remove the existing favicon link if present
+    const existingFavicon = document.querySelector('link[rel="icon"]');
+    if (existingFavicon) existingFavicon.remove();
+
+    const doc = settingsDoc(OPS_BRAND.defaultPrimaryColor);
+    doc.branding.iconUrl = 'https://example.com/icon.png';
+    mockSnapshot(doc);
+
+    render(<BrandingProvider>{null}</BrandingProvider>);
+
+    const faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    expect(faviconLink).not.toBeNull();
+    if (faviconLink) {
+      expect(faviconLink.href).toBe('https://example.com/icon.png');
+    }
   });
 });

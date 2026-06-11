@@ -25,7 +25,7 @@ export interface AppHeaderProps {
  * inline, not floating). Future profile/avatar UI lives here too.
  */
 export function AppHeader({ pcExpanded, onTogglePc, onOpenMobile }: AppHeaderProps) {
-  const { appName, iconUrl } = useBranding();
+  const { appName, iconUrl, logoUrl } = useBranding();
   return (
     <header className="bg-ops-blue-dark relative z-50 flex h-[52px] shrink-0 items-center gap-3 px-3 text-white shadow-[0_1px_0_rgba(0,0,0,0.15)]">
       {/* Mobile hamburger — opens the off-canvas drawer. */}
@@ -47,17 +47,30 @@ export function AppHeader({ pcExpanded, onTogglePc, onOpenMobile }: AppHeaderPro
         <Menu className="h-5 w-5" />
       </button>
 
-      <img
-        src={iconUrl ?? '/brand/torch-icon.png'}
-        alt=""
-        className="h-8 w-8 shrink-0 object-contain"
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-        }}
-      />
-      <span className="font-heading text-base font-semibold tracking-wide select-none">
-        {appName}
-      </span>
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt={appName}
+          className="h-8 shrink-0 object-contain"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      ) : (
+        <>
+          <img
+            src={iconUrl ?? '/brand/torch-icon.png'}
+            alt=""
+            className="h-8 w-8 shrink-0 object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          <span className="font-heading text-base font-semibold tracking-wide select-none">
+            {appName}
+          </span>
+        </>
+      )}
 
       <div className="ml-auto flex items-center gap-2">
         <DevModeBar />

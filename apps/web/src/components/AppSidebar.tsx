@@ -19,7 +19,7 @@ import {
 import {
   COLLECTIONS,
   SPECIAL_ROLES,
-  staffMatchesAutoEnable,
+  staffHasModule,
   type ModuleDoc,
   type Role,
   type Rubric,
@@ -175,7 +175,7 @@ function buildNavItems(
       {
         icon: ClipboardList,
         label: 'Observations',
-        children: [{ label: 'View finalized observations', href: '/my-rubric' }],
+        href: '/my-observations',
       },
       {
         icon: FileText,
@@ -270,13 +270,8 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   // Modules this user is assigned that have a staff-facing page → sidebar items.
   const moduleNavItems = useMemo<NavItem[]>(() => {
     if (!myStaff || !allModules) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older staff docs may lack `modules`
-    const assigned = new Set(myStaff.modules ?? []);
-    for (const m of allModules) {
-      if (staffMatchesAutoEnable(myStaff, m.autoEnable ?? null)) assigned.add(m.moduleId);
-    }
     return allModules
-      .filter((m) => m.hasPage && m.isActive && assigned.has(m.moduleId))
+      .filter((m) => m.hasPage && m.isActive && staffHasModule(myStaff, m))
       .slice()
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
       .map((m) => ({

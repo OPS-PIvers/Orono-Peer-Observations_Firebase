@@ -156,6 +156,10 @@ export type ModuleInput = z.infer<typeof moduleInput>;
  * Does this staff member satisfy a module's auto-enable rule? Mirrors the
  * inline cycle math in firestore.rules — keep the two in sync (rules tests
  * guard the rules side).
+ *
+ * NOTE: This function only checks the rule match — it does NOT check
+ * `moduleExclusions`. Use {@link staffHasModule} for the full assignment
+ * logic (manual ∪ autoEnable − exclusions).
  */
 export function staffMatchesAutoEnable(
   staff: Pick<Staff, 'year' | 'summativeYear'>,
@@ -166,4 +170,35 @@ export function staffMatchesAutoEnable(
     return cycleStatus(staff.year, staff.summativeYear) === rule.value;
   }
   return displayYear(staff.year) === rule.value;
+}
+
+/**
+ * The canonical "does this staff member have access to this module?" predicate.
+ * Encapsulates the full logic: manual assignment ∪ autoEnable rule − exclusions.
+ *
+ * Use this everywhere access is checked in the web client. The firestore.rules
+ * mirror must stay in sync with this logic.
+ *
+ * @param staff     Staff doc (partial — only the needed fields).
+ * @param moduleDoc The module to check (partial — only the needed fields).
+ */
+export function staffHasModule(
+  staff: Pick<Staff, 'year' | 'summativeYear' | 'modules' | 'moduleExclusions'>,
+  moduleDoc: { moduleId: string; autoEnable?: AutoEnable | null },
+): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+  const manualModules = staff.modules ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+  const exclusions = staff.moduleExclusions ?? [];
+
+  // Manual assignment always wins (exclusions only block auto-enable, not
+  // intentional manual assignments).
+  if (manualModules.includes(moduleDoc.moduleId)) return true;
+
+  // Auto-enable grants access unless the staff member has an explicit exclusion.
+  if (staffMatchesAutoEnable(staff, moduleDoc.autoEnable ?? null)) {
+    return !exclusions.includes(moduleDoc.moduleId);
+  }
+
+  return false;
 }

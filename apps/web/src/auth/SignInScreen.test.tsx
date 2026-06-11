@@ -60,6 +60,27 @@ vi.mock('@/components/ui/button', () => ({
   ),
 }));
 
+const { mockGetBrandingCache } = vi.hoisted(() => {
+  const mockFn = vi.fn<
+    () => {
+      appName: string;
+      primaryColor: string;
+      logoUrl: string | null;
+      iconUrl: string | null;
+    }
+  >(() => ({
+    appName: 'Orono Peer Observations',
+    primaryColor: '#2d3f89',
+    logoUrl: null,
+    iconUrl: null,
+  }));
+  return { mockGetBrandingCache: mockFn };
+});
+
+vi.mock('@/components/BrandingProvider', () => ({
+  getBrandingCache: mockGetBrandingCache,
+}));
+
 // Import the component under test after mocks are in place.
 import { SignInScreen } from './SignInScreen';
 
@@ -70,8 +91,15 @@ import { SignInScreen } from './SignInScreen';
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  localStorage.clear();
   mockUseAuth.mockReturnValue({
     status: 'signed-out',
+  });
+  mockGetBrandingCache.mockReturnValue({
+    appName: 'Orono Peer Observations',
+    primaryColor: '#2d3f89',
+    logoUrl: null,
+    iconUrl: null,
   });
 });
 
@@ -241,5 +269,63 @@ describe('SignInScreen', () => {
     render(<SignInScreen />);
 
     expect(screen.getByTestId('navigate')).toBeInTheDocument();
+  });
+
+  it('uses cached app name from branding when available', () => {
+    mockGetBrandingCache.mockReturnValue({
+      appName: 'Custom School App',
+      primaryColor: '#2d3f89',
+      logoUrl: null,
+      iconUrl: null,
+    });
+
+    render(<SignInScreen />);
+
+    expect(screen.getByText('Custom School App')).toBeInTheDocument();
+  });
+
+  it('uses cached logo URL from branding when available', () => {
+    mockGetBrandingCache.mockReturnValue({
+      appName: 'Orono Peer Observations',
+      primaryColor: '#2d3f89',
+      logoUrl: 'https://example.com/custom-logo.png',
+      iconUrl: null,
+    });
+
+    render(<SignInScreen />);
+
+    const img = screen.getByAltText('Orono Technology');
+    expect(img.getAttribute('src')).toBe('https://example.com/custom-logo.png');
+  });
+
+  it('falls back to default logo when cached logoUrl is null', () => {
+    mockGetBrandingCache.mockReturnValue({
+      appName: 'Orono Peer Observations',
+      primaryColor: '#2d3f89',
+      logoUrl: null,
+      iconUrl: null,
+    });
+
+    render(<SignInScreen />);
+
+    const img = screen.getByAltText('Orono Technology');
+    // jsdom resolves img.src to an absolute URL; assert the raw attribute.
+    expect(img.getAttribute('src')).toBe('/brand/primary-logo.png');
+  });
+
+  it('falls back to defaults when getBrandingCache returns incomplete data', () => {
+    mockGetBrandingCache.mockReturnValue({
+      appName: 'Orono Peer Observations',
+      primaryColor: '#2d3f89',
+      logoUrl: null,
+      iconUrl: null,
+    });
+
+    render(<SignInScreen />);
+
+    expect(screen.getByText('Orono Peer Observations')).toBeInTheDocument();
+    const img = screen.getByAltText('Orono Technology');
+    // jsdom resolves img.src to an absolute URL; assert the raw attribute.
+    expect(img.getAttribute('src')).toBe('/brand/primary-logo.png');
   });
 });

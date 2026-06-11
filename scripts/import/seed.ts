@@ -199,6 +199,34 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'unacknowledged-observation-reminder',
+    name: 'Reminder: Unacknowledged Finalized Observation',
+    description:
+      'Sent automatically N days after an observation is finalized if the staff member has not yet acknowledged it.',
+    subject: 'Action Required: Please Acknowledge Your Observation — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your peer observation conducted by {{observerName}} on {{observationDate}} has been finalized, but it is still waiting for your acknowledgement.</p>
+<p>Acknowledging your observation is the final step in the cycle. Please sign in to {{appName}} to review and acknowledge your observation:</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>If you have already acknowledged your observation, you can disregard this message.</p>
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'observationDate',
+      'observationType',
+      'observationName',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduled.reminderUnacknowledged',
+    recipient: 'observed',
+    scheduledDays: 3,
+    maxReminders: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'staff-invite',
     name: 'New Staff System Invitation',
     description: 'Sent to newly added staff members, welcoming them to the system.',

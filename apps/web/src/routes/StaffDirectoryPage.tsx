@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutGrid, List, Search, Users } from 'lucide-react';
-import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { ChevronDown, LayoutGrid, List, Search, Users, X } from 'lucide-react';
+import {
+  COLLECTIONS,
+  type Building,
+  type CycleStatus,
+  type Role,
+  type Staff,
+  cycleStatus,
+} from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 import { buildStaffDirectoryConstraints } from './staffDirectoryQuery';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 
 const VIEW_MODE_KEY = 'staffDir:viewMode';
 type ViewMode = 'list' | 'cards';
@@ -16,6 +32,8 @@ export function StaffDirectoryPage() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  const [selectedBuildings, setSelectedBuildings] = useState<Set<string>>(new Set());
+  const [cycleStatusFilter, setCycleStatusFilter] = useState<CycleStatus | 'all'>('all');
 
   // Filter inactive staff out server-side by default (sorted by name
   // client-side below) instead of fetching every record and hiding them.
@@ -29,6 +47,7 @@ export function StaffDirectoryPage() {
     error,
   } = useFirestoreCollection<Staff>(COLLECTIONS.staff, staffConstraints, [showInactive]);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: buildings } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window === 'undefined') return 'list';
@@ -70,15 +89,27 @@ export function StaffDirectoryPage() {
         if (roleFilter && s.role !== roleFilter) return false;
         if (q && !s.name.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q))
           return false;
+        // Building filter: if any buildings are selected, staff must have at least one overlap.
+        if (selectedBuildings.size > 0) {
+          const hasMatchingBuilding = s.buildings.some((b) => selectedBuildings.has(b));
+          if (!hasMatchingBuilding) return false;
+        }
+        // Cycle status filter: map staff year/summativeYear to cycle status and check match.
+        if (cycleStatusFilter !== 'all') {
+          const staffCycleStatus = cycleStatus(s.year, s.summativeYear);
+          if (staffCycleStatus !== cycleStatusFilter) return false;
+        }
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [staff, search, roleFilter, showInactive]);
+  }, [staff, search, roleFilter, showInactive, selectedBuildings, cycleStatusFilter]);
 
   function clearFilters() {
     setSearch('');
     setRoleFilter('');
     setShowInactive(false);
+    setSelectedBuildings(new Set());
+    setCycleStatusFilter('all');
   }
 
   return (
@@ -114,6 +145,127 @@ export function StaffDirectoryPage() {
             </option>
           ))}
         </select>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex h-10 min-h-10 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors',
+                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
+                selectedBuildings.size > 0
+                  ? 'border-ops-blue bg-ops-blue hover:bg-ops-blue-dark text-white'
+                  : 'border-input bg-background hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              <span>Building</span>
+              {selectedBuildings.size > 0 ? (
+                <>
+                  <span className="max-w-[140px] truncate text-xs opacity-90">
+                    {Array.from(selectedBuildings).slice(0, 2).join(', ')}
+                    {selectedBuildings.size > 2 ? '…' : ''}
+                  </span>
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1 text-[11px] font-semibold">
+                    {selectedBuildings.size}
+                  </span>
+                </>
+              ) : null}
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+            <DropdownMenuLabel>Filter by building</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {(buildings ?? []).map((b) => (
+              <DropdownMenuCheckboxItem
+                key={b.buildingId}
+                checked={selectedBuildings.has(b.displayName)}
+                onCheckedChange={() => {
+                  const next = new Set(selectedBuildings);
+                  if (next.has(b.displayName)) {
+                    next.delete(b.displayName);
+                  } else {
+                    next.add(b.displayName);
+                  }
+                  setSelectedBuildings(next);
+                }}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {b.displayName}
+              </DropdownMenuCheckboxItem>
+            ))}
+            {(buildings?.length ?? 0) === 0 ? (
+              <div className="text-muted-foreground px-2 py-1.5 text-sm">
+                No buildings configured.
+              </div>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex h-10 min-h-10 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors',
+                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
+                cycleStatusFilter !== 'all'
+                  ? 'border-ops-blue bg-ops-blue hover:bg-ops-blue-dark text-white'
+                  : 'border-input bg-background hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              <span>Cycle</span>
+              {cycleStatusFilter !== 'all' ? (
+                <>
+                  <span className="text-xs opacity-90">
+                    {cycleStatusFilter === 'high'
+                      ? 'High Cycle'
+                      : cycleStatusFilter === 'probationary'
+                        ? 'Probationary'
+                        : 'Low Cycle'}
+                  </span>
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1 text-[11px] font-semibold">
+                    1
+                  </span>
+                </>
+              ) : null}
+              <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Filter by cycle status</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={cycleStatusFilter === 'all'}
+              onCheckedChange={() => setCycleStatusFilter('all')}
+              onSelect={(e) => e.preventDefault()}
+            >
+              All
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={cycleStatusFilter === 'low'}
+              onCheckedChange={() => setCycleStatusFilter('low')}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Low Cycle
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={cycleStatusFilter === 'high'}
+              onCheckedChange={() => setCycleStatusFilter('high')}
+              onSelect={(e) => e.preventDefault()}
+            >
+              High Cycle
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={cycleStatusFilter === 'probationary'}
+              onCheckedChange={() => setCycleStatusFilter('probationary')}
+              onSelect={(e) => e.preventDefault()}
+            >
+              Probationary
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <label className="text-ops-gray flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -123,6 +275,23 @@ export function StaffDirectoryPage() {
           />
           Show inactive
         </label>
+
+        {search ||
+        roleFilter ||
+        showInactive ||
+        selectedBuildings.size > 0 ||
+        cycleStatusFilter !== 'all' ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearFilters}
+            className="text-muted-foreground h-9 min-h-9 gap-1"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear filters
+          </Button>
+        ) : null}
+
         <div
           className="border-input ml-auto inline-flex h-10 overflow-hidden rounded-md border"
           role="group"
@@ -181,7 +350,11 @@ export function StaffDirectoryPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <Users className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No staff match your search</p>
-          {search || roleFilter || showInactive ? (
+          {search ||
+          roleFilter ||
+          showInactive ||
+          selectedBuildings.size > 0 ||
+          cycleStatusFilter !== 'all' ? (
             <button
               type="button"
               onClick={clearFilters}

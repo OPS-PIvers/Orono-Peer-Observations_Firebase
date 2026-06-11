@@ -22,7 +22,10 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   staffName: "Staff member's name",
   staffEmail: "Staff member's email",
   staffRole: "Staff member's role",
-  assignedDomainList: 'Assigned components list',
+  // staffYear: evaluation year (1–6) for the staff member
+  staffYear: "Staff member's evaluation year",
+  // assignedDomainList: rendered as a count string e.g. "3 components assigned"
+  assignedDomainList: 'Assigned component count summary',
   assignedComponentCount: 'Assigned component count',
   signupLink: 'Sign-up link',
   bookingLink: 'Booking link',
@@ -34,6 +37,7 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   cancellationReason: 'Cancellation reason',
   windowStartLocal: 'Window start date',
   windowEndLocal: 'Window end date',
+  preferredDateLocal: 'Preferred date',
 };
 
 /** Friendly label for a variable key, falling back to the raw key. */

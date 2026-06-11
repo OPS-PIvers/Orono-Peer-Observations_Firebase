@@ -206,7 +206,6 @@ describe('<RubricGrid> edit mode', () => {
             '1a': {
               proficiency: 'proficient',
               selectedLookForIds: [],
-              scratchNotes: '',
             } satisfies ObservationComponentEntry,
           },
           onProficiency,
@@ -302,7 +301,6 @@ describe('<RubricGrid> edit mode', () => {
             '2a': {
               proficiency: 'distinguished',
               selectedLookForIds: [],
-              scratchNotes: '',
             },
           },
         })}
@@ -407,7 +405,6 @@ describe('<RubricGrid> edit mode — unassigned components (Full Rubric view)', 
             '1b': {
               proficiency: 'basic',
               selectedLookForIds: [],
-              scratchNotes: '',
             } satisfies ObservationComponentEntry,
           },
         })}

@@ -85,8 +85,34 @@ service-account JSON path. The service account needs:
 
 ## Producing an emulator seed snapshot
 
-After a successful emulator import, capture a snapshot for fast
-re-bootstrapping in future dev sessions:
+### Option A — Synthetic seed (no credentials required, recommended)
+
+`scripts/seed-dev.ts` writes a small realistic dataset (admin, PEs, teachers,
+roles, rubric, role-year mappings, buildings, email templates, one module) into
+the running emulator using only data fabricated from `@ops/shared` schemas — no
+spreadsheet or service-account credentials needed.
+
+```bash
+# 1. Start the emulators without an import (first time, or after clearing fixtures/)
+pnpm dev:emulators:fresh
+
+# 2. In a separate terminal, run the synthetic seeder
+pnpm seed:dev
+
+# 3. Capture the snapshot for future fast starts
+firebase emulators:export ./fixtures/seed
+
+# 4. From now on, use the normal command (auto-imports the snapshot)
+pnpm dev:emulators
+```
+
+The seeder is idempotent — you can re-run `pnpm seed:dev` at any time while the
+emulator is running to reset the DB to a known state.
+
+### Option B — GAS-sheet import (requires district credentials)
+
+After a successful emulator import from the GAS sheet, capture a snapshot for
+fast re-bootstrapping in future dev sessions:
 
 ```bash
 firebase emulators:export ./fixtures/seed
@@ -94,3 +120,11 @@ firebase emulators:export ./fixtures/seed
 
 Then `pnpm dev:emulators` will auto-import from `fixtures/seed/` on
 startup, so contributors get a populated DB without re-running the import.
+
+---
+
+**Note on `fixtures/seed`:** `pnpm dev:emulators` requires `fixtures/seed` to
+exist (it passes `--import=./fixtures/seed` to Firebase). If the snapshot is
+missing (e.g. fresh checkout), use `pnpm dev:emulators:fresh` instead — it
+starts without the import flag and exports a snapshot on exit so subsequent
+runs can use `pnpm dev:emulators` normally.

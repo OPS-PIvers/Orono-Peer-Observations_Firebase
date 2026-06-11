@@ -187,6 +187,23 @@ export const dashboardStep = z.object({
 });
 export type DashboardStep = z.infer<typeof dashboardStep>;
 
+// ─── Cycle close date ────────────────────────────────────────────────────────
+
+/**
+ * MM-DD month-day string used for the cycle close date.
+ * Stored without a year so it applies to any school year.
+ * Examples: '05-15' (May 15), '06-01' (June 1).
+ */
+export const cycleCloseMonthDay = z
+  .string()
+  .regex(/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, 'Must be MM-DD (e.g. 05-15)');
+export type CycleCloseMonthDay = z.infer<typeof cycleCloseMonthDay>;
+
+/** The fallback value used when no cycleCloseDate is saved. */
+export const DEFAULT_CYCLE_CLOSE_MONTH_DAY = '05-15' as const;
+
+// ─── Whole-dashboard config doc ──────────────────────────────────────────────
+
 export const dashboardConfig = z.object({
   sections: dashboardSectionsConfig.default({
     hero: true,
@@ -200,6 +217,13 @@ export const dashboardConfig = z.object({
   }),
   checkpoints: dashboardCheckpointsConfig.default({}),
   steps: z.array(dashboardStep).default([]),
+  /**
+   * The cycle close (deadline) date shown in the hero stat bar.
+   * Stored as MM-DD so it applies to any school year. Admins set this
+   * on the Dashboard → Layout tab. Omitted in older saved docs; consumers
+   * fall back to DEFAULT_CYCLE_CLOSE_MONTH_DAY ('05-15').
+   */
+  cycleCloseDate: cycleCloseMonthDay.optional(),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });
@@ -302,7 +326,7 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     chipStyle: 'review',
     chipLabel: 'Review',
     title: 'Review the draft observation',
-    description: 'Your peer evaluator is drafting your observation. You can view and comment now.',
+    description: 'Your peer evaluator is drafting your observation. You can view it now.',
     buttonLabel: 'Open draft',
     showWhen: 'observationCreated',
     doneWhen: 'finalized',

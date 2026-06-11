@@ -25,6 +25,9 @@ COPY packages/shared ./packages/shared
 COPY apps/pdf-renderer ./apps/pdf-renderer
 COPY tsconfig.base.json ./
 
+# Generate embedded fonts (fonts are baked into the image for hermetic rendering)
+RUN cd ./apps/pdf-renderer && node scripts/generate-fonts.mjs
+
 # packages/shared exposes ./dist as its `exports`; we must compile it
 # before tsup tries to resolve `@ops/shared` from pdf-renderer.
 RUN pnpm --filter @ops/shared build \

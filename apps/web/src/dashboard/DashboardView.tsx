@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
@@ -51,6 +52,7 @@ export interface DashboardViewProps {
   onAcknowledge?: (observationId: string) => void;
   acknowledging?: boolean;
   onCompleteModuleItem?: (moduleId: string, itemId: string) => void;
+  onUndoModuleItem?: (moduleId: string, itemId: string) => void;
   /** When true, disable interactive CTAs (Send-a-message, Acknowledge,
    *  external links). Used by the admin preview pane. */
   readOnly?: boolean;
@@ -74,6 +76,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
     peerEvaluator,
     readOnly = false,
     onCompleteModuleItem,
+    onUndoModuleItem,
     loadError,
   } = props;
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -170,6 +173,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                         ? { acknowledging: props.acknowledging }
                         : {})}
                       {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                      {...(onUndoModuleItem ? { onUndoModuleItem } : {})}
                       readOnly={readOnly}
                     />
                   </section>
@@ -185,6 +189,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                           ? { acknowledging: props.acknowledging }
                           : {})}
                         {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                        {...(onUndoModuleItem ? { onUndoModuleItem } : {})}
                         readOnly={readOnly}
                       />
                     ))}
@@ -197,6 +202,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                         key={t.id}
                         task={t}
                         {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                        {...(onUndoModuleItem ? { onUndoModuleItem } : {})}
                         readOnly={readOnly}
                       />
                     ))
@@ -231,6 +237,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                         ? { acknowledging: props.acknowledging }
                         : {})}
                       {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                      {...(onUndoModuleItem ? { onUndoModuleItem } : {})}
                       readOnly={readOnly}
                     />
                   ))
@@ -248,6 +255,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       key={t.id}
                       task={t}
                       {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
+                      {...(onUndoModuleItem ? { onUndoModuleItem } : {})}
                       readOnly={readOnly}
                     />
                   ))
@@ -542,6 +550,7 @@ function TaskRow({
   onAcknowledge,
   acknowledging,
   onCompleteModuleItem,
+  onUndoModuleItem,
   readOnly,
 }: {
   task: CheckpointWithStatus;
@@ -550,6 +559,7 @@ function TaskRow({
   onAcknowledge?: (observationId: string) => void;
   acknowledging?: boolean;
   onCompleteModuleItem?: (moduleId: string, itemId: string) => void;
+  onUndoModuleItem?: (moduleId: string, itemId: string) => void;
   readOnly?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -623,14 +633,25 @@ function TaskRow({
                 Mark done
               </button>
             ) : task.ctaUrl && !readOnly ? (
-              <a
-                href={task.ctaUrl}
-                {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-              >
-                {task.cta}
-                <DashboardIcon name="arrow-right" size={12} />
-              </a>
+              task.ctaUrl.startsWith('/') ? (
+                <Link
+                  to={task.ctaUrl}
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </Link>
+              ) : (
+                <a
+                  href={task.ctaUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </a>
+              )
             ) : (
               <button
                 type="button"
@@ -641,15 +662,31 @@ function TaskRow({
                 <DashboardIcon name="arrow-right" size={12} />
               </button>
             )
-          ) : task.ctaUrl && !readOnly ? (
-            <a
-              href={task.ctaUrl}
-              {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
+          ) : task.moduleItemId && task.moduleId && onUndoModuleItem && !readOnly ? (
+            <button
+              type="button"
               className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
+              onClick={() => onUndoModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
             >
-              Open observation
-              <DashboardIcon name="arrow-right" size={12} />
-            </a>
+              Undo
+            </button>
+          ) : task.ctaUrl && !readOnly ? (
+            task.ctaUrl.startsWith('/') ? (
+              <Link to={task.ctaUrl} className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta">
+                Open observation
+                <DashboardIcon name="arrow-right" size={12} />
+              </Link>
+            ) : (
+              <a
+                href={task.ctaUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
+              >
+                Open observation
+                <DashboardIcon name="arrow-right" size={12} />
+              </a>
+            )
           ) : null}
         </div>
       ) : null}
@@ -748,27 +785,52 @@ function QuickMaterials({
       ) : (
         <div className="material-list">
           {items.map((m, i) => {
-            const Tag = m.url && !readOnly ? 'a' : 'span';
-            return (
-              <Tag
-                key={`${m.label}-${String(i)}`}
-                className="material-list__item"
-                {...(m.url && !readOnly
-                  ? { href: m.url, target: '_blank', rel: 'noreferrer' }
-                  : {})}
-              >
-                <div className="material-list__icon">
-                  <DashboardIcon name={m.icon} size={16} />
-                </div>
-                <div>
-                  <div className="material-list__title">{m.label}</div>
-                  {m.sub ? <span className="material-list__sub">{m.sub}</span> : null}
-                </div>
-                <div className="material-list__arrow">
-                  <DashboardIcon name="arrow-right" size={14} />
-                </div>
-              </Tag>
-            );
+            const renderItem = () => {
+              const content = (
+                <>
+                  <div className="material-list__icon">
+                    <DashboardIcon name={m.icon} size={16} />
+                  </div>
+                  <div>
+                    <div className="material-list__title">{m.label}</div>
+                    {m.sub ? <span className="material-list__sub">{m.sub}</span> : null}
+                  </div>
+                  <div className="material-list__arrow">
+                    <DashboardIcon name="arrow-right" size={14} />
+                  </div>
+                </>
+              );
+
+              if (!m.url || readOnly) {
+                return (
+                  <span key={`${m.label}-${String(i)}`} className="material-list__item">
+                    {content}
+                  </span>
+                );
+              }
+
+              if (m.url.startsWith('/')) {
+                return (
+                  <Link key={`${m.label}-${String(i)}`} to={m.url} className="material-list__item">
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <a
+                  key={`${m.label}-${String(i)}`}
+                  href={m.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="material-list__item"
+                >
+                  {content}
+                </a>
+              );
+            };
+
+            return renderItem();
           })}
         </div>
       )}

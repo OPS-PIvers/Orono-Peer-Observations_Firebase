@@ -75,8 +75,12 @@ vi.mock('react-router-dom', async (importOriginal: () => Promise<Record<string, 
   };
 });
 
-// Import computeCompleteness AFTER mocks are registered.
-import { computeCompleteness } from './ObservationEditorPage';
+// Import exported functions AFTER mocks are registered.
+import {
+  computeCompleteness,
+  computeStaffMismatch,
+  type StaffSnapshot,
+} from './ObservationEditorPage';
 
 // ─── Permission logic tests (no mocking required) ───────────────────────────
 
@@ -362,5 +366,85 @@ describe('computeCompleteness', () => {
       expect(result.wpAnswerCount).toBe(1);
       expect(result.noAnswers).toBe(false);
     });
+  });
+});
+
+// ─── computeStaffMismatch tests ──────────────────────────────────────────────
+
+describe('computeStaffMismatch', () => {
+  const base: StaffSnapshot = {
+    name: 'Jane Doe',
+    role: 'teacher',
+    year: 2,
+    buildings: ['OES', 'OMS'],
+  };
+
+  it('returns hasChanges=false when snapshot matches live record exactly', () => {
+    const result = computeStaffMismatch(base, { ...base });
+    expect(result.hasChanges).toBe(false);
+    expect(result.nameDiff).toBeNull();
+    expect(result.roleDiff).toBeNull();
+    expect(result.yearDiff).toBeNull();
+    expect(result.buildingsDiff).toBeNull();
+  });
+
+  it('detects a name change', () => {
+    const result = computeStaffMismatch(base, { ...base, name: 'Jane Smith' });
+    expect(result.hasChanges).toBe(true);
+    expect(result.nameDiff).toBe('Jane Doe → Jane Smith');
+    expect(result.roleDiff).toBeNull();
+  });
+
+  it('detects a role change and applies resolveRole to both sides', () => {
+    const resolveRole = (id: string) => (id === 'teacher' ? 'Teacher' : 'Specialist');
+    const result = computeStaffMismatch(base, { ...base, role: 'specialist' }, resolveRole);
+    expect(result.hasChanges).toBe(true);
+    expect(result.roleDiff).toBe('Teacher → Specialist');
+  });
+
+  it('formats year change using yearLabel: Y2 → P1', () => {
+    // year 2 → year 4: Y2 → P1
+    const result = computeStaffMismatch(base, { ...base, year: 4 });
+    expect(result.hasChanges).toBe(true);
+    expect(result.yearDiff).toBe('Y2 → P1');
+  });
+
+  it('formats year change using yearLabel: P1 → Y3', () => {
+    const snapshot: StaffSnapshot = { ...base, year: 4 };
+    const live: StaffSnapshot = { ...base, year: 3 };
+    const result = computeStaffMismatch(snapshot, live);
+    expect(result.yearDiff).toBe('P1 → Y3');
+  });
+
+  it('treats reordered buildings as identical (order-insensitive)', () => {
+    const result = computeStaffMismatch(base, { ...base, buildings: ['OMS', 'OES'] });
+    expect(result.hasChanges).toBe(false);
+    expect(result.buildingsDiff).toBeNull();
+  });
+
+  it('detects a buildings change when the set differs', () => {
+    const result = computeStaffMismatch(base, { ...base, buildings: ['OHS'] });
+    expect(result.hasChanges).toBe(true);
+    expect(result.buildingsDiff).toBe('OES, OMS → OHS');
+  });
+
+  it('detects multiple fields changed simultaneously', () => {
+    const live: StaffSnapshot = {
+      name: 'Jane Smith',
+      role: 'specialist',
+      year: 4,
+      buildings: ['OHS'],
+    };
+    const result = computeStaffMismatch(base, live);
+    expect(result.hasChanges).toBe(true);
+    expect(result.nameDiff).not.toBeNull();
+    expect(result.roleDiff).not.toBeNull();
+    expect(result.yearDiff).not.toBeNull();
+    expect(result.buildingsDiff).not.toBeNull();
+  });
+
+  it('uses the raw roleId when no resolveRole is provided', () => {
+    const result = computeStaffMismatch(base, { ...base, role: 'specialist' });
+    expect(result.roleDiff).toBe('teacher → specialist');
   });
 });

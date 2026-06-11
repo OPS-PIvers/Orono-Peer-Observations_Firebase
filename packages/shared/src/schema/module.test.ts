@@ -7,6 +7,7 @@ import {
   moduleSectionContentInput,
   autoEnable,
   staffMatchesAutoEnable,
+  staffHasModule,
 } from './module.js';
 import { moduleItem, moduleProgress } from './moduleItem.js';
 
@@ -212,6 +213,99 @@ describe('autoEnable schema', () => {
       updatedAt: now,
     });
     expect(parsed.autoEnable).toBeNull();
+  });
+});
+
+describe('staffHasModule', () => {
+  const year2High = {
+    year: 2 as const,
+    summativeYear: true,
+    modules: [] as string[],
+    moduleExclusions: [] as string[],
+  };
+  const year2Low = {
+    year: 2 as const,
+    summativeYear: false,
+    modules: [] as string[],
+    moduleExclusions: [] as string[],
+  };
+  const year1Low = {
+    year: 1 as const,
+    summativeYear: false,
+    modules: [] as string[],
+    moduleExclusions: [] as string[],
+  };
+  const highMod = {
+    moduleId: 'high-cycle',
+    autoEnable: { dimension: 'status' as const, value: 'high' as const },
+  };
+  const year2Mod = {
+    moduleId: 'year2',
+    autoEnable: { dimension: 'year' as const, value: 2 as const },
+  };
+  const manualMod = { moduleId: 'manual', autoEnable: null };
+
+  it('returns true for a manually assigned module (no rule)', () => {
+    expect(staffHasModule({ ...year1Low, modules: ['manual'] }, manualMod)).toBe(true);
+  });
+
+  it('returns false when not assigned and no rule', () => {
+    expect(staffHasModule(year1Low, manualMod)).toBe(false);
+  });
+
+  it('returns true when the auto-enable rule matches and no exclusion', () => {
+    expect(staffHasModule(year2High, highMod)).toBe(true);
+    expect(staffHasModule(year2Low, year2Mod)).toBe(true);
+  });
+
+  it('returns false when the auto-enable rule matches but the module is excluded', () => {
+    const excluded = { ...year2High, moduleExclusions: ['high-cycle'] };
+    expect(staffHasModule(excluded, highMod)).toBe(false);
+  });
+
+  it('exclusion only blocks auto-enable, not manual assignment', () => {
+    const manualAndExcluded = {
+      ...year2High,
+      modules: ['high-cycle'],
+      moduleExclusions: ['high-cycle'],
+    };
+    expect(staffHasModule(manualAndExcluded, highMod)).toBe(true);
+  });
+
+  it('returns false when rule does not match', () => {
+    expect(staffHasModule(year1Low, highMod)).toBe(false);
+    expect(staffHasModule(year1Low, year2Mod)).toBe(false);
+  });
+
+  it('exclusion on a non-matching module has no effect (returns false)', () => {
+    const withExclusion = { ...year1Low, moduleExclusions: ['high-cycle'] };
+    expect(staffHasModule(withExclusion, highMod)).toBe(false);
+  });
+
+  it('exclusion for one module does not affect another auto-enabled module', () => {
+    const excluded = { ...year2High, modules: [] as string[], moduleExclusions: ['high-cycle'] };
+    expect(staffHasModule(excluded, highMod)).toBe(false);
+    expect(staffHasModule(excluded, year2Mod)).toBe(true);
+  });
+
+  it('treats missing moduleExclusions as empty (older Firestore docs)', () => {
+    const noExclusionsField = {
+      year: 2 as const,
+      summativeYear: true,
+      modules: [] as string[],
+      moduleExclusions: undefined as unknown as string[],
+    };
+    expect(staffHasModule(noExclusionsField, highMod)).toBe(true);
+  });
+
+  it('treats missing modules as empty (older Firestore docs)', () => {
+    const noModulesField = {
+      year: 1 as const,
+      summativeYear: false,
+      modules: undefined as unknown as string[],
+      moduleExclusions: [] as string[],
+    };
+    expect(staffHasModule(noModulesField, manualMod)).toBe(false);
   });
 });
 

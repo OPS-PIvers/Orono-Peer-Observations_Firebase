@@ -17,6 +17,7 @@ const importers = {
   ModulesPage: () => import('@/admin/modules/ModulesPage'),
   ModulePage: () => import('@/modules/ModulePage'),
   ModuleBuilderPage: () => import('@/admin/modules/ModuleBuilderPage'),
+  MyObservationsPage: () => import('@/routes/MyObservationsPage'),
   MyRubricPage: () => import('@/routes/MyRubricPage'),
   MyStaffPage: () => import('@/routes/MyStaffPage'),
   ProfilePage: () => import('@/routes/ProfilePage'),
@@ -44,6 +45,7 @@ const importers = {
   BrandingPage: () => import('@/admin/branding/BrandingPage'),
   SettingsPage: () => import('@/admin/settings/SettingsPage'),
   AuditLogPage: () => import('@/admin/audit-log/AuditLogPage'),
+  TranscriptionJobsPage: () => import('@/admin/transcription/TranscriptionJobsPage'),
 } as const;
 
 export type RouteName = keyof typeof importers;
@@ -53,6 +55,9 @@ export const StaffDashboardPage = lazy(() =>
 );
 export const DashboardSettingsPage = lazy(() =>
   importers.DashboardSettingsPage().then((m) => ({ default: m.DashboardSettingsPage })),
+);
+export const MyObservationsPage = lazy(() =>
+  importers.MyObservationsPage().then((m) => ({ default: m.MyObservationsPage })),
 );
 export const MyRubricPage = lazy(() =>
   importers.MyRubricPage().then((m) => ({ default: m.MyRubricPage })),
@@ -140,6 +145,9 @@ export const SettingsPage = lazy(() =>
 export const AuditLogPage = lazy(() =>
   importers.AuditLogPage().then((m) => ({ default: m.AuditLogPage })),
 );
+export const TranscriptionJobsPage = lazy(() =>
+  importers.TranscriptionJobsPage().then((m) => ({ default: m.TranscriptionJobsPage })),
+);
 
 export function prefetch(name: RouteName): void {
   void importers[name]();
@@ -150,6 +158,7 @@ export function prefetch(name: RouteName): void {
 export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/dashboard': 'StaffDashboardPage',
   '/admin/dashboard': 'DashboardSettingsPage',
+  '/my-observations': 'MyObservationsPage',
   '/my-rubric': 'MyRubricPage',
   '/my-staff': 'MyStaffPage',
   '/staff': 'StaffDirectoryPage',
@@ -172,4 +181,5 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/admin/branding': 'BrandingPage',
   '/admin/settings': 'SettingsPage',
   '/admin/audit-log': 'AuditLogPage',
+  '/admin/transcription-jobs': 'TranscriptionJobsPage',
 };

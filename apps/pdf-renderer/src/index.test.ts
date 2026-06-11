@@ -95,7 +95,6 @@ const observation: Observation = {
   observationDate: new Date('2026-03-05T12:00:00.000Z'),
   observationData: {},
   componentNotes: {},
-  componentTags: [],
   audioDriveFileIds: [],
   transcripts: {},
   driveFolderId: null,

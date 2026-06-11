@@ -11,6 +11,9 @@ import {
 import { ComponentTagMark } from './component-tag-mark.js';
 import { colorFor } from './component-colors.js';
 import { extractTaggedSpansForComponent } from './extract-script-tags.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const TIPTAP_EXTENSIONS = [StarterKit, Link, ComponentTagMark];
 
@@ -39,9 +42,8 @@ export interface RenderPayload {
 
 /**
  * Render an observation to a self-contained HTML document for Puppeteer to
- * print. All styling lives inline; Google Fonts are loaded via @import in
- * the <style> block. Puppeteer's `waitUntil: 'networkidle0'` ensures fonts
- * arrive before the PDF snapshot.
+ * print. All styling lives inline; fonts are embedded via @font-face in the
+ * <style> block (no network fetches required).
  */
 export function renderObservationHtml(payload: RenderPayload): string {
   const { observation, rubric, activeComponentIds } = payload;
@@ -257,8 +259,21 @@ function formatDate(value: DateLike | null | undefined): string {
 }
 
 function styles(): string {
+  // Load embedded @font-face CSS (fonts are baked into the Docker image)
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const fontsPath = join(__dirname, '../assets/fonts-embedded.css');
+  let embeddedFonts = '';
+  try {
+    embeddedFonts = readFileSync(fontsPath, 'utf-8');
+  } catch {
+    // If fonts file doesn't exist at runtime (e.g., in tests),
+    // fall back to empty string; fonts won't load but template still renders
+    embeddedFonts = '';
+  }
+
   return `
-    @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
+    ${embeddedFonts}
     :root {
       --ops-blue-dark: #1d2a5d;
       --ops-blue: #2d3f89;
@@ -370,6 +385,6 @@ function styles(): string {
       color: var(--ops-gray);
       text-align: center;
     }
-    .empty { color: var(--ops-gray-light); font-style: italic; }
+    .empty { color: var(--ops-gray); font-style: italic; }
   `;
 }

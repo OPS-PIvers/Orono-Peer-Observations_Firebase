@@ -56,6 +56,7 @@ const mockStaff: Staff & { id: string } = {
   year: 1,
   buildings: ['OMS'],
   modules: [],
+  moduleExclusions: [],
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,

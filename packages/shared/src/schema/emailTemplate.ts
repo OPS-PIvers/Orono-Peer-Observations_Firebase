@@ -16,6 +16,7 @@ export const EMAIL_TRIGGER_TYPES = [
   'roleYearMapping.updated',
   'scheduled.preObservation',
   'scheduled.reminderIncomplete',
+  'scheduled.reminderUnacknowledged',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
   'scheduling.bookingRescheduled',
@@ -24,6 +25,7 @@ export const EMAIL_TRIGGER_TYPES = [
   'scheduling.bookingCancelled',
   'scheduling.windowCancelled',
   'scheduling.windowExpired',
+  'scheduling.preferenceSubmitted',
 ] as const;
 export type EmailTriggerType = (typeof EMAIL_TRIGGER_TYPES)[number];
 
@@ -63,6 +65,8 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   'staffName',
   'staffEmail',
   'staffRole',
+  // Staff evaluation year (populated by staff.created and roleYearMapping.updated)
+  'staffYear',
   // Subdomain assignment
   'assignedDomainList',
   'assignedComponentCount',
@@ -77,6 +81,7 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   'cancellationReason',
   'windowStartLocal',
   'windowEndLocal',
+  'preferredDateLocal',
 ] as const;
 export type TemplateVariable = (typeof KNOWN_TEMPLATE_VARIABLES)[number];
 
@@ -96,8 +101,18 @@ export const emailTemplate = z.object({
   /**
    * For scheduled.preObservation: days before observationDate to send.
    * For scheduled.reminderIncomplete: days after WP/IR creation to send.
+   * For scheduled.reminderUnacknowledged: days after finalizedAt to send the first nudge.
    */
   scheduledDays: z.number().int().positive().default(3),
+  /**
+   * For scheduled.reminderIncomplete and scheduled.reminderUnacknowledged:
+   * maximum number of daily nudges to send per observation before giving up.
+   * Counts from the first eligible run (day scheduledDays after creation /
+   * finalizedAt). Default 5 means the staff member receives at most 5
+   * reminders over 5 consecutive days and then the system stops, preventing
+   * indefinite daily spam on stalled observations.
+   */
+  maxReminders: z.number().int().positive().default(5),
   /** When false, the trigger is suppressed and nothing is sent. */
   isActive: z.boolean().default(true),
   /** System templates can be edited and toggled but not deleted. */

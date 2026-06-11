@@ -9,6 +9,15 @@
       ]
     },
     {
+      "collectionGroup": "emailTemplates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "triggerType", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
@@ -58,6 +67,15 @@
         { "fieldPath": "observedEmail", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "finalizedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "acknowledgedAt", "order": "ASCENDING" },
+        { "fieldPath": "finalizedAt", "order": "ASCENDING" }
       ]
     },
     {
@@ -132,6 +150,22 @@
       "fields": [
         { "fieldPath": "observationId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transcriptionJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "moduleProgress",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "moduleId", "order": "ASCENDING" },
+        { "fieldPath": "completedAt", "order": "DESCENDING" }
       ]
     }
   ],

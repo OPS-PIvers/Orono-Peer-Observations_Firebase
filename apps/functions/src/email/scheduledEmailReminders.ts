@@ -9,6 +9,7 @@ import {
   loadActiveTemplate,
   loadSecurityAdminEmail,
   sendEmail,
+  shouldSendIncompleteReminder,
   substituteVariables,
 } from '../lib/emailUtils.js';
 
@@ -62,9 +63,25 @@ function chicagoMidnight(utcNow: Date, offsetDays: number): { start: Date; end: 
 }
 
 /**
- * Daily scheduled job that sends two types of reminder emails:
+ * /mail doc id for the "unacknowledged observation" reminder.
+ *
+ * Keyed on the run date (Chicago YYYY-MM-DD) so the daily job can re-send
+ * a fresh nudge each day an observation stays unacknowledged, up to the
+ * maxReminders cap (same logic as the incomplete-reminder phase).
+ * A per-day key keeps a single day's run idempotent (safe on retries).
+ *
+ * Exported for unit tests.
+ */
+export function unacknowledgedReminderMailDocId(observationId: string, runDateYMD: string): string {
+  return `unacked-${observationId}-${runDateYMD}`;
+}
+
+/**
+ * Daily scheduled job that sends three types of reminder emails:
  *   1. Pre-observation reminders N days before a Draft observation's date.
  *   2. Incomplete WP/IR reminders N days after creation with no responses.
+ *   3. Unacknowledged-observation reminders N days after finalizedAt with
+ *      no staff acknowledgement, capped at maxReminders total nudges.
  *
  * Runs at 07:00 America/Chicago. The N values come from each template's
  * scheduledDays field so admins can tune them without a deploy.
@@ -173,13 +190,18 @@ export const scheduledEmailReminders = onSchedule(
     const incompleteTemplate = await loadActiveTemplate(db, 'scheduled.reminderIncomplete');
     if (incompleteTemplate) {
       const daysAfter = incompleteTemplate.scheduledDays;
+      const maxReminders = incompleteTemplate.maxReminders;
       // Chicago run date keys the mail doc id so the nudge re-sends daily until
-      // the observation is completed (see incompleteReminderMailDocId).
+      // the observation is completed or the cap is reached (see
+      // incompleteReminderMailDocId / shouldSendIncompleteReminder).
       const runDateYMD = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Chicago',
       }).format(today);
       // Use Chicago midnight as the cutoff so observations created on the same
       // calendar day N days ago are included regardless of time-of-day.
+      // The upper bound here covers all observations that are old enough to
+      // have received at least one reminder; shouldSendIncompleteReminder then
+      // discards observations that have already hit the maxReminders cap.
       const { start: cutoff } = chicagoMidnight(today, -daysAfter);
 
       const wpIrSnap = await db
@@ -188,6 +210,9 @@ export const scheduledEmailReminders = onSchedule(
         .where('type', 'in', [OBSERVATION_TYPES.workProduct, OBSERVATION_TYPES.instructionalRound])
         .where('createdAt', '<=', Timestamp.fromDate(cutoff))
         .get();
+
+      let sentCount = 0;
+      let cappedCount = 0;
 
       for (const docSnap of wpIrSnap.docs) {
         const obs = docSnap.data();
@@ -201,6 +226,33 @@ export const scheduledEmailReminders = onSchedule(
         if (hasAnyAnswer) continue;
 
         if (!obs['observedEmail']) continue;
+
+        // Compute how many calendar days (Chicago) have elapsed since creation.
+        // Typed as `unknown` to opt out of `any` propagation for the null/toDate check below.
+        // eslint rule: no-unsafe-assignment would fire on `any`; `unknown` is the correct intent.
+        const createdAtRaw: unknown = obs['createdAt'];
+        const createdAtDate: Date | null =
+          createdAtRaw !== null && typeof createdAtRaw === 'object' && 'toDate' in createdAtRaw
+            ? (createdAtRaw as { toDate(): Date }).toDate()
+            : null;
+
+        if (!createdAtDate) continue;
+
+        const createdDateYMD = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Chicago',
+        }).format(createdAtDate);
+
+        // Parse both Chicago date strings as plain calendar days and diff them.
+        const [cy, cm, cd] = createdDateYMD.split('-').map(Number) as [number, number, number];
+        const [ry, rm, rd] = runDateYMD.split('-').map(Number) as [number, number, number];
+        const createdMs = Date.UTC(cy, cm - 1, cd);
+        const runMs = Date.UTC(ry, rm - 1, rd);
+        const daysSinceCreation = Math.round((runMs - createdMs) / (24 * 60 * 60 * 1000));
+
+        if (!shouldSendIncompleteReminder(daysSinceCreation, daysAfter, maxReminders)) {
+          cappedCount++;
+          continue;
+        }
 
         const vars = {
           observedName: (obs['observedName'] as string | undefined) ?? '',
@@ -223,8 +275,149 @@ export const scheduledEmailReminders = onSchedule(
         }).catch((err: unknown) =>
           logger.error('scheduledEmailReminders: incomplete send failed', err),
         );
+
+        sentCount++;
       }
-      logger.info('scheduledEmailReminders: incomplete processed', { count: wpIrSnap.size });
+      logger.info('scheduledEmailReminders: incomplete processed', {
+        total: wpIrSnap.size,
+        sent: sentCount,
+        capped: cappedCount,
+      });
+    }
+
+    // ── 3. Unacknowledged finalized-observation reminders ─────────────
+    const unackedTemplate = await loadActiveTemplate(db, 'scheduled.reminderUnacknowledged');
+    if (unackedTemplate) {
+      const daysAfterFinalized = unackedTemplate.scheduledDays;
+      const maxUnackedReminders = unackedTemplate.maxReminders;
+      // Chicago run date keys the mail doc id (idempotent within one run,
+      // re-sends on subsequent days until acknowledged or cap reached).
+      const runDateYMD = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Chicago',
+      }).format(today);
+      // Cutoff: Chicago midnight N days ago — observations finalized on or
+      // before this date are eligible for their first nudge today.
+      const { start: unackedCutoff } = chicagoMidnight(today, -daysAfterFinalized);
+
+      // Query: Finalized observations with no acknowledgedAt, finalized at or
+      // before the cutoff. The composite index
+      //   (status ASC, acknowledgedAt ASC, finalizedAt ASC)
+      // declared in firestore.indexes.json backs this query.
+      // acknowledgedAt is stored as null when unacknowledged; Firestore
+      // treats null as the lowest ordered value so `== null` combined with
+      // a range filter on finalizedAt is supported by that index.
+      const unackedSnap = await db
+        .collection(COLLECTIONS.observations)
+        .where('status', '==', OBSERVATION_STATUS.finalized)
+        .where('acknowledgedAt', '==', null)
+        .where('finalizedAt', '<=', Timestamp.fromDate(unackedCutoff))
+        .get();
+
+      let unackedSentCount = 0;
+      let unackedCappedCount = 0;
+
+      for (const docSnap of unackedSnap.docs) {
+        const obs = docSnap.data();
+
+        if (!obs['observedEmail']) continue;
+
+        // Compute calendar days (Chicago) since finalizedAt.
+        const finalizedAtRaw: unknown = obs['finalizedAt'];
+        const finalizedAtDate: Date | null =
+          finalizedAtRaw !== null &&
+          typeof finalizedAtRaw === 'object' &&
+          'toDate' in finalizedAtRaw
+            ? (finalizedAtRaw as { toDate(): Date }).toDate()
+            : null;
+
+        if (!finalizedAtDate) continue;
+
+        const finalizedDateYMD = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Chicago',
+        }).format(finalizedAtDate);
+
+        const [fy, fm, fd] = finalizedDateYMD.split('-').map(Number) as [number, number, number];
+        const [ry, rm, rd] = runDateYMD.split('-').map(Number) as [number, number, number];
+        const finalizedMs = Date.UTC(fy, fm - 1, fd);
+        const runMs = Date.UTC(ry, rm - 1, rd);
+        const daysSinceFinalized = Math.round((runMs - finalizedMs) / (24 * 60 * 60 * 1000));
+
+        if (
+          !shouldSendIncompleteReminder(daysSinceFinalized, daysAfterFinalized, maxUnackedReminders)
+        ) {
+          unackedCappedCount++;
+          continue;
+        }
+
+        const observerNameRaw = (obs['observerName'] as string | undefined) ?? '';
+        const vars = {
+          observedName: (obs['observedName'] as string | undefined) ?? '',
+          observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
+          observedRole: resolveRoleLabel(
+            rolesLookup,
+            (obs['observedRole'] as string | undefined) ?? '',
+          ),
+          observedYear: String(obs['observedYear'] ?? ''),
+          observerName:
+            observerNameRaw !== ''
+              ? observerNameRaw
+              : ((obs['observerEmail'] as string | undefined)?.split('@')[0] ?? ''),
+          observerEmail: (obs['observerEmail'] as string | undefined) ?? '',
+          observationDate: formatDate(obs['observationDate']),
+          observationName: (obs['observationName'] as string | undefined) ?? '',
+          observationType: (obs['type'] as string | undefined) ?? '',
+          pdfDriveLink: (obs['pdfDriveLink'] as string | undefined) ?? '',
+          driveFolderLink: (obs['driveFolderLink'] as string | undefined) ?? '',
+        };
+
+        // Resolve recipient address (observed / observer / both / admin).
+        const unackedAdminEmail =
+          unackedTemplate.recipient === 'admin' ? await loadSecurityAdminEmail(db) : null;
+
+        if (unackedTemplate.recipient === 'admin' && unackedAdminEmail === null) {
+          logger.info(
+            'scheduledEmailReminders: unacked template recipient=admin but securityAdminEmail is unset; skipping',
+          );
+          continue;
+        }
+
+        let recipient: string | string[];
+        if (unackedTemplate.recipient === 'admin' && unackedAdminEmail !== null) {
+          recipient = unackedAdminEmail;
+        } else if (unackedTemplate.recipient === 'observer') {
+          recipient = (obs['observerEmail'] as string | undefined) ?? '';
+        } else if (unackedTemplate.recipient === 'both') {
+          recipient = [obs['observedEmail'] as string, obs['observerEmail'] as string].filter(
+            Boolean,
+          );
+        } else {
+          recipient = (obs['observedEmail'] as string | undefined) ?? '';
+        }
+
+        const recipientArr = Array.isArray(recipient) ? recipient : [recipient];
+        if (recipientArr.every((r) => !r)) continue;
+
+        await sendEmail({
+          db,
+          to: recipient,
+          subject: substituteVariables(unackedTemplate.subject, vars),
+          html: substituteVariables(unackedTemplate.bodyHtml, vars),
+          mailDocId: unacknowledgedReminderMailDocId(docSnap.id, runDateYMD),
+          auditDetails: {
+            observationId: docSnap.id,
+            triggerType: 'scheduled.reminderUnacknowledged',
+          },
+        }).catch((err: unknown) =>
+          logger.error('scheduledEmailReminders: unacked send failed', err),
+        );
+
+        unackedSentCount++;
+      }
+      logger.info('scheduledEmailReminders: unacked processed', {
+        total: unackedSnap.size,
+        sent: unackedSentCount,
+        capped: unackedCappedCount,
+      });
     }
   },
 );

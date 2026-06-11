@@ -1,4 +1,4 @@
-import type { ModuleItem } from '@ops/shared';
+import type { ModuleItem, ModuleProgress } from '@ops/shared';
 import type { CheckpointWithStatus } from './deriveCheckpoints';
 
 const SOON_WINDOW_DAYS = 7;
@@ -33,6 +33,17 @@ export function formatDueDate(value: string | undefined): string {
   return d ? shortLabel(d) : '';
 }
 
+/** Format a completion timestamp as the calendar day it was completed, e.g. "Jun 1". */
+export function formatCompletedDate(value: Date | string | undefined): string {
+  if (!value) return '';
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    return !Number.isNaN(d.getTime()) ? shortLabel(d) : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Convert a staff member's assigned-module material items into dashboard
  * checkpoint entries. Status comes from stored completion + the item's due
@@ -40,25 +51,44 @@ export function formatDueDate(value: string | undefined): string {
  */
 export function deriveModuleTasks(args: {
   materials: ModuleItem[];
-  doneItemIds: Set<string>;
+  progress: ModuleProgress[];
   now?: Date;
 }): CheckpointWithStatus[] {
   const now = args.now ?? new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Index progress by itemId for O(1) lookup
+  const progressByItemId = new Map(args.progress.map((p) => [p.itemId, p]));
+
   return args.materials
     .filter((m) => m.kind === 'material')
     .map((m) => {
       const due = parseLocalDate(m.dueDate);
-      const done = args.doneItemIds.has(m.itemId);
+      const progressRecord = progressByItemId.get(m.itemId);
+      const done = !!progressRecord;
       let status: CheckpointWithStatus['status'] = 'upcoming';
+      let dueRelative = '';
+      let completedLabel: string | null = null;
+
       if (done) {
         status = 'done';
+        completedLabel = formatCompletedDate(progressRecord.completedAt);
       } else if (due) {
         // Whole calendar days from local midnight today to the due date
         // (rounded to absorb DST-shifted day lengths).
         const days = Math.round((due.getTime() - startOfToday.getTime()) / MS_PER_DAY);
-        status = days <= SOON_WINDOW_DAYS ? 'soon' : 'upcoming';
+        if (days < 0) {
+          // Past due
+          status = 'soon';
+          dueRelative = 'Overdue';
+        } else if (days <= SOON_WINDOW_DAYS) {
+          // Within the 7-day soon window
+          status = 'soon';
+        } else {
+          status = 'upcoming';
+        }
       }
+
       return {
         id: `module-${m.moduleId}-${m.itemId}`,
         key: 'module' as const,
@@ -68,11 +98,11 @@ export function deriveModuleTasks(args: {
         desc: m.description,
         monthLabel: due ? due.toLocaleDateString('en-US', { month: 'short' }) : '',
         dateLabel: due ? shortLabel(due) : '',
-        dueRelative: '',
+        dueRelative,
         cta: m.ctaUrl ? 'Open' : '',
         ctaUrl: m.ctaUrl ?? '',
         status,
-        completedLabel: null,
+        completedLabel,
         percent: null,
         percentLabel: '',
         moduleItemId: m.itemId,

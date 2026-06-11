@@ -4,6 +4,10 @@ import {
   COLLECTIONS,
   DASHBOARD_CONFIG_DOC_ID,
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
+  DEFAULT_CYCLE_CLOSE_MONTH_DAY,
+  dashboardQuickMaterial,
+  dashboardStep,
+  type CycleCloseMonthDay,
   type DashboardConfig,
   type DashboardQuickMaterial,
   type DashboardQuickMaterialsDoc,
@@ -26,6 +30,11 @@ import { db } from '@/lib/firebase';
  * Initial hydration happens once per doc landing (via a ref guard) so
  * later snapshots don't clobber in-progress edits. Mirrors the
  * `useHydratedDraft` idiom but local to this hook.
+ *
+ * Validation: Before saving, steps and quickMaterials are validated against
+ * their schemas. Step and quick material validation errors are tracked
+ * per-item and exposed via stepErrors, quickMaterialErrors. The save is
+ * blocked if any errors exist. Errors are surfaced in the editor UI.
  */
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
@@ -43,6 +52,16 @@ export interface DashboardDraft {
   sections: DashboardSectionsConfig;
   steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
+  /** MM-DD month-day for the cycle close date shown in the hero stat bar. */
+  cycleCloseDate: CycleCloseMonthDay;
+}
+
+/** Validation error for a single step or quick material item. */
+export interface ValidationError {
+  /** Zero-indexed item position. */
+  itemIndex: number;
+  /** Human-readable message, e.g. "Label is required". */
+  message: string;
 }
 
 export interface UseDashboardDraftResult {
@@ -51,10 +70,17 @@ export interface UseDashboardDraftResult {
   setSections: (next: DashboardSectionsConfig) => void;
   setSteps: (next: DashboardStep[]) => void;
   setQuickMaterials: (next: DashboardQuickMaterial[]) => void;
+  setCycleCloseDate: (next: CycleCloseMonthDay) => void;
   isDirty: boolean;
   saving: boolean;
   savedAt: Date | null;
   saveError: string | null;
+  /** Per-item validation errors for steps. */
+  stepErrors: ValidationError[];
+  /** Per-item validation errors for quick materials. */
+  quickMaterialErrors: ValidationError[];
+  /** True if there are any validation errors blocking save. */
+  hasValidationErrors: boolean;
   save: () => Promise<void>;
   /** Discards local edits, snaps draft back to the last saved state. */
   reset: () => void;
@@ -71,8 +97,45 @@ function stripIds<T extends { id?: string } | null>(d: T): T {
   return rest as T;
 }
 
+/** Validate steps and return per-item error messages. */
+function validateSteps(steps: DashboardStep[]): ValidationError[] {
+  const errors: ValidationError[] = [];
+  steps.forEach((step, idx) => {
+    const result = dashboardStep.safeParse(step);
+    if (!result.success) {
+      const messages = result.error.issues.map((issue) => issue.message).join('; ');
+      errors.push({
+        itemIndex: idx,
+        message: messages,
+      });
+    }
+  });
+  return errors;
+}
+
+/** Validate quick materials and return per-item error messages. */
+function validateQuickMaterials(items: DashboardQuickMaterial[]): ValidationError[] {
+  const errors: ValidationError[] = [];
+  items.forEach((item, idx) => {
+    const result = dashboardQuickMaterial.safeParse(item);
+    if (!result.success) {
+      const messages = result.error.issues.map((issue) => issue.message).join('; ');
+      errors.push({
+        itemIndex: idx,
+        message: messages,
+      });
+    }
+  });
+  return errors;
+}
+
 function freshDraft(): DashboardDraft {
-  return { sections: { ...DEFAULT_SECTIONS }, steps: [], quickMaterials: [] };
+  return {
+    sections: { ...DEFAULT_SECTIONS },
+    steps: [],
+    quickMaterials: [],
+    cycleCloseDate: DEFAULT_CYCLE_CLOSE_MONTH_DAY,
+  };
 }
 
 function snapshotsEqual(a: DashboardDraft, b: DashboardDraft | null): boolean {
@@ -92,6 +155,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [stepErrors, setStepErrors] = useState<ValidationError[]>([]);
+  const [quickMaterialErrors, setQuickMaterialErrors] = useState<ValidationError[]>([]);
 
   const inFlightRef = useRef(false);
 
@@ -99,12 +164,15 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   useEffect(() => {
     if (hydrated) return;
     if (configLoading || quickLoading) return;
+    const cfg = stripIds(configDoc);
     const next: DashboardDraft = {
       // Merge over defaults so older saved docs (missing newer toggles
       // like `roleChip`) still get a complete sections object.
-      sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
-      steps: resolveSteps(stripIds(configDoc)),
+      sections: { ...DEFAULT_SECTIONS, ...(cfg?.sections ?? {}) },
+      steps: resolveSteps(cfg),
       quickMaterials: stripIds(quickDoc)?.items ?? [],
+      // Fall back to the built-in default for older docs that pre-date this field.
+      cycleCloseDate: cfg?.cycleCloseDate ?? DEFAULT_CYCLE_CLOSE_MONTH_DAY,
     };
     setDraft(next);
     setSavedSnapshot(next);
@@ -120,9 +188,25 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const setQuickMaterials = useCallback((next: DashboardQuickMaterial[]) => {
     setDraft((d) => ({ ...d, quickMaterials: next }));
   }, []);
+  const setCycleCloseDate = useCallback((next: CycleCloseMonthDay) => {
+    setDraft((d) => ({ ...d, cycleCloseDate: next }));
+  }, []);
 
   const save = useCallback(async () => {
     if (inFlightRef.current) return;
+
+    // Validate before attempting to save
+    const stepsValidationErrors = validateSteps(draft.steps);
+    const quickMatValidationErrors = validateQuickMaterials(draft.quickMaterials);
+
+    setStepErrors(stepsValidationErrors);
+    setQuickMaterialErrors(quickMatValidationErrors);
+
+    if (stepsValidationErrors.length > 0 || quickMatValidationErrors.length > 0) {
+      setSaveError('Please fix validation errors before saving');
+      return;
+    }
+
     inFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
@@ -133,6 +217,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
           {
             sections: draft.sections,
             steps: draft.steps,
+            cycleCloseDate: draft.cycleCloseDate,
             updatedAt: serverTimestamp(),
             ...(user?.email ? { updatedBy: user.email } : {}),
           },
@@ -150,6 +235,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
       ]);
       setSavedSnapshot(draft);
       setSavedAt(new Date());
+      setStepErrors([]);
+      setQuickMaterialErrors([]);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -163,6 +250,10 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   }, [savedSnapshot]);
 
   const isDirty = useMemo(() => !snapshotsEqual(draft, savedSnapshot), [draft, savedSnapshot]);
+  const hasValidationErrors = useMemo(
+    () => stepErrors.length > 0 || quickMaterialErrors.length > 0,
+    [stepErrors, quickMaterialErrors],
+  );
 
   return {
     draft,
@@ -170,10 +261,14 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     setSections,
     setSteps,
     setQuickMaterials,
+    setCycleCloseDate,
     isDirty,
     saving,
     savedAt,
     saveError,
+    stepErrors,
+    quickMaterialErrors,
+    hasValidationErrors,
     save,
     reset,
     loading: !hydrated,

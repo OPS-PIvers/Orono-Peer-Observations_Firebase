@@ -146,14 +146,28 @@ export function MyRubricPage() {
   // location.key changes too, so clicking the same domain link twice
   // still triggers a re-scroll. Depending on `displayedRubric` ensures we
   // wait until the targeted <section> has actually mounted.
+  //
+  // If the target element doesn't exist and we're in "assigned" mode, it
+  // means the user clicked a sidebar link to a domain with no assigned
+  // components. Switch to "full" mode so the domain becomes visible, then
+  // the effect will run again and perform the scroll.
   useEffect(() => {
     if (!location.hash) return;
     if (!displayedRubric) return;
     const id = location.hash.slice(1);
     const el = document.getElementById(id);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [location.hash, location.key, displayedRubric]);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (assignmentMode === 'assigned' && rubric) {
+      // Target doesn't exist in assigned mode — check if it exists in the
+      // full rubric. If so, switch to full mode so this effect re-runs and
+      // the scroll succeeds.
+      const fullRubricHasDomain = rubric.domains.some((d) => id === `domain-${d.id}`);
+      if (fullRubricHasDomain) {
+        setAssignmentMode('full');
+      }
+    }
+  }, [location.hash, location.key, displayedRubric, assignmentMode, rubric]);
 
   if (!user) {
     return <p className="text-muted-foreground py-8 text-center text-sm">Loading your account…</p>;

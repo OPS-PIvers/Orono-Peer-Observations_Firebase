@@ -21,6 +21,7 @@ export const SAMPLE_STAFF: Staff = {
   year: 2,
   buildings: ['High School'],
   modules: ['mentor'],
+  moduleExclusions: [],
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,

@@ -35,7 +35,11 @@ export async function ensureObservationFolder(args: {
   const drive = getDriveClient();
   if (args.existingFolderId) {
     try {
-      await drive.files.get({ fileId: args.existingFolderId, fields: 'id' });
+      await drive.files.get({
+        fileId: args.existingFolderId,
+        fields: 'id',
+        supportsAllDrives: true,
+      });
       return args.existingFolderId;
     } catch {
       // Folder was deleted out from under us; fall through and recreate.
@@ -48,6 +52,7 @@ export async function ensureObservationFolder(args: {
       parents: [args.parentFolderId],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
   if (!created.data.id) throw new Error('Drive folder creation returned no id');
   return created.data.id;
@@ -71,6 +76,7 @@ export async function uploadFileToFolder(args: {
       body: Readable.from(args.body),
     },
     fields: 'id, name',
+    supportsAllDrives: true,
   });
   if (!result.data.id || !result.data.name) {
     throw new Error('Drive upload returned no id/name');
@@ -81,7 +87,7 @@ export async function uploadFileToFolder(args: {
 export async function downloadFile(fileId: string): Promise<Buffer> {
   const drive = getDriveClient();
   const result = await drive.files.get(
-    { fileId, alt: 'media' },
+    { fileId, alt: 'media', supportsAllDrives: true },
     { responseType: 'arraybuffer' },
   );
   return Buffer.from(result.data as ArrayBuffer);
@@ -131,6 +137,60 @@ export async function shareWithUser(args: {
       fileId: args.fileId,
       sendNotificationEmail: args.sendNotificationEmail ?? false,
       requestBody: { type: 'user', role: args.role, emailAddress: args.email },
+    });
+  }
+}
+
+/**
+ * Revoke a specific user's permission on a Drive file or folder.
+ *
+ * Used in finalize rollback: if `shareWithUser` succeeded before a later
+ * step failed, the observed staff member would retain Reader access on a
+ * folder that has reverted to Draft — they could browse draft-state PDFs,
+ * audio, and evidence they should not yet see. This helper removes that
+ * grant so the folder is exactly as private as before the attempt.
+ *
+ * Best-effort: looks up the permission by email address and, if found,
+ * deletes it. A 404 (already gone) or any other error is swallowed so
+ * this never throws from a rollback path.
+ */
+export async function revokeUserPermission(args: {
+  fileId: string;
+  email: string;
+}): Promise<void> {
+  const drive = getDriveClient();
+  let permissionId: string | undefined;
+  try {
+    const existing = await drive.permissions.list({
+      fileId: args.fileId,
+      fields: 'permissions(id,emailAddress)',
+    });
+    const lower = args.email.toLowerCase();
+    permissionId =
+      existing.data.permissions?.find((p) => p.emailAddress?.toLowerCase() === lower)?.id ??
+      undefined;
+  } catch (err) {
+    logger.warn('revokeUserPermission: permissions.list failed (non-fatal)', {
+      fileId: args.fileId,
+      email: args.email,
+      err,
+    });
+    return;
+  }
+  if (!permissionId) return; // nothing to revoke
+  try {
+    await drive.permissions.delete({
+      fileId: args.fileId,
+      permissionId,
+    });
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return; // already gone
+    logger.warn('revokeUserPermission: permissions.delete failed (non-fatal)', {
+      fileId: args.fileId,
+      email: args.email,
+      permissionId,
+      err,
     });
   }
 }
@@ -216,7 +276,11 @@ export async function deleteDriveFolder(
 
   let parents: string[];
   try {
-    const meta = await drive.files.get({ fileId: folderId, fields: 'id, parents' });
+    const meta = await drive.files.get({
+      fileId: folderId,
+      fields: 'id, parents',
+      supportsAllDrives: true,
+    });
     parents = meta.data.parents ?? [];
   } catch (err) {
     const status = (err as { code?: number })?.code;
@@ -239,12 +303,14 @@ export async function deleteDriveFolder(
       q: `'${folderId}' in parents and trashed = false`,
       fields: 'nextPageToken, files(id)',
       pageSize: 1000,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
       ...(pageToken ? { pageToken } : {}),
     });
     await Promise.all(
       (page.data.files ?? []).map((f) =>
         f.id
-          ? drive.files.delete({ fileId: f.id }).catch((err: unknown) => {
+          ? drive.files.delete({ fileId: f.id, supportsAllDrives: true }).catch((err: unknown) => {
               logger.warn('deleteDriveFolder: failed to delete child', {
                 folderId,
                 fileId: f.id,
@@ -257,7 +323,7 @@ export async function deleteDriveFolder(
     pageToken = page.data.nextPageToken ?? undefined;
   } while (pageToken);
 
-  await drive.files.delete({ fileId: folderId }).catch((err: unknown) => {
+  await drive.files.delete({ fileId: folderId, supportsAllDrives: true }).catch((err: unknown) => {
     const status = (err as { code?: number })?.code;
     if (status !== 404) throw err;
   });
@@ -272,7 +338,7 @@ export async function deleteDriveFolder(
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const drive = getDriveClient();
   try {
-    await drive.files.delete({ fileId });
+    await drive.files.delete({ fileId, supportsAllDrives: true });
   } catch (err) {
     const status = (err as { code?: number })?.code;
     if (status === 404) return; // already gone — nothing to delete
@@ -289,7 +355,11 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
 export async function trashDriveFile(fileId: string): Promise<void> {
   const drive = getDriveClient();
   try {
-    await drive.files.update({ fileId, requestBody: { trashed: true } });
+    await drive.files.update({
+      fileId,
+      requestBody: { trashed: true },
+      supportsAllDrives: true,
+    });
   } catch (err) {
     const status = (err as { code?: number })?.code;
     if (status === 404) return; // already gone — nothing to trash
@@ -302,6 +372,7 @@ export async function getDriveLinks(fileId: string): Promise<DriveLink> {
   const meta = await drive.files.get({
     fileId,
     fields: 'webViewLink, webContentLink',
+    supportsAllDrives: true,
   });
   return {
     webViewLink: meta.data.webViewLink ?? `https://drive.google.com/file/d/${fileId}/view`,

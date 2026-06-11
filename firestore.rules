@@ -62,17 +62,21 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/staff/$(request.auth.token.email)).data;
     }
 
-    // Does the requester satisfy the given module's autoEnable rule? Mirrors
-    // staffMatchesAutoEnable in @ops/shared — keep the two in sync.
+    // Does the requester satisfy the given module's autoEnable rule, taking
+    // per-staff exclusions into account? Mirrors staffHasModule in @ops/shared
+    // (autoEnable path only — manual modules are checked separately).
+    // Keep the two in sync.
     function matchesModuleAutoEnable(moduleId) {
       let auto = get(/databases/$(database)/documents/modules/$(moduleId)).data.get('autoEnable', null);
-      let y = staffDocData().get('year', 1);
-      let summ = staffDocData().get('summativeYear', false);
+      let sd = staffDocData();
+      let y = sd.get('year', 1);
+      let summ = sd.get('summativeYear', false);
       let status = y >= 4 ? 'probationary' : (summ ? 'high' : 'low');
       let dy = y >= 4 ? y - 3 : y;
-      return auto != null
+      let ruleMatches = auto != null
         && ((auto.dimension == 'status' && auto.value == status)
             || (auto.dimension == 'year' && auto.value == dy));
+      return ruleMatches && !(moduleId in sd.get('moduleExclusions', []));
     }
 
     function unchanged(field) {
@@ -199,8 +203,14 @@ service cloud.firestore {
 
     // --- /emailTemplates -----------------------------------------------------
     // Admin-only — they're not user-facing.
+    // isSystem templates may not be deleted (only toggled or edited); this
+    // prevents an admin from accidentally wiping a system template via a
+    // direct delete outside the UI, since the delete button is hidden in the
+    // UI but the rule is the only enforcement that survives API calls.
     match /emailTemplates/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin() && resource.data.isSystem != true;
     }
 
     // --- /observationWindows/{windowId} -------------------------------------
@@ -287,7 +297,8 @@ service cloud.firestore {
     //
     // Read:
     //   - observer (creator) of the observation
-    //   - observed staff member, ONLY if status == 'Finalized'
+    //   - observed staff member (can read Draft for context while PE is drafting;
+    //     also reads Finalized to sign off)
     //   - any user with special access (admin / PE / full access)
     //
     // Create: special-access only (PEs and admins create observations).
@@ -415,5 +426,19 @@ service cloud.firestore {
     // The dashboard feature config doc lives at /appSettings/dashboard and
     // is covered by the /appSettings rule above (everyone reads, admin
     // writes) — no separate match needed.
+
+    // --- moduleProgress collection-group rule --------------------------------
+    // Admins can run a cross-staff collectionGroup('moduleProgress') query to
+    // build the per-module completion roster in ModuleBuilderPage. The
+    // per-staff rule above already authorises owner + admin reads on the
+    // /staff/{email}/moduleProgress/{itemId} path; this wildcard rule adds the
+    // collection-group query path (/{path=**}/moduleProgress/{itemId}) so
+    // Firestore's query-level evaluation allows admin list queries across all
+    // staff docs. Staff never need this cross-staff query — the per-staff rule
+    // is sufficient for the self-service reads on the staff dashboard.
+    match /{path=**}/moduleProgress/{itemId} {
+      allow read: if isAdmin();
+      allow write: if false; // writes go through the per-staff rule above
+    }
   }
 }

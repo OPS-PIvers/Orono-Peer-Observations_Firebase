@@ -14,6 +14,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    // Unit tests live under src/. The e2e/ directory holds Playwright specs,
+    // which must run via `playwright test`, not Vitest — calling Playwright's
+    // test.describe() inside a Vitest worker throws.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

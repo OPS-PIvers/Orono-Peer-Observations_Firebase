@@ -4,6 +4,7 @@ import { doc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore
 import {
   COLLECTIONS,
   isStaffYear,
+  staffMatchesAutoEnable,
   type Building,
   type ModuleDoc,
   type Role,
@@ -54,6 +55,7 @@ interface FormState {
   year: StaffYear;
   buildings: string[];
   modules: string[];
+  moduleExclusions: string[];
   summativeYear: boolean;
   isActive: boolean;
   hasAdminAccess: boolean;
@@ -66,6 +68,7 @@ const empty: FormState = {
   year: 1,
   buildings: [],
   modules: [],
+  moduleExclusions: [],
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,
@@ -118,6 +121,8 @@ export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: Sta
         buildings: existing.buildings,
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
         modules: existing.modules ?? [],
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+        moduleExclusions: existing.moduleExclusions ?? [],
         summativeYear: existing.summativeYear,
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
@@ -165,8 +170,14 @@ export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: Sta
     description: string;
     color: { bg: string; text: string };
     checked: boolean;
+    /** When true, the row is auto-enabled by a rule (shows a subtle indicator). */
+    autoEnabled: boolean;
     onToggle: () => void;
   }
+
+  // Partial staff shape needed to evaluate auto-enable rules in the dialog.
+  const staffForRules = { year: form.year, summativeYear: form.summativeYear };
+
   const accessRows: AccessRow[] = [
     {
       id: 'admin-console-access',
@@ -174,18 +185,45 @@ export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: Sta
       description: 'Grants access to the Admin Console.',
       color: ADMIN_PILL_COLOR,
       checked: form.hasAdminAccess,
+      autoEnabled: false,
       onToggle: () => setForm((f) => ({ ...f, hasAdminAccess: !f.hasAdminAccess })),
     },
     ...modules.map((m) => {
       const cls = MODULE_COLOR_CLASSES[m.color];
+      const ruleMatches = staffMatchesAutoEnable(staffForRules, m.autoEnable ?? null);
+      const excluded = form.moduleExclusions.includes(m.moduleId);
+      // Checked = manually assigned OR (rule matches AND not excluded).
+      const checked = form.modules.includes(m.moduleId) || (ruleMatches && !excluded);
       return {
         id: `mod-${m.moduleId}`,
         name: m.displayName,
         description: m.description,
         color: { bg: cls.bg, text: cls.text },
-        checked: form.modules.includes(m.moduleId),
-        onToggle: () =>
-          form.modules.includes(m.moduleId) ? removeModule(m.moduleId) : addModule(m.moduleId),
+        checked,
+        autoEnabled: ruleMatches && !excluded,
+        onToggle: () => {
+          if (ruleMatches) {
+            // Toggling an auto-enabled module adds/removes an exclusion.
+            if (!excluded) {
+              setForm((f) => ({
+                ...f,
+                moduleExclusions: [...f.moduleExclusions, m.moduleId],
+              }));
+            } else {
+              setForm((f) => ({
+                ...f,
+                moduleExclusions: f.moduleExclusions.filter((id) => id !== m.moduleId),
+              }));
+            }
+          } else {
+            // No rule — toggle manual assignment.
+            if (form.modules.includes(m.moduleId)) {
+              removeModule(m.moduleId);
+            } else {
+              addModule(m.moduleId);
+            }
+          }
+        },
       };
     }),
   ];
@@ -221,6 +259,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: Sta
           year: form.year,
           buildings: form.buildings,
           modules: form.modules,
+          moduleExclusions: form.moduleExclusions,
           summativeYear: form.summativeYear,
           isActive: form.isActive,
           hasAdminAccess: form.hasAdminAccess,
@@ -437,6 +476,9 @@ export function StaffDialog({ open, onOpenChange, mode, existing, onSaved }: Sta
                     <span className="text-muted-foreground flex-1 truncate text-xs">
                       {row.description}
                     </span>
+                    {row.autoEnabled ? (
+                      <span className="text-muted-foreground shrink-0 text-[10px]">auto</span>
+                    ) : null}
                     <Switch
                       checked={row.checked}
                       onCheckedChange={row.onToggle}

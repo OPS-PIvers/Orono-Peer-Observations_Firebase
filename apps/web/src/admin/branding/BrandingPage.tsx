@@ -7,7 +7,9 @@ import {
   COLLECTIONS,
   OPS_BRAND,
   PRIMARY_COLOR_HEX_PATTERN,
+  branding,
   type AppSettings,
+  type Branding,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -21,6 +23,21 @@ import { PageHeader } from '@/components/PageHeader';
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB
+
+/**
+ * Validate a branding draft before persisting.
+ *
+ * Returns an array of human-readable error messages, or an empty array when
+ * the draft is valid.
+ */
+export function validateBrandingDraft(draft: Partial<Branding>): string[] {
+  const result = branding.partial().safeParse(draft);
+  if (result.success) return [];
+  return result.error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? `${issue.path.join('.')}: ` : '';
+    return `${path}${issue.message}`;
+  });
+}
 
 export function BrandingPage() {
   const { user } = useAuth();
@@ -53,18 +70,26 @@ export function BrandingPage() {
       return;
     }
     setColorError(null);
+
+    const candidate = {
+      appName: appName.trim() || OPS_BRAND.defaultAppName,
+      primaryColor: nextColor,
+      logoUrl,
+      iconUrl,
+    };
+    const validationErrors = validateBrandingDraft(candidate);
+    if (validationErrors.length > 0) {
+      setSaveError(validationErrors.join(' · '));
+      return;
+    }
+
     setSaving(true);
     setSaveError(null);
     try {
       await setDoc(
         doc(db, SETTINGS_PATH),
         {
-          branding: {
-            appName: appName.trim() || OPS_BRAND.defaultAppName,
-            primaryColor: nextColor,
-            logoUrl,
-            iconUrl,
-          },
+          branding: candidate,
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -102,7 +127,8 @@ export function BrandingPage() {
               placeholder={OPS_BRAND.defaultAppName}
             />
             <p className="text-muted-foreground text-xs">
-              Shown in the top nav, sign-in screen, and email subject lines.
+              Shown in the top nav, sign-in screen (after first sign-in on this device), and email
+              subject lines.
             </p>
           </div>
 
@@ -145,7 +171,7 @@ export function BrandingPage() {
 
           <LogoUploader
             label="Primary logo"
-            help="Horizontal logo used in the top nav, sign-in screen, and email header. PNG with transparent background works best."
+            help="Horizontal logo used in the top nav, sign-in screen (after first sign-in on this device), and email header. PNG with transparent background works best."
             kind="logo"
             url={logoUrl}
             onChange={setLogoUrl}
@@ -155,7 +181,7 @@ export function BrandingPage() {
 
           <LogoUploader
             label="Square icon"
-            help="Square mark used in compact spots and as a favicon-style icon."
+            help="Square mark used in compact spots and as the browser favicon (when no primary logo is present)."
             kind="icon"
             url={iconUrl}
             onChange={setIconUrl}
