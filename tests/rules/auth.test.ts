@@ -38,6 +38,12 @@ describe('default-deny + domain check', () => {
     const db = testEnv.authenticatedContext('outsider', claims.outsider).firestore();
     await assertFails(getDoc(doc(db, 'staff/someone@gmail.com')));
   });
+
+  it('blocks a domain-matching token whose email is not verified', async () => {
+    const unverified = { ...claims.teacher('teacher@orono.k12.mn.us'), email_verified: false };
+    const db = testEnv.authenticatedContext('unverified', unverified).firestore();
+    await assertFails(getDoc(doc(db, 'staff/teacher@orono.k12.mn.us')));
+  });
 });
 
 describe('/staff', () => {

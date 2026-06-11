@@ -38,7 +38,10 @@ service cloud.firestore {
     function isFromOronoDomain() {
       return isSignedIn()
         && request.auth.token.email is string
-        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$');
+        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$')
+        // Domain trust requires a Google-verified email — an unverified token
+        // whose email string merely matches the domain grants nothing.
+        && request.auth.token.email_verified == true;
     }
 
     function role() {

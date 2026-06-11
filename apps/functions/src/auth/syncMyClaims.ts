@@ -47,6 +47,12 @@ export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, 
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Sign in required');
   }
+  // Domain trust requires a Google-verified email — a token whose email
+  // string merely matches the domain mints no claims (mirrors the
+  // isFromOronoDomain() check in firestore.rules).
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Email address is not verified.');
+  }
   const callerEmail = request.auth.token.email?.toLowerCase();
   if (!callerEmail?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
     // Best-effort security alert to the configured admin email before throwing.

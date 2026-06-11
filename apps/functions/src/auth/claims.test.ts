@@ -71,9 +71,12 @@ function makeStaffEvent(
   } as unknown as Parameters<typeof onStaffWritten.run>[0];
 }
 
-function makeCallableRequest(email: string): Parameters<typeof syncMyClaims.run>[0] {
+function makeCallableRequest(
+  email: string,
+  emailVerified = true,
+): Parameters<typeof syncMyClaims.run>[0] {
   return {
-    auth: { uid: UID, token: { email } },
+    auth: { uid: UID, token: { email, email_verified: emailVerified } },
     data: {},
   } as unknown as Parameters<typeof syncMyClaims.run>[0];
 }
@@ -242,6 +245,13 @@ describe('syncMyClaims', () => {
     const result = await syncMyClaims.run(makeCallableRequest('unknown@orono.k12.mn.us'));
     expect(result).toEqual(NO_ACCESS);
     expect(mocks.setCustomUserClaims).toHaveBeenCalledWith(UID, NO_ACCESS);
+  });
+
+  it('rejects a domain-matching token whose email is not verified', async () => {
+    await expect(
+      syncMyClaims.run(makeCallableRequest('teacher@orono.k12.mn.us', false)),
+    ).rejects.toThrow('Email address is not verified.');
+    expect(mocks.setCustomUserClaims).not.toHaveBeenCalled();
   });
 
   it('grants special access (but not admin) when the role doc has isSpecialAccess', async () => {
