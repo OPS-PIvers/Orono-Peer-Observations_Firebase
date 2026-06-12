@@ -83,6 +83,9 @@ test.describe('staff dashboard', () => {
   test('renders the peer-evaluator sidebar card', async ({ page }) => {
     // The seed has no active observation for this teacher yet, so the card
     // shows its empty-state copy — either way the card heading is present.
-    await expect(page.getByText('Your peer evaluator')).toBeVisible();
+    // The responsive layout renders a second copy of the card at narrower
+    // (iPad) widths, so match the first one to avoid a strict-mode violation —
+    // the test only needs to confirm the card heading is present.
+    await expect(page.getByText('Your peer evaluator').first()).toBeVisible();
   });
 });
