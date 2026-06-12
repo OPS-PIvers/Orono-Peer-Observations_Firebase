@@ -27,7 +27,7 @@
   "devDependencies": {
     "@ops/shared": "workspace:*",
     "@types/node": "^22.10.10",
-    "esbuild": "^0.27.0",
+    "esbuild": "^0.28.1",
     "firebase-functions-test": "^3.4.1",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
