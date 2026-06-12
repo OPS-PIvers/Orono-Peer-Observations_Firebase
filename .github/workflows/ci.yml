@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev-paul]
   push:
     branches: [main, dev-paul]
 
@@ -92,3 +92,62 @@ jobs:
 
       - name: Run rules tests
         run: pnpm test:rules
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # The Firebase emulators (Firestore/Auth/Functions/Storage) need Java 21+;
+      # Ubuntu runners default to an older Java on PATH, so pin it explicitly.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @ops/shared build
+
+      - name: Build functions
+        run: pnpm --filter @ops/functions build
+
+      # The Functions emulator runs from apps/functions/lib (the tsup output),
+      # which needs its own production dependencies installed — same pattern as
+      # the deploy workflow.
+      - name: Install functions runtime dependencies
+        run: npm install --omit=dev --no-package-lock --ignore-scripts
+        working-directory: apps/functions/lib
+
+      # The suite drives a Chromium-engine browser for both the desktop and the
+      # iPad-viewport project, so only Chromium (plus its system libs) is needed.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ops/web exec playwright install --with-deps chromium
+
+      - name: Run Playwright e2e against the emulator stack
+        run: >-
+          pnpm exec firebase emulators:exec
+          --project peer-evaluator-rubric
+          --only firestore,auth,functions,storage
+          "pnpm seed:dev && pnpm --filter @ops/web test:e2e"
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7

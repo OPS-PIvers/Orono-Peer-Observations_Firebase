@@ -28,9 +28,13 @@ const SEED_ADMIN_EMAIL = 'admin.seed@orono.k12.mn.us';
 async function devSignIn(page: Page, email: string): Promise<void> {
   await page.goto('/dev-sign-in');
 
+  // DevSignIn is a lazy-loaded route chunk — wait for it to render instead
+  // of sampling visibility immediately, which skips flakily on cold loads
+  // (e.g. CI, where the Vite dev server compiles modules on first request).
   const isDevMode = await page
-    .locator('text=DEV MODE')
-    .isVisible()
+    .getByText('DEV MODE')
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
     .catch(() => false);
   if (!isDevMode) {
     test.skip(true, 'dev sign-in unavailable (not a development build)');
@@ -65,7 +69,10 @@ test.describe('sign-in screen', () => {
     baseURL,
   }) => {
     await page.goto('/dashboard');
-    expect(page.url()).toBe(`${baseURL}/sign-in`);
+    // The redirect is a client-side navigation that lands after Firebase
+    // resolves the (signed-out) auth state — poll with toHaveURL rather than
+    // asserting page.url() synchronously.
+    await expect(page).toHaveURL(`${baseURL ?? ''}/sign-in`);
   });
 
   test('renders the Google sign-in button and domain restriction copy', async ({ page }) => {
@@ -77,9 +84,11 @@ test.describe('sign-in screen', () => {
 
   test('dev sign-in page exposes the DEV MODE helper in development', async ({ page }) => {
     await page.goto('/dev-sign-in');
+    // Lazy-loaded route — wait for the chunk to render (see devSignIn).
     const isDevMode = await page
-      .locator('text=DEV MODE')
-      .isVisible()
+      .getByText('DEV MODE')
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
       .catch(() => false);
     if (!isDevMode) {
       test.skip(true, 'dev sign-in unavailable (not a development build)');

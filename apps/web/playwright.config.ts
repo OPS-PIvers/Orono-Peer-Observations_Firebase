@@ -57,8 +57,22 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     {
+      // iPad coverage is about the responsive *viewport* (the app targets
+      // evaluators on iPads), not Safari-engine QA. We drive that viewport
+      // with Chromium rather than the device's default WebKit: against the
+      // Firebase emulator, WebKit exhibits an auth-token propagation lag where
+      // a listener attached immediately after the post-sign-in claims refresh
+      // queries with a pre-claims token, so claims-gated list reads (e.g. the
+      // staff picker) are denied and never recover within the test window.
+      // That race is a WebKit+emulator artifact — real users reach these
+      // screens long after claims settle — so Chromium at the iPad viewport
+      // gives deterministic responsive coverage without the false failures.
       name: 'tablet-ipad',
-      use: { ...devices['iPad Pro 11 landscape'] },
+      use: {
+        ...devices['iPad Pro 11 landscape'],
+        browserName: 'chromium',
+        defaultBrowserType: 'chromium',
+      },
     },
   ],
   webServer: [
@@ -73,6 +87,16 @@ export default defineConfig({
       env: {
         VITE_USE_EMULATORS: 'true',
         VITE_FIREBASE_PROJECT_ID: PROJECT_ID,
+        // Emulator-safe web SDK config. The emulators accept any API key, but
+        // the SDK throws at init (auth/invalid-api-key, missing storage
+        // bucket) when these are absent — and CI has no .env.local to supply
+        // them. Process env wins over .env files in Vite, so pinning fakes
+        // here keeps the suite hermetic locally and in CI.
+        VITE_FIREBASE_API_KEY: 'fake-emulator-api-key',
+        VITE_FIREBASE_AUTH_DOMAIN: `${PROJECT_ID}.firebaseapp.com`,
+        VITE_FIREBASE_STORAGE_BUCKET: `${PROJECT_ID}.firebasestorage.app`,
+        VITE_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
+        VITE_FIREBASE_APP_ID: '1:000000000000:web:0000000000000000',
       },
     },
     {

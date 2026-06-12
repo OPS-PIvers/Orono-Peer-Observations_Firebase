@@ -93,6 +93,10 @@ export function App() {
               <Route path="/book/:windowId" element={<L.BookingPage />} />
               <Route path="/oauth/google-calendar/callback" element={<L.CalendarCallbackPage />} />
               <Route path="/m/:moduleId" element={<L.ModulePage />} />
+              {/* Catch-all: unknown paths are auth-protected (unauthenticated
+                  visitors bounce to /sign-in via RequireAuth) and the 404
+                  renders inside the app shell so navigation stays available. */}
+              <Route path="*" element={<NotFound />} />
             </Route>
 
             {/* Special access (PE + Full Access) */}
@@ -133,8 +137,6 @@ export function App() {
                 <Route path="transcription-jobs" element={<L.TranscriptionJobsPage />} />
               </Route>
             </Route>
-
-            <Route path="*" element={<NotFound />} />
           </Routes>
         </KeyedErrorBoundary>
         <Toaster />

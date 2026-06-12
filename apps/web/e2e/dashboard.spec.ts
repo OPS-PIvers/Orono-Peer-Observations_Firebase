@@ -23,9 +23,13 @@ const SEED_TEACHER_EMAIL = 'teacher.one@orono.k12.mn.us';
 async function devSignIn(page: Page, email: string): Promise<void> {
   await page.goto('/dev-sign-in');
 
+  // DevSignIn is a lazy-loaded route chunk — wait for it to render instead
+  // of sampling visibility immediately, which skips flakily on cold loads
+  // (e.g. CI, where the Vite dev server compiles modules on first request).
   const isDevMode = await page
-    .locator('text=DEV MODE')
-    .isVisible()
+    .getByText('DEV MODE')
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
     .catch(() => false);
   if (!isDevMode) {
     test.skip(true, 'dev sign-in unavailable (not a development build)');
@@ -79,6 +83,9 @@ test.describe('staff dashboard', () => {
   test('renders the peer-evaluator sidebar card', async ({ page }) => {
     // The seed has no active observation for this teacher yet, so the card
     // shows its empty-state copy — either way the card heading is present.
-    await expect(page.getByText('Your peer evaluator')).toBeVisible();
+    // The responsive layout renders a second copy of the card at narrower
+    // (iPad) widths, so match the first one to avoid a strict-mode violation —
+    // the test only needs to confirm the card heading is present.
+    await expect(page.getByText('Your peer evaluator').first()).toBeVisible();
   });
 });
