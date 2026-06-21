@@ -75,9 +75,14 @@ function median(nums) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-async function waitForServer(url, timeoutMs = 30_000) {
+async function waitForServer(url, childProcess, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    // Fail fast if the preview server died on startup (e.g. port conflict)
+    // instead of polling a dead URL for the full timeout.
+    if (childProcess.exitCode !== null) {
+      throw new Error(`Preview server exited early with code ${String(childProcess.exitCode)}`);
+    }
     try {
       const r = await fetch(url);
       if (r.ok) return;
@@ -138,7 +143,7 @@ async function main() {
 
   let browser;
   try {
-    await waitForServer(BASE_URL);
+    await waitForServer(BASE_URL, preview);
     browser = await chromium.launch({
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
     });
@@ -153,6 +158,11 @@ async function main() {
       for (let i = 0; i < RUNS; i++) {
         const m = await measureOnce(page, url);
         if (Number.isFinite(m.fcp)) samples.push(m.fcp);
+      }
+      if (samples.length === 0) {
+        throw new Error(
+          `No valid FCP samples for ${route.name} (${route.path}). Is the page crashing?`,
+        );
       }
       const medFcp = median(samples);
       results.push({ name: route.name, path: route.path, fcp: medFcp, samples });

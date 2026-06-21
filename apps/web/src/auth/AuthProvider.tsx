@@ -211,6 +211,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
 
+          // The token round-trip is async; if the provider unmounted while it
+          // was in flight, skip the state updates to avoid touching an
+          // unmounted tree.
+          if (teardown.cancelled) return;
           const isAdmin = rawIsAdmin ?? isAdminRole(role);
           setClaims({ role, hasSpecialAccess, isAdmin });
           setStatus('signed-in');
