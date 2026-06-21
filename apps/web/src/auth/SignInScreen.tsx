@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { Navigate } from 'react-router-dom';
 import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
-import { auth } from '@/lib/firebase';
 import { useAuth } from '@/auth/AuthProvider';
-import { getBrandingCache } from '@/components/BrandingProvider';
+import { getBrandingCache } from '@/components/brandingCache';
 import { Button } from '@/components/ui/button';
 
 export function SignInScreen() {
@@ -43,6 +41,13 @@ export function SignInScreen() {
     setError(null);
     setPending(true);
     try {
+      // Firebase Auth is imported on demand (only when the user actually
+      // clicks "Continue with Google") so the Firebase SDK stays off the
+      // initial critical path — the sign-in screen paints without it.
+      const [{ GoogleAuthProvider, signInWithPopup }, { auth }] = await Promise.all([
+        import('firebase/auth'),
+        import('@/lib/firebase'),
+      ]);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
       // Popup, not redirect. Two reasons:

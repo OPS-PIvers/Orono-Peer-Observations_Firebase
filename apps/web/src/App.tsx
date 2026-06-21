@@ -1,9 +1,8 @@
-import { Component, lazy, type ReactNode } from 'react';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
-import { Layout } from '@/components/Layout';
 import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
 import * as L from '@/lazyRoutes';
@@ -18,6 +17,13 @@ const DevSignIn =
   import.meta.env.MODE === 'development'
     ? lazy(() => import('@/auth/DevSignIn').then((m) => ({ default: m.DevSignIn })))
     : null;
+
+// Layout (sidebar, header, branding, and the Firestore-backed app chrome) is
+// code-split so its heavy subtree — including the Firebase SDK it pulls in via
+// data hooks — stays out of the initial entry chunk. It only renders once a
+// user is authenticated, by which point the chunk has loaded in parallel with
+// the auth round-trip, so the split is invisible in practice.
+const Layout = lazy(() => import('@/components/Layout').then((m) => ({ default: m.Layout })));
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -63,10 +69,24 @@ interface ShellProps {
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
 }
+function ShellSplash() {
+  return (
+    <div
+      className="bg-ops-gray-lightest flex min-h-svh items-center justify-center"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="text-muted-foreground text-sm">Loading…</div>
+    </div>
+  );
+}
+
 function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: ShellProps) {
   return (
     <RequireAuth requireAdmin={requireAdmin} requireSpecialAccess={requireSpecialAccess}>
-      <Layout />
+      <Suspense fallback={<ShellSplash />}>
+        <Layout />
+      </Suspense>
     </RequireAuth>
   );
 }

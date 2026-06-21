@@ -8,10 +8,26 @@
     <title>Orono Peer Observations</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      Load the web-font stylesheet without blocking first paint. The stylesheet
+      is fetched as a low-priority print sheet, then promoted to `all` media on
+      load so it applies once available. `display=swap` (in the URL) means text
+      paints immediately in the fallback face and swaps to Lexend/Roboto when
+      the fonts arrive — so the font round-trip never delays FCP. The <noscript>
+      keeps the blocking behavior for the rare no-JS visitor.
+    -->
     <link
       href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
   </head>
   <body class="font-body bg-background text-foreground antialiased">
     <div id="root"></div>
