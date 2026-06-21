@@ -1,15 +1,13 @@
 import { useEffect, type ReactNode } from 'react';
 import { OPS_BRAND } from '@ops/shared';
 import { useBranding } from '@/hooks/useBranding';
+import { BRANDING_CACHE_KEY } from '@/components/brandingCache';
 
-const BRANDING_CACHE_KEY = 'ops-branding-cache';
-
-export interface BrandingCache {
-  appName: string;
-  primaryColor: string;
-  logoUrl: string | null;
-  iconUrl: string | null;
-}
+// The Firebase-free cache reader now lives in `./brandingCache` so pre-auth
+// screens (SignInScreen) can read branding without pulling the Firestore SDK
+// onto the critical path. Re-exported here to preserve existing import paths.
+export { BRANDING_CACHE_KEY, getBrandingCache } from '@/components/brandingCache';
+export type { BrandingCache } from '@/components/brandingCache';
 
 /**
  * CSS custom properties this provider manages on `<html>`. The Tailwind
@@ -61,42 +59,6 @@ export function derivePrimaryShades(primary: string): PrimaryShades {
     dark: mixToward(base, 0, 0.34),
     light: mixToward(base, 255, 0.12),
     lighter: mixToward(base, 255, 0.9),
-  };
-}
-
-/**
- * Persists branding to localStorage so pre-auth screens (like SignInScreen)
- * can access it. Reads from localStorage using a fallback chain:
- * cached value → packaged default.
- */
-function isBrandingCache(value: unknown): value is BrandingCache {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v['appName'] === 'string' &&
-    typeof v['primaryColor'] === 'string' &&
-    (v['logoUrl'] === null || typeof v['logoUrl'] === 'string') &&
-    (v['iconUrl'] === null || typeof v['iconUrl'] === 'string')
-  );
-}
-
-export function getBrandingCache(): BrandingCache {
-  try {
-    const cached = localStorage.getItem(BRANDING_CACHE_KEY);
-    if (cached) {
-      const parsed: unknown = JSON.parse(cached);
-      if (isBrandingCache(parsed)) {
-        return parsed;
-      }
-    }
-  } catch {
-    // Ignore JSON parse errors; fall back to defaults
-  }
-  return {
-    appName: OPS_BRAND.defaultAppName,
-    primaryColor: OPS_BRAND.defaultPrimaryColor,
-    logoUrl: null,
-    iconUrl: null,
   };
 }
 

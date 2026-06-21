@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps"
+    "test:e2e:install": "playwright install --with-deps",
+    "perf": "node scripts/perf/measure-page-load.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

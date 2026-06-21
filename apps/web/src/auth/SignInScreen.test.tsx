@@ -77,7 +77,7 @@ const { mockGetBrandingCache } = vi.hoisted(() => {
   return { mockGetBrandingCache: mockFn };
 });
 
-vi.mock('@/components/BrandingProvider', () => ({
+vi.mock('@/components/brandingCache', () => ({
   getBrandingCache: mockGetBrandingCache,
 }));
 
