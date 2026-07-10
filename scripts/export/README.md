@@ -25,12 +25,12 @@ tsx scripts/export/export.ts --target=prod --out=./exports/2026-06-30
 
 ## What gets exported
 
-| Collection    | Output file(s)              |
-| ------------- | ---------------------------- |
-| `staff`       | `staff.json`, `staff.csv`    |
-| `observations`| `observations.json`          |
-| `rubrics`     | `rubrics.json`               |
-| `auditLog`    | `auditLog.json`               |
+| Collection     | Output file(s)            |
+| -------------- | ------------------------- |
+| `staff`        | `staff.json`, `staff.csv` |
+| `observations` | `observations.json`       |
+| `rubrics`      | `rubrics.json`            |
+| `auditLog`     | `auditLog.json`           |
 
 Every export also writes `manifest.json` with the target, timestamp, and
 per-collection row counts.
