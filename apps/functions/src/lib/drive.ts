@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logger } from 'firebase-functions';
-import { google, type drive_v3 } from 'googleapis';
+import type { drive_v3 } from 'googleapis';
 
 /**
  * Drive API helpers backed by the Cloud Functions runtime service account
@@ -9,12 +9,20 @@ import { google, type drive_v3 } from 'googleapis';
  *
  * Domain-Wide Delegation is OFF the table for this project, so we never
  * impersonate users.
+ *
+ * `googleapis` is lazily imported inside `getDriveClient()` rather than at
+ * module top level — it's a very large SDK, and most deployed functions
+ * (e.g. `syncMyClaims`) never touch Drive at all. Loading it only when a
+ * Drive client is actually requested keeps their cold starts cheap. The
+ * built client itself is cached below, so the dynamic import only ever
+ * runs once per warm container.
  */
 
 let driveClient: drive_v3.Drive | null = null;
 
-export function getDriveClient(): drive_v3.Drive {
+export async function getDriveClient(): Promise<drive_v3.Drive> {
   if (driveClient) return driveClient;
+  const { google } = await import('googleapis');
   const auth = new google.auth.GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/drive'],
   });
@@ -32,7 +40,7 @@ export async function ensureObservationFolder(args: {
   parentFolderId: string;
   existingFolderId: string | null;
 }): Promise<string> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
       await drive.files.get({ fileId: args.existingFolderId, fields: 'id' });
@@ -59,7 +67,7 @@ export async function uploadFileToFolder(args: {
   mimeType: string;
   body: Buffer;
 }): Promise<{ fileId: string; fileName: string }> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   const result = await drive.files.create({
     requestBody: {
       name: args.filename,
@@ -79,7 +87,7 @@ export async function uploadFileToFolder(args: {
 }
 
 export async function downloadFile(fileId: string): Promise<Buffer> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   const result = await drive.files.get(
     { fileId, alt: 'media' },
     { responseType: 'arraybuffer' },
@@ -101,7 +109,7 @@ export async function shareWithUser(args: {
   /** When false, suppresses the auto-notification email. */
   sendNotificationEmail?: boolean;
 }): Promise<void> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   const existing = await drive.permissions.list({
     fileId: args.fileId,
     fields: 'permissions(id,emailAddress,role)',
@@ -149,7 +157,7 @@ export interface DriveLink {
  * a missing parent (404) is treated as success.
  */
 export async function deleteDriveFolder(folderId: string): Promise<void> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   // List immediate children so we can delete them before the folder,
   // ensuring no orphaned files remain accessible from other contexts.
   let pageToken: string | undefined;
@@ -183,7 +191,7 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
 }
 
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {
-  const drive = getDriveClient();
+  const drive = await getDriveClient();
   const meta = await drive.files.get({
     fileId,
     fields: 'webViewLink, webContentLink',

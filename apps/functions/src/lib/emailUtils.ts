@@ -15,9 +15,26 @@ const FROM_EMAIL = 'observations@orono.k12.mn.us';
 /** Variable bag passed to substituteVariables. Undefined values render as ''. */
 export type TemplateVars = Partial<Record<string, string>>;
 
-/** Replace all {{varName}} occurrences in a string with values from the bag. */
+/**
+ * HTML-escape a substituted value. Template bodies are HTML, and the values
+ * substituted in (staff names, cancellation reasons, etc.) are user-editable
+ * Firestore fields — escape by default so they can't inject markup into an
+ * email sent to someone else. Safe both in text-node and `href="..."`
+ * attribute contexts (see emailBodyHtml.ts / renderEmailShell.ts).
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Replace all {{varName}} occurrences in a string with values from the bag,
+ *  HTML-escaping each substituted value. */
 export function substituteVariables(template: string, vars: TemplateVars): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => escapeHtml(vars[key] ?? ''));
 }
 
 /**

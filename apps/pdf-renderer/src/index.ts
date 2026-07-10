@@ -55,16 +55,31 @@ async function getBrowser(): Promise<Browser> {
   // The first three flags below are required to run inside a non-root
   // container without /dev/shm. The fourth keeps Chromium from auto-fetching
   // unrelated network resources we don't need for static templates.
-  browserPromise ??= puppeteer.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--font-render-hinting=none',
-    ],
-  });
+  //
+  // If launch fails, or the browser later crashes/disconnects, reset the
+  // cached promise so the *next* request gets a fresh launch instead of a
+  // poisoned singleton that fails every request until the container recycles.
+  browserPromise ??= puppeteer
+    .launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--font-render-hinting=none',
+      ],
+    })
+    .then((browser) => {
+      browser.on('disconnected', () => {
+        browserPromise = null;
+      });
+      return browser;
+    })
+    .catch((err: unknown) => {
+      browserPromise = null;
+      throw err;
+    });
   return browserPromise;
 }
 

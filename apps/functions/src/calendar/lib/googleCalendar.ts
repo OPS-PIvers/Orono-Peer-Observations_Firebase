@@ -2,8 +2,8 @@ import { defineSecret, defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { google, type calendar_v3 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
+import type { calendar_v3 } from 'googleapis';
+import type { OAuth2Client } from 'google-auth-library';
 import { COLLECTIONS, type Observation, type ObservationWindow } from '@ops/shared';
 import { APP_URL } from '../../lib/emailUtils.js';
 
@@ -31,8 +31,12 @@ export const GOOGLE_OAUTH_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECR
 export const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 /** Construct a fresh OAuth2 client. `redirectUri` is only needed for the
- *  authorization-code exchange; event operations don't use it. */
-function buildOAuthClient(redirectUri?: string): OAuth2Client {
+ *  authorization-code exchange; event operations don't use it.
+ *
+ *  `googleapis` is lazily imported here rather than at module top level —
+ *  see the matching comment in `../../lib/drive.ts` for why. */
+async function buildOAuthClient(redirectUri?: string): Promise<OAuth2Client> {
+  const { google } = await import('googleapis');
   return new google.auth.OAuth2({
     clientId: GOOGLE_OAUTH_CLIENT_ID.value(),
     clientSecret: GOOGLE_OAUTH_CLIENT_SECRET.value(),
@@ -61,7 +65,7 @@ export async function exchangeCodeForTokens(
   authorizationCode: string,
   redirectUri: string,
 ): Promise<ExchangedTokens> {
-  const client = buildOAuthClient(redirectUri);
+  const client = await buildOAuthClient(redirectUri);
   const { tokens } = await client.getToken(authorizationCode);
 
   if (!tokens.refresh_token) {
@@ -101,7 +105,7 @@ export async function exchangeCodeForTokens(
 /** Best-effort revoke of a refresh token at Google. Never throws. */
 export async function revokeRefreshToken(refreshToken: string): Promise<void> {
   try {
-    const client = buildOAuthClient();
+    const client = await buildOAuthClient();
     await client.revokeToken(refreshToken);
   } catch (err) {
     logger.warn('revokeRefreshToken: revoke failed (best-effort)', err);
@@ -136,7 +140,7 @@ export async function getCalendarClientFor(
   const refreshToken = data['refreshToken'];
   if (typeof refreshToken !== 'string' || refreshToken.length === 0) return null;
 
-  const client = buildOAuthClient();
+  const client = await buildOAuthClient();
   client.setCredentials({ refresh_token: refreshToken });
 
   // Persist refreshed access tokens so subsequent calls reuse them.
@@ -178,6 +182,7 @@ export async function getCalendarClientFor(
     return null;
   }
 
+  const { google } = await import('googleapis');
   return google.calendar({ version: 'v3', auth: client });
 }
 

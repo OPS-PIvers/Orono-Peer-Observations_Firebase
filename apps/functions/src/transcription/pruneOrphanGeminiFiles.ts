@@ -97,10 +97,10 @@ async function deleteGeminiFile(fileUri: string, apiKey: string): Promise<void> 
     : fileUri.replace(/^files\//, '');
   if (!fileName) throw new Error(`Unrecognized Gemini file URI: ${fileUri}`);
 
-  const res = await fetch(
-    `${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`,
-    { method: 'DELETE' },
-  );
+  const res = await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}`, {
+    method: 'DELETE',
+    headers: { 'x-goog-api-key': apiKey },
+  });
   if (!res.ok && res.status !== 404) {
     const text = await res.text().catch(() => '');
     throw new Error(`Gemini Files delete failed ${String(res.status)}: ${text.slice(0, 200)}`);
