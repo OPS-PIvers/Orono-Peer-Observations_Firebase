@@ -13,13 +13,12 @@
 //
 // Env:
 //   DEV_AUTH_PORT   — listen port (default 8787)
-//   FIREBASE_PROJECT_ID — defaults to 'peer-evaluator-rubric'
+//   FIREBASE_PROJECT_ID — Firebase project ID (see scripts/lib/project-id.mjs)
 
 import http from 'node:http';
 import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? 'peer-evaluator-rubric';
+import { PROJECT_ID } from './lib/project-id.mjs';
 const PORT = Number(process.env.DEV_AUTH_PORT ?? '8787');
 // SA used to sign custom tokens. ADC (your gcloud user creds) can mint
 // tokens by calling `iam.serviceAccounts.signBlob` on this SA — owner /

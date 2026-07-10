@@ -1,8 +1,9 @@
 import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { PROJECT_ID } from './lib/project-id.mjs';
 
 if (getApps().length === 0) {
-  initializeApp({ credential: applicationDefault(), projectId: 'peer-evaluator-rubric' });
+  initializeApp({ credential: applicationDefault(), projectId: PROJECT_ID });
 }
 
 const email = process.argv[2] ?? 'paul.ivers@orono.k12.mn.us';
