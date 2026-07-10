@@ -20,6 +20,46 @@ test-coverage improvements.
 
 ---
 
+## Remediation status
+
+The pull request that introduced this document also ships fixes for the
+findings marked **fixed** below; the rest are **deferred** to follow-up work.
+
+**Fixed in this PR:**
+
+- P0-1 missing composite indexes (all five, plus two more found in
+  `scheduledEmailReminders.ts` during the fix pass)
+- P0-2 `admin-uploads` storage reads (branding stays auth-readable; everything
+  else is admin-only)
+- P0-3 `finalizeObservation` double-finalize (transactional claim via
+  `finalizeStartedAt`, cleared on failure), including the sibling
+  `driveFolderId` race in `uploadEvidenceFile`
+- P1-4 unbounded observation lists (`limit()` + "Load more" on
+  `ObservationsListPage` and `StaffPersonPage`)
+- P1-5 fire-and-forget writes (errors surfaced via the existing inline-banner
+  idiom in `ModulePage`, `ModuleSectionEditor`, `StaffPage`)
+- P1-6 `googleapis` cold-start weight (lazy `import()` in the client builders)
+- P1-8 email HTML escaping (`substituteVariables` escapes by default)
+- P1-9 rules field constraints (`hasOnly()` on observer draft/window updates,
+  `acknowledgedBy` identity check, dead helper removed — with new rules tests)
+- P1-10 hardcoded project ID / admin email (centralized, env-overridable)
+- P2: `createObservationWindow` / `expireObservationWindows` N+1 loops,
+  `/roles` full-scan lookups, pdf-renderer Puppeteer self-healing, unused
+  `firebase-admin` dependency, Gemini key moved to `x-goog-api-key` header,
+  index-as-key overrides list, `--confirm` guard on `delete-observation.mjs`,
+  pdf-renderer added to CI, `AppSidebar`/`DashboardView` memoization
+
+**Deferred (intentionally out of scope for a zero-regression PR):**
+
+- P1-7 KMS encryption of calendar OAuth tokens (infra/KMS setup required)
+- Multi-codebase function splitting; self-hosted PDF fonts; `window.prompt`
+  replacements; Tiptap toolbar dedup; Zod schemas for the remaining callables;
+  e2e specs + CI step; unit tests for the untested function subsystems;
+  coverage publishing; migration-script pagination; `maxInstances` review;
+  PE staff-PII read narrowing; pnpm-override provenance comments
+
+---
+
 ## P0 — Critical (can break or leak in production today)
 
 ### 1. Five client queries require composite indexes that are not defined
