@@ -49,6 +49,8 @@ Firebase.
 | `pnpm test:e2e`              | Playwright E2E (desktop + iPad viewports)         |
 | `pnpm import:emulator`       | Import current Sheet into the running emulator    |
 | `pnpm import:prod --confirm` | One-shot prod import (cutover only — destructive) |
+| `pnpm export:emulator`       | Export staff/observations/rubrics/auditLog from the emulator to JSON/CSV |
+| `pnpm export:prod`           | Same, from live Firestore — see `scripts/export/README.md` |
 
 ## Branches
 

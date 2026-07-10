@@ -11,6 +11,7 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { db } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { yearLabel } from '@/utils/staffFormatting';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,13 @@ export function CreateObservationDialog({
 }: CreateObservationDialogProps) {
   const { user } = useAuth();
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  // Own staff doc — used to denormalize the observer's display name onto the
+  // observation so the observed staff member's dashboard can show it without
+  // read access to the observer's /staff doc.
+  const observerEmailLower = user?.email?.toLowerCase() ?? '';
+  const { data: observerStaff } = useFirestoreDoc<Staff>(
+    observerEmailLower ? `${COLLECTIONS.staff}/${observerEmailLower}` : '',
+  );
   const [type, setType] = useState<ObservationType>(OBSERVATION_TYPES.standard);
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +74,7 @@ export function CreateObservationDialog({
     try {
       const ref = await addDoc(collection(db, COLLECTIONS.observations), {
         observerEmail: observerEmail.toLowerCase(),
+        observerName: observerStaff?.name ?? '',
         observedEmail: staff.email.toLowerCase(),
         observedName: staff.name,
         observedRole: staff.role,

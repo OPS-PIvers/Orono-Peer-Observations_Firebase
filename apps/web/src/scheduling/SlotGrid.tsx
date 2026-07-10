@@ -12,6 +12,10 @@ export interface SlotGridProps {
   selectedSlotId: string | null;
   onSelect: (slot: Slot) => void;
   disabled?: boolean;
+  /** Slot ids that collide with busy time on the observer's REAL Google
+   *  Calendar (from checkSlotConflicts). Badged, not disabled — the server
+   *  enforces the admin's conflict policy at booking time. */
+  conflictedSlotIds?: ReadonlySet<string>;
 }
 
 /**
@@ -19,8 +23,16 @@ export interface SlotGridProps {
  * day is a button. A slot is disabled the instant its status leaves
  * 'available' — that single field already reflects FCFS booking and
  * cross-building PE conflicts (both flow through slot status server-side).
+ * Real-calendar conflicts (freebusy) arrive via `conflictedSlotIds` and are
+ * shown as an "Observer busy" badge.
  */
-export function SlotGrid({ slots, selectedSlotId, onSelect, disabled = false }: SlotGridProps) {
+export function SlotGrid({
+  slots,
+  selectedSlotId,
+  onSelect,
+  disabled = false,
+  conflictedSlotIds,
+}: SlotGridProps) {
   const byDate = useMemo(() => {
     const groups = new Map<string, Slot[]>();
     for (const slot of slots) {
@@ -54,6 +66,8 @@ export function SlotGrid({ slots, selectedSlotId, onSelect, disabled = false }: 
             {group.slots.map((slot) => {
               const isAvailable = slot.status === 'available';
               const isSelected = slot.slotId === selectedSlotId;
+              const isConflicted =
+                isAvailable && !isSelected && (conflictedSlotIds?.has(slot.slotId) ?? false);
               return (
                 <Button
                   key={slot.id}
@@ -62,9 +76,22 @@ export function SlotGrid({ slots, selectedSlotId, onSelect, disabled = false }: 
                   size="sm"
                   disabled={disabled || !isAvailable}
                   onClick={() => onSelect(slot)}
+                  className={
+                    isConflicted
+                      ? 'border-ops-red-light text-ops-red-dark flex-col items-start opacity-75'
+                      : undefined
+                  }
+                  title={
+                    isConflicted
+                      ? "Overlaps an event on your observer's Google Calendar"
+                      : undefined
+                  }
                 >
-                  {formatLocalTime(slot.startUTC)}
-                  {slot.periodName ? ` · ${slot.periodName}` : ''}
+                  <span>
+                    {formatLocalTime(slot.startUTC)}
+                    {slot.periodName ? ` · ${slot.periodName}` : ''}
+                  </span>
+                  {isConflicted ? <span className="text-xs opacity-80">Observer busy</span> : null}
                 </Button>
               );
             })}

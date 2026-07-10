@@ -90,6 +90,11 @@ export const ST_BLURB =
 export const ST_ON = 'On';
 export const ST_OFF = 'Off';
 
+export const ST_CYCLE_CLOSE_LABEL = 'Cycle close date';
+export const ST_CYCLE_CLOSE_BLURB =
+  'The date shown in the dashboard hero section to mark the end of the evaluation cycle (e.g., "May 15").';
+export const ST_CYCLE_CLOSE_PLACEHOLDER = 'e.g., May 15';
+
 // ── Step builder ─────────────────────────────────────────────────────────────
 
 export const CS_HEADING = 'Dashboard steps';
@@ -164,6 +169,7 @@ export const DATE_SOURCE_LABELS: Record<string, string> = {
   finalizedAt: 'Finalized date',
   createdAt: 'Created date',
   lastModifiedAt: 'Last updated date',
+  windowEndDate: 'Booking window closes',
 };
 
 export const IN_PROGRESS_LABELS: Record<string, string> = {

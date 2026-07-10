@@ -21,6 +21,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/PageHeader';
 import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const YEAR_LABELS: Record<StaffYear, string> = {
   1: 'Y1',
@@ -53,6 +61,7 @@ export function RoleYearMappingsPage() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [pendingRoleId, setPendingRoleId] = useState<string | null>(null);
 
   // Auto-select first active role on load.
   useEffect(() => {
@@ -149,6 +158,23 @@ export function RoleYearMappingsPage() {
     }
   }
 
+  function handleRoleChange(newRoleId: string) {
+    if (dirty) {
+      setPendingRoleId(newRoleId);
+    } else {
+      setDirty(false);
+      setSelectedRoleId(newRoleId);
+    }
+  }
+
+  function confirmDiscardChanges() {
+    if (pendingRoleId) {
+      setDirty(false);
+      setSelectedRoleId(pendingRoleId);
+      setPendingRoleId(null);
+    }
+  }
+
   async function saveYearColor(year: 1 | 2 | 3, color: PillColorName) {
     const currentYearColors = appSettings?.yearColors ?? {};
     await setDoc(
@@ -182,11 +208,7 @@ export function RoleYearMappingsPage() {
           <span className="font-medium">Role</span>
           <select
             value={selectedRoleId ?? ''}
-            onChange={(e) => {
-              if (dirty && !confirm('Discard unsaved mapping changes?')) return;
-              setDirty(false);
-              setSelectedRoleId(e.target.value);
-            }}
+            onChange={(e) => handleRoleChange(e.target.value)}
             className="border-input bg-background h-11 rounded-md border px-3"
           >
             <option value="" disabled>
@@ -271,6 +293,29 @@ export function RoleYearMappingsPage() {
           })}
         </div>
       </div>
+
+      <Dialog
+        open={pendingRoleId !== null}
+        onOpenChange={(open) => !open && setPendingRoleId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard unsaved changes?</DialogTitle>
+            <DialogDescription>
+              You have unsaved mapping changes for <strong>{selectedRole?.displayName}</strong>. Are
+              you sure you want to discard them and switch to a different role?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingRoleId(null)} type="button">
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => confirmDiscardChanges()} type="button">
+              Discard changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageHeader>
   );
 }

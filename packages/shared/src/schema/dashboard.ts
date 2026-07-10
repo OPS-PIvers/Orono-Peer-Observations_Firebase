@@ -137,6 +137,9 @@ export const DATE_SOURCES = [
   'finalizedAt',
   'createdAt',
   'lastModifiedAt',
+  /** The open self-scheduling window's `endDate` (booking deadline), not
+   *  anything on the observation itself. See DeriveContext.openBooking. */
+  'windowEndDate',
 ] as const;
 export type DateSource = (typeof DATE_SOURCES)[number];
 
@@ -200,6 +203,9 @@ export const dashboardConfig = z.object({
   }),
   checkpoints: dashboardCheckpointsConfig.default({}),
   steps: z.array(dashboardStep).default([]),
+  /** Admin-configurable cycle close date label shown in the hero banner (e.g., "May 15").
+   *  Falls back to "May 15" if not set. */
+  cycleCloseLabel: z.string().trim().max(50).default('May 15'),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });
@@ -244,7 +250,7 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     buttonLabel: 'Choose a window',
     showWhen: 'signupWindowOpened',
     doneWhen: 'observationCreated',
-    dateFrom: 'none',
+    dateFrom: 'windowEndDate',
     buttonTarget: 'booking',
   }),
   dashboardStep.parse({

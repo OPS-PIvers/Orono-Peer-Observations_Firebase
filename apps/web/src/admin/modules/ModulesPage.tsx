@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MoreVertical, Plus } from 'lucide-react';
+import { Check, ListChecks, MoreVertical, Plus, Power, PowerOff } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
   COLLECTIONS,
@@ -39,6 +39,10 @@ import {
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
 import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
+import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
+import { BulkActionBar } from '@/admin/_shared/BulkActionBar';
+import { bulkMerge } from '@/admin/_shared/bulkWrite';
+import { useRowSelection } from '@/admin/_shared/useRowSelection';
 
 function slugify(s: string): string {
   return s
@@ -65,6 +69,18 @@ export function ModulesPage() {
     key: 'displayName',
     direction: 'asc',
   });
+  const [search, setSearch] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selectMode, selected, toggleRow, toggleAll, clear, toggleSelectMode } = useRowSelection();
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return modules ?? [];
+    return (modules ?? []).filter(
+      (m) => m.displayName.toLowerCase().includes(q) || m.moduleId.toLowerCase().includes(q),
+    );
+  }, [modules, search]);
 
   const columns: ColumnDef<ModuleRow>[] = useMemo(
     () => [
@@ -117,7 +133,7 @@ export function ModulesPage() {
     [],
   );
 
-  const sorted = useMemo(() => sortRows(modules ?? [], columns, sort), [modules, columns, sort]);
+  const sorted = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -125,57 +141,125 @@ export function ModulesPage() {
     setDeleting(null);
   }
 
+  async function bulkSetActive(isActive: boolean) {
+    setBulkError(null);
+    setBulkBusy(true);
+    try {
+      await bulkMerge(COLLECTIONS.modules, Array.from(selected), { isActive });
+      clear();
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Bulk update failed.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   return (
     <PageHeader
       title="Modules"
-      subtitle={`${modules ? `${String(modules.length)} modules` : 'Loading…'} — participation tracks shown as color chips on staff dashboards.`}
+      subtitle={
+        modules
+          ? `${String(sorted.length)} of ${String(modules.length)} modules — participation tracks shown as color chips on staff dashboards.`
+          : 'Loading…'
+      }
       variant="light"
       breadcrumb={['Admin', 'Modules']}
       actions={
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add module
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={selectMode ? 'default' : 'outline'}
+            onClick={toggleSelectMode}
+            type="button"
+          >
+            {selectMode ? <Check /> : <ListChecks />}
+            {selectMode ? 'Done' : 'Select'}
+          </Button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus />
+            Add module
+          </Button>
+        </div>
       }
     >
+      <AdminSearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search by name or module ID"
+        aria-label="Search modules"
+        className="mb-4"
+      />
+
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load modules: {error.message}
         </div>
       ) : null}
 
-      <AdminDataView
-        columns={columns}
-        rows={loading && !modules ? null : sorted}
-        loading={loading}
-        rowKey={(r) => r.id}
-        onRowClick={(r) => void navigate(`/admin/modules/${r.moduleId}`)}
-        empty="No modules yet. Add one to get started."
-        sort={sort}
-        onSortChange={setSort}
-        rowActions={(r) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 min-h-9 w-9 min-w-9"
-                aria-label={`Actions for ${r.displayName}`}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => void navigate(`/admin/modules/${r.moduleId}`)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(r)}>
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      {bulkError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {bulkError}
+        </div>
+      ) : null}
+
+      <BulkActionBar
+        count={selected.size}
+        noun="module"
+        busy={bulkBusy}
+        onClear={clear}
+        actions={[
+          {
+            key: 'activate',
+            label: 'Activate',
+            icon: Power,
+            onClick: () => void bulkSetActive(true),
+          },
+          {
+            key: 'deactivate',
+            label: 'Deactivate',
+            icon: PowerOff,
+            onClick: () => void bulkSetActive(false),
+          },
+        ]}
       />
+
+      <div className={selected.size > 0 ? 'pb-20 md:pb-0' : undefined}>
+        <AdminDataView
+          columns={columns}
+          rows={loading && !modules ? null : sorted}
+          loading={loading}
+          rowKey={(r) => r.id}
+          empty={
+            search ? 'No modules match that search.' : 'No modules yet. Add one to get started.'
+          }
+          {...(selectMode
+            ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
+            : { onRowClick: (r: ModuleRow) => void navigate(`/admin/modules/${r.moduleId}`) })}
+          sort={sort}
+          onSortChange={setSort}
+          rowActions={(r) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 min-h-9 w-9 min-w-9"
+                  aria-label={`Actions for ${r.displayName}`}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void navigate(`/admin/modules/${r.moduleId}`)}>
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive" onSelect={() => setDeleting(r)}>
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        />
+      </div>
 
       <ModuleDialog open={showCreate} onOpenChange={setShowCreate} mode="create" existing={null} />
       <ModuleDialog

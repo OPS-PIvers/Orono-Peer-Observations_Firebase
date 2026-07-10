@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Copy, Check } from 'lucide-react';
+import { ChevronLeft, Copy, Check, Pencil } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { orderBy, type QueryConstraint } from 'firebase/firestore';
 import {
@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CreateObservationWindowDialog } from './CreateObservationWindowDialog';
+import { EditObservationWindowDialog } from './EditObservationWindowDialog';
 
 interface CancelResult {
   ok: true;
@@ -69,6 +70,7 @@ export function MyObservationWindowsPage() {
   );
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +81,13 @@ export function MyObservationWindowsPage() {
     if (isAdmin) return windows;
     return windows.filter((w) => w.observerEmail.toLowerCase() === myEmail);
   }, [windows, isAdmin, myEmail]);
+
+  // Resolve the edited window from the live snapshot so the dialog reflects
+  // bookings / invite stamps that land while it's open.
+  const editingWindow = useMemo(
+    () => visible.find((w) => w.id === editingId) ?? null,
+    [visible, editingId],
+  );
 
   async function copyLinks(w: ObservationWindow & { id: string }) {
     const origin = window.location.origin;
@@ -155,7 +164,7 @@ export function MyObservationWindowsPage() {
               <TableHead>Dates</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Booked</TableHead>
-              <TableHead className="w-64" />
+              <TableHead className="w-80" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -222,6 +231,15 @@ export function MyObservationWindowsPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => setEditingId(w.id)}
+                          disabled={w.status === 'cancelled'}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => void copyLinks(w)}
                           disabled={total === 0}
                         >
@@ -260,6 +278,17 @@ export function MyObservationWindowsPage() {
         onOpenChange={setDialogOpen}
         onCreated={() => {
           setDialogOpen(false);
+        }}
+      />
+
+      <EditObservationWindowDialog
+        open={editingWindow !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingId(null);
+        }}
+        window={editingWindow}
+        onSaved={() => {
+          setEditingId(null);
         }}
       />
     </PageHeader>

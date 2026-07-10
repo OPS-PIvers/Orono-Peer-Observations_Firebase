@@ -14,6 +14,7 @@
 
 export { syncMyClaims } from './auth/syncMyClaims.js';
 export { onStaffWritten } from './auth/onStaffWritten.js';
+export { updateEmailPreferences } from './auth/updateEmailPreferences.js';
 export { uploadAudio } from './audio/uploadAudio.js';
 export { getAudio } from './audio/getAudio.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
@@ -21,22 +22,29 @@ export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCre
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
 export { backfillScriptTagColors } from './observations/backfillScriptTagColors.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
+export { reopenObservation } from './observations/reopenObservation.js';
 export { geminiTagScript } from './observations/geminiTagScript.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
+export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';
 export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js';
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
+export { onMailWritten } from './email/onMailWritten.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
+export { applyStaffRollover } from './scripts/applyStaffRollover.js';
 export { createObservationWindow } from './scheduling/createObservationWindow.js';
 export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js';
+export { updateObservationWindow } from './scheduling/updateObservationWindow.js';
 export { expireObservationWindows } from './scheduling/expireObservationWindows.js';
 export { onBuildingScheduleWritten } from './scheduling/onBuildingScheduleWritten.js';
 export { bookObservationSlot } from './scheduling/bookObservationSlot.js';
 export { submitDayPreference } from './scheduling/submitDayPreference.js';
 export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
 export { cancelBooking } from './scheduling/cancelBooking.js';
+export { rescheduleBooking } from './scheduling/rescheduleBooking.js';
+export { checkSlotConflicts } from './scheduling/checkSlotConflicts.js';
 export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js';
 export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalendar.js';
 export { getCalendarConnectionStatus } from './calendar/auth/getCalendarConnectionStatus.js';

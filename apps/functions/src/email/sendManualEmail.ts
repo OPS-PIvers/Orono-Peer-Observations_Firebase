@@ -65,12 +65,13 @@ export const sendManualEmail = onCall(
     };
 
     const mailDocId = `manual-${templateId}-${toEmail.split('@')[0]}-${String(Date.now())}`;
-    await sendEmail({
+    const result = await sendEmail({
       db,
       to: toEmail,
       subject: substituteVariables(template.subject, fullVars),
       html: substituteVariables(template.bodyHtml, fullVars),
       mailDocId,
+      triggerType: 'manual',
       auditDetails: {
         templateId,
         toEmail,
@@ -78,6 +79,15 @@ export const sendManualEmail = onCall(
         triggerType: 'manual',
       },
     });
+
+    // Recipient preferences can suppress a manual message entirely — surface
+    // that to the sender instead of silently reporting success.
+    if (!result.queued) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This staff member has opted out of direct messages (Profile → email preferences), so the email was not sent.',
+      );
+    }
 
     return { sent: true, mailDocId };
   },

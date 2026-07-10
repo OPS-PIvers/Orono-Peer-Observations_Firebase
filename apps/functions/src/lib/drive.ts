@@ -86,6 +86,58 @@ export async function uploadFileToFolder(args: {
   return { fileId: result.data.id, fileName: result.data.name };
 }
 
+/**
+ * Replace an existing Drive file's content (and name) in place, keeping its
+ * fileId — and therefore every previously-shared link — stable. Used on
+ * re-finalize after an admin reopens an observation, so the regenerated PDF
+ * replaces the stale one instead of piling up duplicates in the folder.
+ *
+ * Returns the fileId on success, or `null` if the file no longer exists
+ * (deleted out from under us) so the caller can fall back to a fresh upload.
+ */
+export async function replaceFileContent(args: {
+  fileId: string;
+  filename: string;
+  mimeType: string;
+  body: Buffer;
+}): Promise<string | null> {
+  const drive = await getDriveClient();
+  try {
+    const result = await drive.files.update({
+      fileId: args.fileId,
+      requestBody: { name: args.filename },
+      media: {
+        mimeType: args.mimeType,
+        body: Readable.from(args.body),
+      },
+      fields: 'id',
+    });
+    return result.data.id ?? null;
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Move a single Drive file to the trash (recoverable for ~30 days per
+ * Drive's default trash retention) rather than permanently deleting it.
+ * Used when evidence is removed from an observation — the file is no
+ * longer referenced from the app, but a mis-click shouldn't be
+ * unrecoverable. A missing file (404, already deleted/trashed out from
+ * under us) is treated as success.
+ */
+export async function trashDriveFile(fileId: string): Promise<void> {
+  const drive = await getDriveClient();
+  try {
+    await drive.files.update({ fileId, requestBody: { trashed: true } });
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status !== 404) throw err;
+  }
+}
+
 export async function downloadFile(fileId: string): Promise<Buffer> {
   const drive = await getDriveClient();
   const result = await drive.files.get(

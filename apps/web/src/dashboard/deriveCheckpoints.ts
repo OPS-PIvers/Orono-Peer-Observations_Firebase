@@ -36,6 +36,10 @@ export interface CheckpointWithStatus {
   cta: string;
   ctaUrl: string;
   status: CheckpointStatus;
+  /** True when the card's date represents a closing deadline within a
+   *  few days (e.g. an open booking window about to expire). Drives
+   *  urgency styling distinct from `status`. */
+  urgent: boolean;
   completedLabel: string | null;
   percent: number | null;
   percentLabel: string;
@@ -106,6 +110,22 @@ function fallbackDateLabel(status: CheckpointStatus): string {
   return '';
 }
 
+/** Days remaining until `d` at local midnight granularity (0 = closes today,
+ *  negative = already past — shouldn't normally happen since expired windows
+ *  drop out of `openBooking` upstream, but handled defensively). */
+function daysUntil(d: Date, now: Date): number {
+  return Math.ceil((d.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+/** Window closes within this many days -> urgency styling on the card. */
+const DEADLINE_URGENCY_DAYS = 3;
+
+function deadlineRelativeLabel(days: number): string {
+  if (days <= 0) return 'Closes today';
+  if (days === 1) return 'Closes tomorrow';
+  return `${String(days)} days left`;
+}
+
 export function deriveCheckpoints(
   steps: DashboardStep[],
   ctx: DeriveContext,
@@ -145,9 +165,20 @@ export function deriveCheckpoints(
       status = shown ? 'soon' : 'upcoming';
     }
 
-    const stepDate = DATE_SOURCE_FN[step.dateFrom](obs);
+    const stepDate = DATE_SOURCE_FN[step.dateFrom](obs, ctx);
     const { ctaUrl, ackObservationId } = resolveButton(step, ctx, obs);
     const isAck = step.buttonTarget === 'acknowledge';
+    const isDeadline = step.dateFrom === 'windowEndDate';
+
+    let cardDateLabel = stepDate ? dateLabel(stepDate) : fallbackDateLabel(status);
+    let dueRelative = isAck && !done ? 'Action required' : '';
+    let urgent = false;
+    if (isDeadline && stepDate && !done) {
+      const days = daysUntil(stepDate, now);
+      urgent = days <= DEADLINE_URGENCY_DAYS;
+      cardDateLabel = `Closes ${dateLabel(stepDate)}`;
+      dueRelative = deadlineRelativeLabel(days);
+    }
 
     out.push({
       id: step.id,
@@ -157,11 +188,12 @@ export function deriveCheckpoints(
       title: step.title,
       desc: step.description,
       monthLabel: stepDate ? monthLabel(stepDate) : '',
-      dateLabel: stepDate ? dateLabel(stepDate) : fallbackDateLabel(status),
-      dueRelative: isAck && !done ? 'Action required' : '',
+      dateLabel: cardDateLabel,
+      dueRelative,
       cta: step.buttonLabel,
       ctaUrl,
       status,
+      urgent,
       completedLabel: done && stepDate ? dateLabel(stepDate) : null,
       percent,
       percentLabel,

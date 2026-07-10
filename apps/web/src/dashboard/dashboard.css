@@ -964,6 +964,16 @@
   white-space: nowrap;
 }
 
+/* Booking checkpoint whose window closes soon — same red used elsewhere for
+ * "needs attention" state (task-row--featured, task-row__detail-relative). */
+.staff-dashboard .task-row--urgent:not(.is-done) {
+  border-color: var(--ot-red);
+}
+.staff-dashboard .task-row__date--urgent {
+  color: var(--ot-red-dark);
+  font-weight: 700;
+}
+
 .staff-dashboard .task-row__toggle {
   display: inline-flex;
   align-items: center;

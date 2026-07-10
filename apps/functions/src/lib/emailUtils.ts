@@ -4,7 +4,11 @@ import {
   APP_SETTINGS_DOC_ID,
   AUDIT_ACTIONS,
   COLLECTIONS,
+  DEFAULT_EMAIL_PREFERENCES,
+  EMAIL_TRIGGER_CATEGORY,
+  isCriticalEmailTrigger,
   renderEmailShell,
+  type EmailPreferences,
   type EmailTemplate,
   type EmailTriggerType,
 } from '@ops/shared';
@@ -72,10 +76,63 @@ async function loadEmailBranding(
 }
 
 /**
+ * Load a staff member's saved email preferences. Falls back to the
+ * all-opted-in defaults if the staff doc doesn't exist or predates the
+ * emailPreferences field, so an unknown/legacy recipient is never silently
+ * suppressed.
+ */
+async function loadEmailPreferences(db: Firestore, recipientEmail: string): Promise<EmailPreferences> {
+  const snap = await db.doc(`${COLLECTIONS.staff}/${recipientEmail.toLowerCase()}`).get();
+  const prefs = snap.data()?.['emailPreferences'] as Partial<EmailPreferences> | undefined;
+  return { ...DEFAULT_EMAIL_PREFERENCES, ...prefs };
+}
+
+/**
+ * True if `recipientEmail` has opted out of the preference category that
+ * governs `triggerType`. Critical trigger types (booking confirmations,
+ * cancellations/reschedules, staff invites, role/year changes) are never
+ * suppressible and always return false.
+ */
+export async function isEmailSuppressed(
+  db: Firestore,
+  recipientEmail: string,
+  triggerType: EmailTriggerType,
+): Promise<boolean> {
+  if (isCriticalEmailTrigger(triggerType)) return false;
+  const category = EMAIL_TRIGGER_CATEGORY[triggerType];
+  if (!category) return false; // unmapped + non-critical: treat as always-send
+  const prefs = await loadEmailPreferences(db, recipientEmail);
+  return prefs[category] === false;
+}
+
+/** Outcome of a sendEmail call, so callers (e.g. sendManualEmail) can tell
+ *  a queued send from one fully suppressed by recipient preferences. */
+export interface SendEmailResult {
+  /** True when a /mail doc was written (at least one recipient remained). */
+  queued: boolean;
+  /** Recipients the email was actually queued for. */
+  to: string[];
+  /** Recipients dropped because they opted out of this email category. */
+  suppressed: string[];
+}
+
+/**
  * Core send: wraps the content HTML in the branded email shell, writes a
  * document to /mail which the Trigger Email extension picks up and sends
- * immediately, and writes an audit log entry. Every templated/manual/
- * scheduled email funnels through here, so the shell is applied uniformly.
+ * immediately, and writes an `emailSent` audit log entry. Every templated/
+ * manual/scheduled email funnels through here, so the shell is applied
+ * uniformly.
+ *
+ * Before queueing, each recipient is checked against their saved email
+ * preferences (see isEmailSuppressed) unless `triggerType` is a critical,
+ * always-on trigger. Recipients who opted out are dropped from the send; if
+ * every recipient opted out, nothing is queued and an `emailSuppressed`
+ * audit entry is written instead of `emailSent`. The returned
+ * SendEmailResult reports exactly who was queued vs suppressed.
+ *
+ * The audit entry written here records that the /mail doc was *queued*,
+ * not that delivery succeeded — see the NOTE above the auditLog.add() call
+ * below, and onMailWritten.ts for the failure-side of this story.
  */
 export async function sendEmail(args: {
   db: Firestore;
@@ -83,16 +140,49 @@ export async function sendEmail(args: {
   subject: string;
   html: string;
   mailDocId: string;
+  triggerType: EmailTriggerType;
   auditDetails?: Record<string, unknown>;
-}): Promise<void> {
-  const { db, to, subject, html, mailDocId, auditDetails } = args;
-  const recipients = Array.isArray(to) ? to : [to];
+}): Promise<SendEmailResult> {
+  const { db, to, subject, html, mailDocId, triggerType, auditDetails } = args;
+  const requested = (Array.isArray(to) ? to : [to]).filter(Boolean);
+
+  const suppressed: string[] = [];
+  const recipients: string[] = [];
+  if (isCriticalEmailTrigger(triggerType) || !EMAIL_TRIGGER_CATEGORY[triggerType]) {
+    recipients.push(...requested);
+  } else {
+    const flags = await Promise.all(
+      requested.map((recipient) => isEmailSuppressed(db, recipient, triggerType)),
+    );
+    requested.forEach((recipient, i) => {
+      (flags[i] ? suppressed : recipients).push(recipient);
+    });
+  }
+
+  if (recipients.length === 0) {
+    logger.info('emailUtils: all recipients suppressed, skipping send', {
+      mailDocId,
+      suppressed,
+      triggerType,
+    });
+    if (suppressed.length > 0) {
+      await db.collection(COLLECTIONS.auditLog).add({
+        timestamp: FieldValue.serverTimestamp(),
+        userEmail: FROM_EMAIL,
+        action: AUDIT_ACTIONS.emailSuppressed,
+        target: `mail/${mailDocId}`,
+        details: { to: suppressed, subject, mailDocId, triggerType, ...auditDetails },
+      });
+    }
+    return { queued: false, to: [], suppressed };
+  }
 
   const branding = await loadEmailBranding(db);
   const wrappedHtml = renderEmailShell(html, {
     appName: branding.appName,
     logoUrl: branding.logoUrl,
     signInLink: APP_URL,
+    preferencesLink: `${APP_URL}/profile#email-preferences`,
   });
 
   await db.collection(COLLECTIONS.mail).doc(mailDocId).set({
@@ -102,6 +192,15 @@ export async function sendEmail(args: {
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  // NOTE: this only confirms the /mail doc was *queued* for the Trigger
+  // Email extension — it fires before the extension has attempted SMTP
+  // delivery, so `emailSent` means "handed off", not "delivered". The
+  // extension writes back a `delivery.state`/`delivery.error` on this same
+  // doc once it actually attempts the send; onMailWritten (apps/functions/
+  // src/email/onMailWritten.ts) watches for `delivery.state === 'ERROR'`
+  // and writes a separate `AUDIT_ACTIONS.emailDeliveryFailed` entry with the
+  // same `target` (`mail/${mailDocId}`) so the two can be correlated and a
+  // bounce/block doesn't get mistaken for a successful send.
   await db.collection(COLLECTIONS.auditLog).add({
     timestamp: FieldValue.serverTimestamp(),
     userEmail: FROM_EMAIL,
@@ -111,11 +210,13 @@ export async function sendEmail(args: {
       to: recipients,
       subject,
       mailDocId,
+      ...(suppressed.length > 0 ? { suppressed } : {}),
       ...auditDetails,
     },
   });
 
-  logger.info('emailUtils: sent', { mailDocId, to: recipients, subject });
+  logger.info('emailUtils: queued', { mailDocId, to: recipients, subject });
+  return { queued: true, to: recipients, suppressed };
 }
 
 /**
@@ -157,7 +258,15 @@ export async function sendTemplatedEmail(args: {
   const subject = substituteVariables(template.subject, fullVars);
   const html = substituteVariables(template.bodyHtml, fullVars);
 
-  await sendEmail({ db, to, subject, html, mailDocId, ...(auditDetails !== undefined ? { auditDetails } : {}) });
+  await sendEmail({
+    db,
+    to,
+    subject,
+    html,
+    mailDocId,
+    triggerType,
+    ...(auditDetails !== undefined ? { auditDetails } : {}),
+  });
   return true;
 }
 

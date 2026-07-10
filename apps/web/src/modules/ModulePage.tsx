@@ -43,6 +43,27 @@ export function ModulePage() {
   const doneItemIds = useMemo(() => new Set((progress ?? []).map((p) => p.itemId)), [progress]);
   const [toggleError, setToggleError] = useState<string | null>(null);
 
+  // Calculate module-level completion: count materials across all sections
+  const { totalMaterials, doneMaterials } = useMemo(() => {
+    if (!module || !items) return { totalMaterials: 0, doneMaterials: 0 };
+
+    let total = 0;
+    let done = 0;
+
+    module.sections.forEach((section) => {
+      items.forEach((item) => {
+        if (item.sectionId === section.id && item.kind === 'material') {
+          total += 1;
+          if (doneItemIds.has(item.itemId)) {
+            done += 1;
+          }
+        }
+      });
+    });
+
+    return { totalMaterials: total, doneMaterials: done };
+  }, [module, items, doneItemIds]);
+
   const isAssigned = useMemo(() => {
     if (claims.isAdmin) return true;
     if (!myStaff) return false;
@@ -102,6 +123,24 @@ export function ModulePage() {
       {toggleError ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           {toggleError}
+        </div>
+      ) : null}
+      {totalMaterials > 0 ? (
+        <div className="mb-6 rounded-md border border-gray-200 bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Module progress</span>
+            <span className="text-sm font-semibold text-gray-900">
+              {doneMaterials} of {totalMaterials} complete
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all duration-300"
+              style={{
+                width: `${totalMaterials > 0 ? (doneMaterials / totalMaterials) * 100 : 0}%`,
+              }}
+            />
+          </div>
         </div>
       ) : null}
       <div className="space-y-6">

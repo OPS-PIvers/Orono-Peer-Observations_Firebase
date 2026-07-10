@@ -43,6 +43,7 @@ export interface DashboardDraft {
   sections: DashboardSectionsConfig;
   steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
+  cycleCloseLabel: string;
 }
 
 export interface UseDashboardDraftResult {
@@ -51,6 +52,7 @@ export interface UseDashboardDraftResult {
   setSections: (next: DashboardSectionsConfig) => void;
   setSteps: (next: DashboardStep[]) => void;
   setQuickMaterials: (next: DashboardQuickMaterial[]) => void;
+  setCycleCloseLabel: (next: string) => void;
   isDirty: boolean;
   saving: boolean;
   savedAt: Date | null;
@@ -72,7 +74,12 @@ function stripIds<T extends { id?: string } | null>(d: T): T {
 }
 
 function freshDraft(): DashboardDraft {
-  return { sections: { ...DEFAULT_SECTIONS }, steps: [], quickMaterials: [] };
+  return {
+    sections: { ...DEFAULT_SECTIONS },
+    steps: [],
+    quickMaterials: [],
+    cycleCloseLabel: 'May 15',
+  };
 }
 
 function snapshotsEqual(a: DashboardDraft, b: DashboardDraft | null): boolean {
@@ -105,6 +112,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
       sections: { ...DEFAULT_SECTIONS, ...(stripIds(configDoc)?.sections ?? {}) },
       steps: resolveSteps(stripIds(configDoc)),
       quickMaterials: stripIds(quickDoc)?.items ?? [],
+      cycleCloseLabel: stripIds(configDoc)?.cycleCloseLabel ?? 'May 15',
     };
     setDraft(next);
     setSavedSnapshot(next);
@@ -120,6 +128,9 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const setQuickMaterials = useCallback((next: DashboardQuickMaterial[]) => {
     setDraft((d) => ({ ...d, quickMaterials: next }));
   }, []);
+  const setCycleCloseLabel = useCallback((next: string) => {
+    setDraft((d) => ({ ...d, cycleCloseLabel: next }));
+  }, []);
 
   const save = useCallback(async () => {
     if (inFlightRef.current) return;
@@ -133,6 +144,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
           {
             sections: draft.sections,
             steps: draft.steps,
+            cycleCloseLabel: draft.cycleCloseLabel,
             updatedAt: serverTimestamp(),
             ...(user?.email ? { updatedBy: user.email } : {}),
           },
@@ -170,6 +182,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     setSections,
     setSteps,
     setQuickMaterials,
+    setCycleCloseLabel,
     isDirty,
     saving,
     savedAt,

@@ -116,7 +116,12 @@ export function DashboardSettingsPage() {
           )}
         >
           {tab === 'layout' ? (
-            <SectionTilesEditor value={draft.draft.sections} onChange={draft.setSections} />
+            <SectionTilesEditor
+              value={draft.draft.sections}
+              onChange={draft.setSections}
+              cycleCloseLabel={draft.draft.cycleCloseLabel}
+              onCycleCloseLabelChange={draft.setCycleCloseLabel}
+            />
           ) : null}
           {tab === 'steps' ? (
             <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} />
@@ -138,6 +143,7 @@ export function DashboardSettingsPage() {
             sections={draft.draft.sections}
             steps={draft.draft.steps}
             quickMaterials={draft.draft.quickMaterials}
+            cycleCloseLabel={draft.draft.cycleCloseLabel}
           />
         </div>
       </div>

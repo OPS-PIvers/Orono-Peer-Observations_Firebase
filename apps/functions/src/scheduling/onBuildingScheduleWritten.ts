@@ -14,11 +14,15 @@ import {
   OBSERVATION_WINDOW_STATUS,
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
+  type Building,
   type BuildingSchedule,
   type ObservationSlot,
   type ObservationWindow,
+  type Staff,
 } from '@ops/shared';
+import { sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow, type SlotInput } from './engine/slotGeneration.js';
+import { formatChicagoDate, formatChicagoTime } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -101,6 +105,21 @@ function toDate(value: unknown): Date {
   return new Date(NaN);
 }
 
+/** Human-readable reason shown in the schedule-change-impact email. */
+const SCHEDULE_CHANGE_REASON: Record<string, string> = {
+  'period-time-changed':
+    'The bell schedule period this observation was booked into has a new start/end time.',
+  'period-removed': 'The bell schedule period this observation was booked into no longer exists.',
+};
+
+/** One booked slot whose bell-schedule period changed or disappeared. */
+interface BookedWarning {
+  slotId: string;
+  issue: string;
+  slot: ObservationSlot;
+  ref: DocumentReference;
+}
+
 async function reconcileWindow(
   db: Firestore,
   windowRef: DocumentReference,
@@ -133,7 +152,7 @@ async function reconcileWindow(
     | { kind: 'set'; ref: DocumentReference; data: Record<string, unknown> }
     | { kind: 'update'; ref: DocumentReference; data: Record<string, unknown> };
   const writes: Write[] = [];
-  const bookedWarnings: { slotId: string; issue: string }[] = [];
+  const bookedWarnings: BookedWarning[] = [];
 
   // 1. Desired slots: add missing, restore no-school-blocked, reconcile booked.
   for (const want of desired) {
@@ -153,7 +172,12 @@ async function reconcileWindow(
       const startChanged = toDate(slot.startUTC).getTime() !== want.startUTC.getTime();
       const endChanged = toDate(slot.endUTC).getTime() !== want.endUTC.getTime();
       if (startChanged || endChanged || slot.startMinute !== want.startMinute) {
-        bookedWarnings.push({ slotId: slot.slotId, issue: 'period-time-changed' });
+        bookedWarnings.push({
+          slotId: slot.slotId,
+          issue: 'period-time-changed',
+          slot,
+          ref: existing.ref,
+        });
       }
       continue; // never modify booked
     }
@@ -201,7 +225,7 @@ async function reconcileWindow(
     if (slot.dateYMD < today) continue;
     if (desiredById.has(slotId)) continue;
     if (slot.status === OBSERVATION_SLOT_STATUS.booked) {
-      bookedWarnings.push({ slotId, issue: 'period-removed' });
+      bookedWarnings.push({ slotId, issue: 'period-removed', slot, ref });
       continue;
     }
     if (slot.status === OBSERVATION_SLOT_STATUS.available) {
@@ -231,12 +255,116 @@ async function reconcileWindow(
       userEmail: 'system',
       action: 'observationWindow.scheduleChangeWarning',
       target: `${COLLECTIONS.observationWindows}/${window.windowId}`,
-      details: { buildingId, bookedSlotIssues: bookedWarnings },
+      details: {
+        buildingId,
+        bookedSlotIssues: bookedWarnings.map(({ slotId, issue }) => ({ slotId, issue })),
+      },
     });
     logger.warn('onBuildingScheduleWritten: booked slots affected by schedule change', {
       windowId: window.windowId,
       buildingId,
-      bookedWarnings,
+      bookedWarnings: bookedWarnings.map(({ slotId, issue }) => ({ slotId, issue })),
     });
+
+    // Email only warnings that haven't been notified yet: bookedWarnings is
+    // re-derived from scratch on every write to this building's schedule doc
+    // (booked slots are never modified), so a persistent mismatch would
+    // otherwise re-email the same people on every unrelated save.
+    const unnotified = bookedWarnings.filter(
+      ({ slot, issue }) => !(slot.scheduleChangeNotifiedIssues ?? []).includes(issue),
+    );
+    if (unnotified.length > 0) {
+      await notifyScheduleChangeImpact(db, window, buildingId, unnotified);
+    }
+  }
+}
+
+/**
+ * Best-effort: email the PE and (where identifiable) the observed staff
+ * member for each booked slot whose bell-schedule period changed or was
+ * removed out from under them. One send per affected slot — failures on one
+ * slot never block the others, and email failures never fail the caller
+ * (reconcileWindow already committed the slot writes and audit entry).
+ *
+ * Once a slot's parties have been emailed about an issue, the issue is
+ * recorded on the slot doc (scheduleChangeNotifiedIssues) and the mail doc
+ * id is deterministic per (window, slot, issue), so later schedule saves
+ * while the mismatch persists never re-send the same notice.
+ */
+async function notifyScheduleChangeImpact(
+  db: Firestore,
+  window: ObservationWindow,
+  buildingId: string,
+  bookedWarnings: BookedWarning[],
+): Promise<void> {
+  let buildingName = buildingId;
+  try {
+    const bSnap = await db.collection(COLLECTIONS.buildings).doc(buildingId).get();
+    if (bSnap.exists) buildingName = (bSnap.data() as Building).displayName;
+  } catch (err) {
+    logger.warn('onBuildingScheduleWritten: building lookup failed', { buildingId, err });
+  }
+
+  for (const { issue, slot, ref } of bookedWarnings) {
+    const staffEmail = slot.bookedBy;
+    const recipients = [staffEmail, window.observerEmail].filter(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    );
+    if (recipients.length === 0) continue;
+
+    let observedName = staffEmail ?? '';
+    if (staffEmail) {
+      try {
+        const sSnap = await db.collection(COLLECTIONS.staff).doc(staffEmail).get();
+        if (sSnap.exists) observedName = (sSnap.data() as Staff).name;
+      } catch (err) {
+        logger.warn('onBuildingScheduleWritten: staff lookup failed', { staffEmail, err });
+      }
+    }
+
+    const slotStart = toDate(slot.startUTC);
+    const slotEnd = toDate(slot.endUTC);
+    try {
+      const sent = await sendTemplatedEmail({
+        db,
+        triggerType: 'scheduling.bookingScheduleChanged',
+        to: recipients,
+        vars: {
+          observerName: window.observerName,
+          observerEmail: window.observerEmail,
+          observedName,
+          observedEmail: staffEmail ?? '',
+          slotDateLocal: formatChicagoDate(slotStart),
+          slotStartLocal: formatChicagoTime(slotStart),
+          slotEndLocal: formatChicagoTime(slotEnd),
+          slotPeriodName: slot.periodName,
+          buildingName,
+          scheduleChangeReason: SCHEDULE_CHANGE_REASON[issue] ?? issue,
+        },
+        // Deterministic per (window, slot, issue) — no timestamp — so a
+        // repeat send attempt can never fan out as a brand-new mail doc.
+        mailDocId: `scheduling.bookingScheduleChanged-${window.windowId}-${slot.slotId}-${issue}`,
+        auditDetails: {
+          windowId: window.windowId,
+          slotId: slot.slotId,
+          buildingId,
+          issue,
+          triggerType: 'scheduling.bookingScheduleChanged',
+        },
+      });
+      // Remember that this slot's parties were told about this issue so the
+      // next schedule save doesn't repeat the notice. Only marked after a
+      // real send (an inactive template returns false — don't mark, so the
+      // notice still goes out once a template is activated).
+      if (sent) {
+        await ref.update({ scheduleChangeNotifiedIssues: FieldValue.arrayUnion(issue) });
+      }
+    } catch (err) {
+      logger.error('onBuildingScheduleWritten: schedule-change email failed', {
+        windowId: window.windowId,
+        slotId: slot.slotId,
+        err,
+      });
+    }
   }
 }

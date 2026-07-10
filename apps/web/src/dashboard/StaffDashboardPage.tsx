@@ -169,7 +169,13 @@ export function StaffDashboardPage() {
   const openBooking = useMemo(() => {
     for (const w of myWindows ?? []) {
       const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
-      if (inv && !inv.bookedSlotId) return { windowId: w.windowId, token: inv.inviteToken };
+      if (inv && !inv.bookedSlotId) {
+        return {
+          windowId: w.windowId,
+          token: inv.inviteToken,
+          endDate: w.endDate ? new Date(`${w.endDate}T12:00:00`) : null,
+        };
+      }
     }
     return null;
   }, [myWindows, emailLower]);
@@ -192,6 +198,8 @@ export function StaffDashboardPage() {
     () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
     [finalizedObs],
   );
+
+  const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
 
   const tasks = useMemo<CheckpointWithStatus[]>(() => {
     if (!staff) return [];
@@ -290,10 +298,13 @@ export function StaffDashboardPage() {
     );
   }
 
-  const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
+  // The observer's display name is denormalized onto the observation doc
+  // (observerName) — staff can't read other people's /staff docs, by design.
+  // Legacy observations predate the field, so fall back to the email prefix.
   const peerEvaluator: { name: string; email: string; role: string } | null = peSource
     ? {
-        name: peSource.observerEmail.split('@')[0] ?? peSource.observerEmail,
+        name:
+          peSource.observerName || (peSource.observerEmail.split('@')[0] ?? peSource.observerEmail),
         email: peSource.observerEmail,
         role: 'Peer Evaluator',
       }
@@ -305,7 +316,7 @@ export function StaffDashboardPage() {
       firstName={extractFirstName(staff.name)}
       yearTierLabel={yearTierLabelFor(staff.year)}
       cycleYearLabel={currentSchoolYearLabel()}
-      cycleCloseLabel="May 15"
+      cycleCloseLabel={config?.cycleCloseLabel ?? 'May 15'}
       sections={{ ...DEFAULT_SECTIONS, ...config?.sections }}
       tasks={allTasks}
       quickMaterials={quick?.items ?? []}

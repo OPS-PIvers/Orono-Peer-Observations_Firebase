@@ -1,4 +1,9 @@
-import type { DashboardStep, Observation, Staff } from '@ops/shared';
+import {
+  DEFAULT_EMAIL_PREFERENCES,
+  type DashboardStep,
+  type Observation,
+  type Staff,
+} from '@ops/shared';
 import { deriveCheckpoints, type CheckpointWithStatus } from '@/dashboard/deriveCheckpoints';
 import type { DeriveContext } from '@/dashboard/dashboardEvents';
 import type { ModuleChip } from '@/dashboard/DashboardView';
@@ -13,6 +18,9 @@ import type { ModuleChip } from '@/dashboard/DashboardView';
 const PREVIEW_NOW = new Date('2026-03-15T00:00:00Z');
 const PAST = new Date('2026-02-10T00:00:00Z');
 const SOON = new Date('2026-03-20T00:00:00Z');
+/** Within the urgency threshold so the preview shows the "closes soon"
+ *  styling on the booking checkpoint by default. */
+const BOOKING_CLOSES_SOON = new Date('2026-03-17T00:00:00Z');
 
 export const SAMPLE_STAFF: Staff = {
   email: 'jane.doe@orono.k12.mn.us',
@@ -24,6 +32,7 @@ export const SAMPLE_STAFF: Staff = {
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,
+  emailPreferences: DEFAULT_EMAIL_PREFERENCES,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -79,7 +88,11 @@ const SAMPLE_CONTEXT: DeriveContext = {
   workProductQuestionsCount: 5,
   instructionalRoundQuestionsCount: 5,
   appSettings: { signupLink: 'https://example.com/signup' } as never,
-  openBooking: { windowId: 'sample-window', token: 'sample-token' },
+  openBooking: {
+    windowId: 'sample-window',
+    token: 'sample-token',
+    endDate: BOOKING_CLOSES_SOON,
+  },
   hasBookedSlot: false,
   hasWorkProduct: true,
   hasInstructionalRound: true,

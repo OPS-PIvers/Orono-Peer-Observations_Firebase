@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2, RotateCcw } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -14,14 +14,16 @@ import {
   type RoleYearMapping,
   type Rubric,
   type RubricComponent,
+  type ReopenObservationInput,
   type RubricDomain,
   type TiptapDoc,
   roleYearMappingDocId,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
+import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { db, functions } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -33,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
 import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
@@ -43,6 +46,7 @@ import { MeetingNotesSection } from './MeetingNotesSection';
 import { WorkProductResponseViewer } from './WorkProductResponseViewer';
 import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseViewer';
 import { AudioPopoverButton } from './AudioPopoverButton';
+import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
 
 interface FinalizeResponse {
@@ -56,7 +60,19 @@ const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeR
   'finalizeObservation',
 );
 
+const reopenObservationFn = httpsCallable<ReopenObservationInput, { ok: boolean }>(
+  functions,
+  'reopenObservation',
+);
+
 const AUTOSAVE_DEBOUNCE_MS = 800;
+// Automatic retry backoff after a save failure: 2s, 4s, 8s, 16s, capped at
+// 30s, giving up automatic retries after AUTOSAVE_MAX_AUTO_RETRIES attempts
+// (the manual "Retry" affordance in SaveStatusIndicator still works — and
+// resets this counter — indefinitely after that).
+const AUTOSAVE_RETRY_BASE_MS = 2000;
+const AUTOSAVE_RETRY_MAX_MS = 30000;
+const AUTOSAVE_MAX_AUTO_RETRIES = 5;
 
 type ComponentEntries = Record<string, ObservationComponentEntry>;
 type ComponentNotes = Record<string, TiptapDoc>;
@@ -88,6 +104,7 @@ export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isAdminUser = useIsAdmin();
   const sidebarWidth = useSidebarWidth();
 
   const {
@@ -98,14 +115,34 @@ export function ObservationEditorPage() {
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
-  // Derive rubric for this observation (looked up via the observed role
-  // slug → role doc → rubricId).
+  // Finalized observations carry a rubric snapshot frozen at finalize time
+  // (written server-side by finalizeObservation) so later rubric edits can't
+  // silently rewrite the criteria the staff member was actually scored
+  // against. Legacy finalized docs without one fall back to the live rubric.
+  const rubricSnapshot =
+    observation?.status === OBSERVATION_STATUS.finalized
+      ? (observation.rubricSnapshot ?? null)
+      : null;
+
+  // Derive rubric for this observation: the frozen snapshot when finalized,
+  // otherwise looked up live via the observed role slug → role doc →
+  // rubricId.
   const rubric = useMemo<Rubric | null>(() => {
+    if (rubricSnapshot) {
+      const capturedAt = toJsDate(rubricSnapshot.capturedAt) ?? new Date(0);
+      return {
+        rubricId: rubricSnapshot.rubricId,
+        displayName: rubricSnapshot.displayName,
+        domains: rubricSnapshot.domains,
+        createdAt: capturedAt,
+        updatedAt: capturedAt,
+      };
+    }
     if (!observation || !roles || !rubrics) return null;
     const role = roles.find((r) => r.roleId === observation.observedRole);
     if (!role) return null;
     return rubrics.find((rb) => rb.id === role.rubricId) ?? null;
-  }, [observation, roles, rubrics]);
+  }, [rubricSnapshot, observation, roles, rubrics]);
 
   const observedRoleLabel = roleDisplayName(roles, observation?.observedRole);
 
@@ -121,9 +158,11 @@ export function ObservationEditorPage() {
   // Components active for this role-year combo. If no mapping exists, fall
   // back to ALL components from the rubric (matches the previous behavior
   // — admins surface mapping issues separately in the role-year settings).
+  // Snapshot domains are already resolved to the components in play at
+  // finalize time, so the live role-year mapping must not re-filter them.
   const activeComponents: { domain: RubricDomain; component: RubricComponent }[] = useMemo(() => {
     if (!rubric) return [];
-    const allow = mapping ? new Set(mapping.assignedComponentIds) : null;
+    const allow = !rubricSnapshot && mapping ? new Set(mapping.assignedComponentIds) : null;
     const out: { domain: RubricDomain; component: RubricComponent }[] = [];
     for (const d of rubric.domains) {
       for (const c of d.components) {
@@ -133,7 +172,7 @@ export function ObservationEditorPage() {
       }
     }
     return out;
-  }, [rubric, mapping]);
+  }, [rubric, mapping, rubricSnapshot]);
 
   const assignedComponentIds = useMemo(
     () => new Set(activeComponents.map((ac) => ac.component.id)),
@@ -169,11 +208,32 @@ export function ObservationEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const draftRef = useRef<EditorDraft>(emptyDraft);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Number of consecutive automatic retries attempted since the last
+  // successful save; reset to 0 on success. Drives the backoff schedule
+  // below and caps how many times we retry unattended.
+  const autoRetryCountRef = useRef(0);
+  // Browser-reported connectivity — lets the save indicator distinguish
+  // "we're offline, will retry automatically" from a real save error, and
+  // lets us auto-flush the moment the connection comes back rather than
+  // waiting on the debounce/backoff schedule. See issue #32.
+  const isOnline = useOnlineStatus();
+  // Mirrors savingState in a ref so the reconnect effect below can read the
+  // latest value without re-running every time savingState changes (it
+  // should only act on isOnline transitions).
+  const savingStateRef = useRef(savingState);
+  useEffect(() => {
+    savingStateRef.current = savingState;
+  }, [savingState]);
+  const isFirstOnlineRender = useRef(true);
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
+
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
 
   // Sticky chrome ref — `EditorChrome` consumes it via `usePublishChromeHeight`
   // so `DomainSection.tsx`'s `top-[var(--page-chrome-h)]` resolves correctly.
@@ -233,6 +293,7 @@ export function ObservationEditorPage() {
       if (flushTimer.current === null) {
         setSavingState('saved');
       }
+      autoRetryCountRef.current = 0;
     } catch (err) {
       setSavingState('error');
       setSaveError(err instanceof Error ? err.message : 'Save failed');
@@ -260,14 +321,112 @@ export function ObservationEditorPage() {
     };
   }, [flush]);
 
+  // Automatic retry with backoff after a save failure. Re-runs whenever
+  // savingState changes: entering 'error' schedules the next attempt (and
+  // bumps the counter so the delay grows each time); a manual Retry click or
+  // a fresh keystroke moves savingState to 'saving', which unmounts this
+  // effect instance and clears the pending timer before it fires — so there
+  // is never a double flush. Success resets the counter in flush() above.
+  useEffect(() => {
+    if (savingState !== 'error') return;
+    // Don't burn a retry attempt while the browser reports no connectivity —
+    // the dedicated reconnect effect below fires an immediate flush the
+    // moment we're back online instead.
+    if (!isOnline) return;
+    if (autoRetryCountRef.current >= AUTOSAVE_MAX_AUTO_RETRIES) return;
+    const attempt = autoRetryCountRef.current;
+    autoRetryCountRef.current = attempt + 1;
+    const delay = Math.min(AUTOSAVE_RETRY_BASE_MS * 2 ** attempt, AUTOSAVE_RETRY_MAX_MS);
+    const timer = setTimeout(() => {
+      void flush();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [savingState, isOnline, flush]);
+
+  // The moment the browser reports it's back online, flush any save that
+  // was pending or failed while offline right away, rather than waiting for
+  // the debounce window or the exponential backoff timer to catch up.
+  useEffect(() => {
+    if (isFirstOnlineRender.current) {
+      // Skip the mount render — this should only react to an actual
+      // offline→online transition, not the initial (assumed online) value.
+      isFirstOnlineRender.current = false;
+      return;
+    }
+    if (!isOnline) return;
+    // Don't force a second concurrent write if one is still in flight — the
+    // Firestore SDK retries internally and will resolve it now that we're
+    // back online. Only step in for a debounced-but-unflushed edit or a
+    // save that already failed.
+    const hasPendingWork = flushTimer.current !== null || savingStateRef.current === 'error';
+    if (!hasPendingWork) return;
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    autoRetryCountRef.current = 0;
+    void flush();
+  }, [isOnline, flush]);
+
+  // Manual retry: force-flush right away, bypassing the debounce and any
+  // pending backoff timer (cleared automatically by the effect above once
+  // savingState flips to 'saving').
+  const retrySave = useCallback(() => {
+    void flush();
+  }, [flush]);
+
   // KEEP the lowercase normalization — observerEmail is stored lowercased
   // when the observation is created, but Firebase Auth's User#email reflects
   // the case the user typed. Without this, the 233 imported observations
   // would silently flip to read-only for their original observer.
   const isReadOnly = observation?.status === OBSERVATION_STATUS.finalized;
   const isObserver = observation?.observerEmail === user?.email?.toLowerCase();
-  const canEdit = !isReadOnly && isObserver;
+  // Admins may also edit Drafts (firestore.rules allows admin updates of any
+  // field) — most importantly after reopening a finalized observation to fix
+  // a mistake, when the admin isn't necessarily the original observer.
+  const canEdit = !isReadOnly && (isObserver || isAdminUser);
   const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
+  // Admin-only escape hatch: reopen a finalized observation for correction.
+  const showReopen = isReadOnly && isAdminUser;
+
+  // Warn before the tab/page is discarded while a save is pending or has
+  // failed — a debounced-but-not-yet-flushed edit, an in-flight write, or a
+  // write that errored out would otherwise be lost silently. Browsers ignore
+  // custom text and show their own generic prompt, but setting returnValue
+  // is what triggers that prompt at all.
+  useEffect(() => {
+    if (!canEdit) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      const hasUnsavedWork =
+        flushTimer.current !== null || savingState === 'saving' || savingState === 'error';
+      if (!hasUnsavedWork) return;
+      e.preventDefault();
+      // Deprecated, but legacy Chrome/Edge only show the prompt when
+      // returnValue is set — preventDefault() alone is not enough there.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [canEdit, savingState]);
+
+  // Best-effort save when the tab is backgrounded/switched away from —
+  // mobile browsers in particular may discard a hidden tab outright without
+  // ever firing beforeunload, so this is the more reliable place to flush a
+  // pending debounce window rather than relying on the user coming back.
+  useEffect(() => {
+    if (!canEdit) return;
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'hidden') return;
+      if (flushTimer.current) {
+        clearTimeout(flushTimer.current);
+        flushTimer.current = null;
+        void flush();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [canEdit, flush]);
 
   const updateEntry = useCallback(
     (componentId: string, patch: Partial<ObservationComponentEntry>) => {
@@ -329,6 +488,30 @@ export function ObservationEditorPage() {
       scheduleSave();
     },
     [canEdit, scheduleSave],
+  );
+
+  // Bridge from the audio popover: append a completed transcript to the
+  // script doc, clearly delimited under a "Transcript — Recording N"
+  // heading, so auto-tag (geminiTagScript) and the PDF can see it. Goes
+  // through the same draft + autosave path as typing in the ScriptEditor —
+  // the editor picks up the new content via its value-sync effect.
+  const insertTranscriptIntoScript = useCallback(
+    (audioFileId: string) => {
+      if (!canEdit || !observation) return;
+      const transcript = observation.transcripts[audioFileId];
+      if (!transcript || transcript.trim().length === 0) return;
+      const recordingIndex = observation.audioDriveFileIds.indexOf(audioFileId);
+      const label =
+        recordingIndex >= 0 ? `Transcript — Recording ${String(recordingIndex + 1)}` : 'Transcript';
+      const next: EditorDraft = {
+        ...draftRef.current,
+        scriptDoc: appendTranscriptToScriptDoc(draftRef.current.scriptDoc, transcript, label),
+      };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, observation, scheduleSave],
   );
 
   const setPreObsDate = useCallback(
@@ -418,6 +601,24 @@ export function ObservationEditorPage() {
     }
   }
 
+  async function handleReopen(reason: string) {
+    if (!observation) return;
+    setReopening(true);
+    setReopenError(null);
+    try {
+      await reopenObservationFn({ observationId: observation.id, reason });
+      // Clear the stale "just finalized" banner — its links still work (the
+      // Drive folder/PDF survive a reopen), but the message no longer
+      // reflects the observation's state.
+      setJustFinalized(null);
+      setReopenOpen(false);
+    } catch (err) {
+      setReopenError(err instanceof Error ? err.message : 'Reopen failed');
+    } finally {
+      setReopening(false);
+    }
+  }
+
   // Body content wrapper — used by both the loading/error/not-found
   // branches and the main return so all variants align with the chrome's
   // inner content width.
@@ -490,7 +691,12 @@ export function ObservationEditorPage() {
                 type={observation.type}
               />
               <StatusBadge status={observation.status} />
-              <SaveStatusIndicator state={savingState} error={saveError} />
+              <SaveStatusIndicator
+                state={savingState}
+                error={saveError}
+                onRetry={retrySave}
+                isOnline={isOnline}
+              />
             </div>
           </div>
           {canEdit ? (
@@ -526,8 +732,11 @@ export function ObservationEditorPage() {
         observation={observation}
         canEdit={canEdit}
         rubric={visibleRubric}
+        onInsertTranscript={insertTranscriptIntoScript}
         showFinalize={showFinalize}
         onFinalize={() => setFinalizeOpen(true)}
+        showReopen={showReopen}
+        onReopen={() => setReopenOpen(true)}
       />
 
       <div className={bodyWrapperCls}>
@@ -546,6 +755,17 @@ export function ObservationEditorPage() {
           onConfirm={() => void handleFinalize()}
         />
 
+        <ReopenDialog
+          open={reopenOpen}
+          onOpenChange={(open) => {
+            if (!reopening) setReopenOpen(open);
+          }}
+          observation={observation}
+          reopening={reopening}
+          error={reopenError}
+          onConfirm={(reason) => void handleReopen(reason)}
+        />
+
         {!canEdit && !isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
             You can view this observation but not edit it (you&apos;re not the observer).
@@ -554,6 +774,12 @@ export function ObservationEditorPage() {
         {isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
             This observation is finalized and read-only.
+            {rubricSnapshot
+              ? ' Rubric criteria are shown exactly as they were when it was finalized, even if the rubric has since been edited.'
+              : ''}
+            {showReopen
+              ? ' As an admin, you can reopen it for corrections using the Reopen button above.'
+              : ''}
           </div>
         ) : null}
 
@@ -570,9 +796,13 @@ export function ObservationEditorPage() {
           // Park the rubric scope toggle on the right of the meeting-
           // notes row at md+ so it sits inline with Planning/
           // Reflection. At mobile widths it drops below the row as a
-          // full-width control.
+          // full-width control. Hidden when rendering from a finalize-time
+          // rubric snapshot — the snapshot only carries the components
+          // actually in play, so there is no "full rubric" to flip to.
           actions={
-            <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} fullWidth />
+            rubricSnapshot ? undefined : (
+              <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} fullWidth />
+            )
           }
         />
 
@@ -634,8 +864,11 @@ interface EditorToolbarProps {
   observation: Observation & { id: string };
   canEdit: boolean;
   rubric: Rubric | null;
+  onInsertTranscript: (audioFileId: string) => void;
   showFinalize: boolean;
   onFinalize: () => void;
+  showReopen: boolean;
+  onReopen: () => void;
 }
 
 /**
@@ -656,8 +889,11 @@ function EditorToolbar({
   observation,
   canEdit,
   rubric,
+  onInsertTranscript,
   showFinalize,
   onFinalize,
+  showReopen,
+  onReopen,
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
   const hasDomains = !!rubric && rubric.domains.length > 0;
@@ -684,6 +920,7 @@ function EditorToolbar({
               audioFileIds={observation.audioDriveFileIds}
               transcripts={observation.transcripts}
               readOnly={!canEdit}
+              onInsertTranscript={onInsertTranscript}
             />
           ) : null}
           {showFinalize ? (
@@ -693,6 +930,17 @@ function EditorToolbar({
               className="bg-ops-red hover:bg-ops-red-dark h-9 px-3 font-semibold text-white"
             >
               Finalize
+            </Button>
+          ) : null}
+          {showReopen ? (
+            <Button
+              onClick={onReopen}
+              size="sm"
+              variant="outline"
+              className="border-ops-blue text-ops-blue hover:bg-ops-blue-lighter/40 hover:text-ops-blue-dark h-9 px-3 font-semibold"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reopen
             </Button>
           ) : null}
         </div>
@@ -850,6 +1098,103 @@ function FinalizeDialog({
               <>
                 <CheckCircle2 className="h-4 w-4" />
                 Finalize
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Admin-only confirm dialog for reopening a finalized observation. Explains
+ * exactly what a reopen does (and doesn't) touch, and collects an optional
+ * reason that lands in the audit log.
+ */
+function ReopenDialog({
+  open,
+  onOpenChange,
+  observation,
+  reopening,
+  error,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  observation: Observation;
+  reopening: boolean;
+  error: string | null;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+
+  // Start each visit with a blank reason so a stale one from a previous
+  // reopen isn't silently logged again.
+  useEffect(() => {
+    if (open) setReason('');
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reopen observation</DialogTitle>
+          <DialogDescription>
+            This unlocks the finalized observation so it can be corrected and finalized again.
+            Re-finalizing regenerates the PDF (replacing the current one in Drive, so shared links
+            keep working) and re-sends the finalized notification to{' '}
+            <strong>{observation.observedEmail}</strong>.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="text-muted-foreground space-y-1 px-1 py-2 text-sm">
+          <li>· Observed: {observation.observedName}</li>
+          <li>
+            · The Drive folder stays shared — the current PDF remains visible until re-finalized.
+          </li>
+          <li>
+            · Any acknowledgement is cleared; the staff member will need to re-acknowledge after
+            re-finalization.
+          </li>
+          <li>· The reopen is recorded in the audit log.</li>
+        </ul>
+        <div className="space-y-1.5">
+          <label htmlFor="reopen-reason" className="text-sm font-medium">
+            Reason <span className="text-muted-foreground font-normal">(optional, logged)</span>
+          </label>
+          <Textarea
+            id="reopen-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={500}
+            placeholder="e.g. Wrong observation date — needs correction"
+            disabled={reopening}
+          />
+        </div>
+        {error ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            {error}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={reopening}
+            type="button"
+          >
+            Cancel
+          </Button>
+          <Button onClick={() => onConfirm(reason.trim())} disabled={reopening}>
+            {reopening ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Reopening…
+              </>
+            ) : (
+              <>
+                <RotateCcw className="h-4 w-4" />
+                Reopen
               </>
             )}
           </Button>

@@ -7,9 +7,12 @@ import {
   WINDOW_SUBCOLLECTIONS,
   type BookObservationSlotInput,
   type CancelBookingInput,
+  type CheckSlotConflictsInput,
+  type CheckSlotConflictsResult,
   type ObservationPreference,
   type ObservationSlot,
   type ObservationWindow,
+  type RescheduleBookingInput,
   type SignupField,
   type SubmitDayPreferenceInput,
   type WindowInvitee,
@@ -28,6 +31,9 @@ import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
 
 interface BookResult {
   observationId: string;
+  /** True when the admin conflict policy is 'warn' and the chosen time
+   *  overlaps an event on the observer's real Google Calendar. */
+  calendarConflictWarning?: boolean;
 }
 interface OkResult {
   ok: true;
@@ -42,6 +48,17 @@ const submitDayPreferenceFn = httpsCallable<SubmitDayPreferenceInput, OkResult>(
   'submitDayPreference',
 );
 const cancelBookingFn = httpsCallable<CancelBookingInput, OkResult>(functions, 'cancelBooking');
+const rescheduleBookingFn = httpsCallable<
+  RescheduleBookingInput,
+  { observationId: string | null; calendarConflictWarning?: boolean }
+>(functions, 'rescheduleBooking');
+const checkSlotConflictsFn = httpsCallable<CheckSlotConflictsInput, CheckSlotConflictsResult>(
+  functions,
+  'checkSlotConflicts',
+);
+
+const CONFLICT_WARNING_TEXT =
+  "Heads up: this time overlaps an event on your observer's Google Calendar. They may reach out to adjust.";
 
 type SlotDoc = ObservationSlot & { id: string };
 
@@ -115,6 +132,12 @@ export function BookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [bookedConfirmation, setBookedConfirmation] = useState<string | null>(null);
   const [prefConfirmation, setPrefConfirmation] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [rescheduledNote, setRescheduledNote] = useState<string | null>(null);
+  const [conflictNote, setConflictNote] = useState<string | null>(null);
+  const [conflictedSlotIds, setConflictedSlotIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
 
   const mode = windowDoc?.bookingMode ?? 'direct';
 
@@ -124,6 +147,32 @@ export function BookingPage() {
       setSelectedDate(existingPref.preferredDateYMD);
     }
   }, [existingPref]);
+
+  // Ask the server which slots collide with busy time on the observer's REAL
+  // Google Calendar (freebusy) so the grid can badge them. Best-effort: any
+  // failure (or `checked:false`) just means no badges.
+  //
+  // Keyed on a stable boolean (not the `invitee` object): every Firestore
+  // snapshot of the window doc produces a new invitee identity, so depending
+  // on the object would re-fire this callable — and its server-side Calendar
+  // freebusy query — for every open booking page whenever ANY invitee books
+  // or cancels.
+  const hasInvite = invitee !== null;
+  useEffect(() => {
+    if (!windowId || !token || !hasInvite || mode !== 'direct') return;
+    let cancelled = false;
+    checkSlotConflictsFn({ windowId, inviteToken: token })
+      .then((res) => {
+        if (cancelled) return;
+        setConflictedSlotIds(new Set(res.data.checked ? res.data.conflictedSlotIds : []));
+      })
+      .catch(() => {
+        if (!cancelled) setConflictedSlotIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [windowId, token, hasInvite, mode]);
 
   // --- Loading / invalid-link guards --------------------------------------
   if (windowLoading && !windowDoc) {
@@ -158,11 +207,78 @@ export function BookingPage() {
   function renderDirect() {
     if (!windowDoc || !invitee) return null;
 
-    // Already booked: show the booked slot + a Cancel button.
+    // Already booked: show the booked slot + Change time / Cancel buttons.
     if (invitee.bookedSlotId && !bookedConfirmation) {
       const booked: SlotDoc | undefined = (slots ?? []).find(
         (s) => s.slotId === invitee.bookedSlotId,
       );
+
+      // 'Change time' flow: pick a new slot; signup answers carry over.
+      if (rescheduling) {
+        return (
+          <div className="grid gap-6">
+            <div className="border-border bg-ops-gray-lightest rounded-md border px-4 py-2 text-sm">
+              Currently booked for{' '}
+              <span className="font-medium">
+                {booked ? formatLocalDateTime(booked.startUTC) : 'your reserved slot'}
+              </span>
+              . Pick a new time below — your signup details carry over.
+            </div>
+            <div className="grid gap-2">
+              <Label>Pick a new time</Label>
+              <SlotGrid
+                slots={myBuildingSlots}
+                selectedSlotId={selectedSlotId}
+                onSelect={(s) => setSelectedSlotId(s.slotId)}
+                disabled={submitting || windowCancelled}
+                conflictedSlotIds={conflictedSlotIds}
+              />
+              {conflictedSlotIds.size > 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Times marked &ldquo;Observer busy&rdquo; overlap events on your observer&apos;s
+                  Google Calendar.
+                </p>
+              ) : null}
+            </div>
+            {selectedSlotId ? (
+              <div className="border-border bg-ops-gray-lightest grid gap-3 rounded-lg border p-4">
+                <p className="text-sm font-medium">Confirm your new time</p>
+                <p className="text-muted-foreground text-sm">
+                  {confirmTimeLabel(myBuildingSlots, selectedSlotId)}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    disabled={submitting || windowCancelled}
+                    onClick={() => void reschedule(selectedSlotId)}
+                  >
+                    {submitting ? 'Rescheduling…' : 'Confirm new time'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={submitting}
+                    onClick={() => setSelectedSlotId(null)}
+                  >
+                    Back
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div>
+              <Button
+                variant="outline"
+                disabled={submitting}
+                onClick={() => {
+                  setRescheduling(false);
+                  setSelectedSlotId(null);
+                }}
+              >
+                Keep current time
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="grid gap-4">
           <div className="border-border bg-background rounded-lg border p-4">
@@ -178,10 +294,27 @@ export function BookingPage() {
                 ) : (
                   <p className="text-muted-foreground text-sm">Your slot is reserved.</p>
                 )}
+                {rescheduledNote ? (
+                  <p className="text-ops-blue-dark mt-1 text-sm">{rescheduledNote}</p>
+                ) : null}
+                {conflictNote ? (
+                  <p className="text-ops-red-dark mt-1 text-sm">{conflictNote}</p>
+                ) : null}
               </div>
             </div>
           </div>
-          <div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={submitting || windowCancelled}
+              onClick={() => {
+                setRescheduling(true);
+                setSelectedSlotId(null);
+                setError(null);
+              }}
+            >
+              Change time
+            </Button>
             <Button
               variant="destructive"
               disabled={submitting || windowCancelled}
@@ -200,6 +333,7 @@ export function BookingPage() {
           <CheckCircle2 className="text-ops-blue-dark mx-auto mb-3 h-10 w-10" />
           <p className="text-lg font-semibold">You&apos;re booked!</p>
           <p className="text-muted-foreground mt-1 text-sm">{bookedConfirmation}</p>
+          {conflictNote ? <p className="text-ops-red-dark mt-2 text-sm">{conflictNote}</p> : null}
         </div>
       );
     }
@@ -223,7 +357,14 @@ export function BookingPage() {
             selectedSlotId={selectedSlotId}
             onSelect={(s) => setSelectedSlotId(s.slotId)}
             disabled={submitting || windowCancelled}
+            conflictedSlotIds={conflictedSlotIds}
           />
+          {conflictedSlotIds.size > 0 ? (
+            <p className="text-muted-foreground text-xs">
+              Times marked &ldquo;Observer busy&rdquo; overlap events on your observer&apos;s Google
+              Calendar. You can still pick one, but it may be rejected or need adjusting.
+            </p>
+          ) : null}
         </div>
         {selectedSlotId ? (
           <div className="border-border bg-ops-gray-lightest grid gap-3 rounded-lg border p-4">
@@ -370,7 +511,7 @@ export function BookingPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await bookObservationSlotFn({
+      const res = await bookObservationSlotFn({
         windowId,
         slotId,
         inviteToken: token,
@@ -378,12 +519,39 @@ export function BookingPage() {
       });
       const slot = (slots ?? []).find((s) => s.slotId === slotId);
       setBookedConfirmation(slot ? formatLocalDateTime(slot.startUTC) : 'Your slot is reserved.');
+      setConflictNote(res.data.calendarConflictWarning ? CONFLICT_WARNING_TEXT : null);
       setSelectedSlotId(null);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : 'Could not book that slot. It may have just been taken.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function reschedule(newSlotId: string) {
+    if (!windowId || !newSlotId) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await rescheduleBookingFn({ windowId, newSlotId, inviteToken: token });
+      const slot = (slots ?? []).find((s) => s.slotId === newSlotId);
+      setRescheduledNote(
+        slot
+          ? `Your booking was moved to ${formatLocalDateTime(slot.startUTC)}.`
+          : 'Your booking was moved to the new time.',
+      );
+      setConflictNote(res.data.calendarConflictWarning ? CONFLICT_WARNING_TEXT : null);
+      setRescheduling(false);
+      setSelectedSlotId(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not move your booking. The new time may have just been taken.',
       );
     } finally {
       setSubmitting(false);
@@ -400,6 +568,8 @@ export function BookingPage() {
       await cancelBookingFn({ windowId, slotId, reason: reason.trim() });
       setBookedConfirmation(null);
       setSelectedSlotId(null);
+      setRescheduledNote(null);
+      setConflictNote(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not cancel the booking.');
     } finally {

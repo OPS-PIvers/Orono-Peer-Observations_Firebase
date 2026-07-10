@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, WifiOff } from 'lucide-react';
 import { OBSERVATION_STATUS, type Observation } from '@ops/shared';
 import { cn } from '@/lib/utils';
 
@@ -12,9 +12,19 @@ const SAVING_LABEL_DELAY_MS = 600;
 export function SaveStatusIndicator({
   state,
   error,
+  onRetry,
+  isOnline = true,
 }: {
   state: 'idle' | 'saving' | 'saved' | 'error';
   error: string | null;
+  onRetry?: () => void;
+  // Browser-reported connectivity (see useOnlineStatus). Defaults to `true`
+  // so callers that don't track it (none currently) keep the prior
+  // behavior. When `false` and a save is in flight or failed, we know the
+  // cause is the network drop rather than a real server/client error, so we
+  // show a distinct "offline" message instead of a dead-end error string —
+  // the caller auto-retries once the browser reports it's back online.
+  isOnline?: boolean;
 }) {
   const [showSavingLabel, setShowSavingLabel] = useState(false);
   const [everSaved, setEverSaved] = useState(false);
@@ -29,8 +39,28 @@ export function SaveStatusIndicator({
     return () => clearTimeout(t);
   }, [state, everSaved]);
 
+  if (!isOnline && (state === 'saving' || state === 'error')) {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-amber-700">
+        <WifiOff className="h-3 w-3" /> Offline — will retry when back online
+      </span>
+    );
+  }
   if (state === 'error') {
-    return <span className="text-destructive text-xs">Save failed: {error}</span>;
+    return (
+      <span className="text-destructive inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
+        Save failed: {error}
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-destructive font-semibold underline underline-offset-2 hover:no-underline"
+          >
+            Retry
+          </button>
+        ) : null}
+      </span>
+    );
   }
   if (state === 'saving' && showSavingLabel) {
     return (

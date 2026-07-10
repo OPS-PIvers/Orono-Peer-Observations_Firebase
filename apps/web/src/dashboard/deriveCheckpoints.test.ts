@@ -46,12 +46,34 @@ describe('deriveCheckpoints (seed behavior)', () => {
   it('shows signup as soon when a window is open', () => {
     const cards = deriveCheckpoints(
       DEFAULT_STEPS,
-      ctx({ openBooking: { windowId: 'w', token: 't' } }),
+      ctx({ openBooking: { windowId: 'w', token: 't', endDate: null } }),
       NOW,
     );
     const signup = cards.find((c) => c.id === 'signup');
     expect(signup?.status).toBe('soon');
     expect(signup?.ctaUrl).toBe('/book/w?token=t');
+  });
+
+  it('shows the window close date on the signup card, with urgency near the deadline', () => {
+    const farOut = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({
+        openBooking: { windowId: 'w', token: 't', endDate: new Date('2026-04-01T12:00:00Z') },
+      }),
+      NOW,
+    ).find((c) => c.id === 'signup');
+    expect(farOut?.dateLabel).toBe('Closes Apr 1');
+    expect(farOut?.urgent).toBe(false);
+
+    const closingSoon = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({
+        openBooking: { windowId: 'w', token: 't', endDate: new Date('2026-03-02T12:00:00Z') },
+      }),
+      NOW,
+    ).find((c) => c.id === 'signup');
+    expect(closingSoon?.urgent).toBe(true);
+    expect(closingSoon?.dueRelative).toMatch(/day/i);
   });
 
   it('marks the pre-obs meeting done once its date is in the past', () => {

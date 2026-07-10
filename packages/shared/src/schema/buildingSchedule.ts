@@ -83,3 +83,30 @@ export const buildingScheduleInput = buildingSchedule.omit({
   updatedAt: true,
 });
 export type BuildingScheduleInput = z.infer<typeof buildingScheduleInput>;
+
+/**
+ * /buildingSchedules/{buildingId}/versions/{versionId} — non-live copies of a
+ * building's schedule supporting the multi-year lifecycle:
+ *
+ *   - 'archived' — an immutable snapshot of the live doc, written when an
+ *     admin prepares next year's schedule or activates a draft. Retains the
+ *     historical bell schedule/holiday calendar for past academic years.
+ *   - 'draft'    — next year's schedule being staged (doc id `draft`, at most
+ *     one per building). Edited freely, then activated: the live doc
+ *     (doc id = buildingId) is overwritten with the draft's content and the
+ *     draft is deleted. Slot generation only ever reads the live doc, so
+ *     drafts never disturb current-year bookings.
+ */
+export const buildingScheduleVersionStatus = z.enum(['draft', 'archived']);
+export type BuildingScheduleVersionStatus = z.infer<typeof buildingScheduleVersionStatus>;
+
+export const buildingScheduleVersion = buildingSchedule.extend({
+  status: buildingScheduleVersionStatus,
+  /** Human label, e.g. "2025–2026" (derived from effectiveFrom/effectiveTo). */
+  label: z.string().trim().min(1).max(80),
+  createdBy: email.optional(),
+});
+export type BuildingScheduleVersion = z.infer<typeof buildingScheduleVersion>;
+
+/** Fixed doc id for the single staged draft under a building's versions. */
+export const BUILDING_SCHEDULE_DRAFT_DOC_ID = 'draft';

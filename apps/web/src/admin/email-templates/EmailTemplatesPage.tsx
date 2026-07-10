@@ -48,7 +48,9 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduling.bookingConfirmation': 'Scheduling: Booking Confirmed',
   'scheduling.assignmentNotice': 'Scheduling: Time Assigned',
   'scheduling.bookingCancelled': 'Scheduling: Booking Cancelled',
+  'scheduling.bookingRescheduled': 'Scheduling: Booking Rescheduled',
   'scheduling.windowExpired': 'Scheduling: Window Expired',
+  'scheduling.bookingScheduleChanged': 'Scheduling: Bell Schedule Changed',
 };
 
 const RECIPIENT_LABELS: Record<EmailRecipientType, string> = {
@@ -180,12 +182,41 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'signInLink',
     'appName',
   ],
+  'scheduling.bookingRescheduled': [
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'slotDateLocal',
+    'slotStartLocal',
+    'slotEndLocal',
+    'slotPeriodName',
+    'buildingName',
+    'previousSlotDateLocal',
+    'previousSlotStartLocal',
+    'signInLink',
+    'appName',
+  ],
   'scheduling.windowExpired': [
     'observedName',
     'observedEmail',
     'observerName',
     'windowStartLocal',
     'windowEndLocal',
+    'signInLink',
+    'appName',
+  ],
+  'scheduling.bookingScheduleChanged': [
+    'observedName',
+    'observedEmail',
+    'observerName',
+    'observerEmail',
+    'slotDateLocal',
+    'slotStartLocal',
+    'slotEndLocal',
+    'slotPeriodName',
+    'buildingName',
+    'scheduleChangeReason',
     'signInLink',
     'appName',
   ],
@@ -220,8 +251,11 @@ const SAMPLE_VARS: Record<TemplateVariable, string> = {
   slotPeriodName: 'Period 3',
   buildingName: 'High School',
   cancellationReason: 'Schedule conflict',
+  previousSlotDateLocal: 'Monday, May 18, 2026',
+  previousSlotStartLocal: '9:15 AM',
   windowStartLocal: 'May 18, 2026',
   windowEndLocal: 'May 29, 2026',
+  scheduleChangeReason: 'This period was removed from the building bell schedule',
 };
 
 // ── Callable ───────────────────────────────────────────────────────────────

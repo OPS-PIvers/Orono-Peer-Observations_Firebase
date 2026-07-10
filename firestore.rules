@@ -85,6 +85,12 @@ service cloud.firestore {
     // Own doc: read only. Admins: full read/write. Special-access (PE): read
     // all (needed for the filter UI to list potential observees).
     match /staff/{email} {
+      // Deliberately NOT readable by every domain user: a staff doc carries
+      // sensitive HR-adjacent fields (year/summativeYear evaluation status,
+      // hasAdminAccess, emailPreferences), and district emails are
+      // predictable enough that a broad `get` would let any teacher pull any
+      // colleague's record. The Staff Dashboard's Peer Evaluator card reads
+      // the denormalized `observerName` on the observation doc instead.
       allow get: if isCurrentUserEmail(email) || hasSpecialAccess();
       allow list: if hasSpecialAccess();
       allow create, update, delete: if isAdmin();
@@ -230,6 +236,15 @@ service cloud.firestore {
     match /buildingSchedules/{buildingId} {
       allow read: if isFromOronoDomain();
       allow write: if isAdmin();
+
+      // Archived year snapshots + the staged next-year draft ("Prepare next
+      // year" flow on the Building schedule editor). Slot generation and the
+      // booking UI only ever read the live parent doc, so these are
+      // admin-only in both directions.
+      match /versions/{versionId} {
+        allow read: if isAdmin();
+        allow write: if isAdmin();
+      }
     }
 
     // --- /signupFields/{fieldId} --------------------------------------------
@@ -354,7 +369,8 @@ service cloud.firestore {
     match /transcriptionJobs/{id} {
       allow get: if isAdmin()
         || isCurrentUserEmail(resource.data.requestedBy);
-      allow list: if isAdmin();
+      allow list: if isAdmin()
+        || isCurrentUserEmail(resource.data.requestedBy);
       allow write: if false;
     }
 

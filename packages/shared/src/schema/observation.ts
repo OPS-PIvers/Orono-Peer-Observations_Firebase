@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { driveFileRef, email, isoDate, tiptapDoc } from './common.js';
 import { staffYear } from './staff.js';
-import { componentId, proficiencyLevel } from './rubric.js';
+import { componentId, proficiencyLevel, rubricDomain } from './rubric.js';
 import { signupFieldAnswer } from './signupField.js';
 import { OBSERVATION_STATUS, OBSERVATION_TYPES } from '../constants.js';
 
@@ -54,13 +54,52 @@ export const componentTag = z.object({
 });
 export type ComponentTag = z.infer<typeof componentTag>;
 
-/** Work product answers (replaces the deprecated WorkProductAnswers sheet). */
+/** Work product answers (replaces the deprecated WorkProductAnswers sheet).
+ *  `answer` is a Tiptap JSON document for anything answered through the
+ *  current rich-text form; it stays a plain string for legacy answers saved
+ *  before the Tiptap upgrade so older observations keep parsing/rendering
+ *  without a data migration. */
 export const workProductAnswer = z.object({
   questionId: z.string().min(1),
-  answer: z.string().default(''),
+  answer: z.union([z.string(), tiptapDoc]).default(''),
   updatedAt: isoDate,
 });
 export type WorkProductAnswer = z.infer<typeof workProductAnswer>;
+
+/** True iff a work product answer has non-empty content, whether stored as
+ *  a legacy plain string or a Tiptap JSON document. Accepts `unknown` so
+ *  callers reading raw (unvalidated) Firestore data can use it directly. */
+export function workProductAnswerHasText(answer: unknown): boolean {
+  if (answer == null) return false;
+  if (typeof answer === 'string') return answer.trim() !== '';
+  return tiptapNodeHasText(answer);
+}
+
+function tiptapNodeHasText(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false;
+  const n = node as { type?: unknown; text?: unknown; content?: unknown };
+  if (n.type === 'text' && typeof n.text === 'string' && n.text.trim() !== '') return true;
+  if (Array.isArray(n.content)) return n.content.some(tiptapNodeHasText);
+  return false;
+}
+
+/** Frozen copy of the rubric content an observation was scored against,
+ *  captured server-side at finalize time (finalizeObservation). Domains are
+ *  resolved to the components actually in play for the observed role/year
+ *  (falling back to the full rubric when no mapping narrows it) so the
+ *  finalized read-only view renders the historical criteria text even after
+ *  the live rubric is edited. Cleared on reopen — re-finalizing re-captures
+ *  it. Absent/null on legacy finalized docs, which fall back to the live
+ *  rubric. */
+export const observationRubricSnapshot = z.object({
+  rubricId: z.string().min(1),
+  displayName: z.string().trim().min(1),
+  domains: z.array(rubricDomain).min(1),
+  /** Flattened component ids of `domains`, in display order. */
+  assignedComponentIds: z.array(componentId).default([]),
+  capturedAt: isoDate,
+});
+export type ObservationRubricSnapshot = z.infer<typeof observationRubricSnapshot>;
 
 export const observation = z.object({
   observationId: z.string().min(1),
@@ -68,6 +107,10 @@ export const observation = z.object({
   // Participants (denormalized at create time so historical observations
   // survive role/name changes).
   observerEmail: email,
+  /** Observer's display name, denormalized at create time so the observed
+   *  staff member's dashboard can show who their PE is without needing read
+   *  access to the observer's /staff doc. Empty on legacy docs. */
+  observerName: z.string().trim().default(''),
   observedEmail: email,
   observedName: z.string().trim().min(1),
   observedRole: z.string().trim().min(1),
@@ -108,6 +151,9 @@ export const observation = z.object({
   driveFolderId: z.string().nullable().default(null),
   pdfDriveFileId: z.string().nullable().default(null),
 
+  /** Rubric content frozen at finalize time — see observationRubricSnapshot. */
+  rubricSnapshot: observationRubricSnapshot.nullable().default(null),
+
   // Audit timestamps
   createdAt: isoDate,
   lastModifiedAt: isoDate,
@@ -143,6 +189,25 @@ export const observationCreateInput = z.object({
   observationDate: isoDate.optional(),
 });
 export type ObservationCreateInput = z.infer<typeof observationCreateInput>;
+
+/** Input for the admin-only reopenObservation callable, which flips a
+ *  Finalized observation back to Draft so mistakes can be corrected and the
+ *  observation re-finalized (regenerating + re-sharing the PDF). */
+export const reopenObservationInput = z.object({
+  observationId: z.string().min(1),
+  /** Optional reason, recorded in the audit log. */
+  reason: z.string().trim().max(500).default(''),
+});
+export type ReopenObservationInput = z.infer<typeof reopenObservationInput>;
+
+/** Input for the removeEvidenceFile callable (observer-or-admin, draft-only
+ *  unless admin — see removeEvidenceFile.ts for the full precondition). */
+export const removeEvidenceFileInput = z.object({
+  observationId: z.string().min(1),
+  componentId: z.string().min(1),
+  driveFileId: z.string().min(1),
+});
+export type RemoveEvidenceFileInput = z.infer<typeof removeEvidenceFileInput>;
 
 /** Partial used by autosave. Server validates that mutating fields are
  *  allowed in the current status (e.g., no finalize-only fields can move

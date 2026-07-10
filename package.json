@@ -33,6 +33,8 @@
     "import:emulator": "tsx scripts/import/import.ts --target=emulator",
     "import:prod": "tsx scripts/import/import.ts --target=prod",
     "seed:templates": "tsx scripts/import/seed-templates.ts",
+    "export:emulator": "tsx scripts/export/export.ts --target=emulator",
+    "export:prod": "tsx scripts/export/export.ts --target=prod",
     "prepare": "husky"
   },
   "devDependencies": {

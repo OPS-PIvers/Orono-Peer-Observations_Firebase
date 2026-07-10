@@ -87,7 +87,7 @@ describe('EVENT_EVALUATORS', () => {
     expect(EVENT_EVALUATORS.signupWindowOpened(ctx({}), null, NOW).satisfied).toBe(false);
     expect(
       EVENT_EVALUATORS.signupWindowOpened(
-        ctx({ openBooking: { windowId: 'w', token: 't' } }),
+        ctx({ openBooking: { windowId: 'w', token: 't', endDate: null } }),
         null,
         NOW,
       ).satisfied,

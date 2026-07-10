@@ -348,6 +348,35 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'scheduling-booking-rescheduled',
+    name: 'Scheduling: Booking Rescheduled',
+    description:
+      'Sent to the staff member and evaluator when a booked observation is moved to a new time.',
+    subject: 'Observation rescheduled — {{slotDateLocal}} — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your observation with {{observerName}} has been moved from {{previousSlotDateLocal}} ({{previousSlotStartLocal}}) to <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'slotEndLocal',
+      'slotPeriodName',
+      'buildingName',
+      'previousSlotDateLocal',
+      'previousSlotStartLocal',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.bookingRescheduled',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'scheduling-window-expired',
     name: 'Scheduling: Window Expired',
     description: 'Sent to invitees who never booked when a scheduling window expires.',
@@ -365,6 +394,36 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
       'appName',
     ],
     triggerType: 'scheduling.windowExpired',
+    recipient: 'both',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'scheduling-booking-schedule-changed',
+    name: 'Scheduling: Bell Schedule Changed',
+    description:
+      "Sent to the staff member and evaluator when an admin's edit to a building's bell schedule invalidates an already-booked observation time (the period moved or was removed).",
+    subject: 'Your observation time may have changed — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>{{buildingName}}'s bell schedule was just updated, and it affects your already-booked observation with {{observerName}}, previously scheduled for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}).</p>
+<p>{{scheduleChangeReason}}</p>
+<p>Please sign in to confirm the observation's status, and reschedule together if needed.</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observerName',
+      'slotDateLocal',
+      'slotStartLocal',
+      'slotEndLocal',
+      'slotPeriodName',
+      'buildingName',
+      'scheduleChangeReason',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduling.bookingScheduleChanged',
     recipient: 'both',
     scheduledDays: 3,
     isActive: true,
