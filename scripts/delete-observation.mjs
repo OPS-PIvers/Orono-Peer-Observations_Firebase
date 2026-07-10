@@ -3,18 +3,31 @@
 // data without touching the rules-only audit trail of "PE deletes their
 // own draft" (the app itself doesn't expose draft deletion).
 //
-//   node scripts/delete-observation.mjs <observationId>
+// REQUIRES --confirm flag to proceed. Run without it to see what would be deleted.
+//
+//   node scripts/delete-observation.mjs --confirm <observationId>
 
 import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { PROJECT_ID } from './lib/project-id.mjs';
 
 if (getApps().length === 0) {
-  initializeApp({ credential: applicationDefault(), projectId: 'peer-evaluator-rubric' });
+  initializeApp({ credential: applicationDefault(), projectId: PROJECT_ID });
 }
 
-const id = process.argv[2];
+const args = process.argv.slice(2);
+const confirmIndex = args.indexOf('--confirm');
+const hasConfirm = confirmIndex !== -1;
+const id = hasConfirm ? args.find((_, i) => i !== confirmIndex) : args[0];
+
 if (!id) {
-  console.error('Usage: node delete-observation.mjs <observationId>');
+  console.error('Usage: node delete-observation.mjs --confirm <observationId>');
+  console.error('       (--confirm flag is required)');
+  process.exit(1);
+}
+
+if (!hasConfirm) {
+  console.error('Refusing to delete without --confirm flag. ' + 'This is a destructive operation.');
   process.exit(1);
 }
 
@@ -24,5 +37,6 @@ if (!snap.exists) {
   console.log(`No /observations/${id}; nothing to delete.`);
   process.exit(0);
 }
+
 await ref.delete();
 console.log(`Deleted /observations/${id}`);

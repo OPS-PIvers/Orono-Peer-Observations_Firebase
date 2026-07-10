@@ -4,7 +4,10 @@ import { readFileSync, existsSync } from 'node:fs';
 
 export type ImportTarget = 'emulator' | 'prod';
 
-export const FIREBASE_PROJECT_ID = 'peer-evaluator-rubric';
+// Firebase project ID — reads from FIREBASE_PROJECT_ID env var.
+// Defaults to 'peer-evaluator-rubric' (the district's production project).
+// To target a different project, set the env var before running.
+export const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? 'peer-evaluator-rubric';
 
 /**
  * Initialize Firebase Admin SDK for the chosen target.

@@ -18,6 +18,8 @@ env:
   PNPM_VERSION: '10.30.2'
   # Bumped from default 2GB so tsc + vitest don't OOM as the codebase grows.
   NODE_OPTIONS: '--max-old-space-size=4096'
+  # Skip Puppeteer browser download during CI build (only needed at runtime).
+  PUPPETEER_SKIP_DOWNLOAD: '1'
 
 jobs:
   validate:
@@ -58,6 +60,12 @@ jobs:
 
       - name: Build functions
         run: pnpm --filter @ops/functions build
+
+      - name: Typecheck pdf-renderer
+        run: pnpm --filter @ops/pdf-renderer typecheck
+
+      - name: Build pdf-renderer
+        run: pnpm --filter @ops/pdf-renderer build
 
   rules-tests:
     name: Firestore Rules

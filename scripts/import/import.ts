@@ -105,6 +105,8 @@ interface ImportSummary {
 
 async function run(args: CliArgs): Promise<ImportSummary> {
   const sheetId = requireEnv('GAS_SOURCE_SHEET_ID');
+  // District admin fallback — the email set when seeding the initial staff doc
+  // with admin role. To override, set IMPORT_SECURITY_ADMIN_EMAIL env var.
   const securityAdminEmail =
     process.env['IMPORT_SECURITY_ADMIN_EMAIL'] ?? 'paul.ivers@orono.k12.mn.us';
 

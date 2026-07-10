@@ -7,9 +7,10 @@
 
 import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { PROJECT_ID } from './lib/project-id.mjs';
 
 if (getApps().length === 0) {
-  initializeApp({ credential: applicationDefault(), projectId: 'peer-evaluator-rubric' });
+  initializeApp({ credential: applicationDefault(), projectId: PROJECT_ID });
 }
 
 const email = process.argv[2];
@@ -35,4 +36,6 @@ const next = {
 };
 
 await ref.set(next, { merge: true });
-console.log(`Seeded /staff/${email} with role=Administrator (${existing.exists ? 'updated' : 'created'})`);
+console.log(
+  `Seeded /staff/${email} with role=Administrator (${existing.exists ? 'updated' : 'created'})`,
+);
