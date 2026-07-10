@@ -4,7 +4,12 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, type Observation, type Staff } from '@ops/shared';
-import { ensureObservationFolder, getDriveClient, uploadFileToFolder } from '../lib/drive.js';
+import {
+  deleteDriveFolder,
+  ensureObservationFolder,
+  getDriveClient,
+  uploadFileToFolder,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -102,20 +107,40 @@ export const uploadEvidenceFile = onCall(
       throw new HttpsError('invalid-argument', 'File exceeds 20 MB limit');
     }
 
-    // Ensure the Drive folder exists (may be first evidence upload for this obs)
-    const folderId = await ensureObservationFolder({
+    // Ensure the Drive folder exists (may be first evidence upload for this obs).
+    // Two concurrent calls with no existing folder can both create one here —
+    // there's no compare-and-set at the Drive API level — so the transaction
+    // below claims a single winner and the loser's newly-created folder is
+    // deleted before it's ever used.
+    let folderId = await ensureObservationFolder({
       observationId,
       observedName: obs.observedName,
       parentFolderId: PARENT_FOLDER_ID.value(),
       existingFolderId: obs.driveFolderId ?? null,
     });
 
-    // If we just created the folder, persist it back to Firestore
     if (folderId !== obs.driveFolderId) {
-      await obsRef.update({
-        driveFolderId: folderId,
-        lastModifiedAt: FieldValue.serverTimestamp(),
+      const winningFolderId = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(obsRef);
+        const current = (snap.data() as Observation | undefined)?.driveFolderId ?? null;
+        if (current) return current;
+        tx.update(obsRef, {
+          driveFolderId: folderId,
+          lastModifiedAt: FieldValue.serverTimestamp(),
+        });
+        return folderId;
       });
+
+      if (winningFolderId !== folderId) {
+        // Another concurrent call already claimed the observation's Drive
+        // folder; best-effort delete the duplicate we just created.
+        try {
+          await deleteDriveFolder(folderId);
+        } catch (err) {
+          logger.warn('uploadEvidenceFile: duplicate folder cleanup failed', { folderId, err });
+        }
+        folderId = winningFolderId;
+      }
     }
 
     // Upload file to Drive
@@ -149,7 +174,8 @@ export const uploadEvidenceFile = onCall(
       });
     } catch (err) {
       try {
-        await getDriveClient().files.delete({ fileId });
+        const drive = await getDriveClient();
+        await drive.files.delete({ fileId });
       } catch (cleanupErr) {
         logger.warn('uploadEvidenceFile: orphan cleanup failed', { fileId, cleanupErr });
       }

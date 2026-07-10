@@ -92,7 +92,7 @@ export const getAudio = onRequest(
     }
 
     try {
-      const drive = getDriveClient();
+      const drive = await getDriveClient();
       const meta = await drive.files.get({ fileId: audioFileId, fields: 'mimeType, name' });
       const buffer = await downloadFile(audioFileId);
       res.setHeader('Content-Type', meta.data.mimeType ?? 'audio/webm');

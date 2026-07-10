@@ -70,42 +70,56 @@ export const createObservationWindow = onCall(
 
     // Resolve each invitee from /staff (deduped by email; last buildingId wins
     // for a repeated email is disallowed — we key per email+building below).
-    const invitees: WindowInvitee[] = [];
-    const invitedEmails: string[] = [];
+    // Dedupe first, then batch-read all staff docs with `getAll` instead of
+    // one awaited `.get()` per invitee — with 40+ invitees the sequential
+    // version risks the callable's timeout.
+    const dedupedInvitees: { email: string; buildingId: string }[] = [];
     const seen = new Set<string>();
     for (const inv of input.invitees) {
       const inviteeEmail = inv.email.toLowerCase();
       const dedupeKey = `${inviteeEmail}::${inv.buildingId}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
+      dedupedInvitees.push({ email: inviteeEmail, buildingId: inv.buildingId });
+    }
 
-      const staffSnap = await db.collection(COLLECTIONS.staff).doc(inviteeEmail).get();
-      if (!staffSnap.exists) {
-        throw new HttpsError('not-found', `Staff not found: ${inviteeEmail}`);
+    const staffRefs = dedupedInvitees.map((inv) => db.collection(COLLECTIONS.staff).doc(inv.email));
+    const staffSnaps = staffRefs.length > 0 ? await db.getAll(...staffRefs) : [];
+
+    const invitees: WindowInvitee[] = [];
+    const invitedEmails: string[] = [];
+    for (const [i, entry] of dedupedInvitees.entries()) {
+      const staffSnap = staffSnaps[i];
+      if (!staffSnap?.exists) {
+        throw new HttpsError('not-found', `Staff not found: ${entry.email}`);
       }
       const staff = staffSnap.data() as Staff;
 
       invitees.push({
-        email: inviteeEmail,
+        email: entry.email,
         name: staff.name,
         role: staff.role,
         year: staff.year,
         buildings: staff.buildings,
-        buildingId: inv.buildingId,
+        buildingId: entry.buildingId,
         inviteToken: randomBytes(24).toString('base64url'),
         inviteSentAt: null,
         bookedSlotId: null,
       });
-      if (!invitedEmails.includes(inviteeEmail)) invitedEmails.push(inviteeEmail);
+      if (!invitedEmails.includes(entry.email)) invitedEmails.push(entry.email);
     }
 
-    // Verify every distinct building has a schedule.
+    // Verify every distinct building has a schedule (batched with `getAll`).
     const buildingIds = [...new Set(invitees.map((inv) => inv.buildingId))];
+    const scheduleRefs = buildingIds.map((id) =>
+      db.collection(COLLECTIONS.buildingSchedules).doc(id),
+    );
+    const scheduleSnaps = scheduleRefs.length > 0 ? await db.getAll(...scheduleRefs) : [];
     const schedulesByBuilding = new Map<string, BuildingSchedule>();
     const missingSchedules: string[] = [];
-    for (const buildingId of buildingIds) {
-      const schedSnap = await db.collection(COLLECTIONS.buildingSchedules).doc(buildingId).get();
-      if (!schedSnap.exists) {
+    for (const [i, buildingId] of buildingIds.entries()) {
+      const schedSnap = scheduleSnaps[i];
+      if (!schedSnap?.exists) {
         missingSchedules.push(buildingId);
         continue;
       }
@@ -208,20 +222,25 @@ export const createObservationWindow = onCall(
 
     if (scheduling.inviteEmailEnabled) {
       const buildingNames = new Map<string, string>();
-      for (const buildingId of buildingIds) {
-        try {
-          const bSnap = await db.collection(COLLECTIONS.buildings).doc(buildingId).get();
-          buildingNames.set(
-            buildingId,
-            bSnap.exists ? (bSnap.data() as Building).displayName : buildingId,
-          );
-        } catch {
-          buildingNames.set(buildingId, buildingId);
-        }
-      }
+      await Promise.all(
+        buildingIds.map(async (buildingId) => {
+          try {
+            const bSnap = await db.collection(COLLECTIONS.buildings).doc(buildingId).get();
+            buildingNames.set(
+              buildingId,
+              bSnap.exists ? (bSnap.data() as Building).displayName : buildingId,
+            );
+          } catch {
+            buildingNames.set(buildingId, buildingId);
+          }
+        }),
+      );
 
+      // Send all invite emails concurrently — one invitee's failure must not
+      // block or slow down the others (see onRoleYearMappingWritten.ts for
+      // the same pattern).
       const sentEmails = new Set<string>();
-      for (const invitee of invitees) {
+      const sends = invitees.map(async (invitee) => {
         try {
           const bookingLink = `${APP_URL}/book/${windowId}?token=${invitee.inviteToken}`;
           await sendTemplatedEmail({
@@ -255,7 +274,8 @@ export const createObservationWindow = onCall(
             err,
           });
         }
-      }
+      });
+      await Promise.allSettled(sends);
 
       // Stamp inviteSentAt for invitees we successfully emailed.
       if (sentEmails.size > 0) {

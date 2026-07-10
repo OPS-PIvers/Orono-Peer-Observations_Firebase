@@ -71,7 +71,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
     let geminiFileUri: string | null = null;
 
     try {
-      const drive = getDriveClient();
+      const drive = await getDriveClient();
       const meta = await drive.files.get({
         fileId: job.audioDriveFileId,
         fields: 'mimeType, size, name',
@@ -168,11 +168,12 @@ async function uploadToGeminiFiles(
   apiKey: string,
 ): Promise<string> {
   const initResponse = await fetch(
-    `${GEMINI_FILES_BASE}/upload/v1beta/files?uploadType=resumable&key=${encodeURIComponent(apiKey)}`,
+    `${GEMINI_FILES_BASE}/upload/v1beta/files?uploadType=resumable`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
         'X-Goog-Upload-Protocol': 'resumable',
         'X-Goog-Upload-Command': 'start',
         'X-Goog-Upload-Header-Content-Length': String(audio.length),
@@ -251,9 +252,9 @@ async function waitForGeminiFileActive(
   const fileName = geminiFileName(fileUri);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(
-      `${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`,
-    );
+    const res = await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}`, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
     if (!res.ok) {
       throw new Error(`Gemini Files status check failed: ${String(res.status)}`);
     }
@@ -277,10 +278,10 @@ async function transcribeWithGeminiFileUri(
   apiKey: string,
   model: string,
 ): Promise<string> {
-  const url = `${GEMINI_FILES_BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_FILES_BASE}/v1beta/models/${model}:generateContent`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [
         {
@@ -316,10 +317,10 @@ async function transcribeWithGeminiFileUri(
 async function deleteGeminiFile(fileUri: string, apiKey: string): Promise<void> {
   const fileName = geminiFileName(fileUri);
 
-  const res = await fetch(
-    `${GEMINI_FILES_BASE}/v1beta/files/${fileName}?key=${encodeURIComponent(apiKey)}`,
-    { method: 'DELETE' },
-  );
+  const res = await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}`, {
+    method: 'DELETE',
+    headers: { 'x-goog-api-key': apiKey },
+  });
   if (!res.ok && res.status !== 404) {
     const text = await res.text().catch(() => '');
     throw new Error(`Gemini Files delete failed ${String(res.status)}: ${text.slice(0, 200)}`);

@@ -70,8 +70,11 @@ export const expireObservationWindows = onSchedule(
       ...((settingsSnap.data()?.['scheduling'] as Partial<SchedulingSettings> | undefined) ?? {}),
     };
     if (scheduling.inviteEmailEnabled) {
-      for (const window of expiredWindows) {
-        for (const invitee of window.invitees) {
+      // Send all expiry notices concurrently — one invitee's failure must
+      // not block or slow down the others (see onRoleYearMappingWritten.ts
+      // for the same pattern).
+      const sends = expiredWindows.flatMap((window) =>
+        window.invitees.map(async (invitee) => {
           try {
             await sendTemplatedEmail({
               db,
@@ -101,8 +104,9 @@ export const expireObservationWindows = onSchedule(
               err,
             });
           }
-        }
-      }
+        }),
+      );
+      await Promise.allSettled(sends);
     }
 
     if (expired.length > 0) {

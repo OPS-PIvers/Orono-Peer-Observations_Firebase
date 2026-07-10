@@ -175,7 +175,7 @@ function stableValue(value: unknown): unknown {
 }
 
 async function syncRow(sheetId: string, observationId: string, data: ObsLike): Promise<void> {
-  const sheets = getSheetsClient();
+  const sheets = await getSheetsClient();
 
   // Ensure header is present (idempotent — only writes if A1 is empty).
   const head = await sheets.spreadsheets.values.get({
@@ -297,7 +297,7 @@ async function handleDeletion(
   // 2. Mark the Sheet row as [DELETED] so the admin log stays accurate.
   if (!sheetId) return;
   try {
-    const sheets = getSheetsClient();
+    const sheets = await getSheetsClient();
     const colA = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: 'A:A',

@@ -102,10 +102,19 @@ export const geminiTagScript = onCall(
       throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
     }
 
-    const rolesSnap = await db.collection(COLLECTIONS.roles).get();
-    const roleDoc =
-      rolesSnap.docs.find((d) => (d.data() as Role).roleId === obs.observedRole) ??
-      rolesSnap.docs.find((d) => (d.data() as Role).displayName === obs.observedRole);
+    const roleByIdSnap = await db
+      .collection(COLLECTIONS.roles)
+      .where('roleId', '==', obs.observedRole)
+      .limit(1)
+      .get();
+    const roleByNameSnap = roleByIdSnap.empty
+      ? await db
+          .collection(COLLECTIONS.roles)
+          .where('displayName', '==', obs.observedRole)
+          .limit(1)
+          .get()
+      : null;
+    const roleDoc = !roleByIdSnap.empty ? roleByIdSnap.docs[0] : roleByNameSnap?.docs[0];
     if (!roleDoc)
       throw new HttpsError('failed-precondition', `Role "${obs.observedRole}" missing.`);
     const role = roleDoc.data() as Role;
@@ -210,10 +219,10 @@ ${JSON.stringify(componentBlock, null, 2)}
 SCRIPT:
 ${JSON.stringify(paragraphBlock, null, 2)}`;
 
-  const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `${GEMINI_BASE}/models/${model}:generateContent`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
