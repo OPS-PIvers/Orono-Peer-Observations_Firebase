@@ -20,11 +20,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 
+/** Local form-only wrapper giving each override a stable key so React can
+ *  track rows correctly across remove-from-middle edits (list `key` must
+ *  not be the array index — see docs/CODEBASE_AUDIT.md P2 "index-as-key").
+ *  The persisted shape (`ScheduleDateOverride`) is unchanged; `key` is
+ *  stripped again on save. */
+interface OverrideEntry {
+  key: string;
+  value: ScheduleDateOverride;
+}
+
 interface ScheduleForm {
   timeZone: string;
   dayTypes: ScheduleDayType[];
   weeklyPattern: ScheduleWeeklyPattern;
-  overrides: ScheduleDateOverride[];
+  overrides: OverrideEntry[];
   effectiveFrom: string | null;
   effectiveTo: string | null;
   isActive: boolean;
@@ -84,7 +94,7 @@ export function BuildingSchedulePage() {
       timeZone: src.timeZone,
       dayTypes: src.dayTypes,
       weeklyPattern: src.weeklyPattern,
-      overrides: src.overrides,
+      overrides: src.overrides.map((value) => ({ key: newId('ov'), value })),
       effectiveFrom: src.effectiveFrom,
       effectiveTo: src.effectiveTo,
       isActive: src.isActive,
@@ -110,7 +120,7 @@ export function BuildingSchedulePage() {
           timeZone: form.timeZone,
           dayTypes: form.dayTypes,
           weeklyPattern: form.weeklyPattern,
-          overrides: form.overrides,
+          overrides: form.overrides.map((entry) => entry.value),
           effectiveFrom: form.effectiveFrom,
           effectiveTo: form.effectiveTo,
           isActive: form.isActive,
@@ -158,7 +168,11 @@ export function BuildingSchedulePage() {
       weeklyPattern: Object.fromEntries(
         Object.entries(f.weeklyPattern).map(([k, v]) => [k, v === id ? null : v]),
       ) as ScheduleWeeklyPattern,
-      overrides: f.overrides.map((o) => (o.dayTypeId === id ? { ...o, dayTypeId: null } : o)),
+      overrides: f.overrides.map((entry) =>
+        entry.value.dayTypeId === id
+          ? { ...entry, value: { ...entry.value, dayTypeId: null } }
+          : entry,
+      ),
     }));
   }
 
@@ -395,7 +409,10 @@ export function BuildingSchedulePage() {
                 onClick={() =>
                   setForm((f) => ({
                     ...f,
-                    overrides: [...f.overrides, { date: '', dayTypeId: null, note: '' }],
+                    overrides: [
+                      ...f.overrides,
+                      { key: newId('ov'), value: { date: '', dayTypeId: null, note: '' } },
+                    ],
                   }))
                 }
               >
@@ -411,28 +428,32 @@ export function BuildingSchedulePage() {
               <p className="text-muted-foreground text-sm">No overrides.</p>
             ) : (
               <div className="space-y-2">
-                {form.overrides.map((o, idx) => (
-                  <div key={idx} className="flex flex-wrap items-center gap-2">
+                {form.overrides.map((entry) => (
+                  <div key={entry.key} className="flex flex-wrap items-center gap-2">
                     <Input
                       type="date"
-                      value={o.date}
+                      value={entry.value.date}
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
-                          overrides: f.overrides.map((x, i) =>
-                            i === idx ? { ...x, date: e.target.value } : x,
+                          overrides: f.overrides.map((x) =>
+                            x.key === entry.key
+                              ? { ...x, value: { ...x.value, date: e.target.value } }
+                              : x,
                           ),
                         }))
                       }
                       className="w-44"
                     />
                     <select
-                      value={o.dayTypeId ?? ''}
+                      value={entry.value.dayTypeId ?? ''}
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
-                          overrides: f.overrides.map((x, i) =>
-                            i === idx ? { ...x, dayTypeId: e.target.value || null } : x,
+                          overrides: f.overrides.map((x) =>
+                            x.key === entry.key
+                              ? { ...x, value: { ...x.value, dayTypeId: e.target.value || null } }
+                              : x,
                           ),
                         }))
                       }
@@ -446,12 +467,14 @@ export function BuildingSchedulePage() {
                       ))}
                     </select>
                     <Input
-                      value={o.note}
+                      value={entry.value.note}
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
-                          overrides: f.overrides.map((x, i) =>
-                            i === idx ? { ...x, note: e.target.value } : x,
+                          overrides: f.overrides.map((x) =>
+                            x.key === entry.key
+                              ? { ...x, value: { ...x.value, note: e.target.value } }
+                              : x,
                           ),
                         }))
                       }
@@ -465,7 +488,7 @@ export function BuildingSchedulePage() {
                       onClick={() =>
                         setForm((f) => ({
                           ...f,
-                          overrides: f.overrides.filter((_, i) => i !== idx),
+                          overrides: f.overrides.filter((x) => x.key !== entry.key),
                         }))
                       }
                       aria-label="Delete override"

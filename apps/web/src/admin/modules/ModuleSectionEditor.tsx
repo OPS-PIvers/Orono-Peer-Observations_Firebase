@@ -45,6 +45,7 @@ export function ModuleSectionEditor({
 
   // Track whether we should show the delete confirmation for this section
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
 
   const sectionItems = items
     .filter((i) => i.sectionId === section.id)
@@ -56,8 +57,9 @@ export function ModuleSectionEditor({
   }
 
   function addItem(kind: ModuleItem['kind']) {
+    setItemError(null);
     const itemId = newItemId();
-    void setDoc(itemRef(itemId), {
+    setDoc(itemRef(itemId), {
       itemId,
       moduleId,
       kind,
@@ -68,19 +70,27 @@ export function ModuleSectionEditor({
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       updatedBy: user?.email ?? null,
+    }).catch((err: unknown) => {
+      setItemError(err instanceof Error ? err.message : 'Failed to add item');
     });
   }
 
   function patchItem(itemId: string, patch: Partial<ModuleItem>) {
-    void setDoc(
+    setItemError(null);
+    setDoc(
       itemRef(itemId),
       { ...patch, updatedAt: serverTimestamp(), updatedBy: user?.email ?? null },
       { merge: true },
-    );
+    ).catch((err: unknown) => {
+      setItemError(err instanceof Error ? err.message : 'Failed to save item');
+    });
   }
 
   function removeItem(itemId: string) {
-    void deleteDoc(itemRef(itemId));
+    setItemError(null);
+    deleteDoc(itemRef(itemId)).catch((err: unknown) => {
+      setItemError(err instanceof Error ? err.message : 'Failed to remove item');
+    });
   }
 
   function handleDeleteClick() {
@@ -164,6 +174,11 @@ export function ModuleSectionEditor({
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
+        {itemError ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            {itemError}
+          </div>
+        ) : null}
         {section.type === 'richtext' ? (
           <TiptapEditor
             value={bodyDoc}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ClipboardList, Mail } from 'lucide-react';
-import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
+import { deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -32,6 +32,11 @@ import { CreateObservationDialog } from '@/observations/CreateObservationDialog'
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 type ObsTab = 'all' | ObservationStatus;
+
+// Bound this person's observation history with a page size and grow it via
+// "Load more" — smaller than the district-wide list since it's scoped to
+// one staff member.
+const OBS_PAGE_SIZE = 20;
 
 const sendManualEmailFn = httpsCallable<
   { templateId: string; toEmail: string; vars: Record<string, string> },
@@ -88,18 +93,35 @@ export function StaffPersonPage() {
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
+  const [obsPageSize, setObsPageSize] = useState(OBS_PAGE_SIZE);
+
+  // Reset back to the first page whenever the viewed person changes.
+  useEffect(() => {
+    setObsPageSize(OBS_PAGE_SIZE);
+  }, [email]);
+
   const obsConstraints = useMemo(
-    () => (email ? [where('observedEmail', '==', email), orderBy('lastModifiedAt', 'desc')] : []),
-    [email],
+    () =>
+      email
+        ? [
+            where('observedEmail', '==', email),
+            orderBy('lastModifiedAt', 'desc'),
+            limit(obsPageSize),
+          ]
+        : [],
+    [email, obsPageSize],
   );
   // The hook keys on constraint *types* only, so passing `email` as a keyPart
   // is what disambiguates one person's observations from another's. This makes
   // the subscription self-correcting on email change even without the
   // KeyedStaffPersonPage remount in App.tsx (which remains as defence in depth).
+  // `obsPageSize` is threaded through for the same reason: `limit()`'s value
+  // isn't reflected in the constraint-type key, so growing the page via
+  // "Load more" wouldn't otherwise trigger a resubscribe.
   const { data: observations } = useFirestoreCollection<Observation>(
     COLLECTIONS.observations,
     obsConstraints,
-    [email ?? ''],
+    [email ?? '', obsPageSize],
   );
 
   const { data: manualTemplates } = useFirestoreCollection<EmailTemplate>(
@@ -352,6 +374,18 @@ export function StaffPersonPage() {
           ))}
         </div>
       )}
+
+      {observations?.length === obsPageSize ? (
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setObsPageSize((n) => n + OBS_PAGE_SIZE)}
+          >
+            Load more
+          </Button>
+        </div>
+      ) : null}
 
       {/* New observation dialog */}
       {dialogOpen ? (

@@ -84,13 +84,17 @@ export function StaffPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
+  const [patchError, setPatchError] = useState<string | null>(null);
 
   const patchStaff = useCallback<PatchStaff>((email, patch) => {
-    void setDoc(
+    setPatchError(null);
+    setDoc(
       doc(db, COLLECTIONS.staff, email),
       { ...patch, updatedAt: serverTimestamp() },
       { merge: true },
-    );
+    ).catch((err: unknown) => {
+      setPatchError(err instanceof Error ? err.message : 'Failed to save staff change');
+    });
   }, []);
 
   const roleLabelByRoleId = useMemo(() => {
@@ -234,6 +238,12 @@ export function StaffPage() {
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load staff: {error.message}
+        </div>
+      ) : null}
+
+      {patchError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {patchError}
         </div>
       ) : null}
 
