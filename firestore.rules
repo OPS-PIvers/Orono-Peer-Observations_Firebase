@@ -75,10 +75,6 @@ service cloud.firestore {
       return resource.data.get(field, null) == request.resource.data.get(field, null);
     }
 
-    function isCreating() {
-      return resource == null;
-    }
-
     // --- Default deny --------------------------------------------------------
     // Anything not explicitly granted below is denied. Always.
     match /{document=**} {
@@ -181,8 +177,29 @@ service cloud.firestore {
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
       allow create: if hasSpecialAccess()
         && request.resource.data.observerEmail == request.auth.token.email;
-      allow update, delete: if isAdmin()
+      // Delete: admin or the observer. Unchanged.
+      allow delete: if isAdmin()
         || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email);
+      // Update: admin may change anything. The observer may only touch a small
+      // set of cosmetic/booking-default fields on their own window. The
+      // authoritative accounting/invite/status fields (invitedEmails, invitees,
+      // peBusyIntervals, dayCounts, perDayCap, status, the window bounds, etc.)
+      // are mutated only inside callable Cloud Functions (Admin SDK, which
+      // bypasses these rules) — the web client never writes the window doc
+      // directly, so this allowlist can't break any legitimate client flow.
+      allow update: if isAdmin()
+        || (
+          isFromOronoDomain()
+          && resource.data.observerEmail == request.auth.token.email
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'defaultObservationName',
+                'calendarEventTitle',
+                'calendarEventDescription',
+                'gcalSendUpdates',
+                'updatedAt'
+              ])
+        );
 
       // Slots: readable by anyone who can read the parent window; never
       // client-writable (mutated only inside the booking transaction).
@@ -242,12 +259,16 @@ service cloud.firestore {
     //
     // Update:
     //   - admin: any field
-    //   - observer + currently Draft: any field except status (status moves
-    //     to Finalized via a callable Cloud Function only). The lifecycle
-    //     transition Draft → Finalized must happen server-side because it
-    //     also needs to render PDF, share Drive folder, send email, etc.
+    //   - observer + currently Draft: only the autosave-editable fields
+    //     (allowlisted via diff().affectedKeys().hasOnly(...)). status,
+    //     participant identity, type, timestamps, and scheduling linkage are
+    //     immutable here. The Draft → Finalized transition happens server-side
+    //     via a callable (it also renders the PDF, shares the Drive folder,
+    //     sends email, etc.).
+    //   - observed staff: workProductAnswers on a WP/IR Draft, or the ack
+    //     fields on a Finalized observation (must stamp their own email).
     //
-    // Delete: admin only.
+    // Delete: admin, or the observer while the observation is still a Draft.
     match /observations/{observationId} {
       allow get: if (
         isCurrentUserEmail(resource.data.observerEmail)
@@ -265,17 +286,27 @@ service cloud.firestore {
         || (
           isCurrentUserEmail(resource.data.observerEmail)
           && resource.data.status == 'Draft'
-          && unchanged('status')
-          && unchanged('observerEmail')
-          && unchanged('observedEmail')
-          && unchanged('createdAt')
-          && unchanged('finalizedAt')
-          // Scheduling linkage is server-managed; an observer editing a Draft
-          // can't rebind it to another window/slot.
-          && unchanged('windowId')
-          && unchanged('slotId')
-          && unchanged('scheduledStartAt')
-          && unchanged('scheduledEndAt')
+          // Constrain WHAT the observer may change, not just who. The autosave
+          // in ObservationEditorPage writes exactly these fields (see its
+          // setDoc merge payload); evidence/audio/componentTags/driveFolderId
+          // are written server-side via callables (Admin SDK). This hasOnly
+          // therefore blocks any change to type, observedEmail, observerEmail,
+          // observedName/Role/Year, status, createdAt, finalizedAt, the
+          // scheduling linkage, or injected/arbitrary fields, while a real
+          // autosave payload passes untouched.
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'observationData',
+                'componentNotes',
+                'scriptDoc',
+                'observationName',
+                'observationDate',
+                'preObsDate',
+                'preObsNotes',
+                'postObsDate',
+                'postObsNotes',
+                'lastModifiedAt'
+              ])
         )
         || (
           isCurrentUserEmail(resource.data.observedEmail)
@@ -286,9 +317,12 @@ service cloud.firestore {
         )
         || (
           // Observed staff acknowledging their finalized observation — can
-          // only touch the two ack fields plus the audit timestamp.
+          // only touch the two ack fields plus the audit timestamp, and must
+          // stamp acknowledgedBy with their own (verified) email so the
+          // acknowledgement can't be attributed to someone else.
           isCurrentUserEmail(resource.data.observedEmail)
           && resource.data.status == 'Finalized'
+          && request.resource.data.acknowledgedBy == request.auth.token.email
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         );

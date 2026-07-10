@@ -221,6 +221,50 @@ describe('observations: update', () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
     await assertFails(updateDoc(doc(db, 'observations/obs1'), { observationName: 'Hax' }));
   });
+
+  it('observer CAN save a realistic autosave payload on their Draft', async () => {
+    // Mirror the exact fields ObservationEditorPage's flush() writes.
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        observationData: {
+          'comp-1': { proficiency: null, selectedLookForIds: [], scratchNotes: '' },
+        },
+        componentNotes: {},
+        scriptDoc: null,
+        preObsDate: null,
+        preObsNotes: null,
+        postObsDate: null,
+        postObsNotes: null,
+        observationName: 'Autosaved title',
+        observationDate: new Date(),
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observer CANNOT change the observation type on a Draft', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { type: 'Work Product' }));
+  });
+
+  it('observer CANNOT change injected participant fields on a Draft', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { observedName: 'Someone Else' }));
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { observedRole: 'Principal' }));
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { observedYear: 4 }));
+  });
+
+  it('observer CANNOT inject an arbitrary field on a Draft', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { evilField: 'nope' }));
+  });
+
+  it('observer CANNOT rebind scheduling linkage on a Draft', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { windowId: 'w-hijack' }));
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { slotId: 's-hijack' }));
+  });
 });
 
 describe('observations: delete', () => {
@@ -241,6 +285,52 @@ describe('observations: delete', () => {
   it('admin can delete', async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
     await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('observer CANNOT delete a Finalized observation', async () => {
+    await seedDraftObs('finalObs', { status: 'Finalized', finalizedAt: new Date() });
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(deleteDoc(doc(db, 'observations/finalObs')));
+  });
+});
+
+describe('observations: acknowledge (observed staff)', () => {
+  beforeEach(async () => {
+    await seedDraftObs('finalObs', { status: 'Finalized', finalizedAt: new Date() });
+  });
+
+  it('observed staff CAN acknowledge with their own email', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/finalObs'), {
+        acknowledgedAt: new Date(),
+        acknowledgedBy: OBSERVED_EMAIL,
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed staff CANNOT acknowledge attributing it to someone else', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/finalObs'), {
+        acknowledgedAt: new Date(),
+        acknowledgedBy: 'someone-else@orono.k12.mn.us',
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed staff CANNOT touch other fields while acknowledging', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/finalObs'), {
+        acknowledgedAt: new Date(),
+        acknowledgedBy: OBSERVED_EMAIL,
+        observationName: 'tampered',
+        lastModifiedAt: new Date(),
+      }),
+    );
   });
 });
 

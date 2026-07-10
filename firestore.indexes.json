@@ -97,6 +97,69 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "startUTC", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "observedEmail", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "finalizedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "observedEmail", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "observationDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "workProductQuestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "staff",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "emailTemplates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "triggerType", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
