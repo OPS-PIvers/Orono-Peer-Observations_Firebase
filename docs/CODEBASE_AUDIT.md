@@ -193,8 +193,8 @@ config in one place.)
 ### Functions efficiency
 
 - **Sequential N+1 loops in `createObservationWindow`**
-  (`apps/functions/src/scheduling/createObservationWindow.ts:76-100, 106-113,
-210-258`): one awaited staff read per invitee and one awaited email send at a
+  (`apps/functions/src/scheduling/createObservationWindow.ts:76-100, 106-113, 210-258`):
+  one awaited staff read per invitee and one awaited email send at a
   time. With 40+ invitees this risks the 120s timeout. Use `getAll()` /
   `Promise.allSettled` — the correct pattern already exists in
   `onRoleYearMappingWritten.ts:47-74`. Same serial-email issue in
