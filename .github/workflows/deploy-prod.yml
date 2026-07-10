@@ -11,6 +11,11 @@ on:
         description: 'Type "DEPLOY" to confirm production deploy'
         required: true
         default: ''
+      skip_renderer:
+        description: 'Skip the pdf-renderer Cloud Run deploy (only when nothing renderer-related changed)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -88,3 +93,46 @@ jobs:
         run: firebase deploy --project ${{ env.FIREBASE_PROJECT }} --only hosting,functions,firestore,storage --non-interactive
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+
+  # The pdf-renderer Cloud Run service shares a payload contract with the
+  # finalizeObservation function, so it must ship with the functions by
+  # default. Skip only via the skip_renderer input when a deploy touches
+  # nothing renderer-related. Requires the FIREBASE_SERVICE_ACCOUNT to hold
+  # roles/cloudbuild.builds.editor, roles/run.admin, and
+  # roles/iam.serviceAccountUser on the project.
+  deploy-pdf-renderer:
+    name: pdf-renderer (Cloud Run)
+    runs-on: ubuntu-latest
+    environment: prod
+    if: ${{ github.event.inputs.confirm == 'DEPLOY' && github.event.inputs.skip_renderer != 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Auth to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.FIREBASE_PROJECT }}
+
+      - name: Build and push image (Cloud Build)
+        run: |
+          gcloud builds submit \
+            --config apps/pdf-renderer/cloudbuild.yaml \
+            --substitutions=_TAG=${{ github.sha }} \
+            .
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy pdf-renderer \
+            --image us-central1-docker.pkg.dev/${{ env.FIREBASE_PROJECT }}/cloud-run-source-deploy/pdf-renderer:${{ github.sha }} \
+            --region us-central1 \
+            --no-allow-unauthenticated \
+            --memory 1Gi \
+            --cpu 1 \
+            --concurrency 4 \
+            --timeout 120 \
+            --set-env-vars NODE_ENV=production

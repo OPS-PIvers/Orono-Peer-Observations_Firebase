@@ -6,7 +6,9 @@
 # `gcloud run deploy --source` doesn't support choosing a non-root
 # Dockerfile, so we use Cloud Build directly and then tag/deploy.
 #
-# Usage:
+# Deployed automatically by the "Deploy — production" workflow
+# (.github/workflows/deploy-prod.yml, deploy-pdf-renderer job) unless its
+# skip_renderer input is set. Manual fallback:
 #   gcloud builds submit --config apps/pdf-renderer/cloudbuild.yaml .
 #   gcloud run deploy pdf-renderer \
 #     --image us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-renderer:latest \
