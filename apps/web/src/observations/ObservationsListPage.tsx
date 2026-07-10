@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
-import { type QueryConstraint, orderBy, where } from 'firebase/firestore';
+import { type QueryConstraint, limit, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -27,6 +27,11 @@ import {
 } from '@/components/ui/table';
 
 type StatusFilter = ObservationStatus | 'all';
+
+// This collection accumulates every observation district-wide, forever —
+// bound the live query with a page size and grow it via "Load more" rather
+// than ever streaming the full history.
+const PAGE_SIZE = 50;
 
 /**
  * Landing page for PEs and admins (special-access roles). Shows the
@@ -55,11 +60,19 @@ export function ObservationsListPage() {
         : 'all';
   const [search, setSearch] = useState('');
   const [showAllPEs, setShowAllPEs] = useState(false);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+
+  // Reset back to the first page whenever the filter changes — otherwise a
+  // widened `limit()` from a previous filter would carry over and briefly
+  // over-fetch the new selection.
+  useEffect(() => {
+    setPageSize(PAGE_SIZE);
+  }, [statusFilter, showAllPEs, isAdmin, user?.email]);
 
   // Constraints stay stable per filter selection. Admins default to "all
   // PEs"; non-admin PEs default to "just mine" with a toggle to widen.
   const constraints = useMemo<QueryConstraint[]>(() => {
-    const cs: QueryConstraint[] = [orderBy('lastModifiedAt', 'desc')];
+    const cs: QueryConstraint[] = [orderBy('lastModifiedAt', 'desc'), limit(pageSize)];
     if (statusFilter !== 'all') {
       cs.unshift(where('status', '==', statusFilter));
     }
@@ -67,7 +80,7 @@ export function ObservationsListPage() {
       cs.unshift(where('observerEmail', '==', user.email.toLowerCase()));
     }
     return cs;
-  }, [statusFilter, showAllPEs, isAdmin, user?.email]);
+  }, [statusFilter, showAllPEs, isAdmin, user?.email, pageSize]);
 
   const {
     data: observations,
@@ -78,6 +91,11 @@ export function ObservationsListPage() {
     showAllPEs,
     isAdmin,
     user?.email?.toLowerCase() ?? '',
+    // `limit()`'s value isn't reflected in the hook's constraint-type key
+    // (only constraint *types* are, per useFirestoreCollection's docs), so
+    // pageSize must be threaded through keyParts to force a resubscribe
+    // when "Load more" grows the page.
+    pageSize,
   ]);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
@@ -223,6 +241,18 @@ export function ObservationsListPage() {
           </TableBody>
         </Table>
       </div>
+
+      {observations?.length === pageSize ? (
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => setPageSize((n) => n + PAGE_SIZE)}
+            disabled={loading}
+          >
+            {loading ? 'Loading…' : 'Load more'}
+          </Button>
+        </div>
+      ) : null}
     </PageHeader>
   );
 }

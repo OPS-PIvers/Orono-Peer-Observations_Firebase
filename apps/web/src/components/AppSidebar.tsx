@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { SIDEBAR_TOGGLE_EVENT } from '@/hooks/useSidebarWidth';
 import {
@@ -268,7 +268,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   const { data: allModules } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
 
   // Modules this user is assigned that have a staff-facing page → sidebar items.
-  const moduleNavItems: NavItem[] = (() => {
+  const moduleNavItems = useMemo<NavItem[]>(() => {
     if (!myStaff || !allModules) return [];
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older staff docs may lack `modules`
     const assigned = new Set(myStaff.modules ?? []);
@@ -284,19 +284,19 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
         label: m.displayName,
         href: `/m/${m.moduleId}`,
       }));
-  })();
+  }, [myStaff, allModules]);
 
-  const rubricDomainItems = (() => {
-    if (!claims.role || !roles || !rubrics) return [] as NavSubItem[];
+  const rubricDomainItems = useMemo<NavSubItem[]>(() => {
+    if (!claims.role || !roles || !rubrics) return [];
     const role = roles.find((r) => r.roleId === claims.role);
-    if (!role) return [] as NavSubItem[];
+    if (!role) return [];
     const rubric = rubrics.find((rb) => rb.id === role.rubricId);
-    if (!rubric) return [] as NavSubItem[];
+    if (!rubric) return [];
     return rubric.domains.map((d) => ({
       label: `D${d.id} ${d.name}`,
       href: `/my-rubric#domain-${d.id}`,
     }));
-  })();
+  }, [claims.role, roles, rubrics]);
   // Explicit per-section open/close overrides. If a label has no entry,
   // fall back to "open if a child route is currently active" — that
   // auto-expands Observations when you're sitting on /observations.
@@ -329,19 +329,30 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   }, [location.pathname]);
 
   const handleSignOut = useCallback(() => void signOut(), [signOut]);
-  const navConfig = buildNavItems(
+  const navConfig = useMemo(() => {
+    const config = buildNavItems(
+      claims.role,
+      handleSignOut,
+      {
+        hasWorkProduct,
+        hasInstructionalRound,
+        isAdmin: claims.isAdmin,
+      },
+      rubricDomainItems,
+    );
+    if (moduleNavItems.length > 0) {
+      config.main = [...config.main, ...moduleNavItems];
+    }
+    return config;
+  }, [
     claims.role,
+    claims.isAdmin,
     handleSignOut,
-    {
-      hasWorkProduct,
-      hasInstructionalRound,
-      isAdmin: claims.isAdmin,
-    },
+    hasWorkProduct,
+    hasInstructionalRound,
     rubricDomainItems,
-  );
-  if (moduleNavItems.length > 0) {
-    navConfig.main = [...navConfig.main, ...moduleNavItems];
-  }
+    moduleNavItems,
+  ]);
   const showLabels = pcExpanded || mobileOpen;
 
   function isSectionVisible(item: NavItem): boolean {

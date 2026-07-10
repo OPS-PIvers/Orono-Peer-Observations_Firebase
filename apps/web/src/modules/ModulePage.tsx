@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
@@ -41,6 +41,7 @@ export function ModulePage() {
   );
 
   const doneItemIds = useMemo(() => new Set((progress ?? []).map((p) => p.itemId)), [progress]);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   const isAssigned = useMemo(() => {
     if (claims.isAdmin) return true;
@@ -53,6 +54,7 @@ export function ModulePage() {
   }, [claims.isAdmin, myStaff, moduleId, module]);
 
   function toggleDone(item: ModuleItem, done: boolean) {
+    setToggleError(null);
     const ref = doc(
       db,
       COLLECTIONS.staff,
@@ -60,16 +62,17 @@ export function ModulePage() {
       STAFF_SUBCOLLECTIONS.moduleProgress,
       item.itemId,
     );
-    if (done) {
-      void setDoc(ref, {
-        itemId: item.itemId,
-        moduleId: item.moduleId,
-        status: 'done',
-        completedAt: serverTimestamp(),
-      });
-    } else {
-      void deleteDoc(ref);
-    }
+    const write = done
+      ? setDoc(ref, {
+          itemId: item.itemId,
+          moduleId: item.moduleId,
+          status: 'done',
+          completedAt: serverTimestamp(),
+        })
+      : deleteDoc(ref);
+    write.catch((err: unknown) => {
+      setToggleError(err instanceof Error ? err.message : 'Failed to save progress');
+    });
   }
 
   if ((moduleLoading && !module) || (staffLoading && !myStaff && !claims.isAdmin)) {
@@ -96,6 +99,11 @@ export function ModulePage() {
       variant="plain"
       subtitle={module.description || undefined}
     >
+      {toggleError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {toggleError}
+        </div>
+      ) : null}
       <div className="space-y-6">
         {sections.length === 0 ? (
           <EmptyState title="This module has no content yet." />

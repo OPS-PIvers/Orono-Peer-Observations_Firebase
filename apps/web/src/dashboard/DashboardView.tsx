@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
@@ -74,19 +74,25 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
   } = props;
   const [filter, setFilter] = useState<FilterKey>('all');
 
-  const completed = tasks.filter((t) => t.status === 'done');
-  const active = tasks.filter((t) => t.status === 'inprogress' || t.status === 'soon');
-  const upcoming = tasks.filter((t) => t.status === 'upcoming');
+  const completed = useMemo(() => tasks.filter((t) => t.status === 'done'), [tasks]);
+  const active = useMemo(
+    () => tasks.filter((t) => t.status === 'inprogress' || t.status === 'soon'),
+    [tasks],
+  );
+  const upcoming = useMemo(() => tasks.filter((t) => t.status === 'upcoming'), [tasks]);
   const featured = active[0] ?? upcoming[0] ?? null;
   const restActive = featured && active.includes(featured) ? active.slice(1) : active;
   const restUpcoming = upcoming.filter((t) => t !== featured);
 
-  const counts = {
-    total: tasks.length,
-    done: completed.length,
-    active: active.length,
-    upcoming: upcoming.length,
-  };
+  const counts = useMemo(
+    () => ({
+      total: tasks.length,
+      done: completed.length,
+      active: active.length,
+      upcoming: upcoming.length,
+    }),
+    [tasks.length, completed.length, active.length, upcoming.length],
+  );
 
   return (
     <div className="staff-dashboard">
