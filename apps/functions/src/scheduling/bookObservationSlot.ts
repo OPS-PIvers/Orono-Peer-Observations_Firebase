@@ -20,6 +20,11 @@ import {
   type WindowInvitee,
 } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
+import {
+  GOOGLE_OAUTH_CLIENT_SECRET,
+  overlapsBusy,
+  queryFreeBusy,
+} from '../calendar/lib/googleCalendar.js';
 import { peConflicts } from './engine/timeWindows.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
 import { meetsLeadTime } from './engine/bookingRules.js';
@@ -76,6 +81,10 @@ export async function createDraftObservationForBooking(args: {
   await obsRef.set({
     observationId: obsRef.id,
     observerEmail: window.observerEmail,
+    // Denormalized so the observed staff member's dashboard can name their
+    // PE without read access to the observer's /staff doc (see the /staff
+    // rules in firestore.rules).
+    observerName: window.observerName,
     observedEmail: staffEmail,
     observedName: staff?.name ?? staffEmail,
     observedRole: staff?.role ?? 'unknown',
@@ -158,16 +167,44 @@ export async function createDraftObservationForBooking(args: {
 }
 
 /**
+ * True when the interval `[startUTC, endUTC)` collides with busy time on
+ * `observerEmail`'s REAL Google Calendar (freebusy). Soft-fails to `false`
+ * when the calendar is not connected or the API errors — a Calendar outage
+ * must never block a booking. Shared by bookObservationSlot and
+ * rescheduleBooking.
+ */
+export async function observerCalendarBusy(
+  observerEmail: string,
+  startUTC: unknown,
+  endUTC: unknown,
+): Promise<boolean> {
+  const start = toDate(startUTC);
+  const end = toDate(endUTC);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  const busy = await queryFreeBusy(observerEmail, start, end);
+  if (busy === null) return false;
+  return overlapsBusy(start.getTime(), end.getTime(), busy);
+}
+
+/**
  * Book an exact slot for a signed-in staff member (booking mode 'direct').
  *
  * Validates the invite token against the matching window invitee, enforces
  * lead time + PE-conflict rules, then reserves the slot in a Firestore
  * transaction that also pushes onto the window's peBusyIntervals ledger and
- * recomputes the window status. After the transaction it recomputes blocked
+ * recomputes the window status. Before the transaction the evaluator's REAL
+ * Google Calendar is consulted via freebusy (per the admin conflict policy:
+ * block the booking, warn the booker, or skip entirely — soft-failing open
+ * on any Calendar outage). After the transaction it recomputes blocked
  * slots, creates the Draft observation, and (best-effort) emails both parties.
  */
 export const bookObservationSlot = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
+  {
+    region: 'us-central1',
+    memory: '512MiB',
+    timeoutSeconds: 120,
+    secrets: [GOOGLE_OAUTH_CLIENT_SECRET],
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
@@ -197,6 +234,32 @@ export const bookObservationSlot = onCall(
 
     const windowRef = db.collection(COLLECTIONS.observationWindows).doc(input.windowId);
     const slotRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.slots).doc(input.slotId);
+
+    // Real-calendar (freebusy) conflict gate. Runs BEFORE the transaction —
+    // network calls don't belong inside one — using non-transactional reads;
+    // the transaction below re-validates slot availability regardless.
+    let calendarConflictWarning = false;
+    if (scheduling.gcalConflictPolicy !== 'ignore') {
+      const [preWindowSnap, preSlotSnap] = await Promise.all([windowRef.get(), slotRef.get()]);
+      if (preWindowSnap.exists && preSlotSnap.exists) {
+        const preWindow = preWindowSnap.data() as ObservationWindow;
+        const preSlot = preSlotSnap.data() as ObservationSlot;
+        const busy = await observerCalendarBusy(
+          preWindow.observerEmail,
+          preSlot.startUTC,
+          preSlot.endUTC,
+        );
+        if (busy) {
+          if (scheduling.gcalConflictPolicy === 'block') {
+            throw new HttpsError(
+              'failed-precondition',
+              "That time conflicts with an event on your observer's Google Calendar. Please pick a different slot.",
+            );
+          }
+          calendarConflictWarning = true;
+        }
+      }
+    }
 
     let bookedSlotData: ObservationSlot | null = null;
     let bookedWindowData: ObservationWindow | null = null;
@@ -301,6 +364,6 @@ export const bookObservationSlot = onCall(
       details: { windowId: input.windowId, slotId: input.slotId, observationId },
     });
 
-    return { observationId };
+    return { observationId, calendarConflictWarning };
   },
 );

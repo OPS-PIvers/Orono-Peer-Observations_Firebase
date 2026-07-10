@@ -35,5 +35,10 @@ export const observationSlot = z.object({
   bookedAt: isoDate.nullable().default(null),
   observationId: z.string().nullable().default(null),
   generatedAt: isoDate,
+  /** Bell-schedule-change issues ('period-time-changed'/'period-removed')
+   *  this booked slot's parties have already been emailed about, so
+   *  re-saving the building schedule while the mismatch persists doesn't
+   *  re-send the same notice (see onBuildingScheduleWritten). */
+  scheduleChangeNotifiedIssues: z.array(z.string()).optional(),
 });
 export type ObservationSlot = z.infer<typeof observationSlot>;

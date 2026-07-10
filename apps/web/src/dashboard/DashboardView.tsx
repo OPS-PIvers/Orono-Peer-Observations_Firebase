@@ -524,7 +524,7 @@ function TaskRow({
 
   return (
     <article
-      className={`task-row ${statusClass} ${featured ? 'task-row--featured' : ''} ${expanded ? 'is-expanded' : ''}`}
+      className={`task-row ${statusClass} ${featured ? 'task-row--featured' : ''} ${expanded ? 'is-expanded' : ''} ${task.urgent ? 'task-row--urgent' : ''}`}
     >
       <button
         type="button"
@@ -537,7 +537,9 @@ function TaskRow({
           <DashboardIcon name={TYPE_ICON[task.type]} size={14} />
         </span>
         <span className="task-row__title">{task.title}</span>
-        <span className="task-row__date">{dateLabel}</span>
+        <span className={`task-row__date ${task.urgent ? 'task-row__date--urgent' : ''}`}>
+          {dateLabel}
+        </span>
         <span className="task-row__toggle">
           <span className="task-row__toggle-label">{expanded ? 'Hide' : 'View'}</span>
           <DashboardIcon name="arrow-right" size={12} />

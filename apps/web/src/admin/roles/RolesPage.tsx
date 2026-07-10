@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MoreVertical, Plus } from 'lucide-react';
+import { Check, ListChecks, MoreVertical, Plus, Power, PowerOff } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, PILL_COLORS, type PillColorName, type Role } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -30,6 +30,10 @@ import {
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
 import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
+import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
+import { BulkActionBar } from '@/admin/_shared/BulkActionBar';
+import { bulkMerge } from '@/admin/_shared/bulkWrite';
+import { useRowSelection } from '@/admin/_shared/useRowSelection';
 
 function slugify(s: string): string {
   return s
@@ -49,6 +53,21 @@ export function RolesPage() {
     key: 'displayName',
     direction: 'asc',
   });
+  const [search, setSearch] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selectMode, selected, toggleRow, toggleAll, clear, toggleSelectMode } = useRowSelection();
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return roles ?? [];
+    return (roles ?? []).filter(
+      (r) =>
+        r.displayName.toLowerCase().includes(q) ||
+        r.roleId.toLowerCase().includes(q) ||
+        r.rubricId.toLowerCase().includes(q),
+    );
+  }, [roles, search]);
 
   const columns: ColumnDef<RoleRow>[] = useMemo(
     () => [
@@ -104,54 +123,120 @@ export function RolesPage() {
     [],
   );
 
-  const sorted = useMemo(() => sortRows(roles ?? [], columns, sort), [roles, columns, sort]);
+  const sorted = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
+
+  async function bulkSetActive(isActive: boolean) {
+    setBulkError(null);
+    setBulkBusy(true);
+    try {
+      await bulkMerge(COLLECTIONS.roles, Array.from(selected), { isActive });
+      clear();
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Bulk update failed.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   return (
     <PageHeader
       variant="light"
       breadcrumb={['Admin', 'Roles']}
       title="Roles"
-      subtitle={`${roles ? `${String(roles.length)} roles` : 'Loading…'} — each role has its own rubric and (role, year) component assignments.`}
+      subtitle={
+        roles
+          ? `${String(sorted.length)} of ${String(roles.length)} roles — each role has its own rubric and (role, year) component assignments.`
+          : 'Loading…'
+      }
       actions={
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add role
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={selectMode ? 'default' : 'outline'}
+            onClick={toggleSelectMode}
+            type="button"
+          >
+            {selectMode ? <Check /> : <ListChecks />}
+            {selectMode ? 'Done' : 'Select'}
+          </Button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus />
+            Add role
+          </Button>
+        </div>
       }
     >
+      <AdminSearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search by name, role ID, or rubric ID"
+        aria-label="Search roles"
+        className="mb-4"
+      />
+
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load roles: {error.message}
         </div>
       ) : null}
 
-      <AdminDataView
-        columns={columns}
-        rows={loading && !roles ? null : sorted}
-        loading={loading}
-        rowKey={(r) => r.id}
-        onRowClick={(r) => setEditing(r)}
-        empty="No roles yet. Add one to get started."
-        sort={sort}
-        onSortChange={setSort}
-        rowActions={(r) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 min-h-9 w-9 min-w-9"
-                aria-label={`Actions for ${r.displayName}`}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setEditing(r)}>Edit</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      {bulkError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {bulkError}
+        </div>
+      ) : null}
+
+      <BulkActionBar
+        count={selected.size}
+        noun="role"
+        busy={bulkBusy}
+        onClear={clear}
+        actions={[
+          {
+            key: 'activate',
+            label: 'Activate',
+            icon: Power,
+            onClick: () => void bulkSetActive(true),
+          },
+          {
+            key: 'deactivate',
+            label: 'Deactivate',
+            icon: PowerOff,
+            onClick: () => void bulkSetActive(false),
+          },
+        ]}
       />
+
+      <div className={selected.size > 0 ? 'pb-20 md:pb-0' : undefined}>
+        <AdminDataView
+          columns={columns}
+          rows={loading && !roles ? null : sorted}
+          loading={loading}
+          rowKey={(r) => r.id}
+          empty={search ? 'No roles match that search.' : 'No roles yet. Add one to get started.'}
+          {...(selectMode
+            ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
+            : { onRowClick: (r: RoleRow) => setEditing(r) })}
+          sort={sort}
+          onSortChange={setSort}
+          rowActions={(r) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 min-h-9 w-9 min-w-9"
+                  aria-label={`Actions for ${r.displayName}`}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setEditing(r)}>Edit</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        />
+      </div>
 
       <RoleDialog open={showCreate} onOpenChange={setShowCreate} mode="create" existing={null} />
       <RoleDialog

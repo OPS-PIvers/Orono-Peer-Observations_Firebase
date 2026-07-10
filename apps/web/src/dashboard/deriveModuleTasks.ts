@@ -49,6 +49,7 @@ export function deriveModuleTasks(args: {
         cta: m.ctaUrl ? 'Open' : '',
         ctaUrl: m.ctaUrl ?? '',
         status,
+        urgent: false,
         completedLabel: null,
         percent: null,
         percentLabel: '',

@@ -1,6 +1,16 @@
 import type { DashboardSectionsConfig } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { SECTION_COPY, ST_BLURB, ST_HEADING, ST_ON } from './copyStrings';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  SECTION_COPY,
+  ST_BLURB,
+  ST_HEADING,
+  ST_ON,
+  ST_CYCLE_CLOSE_LABEL,
+  ST_CYCLE_CLOSE_BLURB,
+  ST_CYCLE_CLOSE_PLACEHOLDER,
+} from './copyStrings';
 
 /**
  * Section toggle list — one row per top-level area of the staff dashboard,
@@ -14,9 +24,13 @@ import { SECTION_COPY, ST_BLURB, ST_HEADING, ST_ON } from './copyStrings';
 export function SectionTilesEditor({
   value,
   onChange,
+  cycleCloseLabel,
+  onCycleCloseLabelChange,
 }: {
   value: DashboardSectionsConfig;
   onChange: (next: DashboardSectionsConfig) => void;
+  cycleCloseLabel: string;
+  onCycleCloseLabelChange: (next: string) => void;
 }) {
   const keys = Object.keys(SECTION_COPY) as (keyof DashboardSectionsConfig)[];
 
@@ -63,6 +77,23 @@ export function SectionTilesEditor({
           );
         })}
       </ul>
+
+      {/* Cycle close date input */}
+      <div className="mt-6 space-y-2">
+        <Label htmlFor="cycleCloseLabel" className="text-sm font-semibold">
+          {ST_CYCLE_CLOSE_LABEL}
+        </Label>
+        <p className="text-muted-foreground text-xs">{ST_CYCLE_CLOSE_BLURB}</p>
+        <Input
+          id="cycleCloseLabel"
+          type="text"
+          value={cycleCloseLabel}
+          onChange={(e) => onCycleCloseLabelChange(e.target.value)}
+          placeholder={ST_CYCLE_CLOSE_PLACEHOLDER}
+          maxLength={50}
+          className="mt-1"
+        />
+      </div>
     </section>
   );
 }

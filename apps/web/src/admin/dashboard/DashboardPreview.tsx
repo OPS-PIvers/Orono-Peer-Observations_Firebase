@@ -31,9 +31,15 @@ export interface DashboardPreviewProps {
   sections: DashboardSectionsConfig;
   steps: DashboardStep[];
   quickMaterials: DashboardQuickMaterial[];
+  cycleCloseLabel: string;
 }
 
-export function DashboardPreview({ sections, steps, quickMaterials }: DashboardPreviewProps) {
+export function DashboardPreview({
+  sections,
+  steps,
+  quickMaterials,
+  cycleCloseLabel,
+}: DashboardPreviewProps) {
   const tasks = useMemo(() => buildSampleCheckpoints(steps), [steps]);
 
   return (
@@ -43,7 +49,7 @@ export function DashboardPreview({ sections, steps, quickMaterials }: DashboardP
         firstName={SAMPLE_FIRST_NAME}
         yearTierLabel={SAMPLE_YEAR_TIER_LABEL}
         cycleYearLabel="2025 — 2026"
-        cycleCloseLabel="May 15"
+        cycleCloseLabel={cycleCloseLabel}
         sections={sections}
         tasks={tasks}
         quickMaterials={quickMaterials}

@@ -168,26 +168,35 @@ function buildNavItems(
   }
 
   // Staff (no special access)
+  const staffMain: NavItem[] = [
+    dashboardItem,
+    myRubricItem,
+    {
+      icon: ClipboardList,
+      label: 'Observations',
+      children: [{ label: 'View finalized observations', href: '/my-rubric' }],
+    },
+  ];
+
+  // Only add Work Product and Instructional Round nav entries when they exist
+  if (flags.hasWorkProduct) {
+    staffMain.push({
+      icon: FileText,
+      label: 'Work Product',
+      href: '/my-rubric',
+    });
+  }
+
+  if (flags.hasInstructionalRound) {
+    staffMain.push({
+      icon: Eye,
+      label: 'Instructional Round',
+      href: '/my-rubric',
+    });
+  }
+
   return {
-    main: [
-      dashboardItem,
-      myRubricItem,
-      {
-        icon: ClipboardList,
-        label: 'Observations',
-        children: [{ label: 'View finalized observations', href: '/my-rubric' }],
-      },
-      {
-        icon: FileText,
-        label: 'Work Product',
-        ...(flags.hasWorkProduct ? { href: '/my-rubric' } : { locked: true }),
-      },
-      {
-        icon: Eye,
-        label: 'Instructional Round',
-        ...(flags.hasInstructionalRound ? { href: '/my-rubric' } : { locked: true }),
-      },
-    ],
+    main: staffMain,
     meta: metaItems,
   };
 }

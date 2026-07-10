@@ -194,7 +194,7 @@ async function primaryCalendarId(email: string): Promise<string> {
 }
 
 /** Coerce a Firestore Timestamp / Date / ISO string into a JS Date. */
-function toDate(value: unknown): Date | null {
+export function toDate(value: unknown): Date | null {
   if (value instanceof Timestamp) return value.toDate();
   if (value instanceof Date) return value;
   if (typeof value === 'string') {
@@ -226,6 +226,32 @@ export interface ObservationEventIds {
   observed?: string;
 }
 
+/** The title/description text derived from a window + observation. Shared
+ *  between event creation and re-sync so both stay in lockstep. */
+export interface ObservationEventContent {
+  summary: string;
+  description: string;
+}
+
+/** Compute the calendar event summary/description for an observation,
+ *  falling back to the observation name when the window has no custom
+ *  title, and always appending a link back into the app. */
+export function buildObservationEventContent(
+  observation: Pick<Observation, 'observationId' | 'observationName'>,
+  window: Pick<ObservationWindow, 'calendarEventTitle' | 'calendarEventDescription'>,
+): ObservationEventContent {
+  const summary =
+    window.calendarEventTitle && window.calendarEventTitle.length > 0
+      ? window.calendarEventTitle
+      : observation.observationName || 'Peer Observation';
+
+  const link = `${APP_URL}/observations/${observation.observationId}`;
+  const baseDescription = window.calendarEventDescription ?? '';
+  const description = baseDescription ? `${baseDescription}\n\n${link}` : link;
+
+  return { summary, description };
+}
+
 /**
  * Insert ONE logical observation event onto whichever party calendars are
  * available. A shared `iCalUID` links the two copies so Google treats them as
@@ -246,14 +272,7 @@ export async function createObservationEvent(
     return {};
   }
 
-  const summary =
-    window.calendarEventTitle && window.calendarEventTitle.length > 0
-      ? window.calendarEventTitle
-      : observation.observationName || 'Peer Observation';
-
-  const link = `${APP_URL}/observations/${observation.observationId}`;
-  const baseDescription = window.calendarEventDescription ?? '';
-  const description = baseDescription ? `${baseDescription}\n\n${link}` : link;
+  const { summary, description } = buildObservationEventContent(observation, window);
 
   const iCalUID = `observation-${observation.observationId}@orono.k12.mn.us`;
   const sendUpdates: 'none' | 'all' = window.gcalSendUpdates === 'all' ? 'all' : 'none';
@@ -319,6 +338,80 @@ async function insertEvent(
     });
     return null;
   }
+}
+
+/** A busy interval on a user's real Google Calendar, in epoch milliseconds. */
+export interface FreeBusyInterval {
+  startMs: number;
+  endMs: number;
+}
+
+/**
+ * Query the connected user's primary calendar for busy intervals inside
+ * `[timeMin, timeMax]` via the Calendar freebusy API.
+ *
+ * Returns:
+ *   - `FreeBusyInterval[]` (possibly empty) when the lookup succeeded, or
+ *   - `null` when it could NOT run — calendar not connected, token revoked,
+ *     or the API errored. Callers must treat `null` as "unknown" and soft-fail
+ *     open (never block a booking on an outage). Never throws.
+ */
+export async function queryFreeBusy(
+  email: string,
+  timeMin: Date,
+  timeMax: Date,
+): Promise<FreeBusyInterval[] | null> {
+  try {
+    const cal = await getCalendarClientFor(email);
+    if (!cal) return null;
+    const calendarId = await primaryCalendarId(email);
+    const res = await cal.freebusy.query({
+      requestBody: {
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        items: [{ id: calendarId }],
+      },
+    });
+
+    // Google may key the response by the resolved calendar email rather than
+    // the literal requested id (e.g. 'primary'), so fall back to the sole entry.
+    const calendars = res.data.calendars ?? {};
+    const entry = calendars[calendarId] ?? Object.values(calendars)[0];
+    if (!entry) return null;
+    if (entry.errors && entry.errors.length > 0) {
+      logger.warn('queryFreeBusy: calendar returned errors (soft-fail)', {
+        email: email.toLowerCase(),
+        errors: entry.errors,
+      });
+      return null;
+    }
+
+    const busy: FreeBusyInterval[] = [];
+    for (const period of entry.busy ?? []) {
+      const start = period.start ? Date.parse(period.start) : Number.NaN;
+      const end = period.end ? Date.parse(period.end) : Number.NaN;
+      if (Number.isNaN(start) || Number.isNaN(end)) continue;
+      busy.push({ startMs: start, endMs: end });
+    }
+    return busy;
+  } catch (err) {
+    logger.warn('queryFreeBusy: lookup failed (soft-fail)', { email: email.toLowerCase(), err });
+    return null;
+  }
+}
+
+/**
+ * True when `[startMs, endMs)` overlaps any busy interval. No travel-buffer
+ * padding is applied — external events carry no location information, so
+ * only a true time collision counts (the internal peBusyIntervals ledger is
+ * what enforces travel buffers between the app's own bookings).
+ */
+export function overlapsBusy(
+  startMs: number,
+  endMs: number,
+  busy: readonly FreeBusyInterval[],
+): boolean {
+  return busy.some((b) => startMs < b.endMs && b.startMs < endMs);
 }
 
 /** Best-effort delete of a previously created event. Never throws. */

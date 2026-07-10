@@ -14,6 +14,10 @@ export interface EmailShellOptions {
   logoUrl?: string | null;
   /** Optional sign-in URL rendered in the footer. */
   signInLink?: string | null;
+  /** Optional link to the recipient's email-preferences section (Profile
+   *  page). Rendered in the footer next to the sign-in link so non-critical
+   *  mail always carries a self-service opt-out path. */
+  preferencesLink?: string | null;
 }
 
 const BLUE = '#2d3f89';
@@ -49,6 +53,9 @@ export function renderEmailShell(bodyHtml: string, opts: EmailShellOptions): str
   const footerLink = opts.signInLink
     ? ` &middot; <a href="${escapeHtml(opts.signInLink)}" style="color:#cdd3e8;">Sign in</a>`
     : '';
+  const preferencesLink = opts.preferencesLink
+    ? ` &middot; <a href="${escapeHtml(opts.preferencesLink)}" style="color:#cdd3e8;">Email preferences</a>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -82,7 +89,7 @@ export function renderEmailShell(bodyHtml: string, opts: EmailShellOptions): str
           <tr>
             <td style="padding:18px 32px;background:${BLUE_DARK};color:#cdd3e8;font-family:'Roboto',Arial,sans-serif;font-size:12px;line-height:1.5;">
               <strong style="color:#ffffff;">${appName}</strong><br />
-              Orono Public Schools${footerLink}
+              Orono Public Schools${footerLink}${preferencesLink}
             </td>
           </tr>
         </table>

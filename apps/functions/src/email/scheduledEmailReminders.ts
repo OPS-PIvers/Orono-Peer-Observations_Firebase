@@ -2,7 +2,13 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Role } from '@ops/shared';
+import {
+  COLLECTIONS,
+  OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
+  workProductAnswerHasText,
+  type Role,
+} from '@ops/shared';
 import {
   formatDate,
   loadActiveTemplate,
@@ -140,6 +146,7 @@ export const scheduledEmailReminders = onSchedule(
           subject: substituteVariables(preObsTemplate.subject, vars),
           html: substituteVariables(preObsTemplate.bodyHtml, vars),
           mailDocId: `preobs-${docSnap.id}-${String(daysAhead)}d`,
+          triggerType: 'scheduled.preObservation',
           auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.preObservation' },
         }).catch((err: unknown) =>
           logger.error('scheduledEmailReminders: preObs send failed', err),
@@ -170,7 +177,9 @@ export const scheduledEmailReminders = onSchedule(
           : [];
         const hasAnyAnswer = answers.some(
           (a) =>
-            typeof a === 'object' && a !== null && (a as Record<string, string>)['answer']?.trim(),
+            typeof a === 'object' &&
+            a !== null &&
+            workProductAnswerHasText((a as Record<string, unknown>)['answer']),
         );
         if (hasAnyAnswer) continue;
 
@@ -193,6 +202,7 @@ export const scheduledEmailReminders = onSchedule(
           subject: substituteVariables(incompleteTemplate.subject, vars),
           html: substituteVariables(incompleteTemplate.bodyHtml, vars),
           mailDocId: `incomplete-${docSnap.id}`,
+          triggerType: 'scheduled.reminderIncomplete',
           auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.reminderIncomplete' },
         }).catch((err: unknown) =>
           logger.error('scheduledEmailReminders: incomplete send failed', err),

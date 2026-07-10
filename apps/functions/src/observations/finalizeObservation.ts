@@ -4,18 +4,25 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
+  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
   isAdminRole,
   roleYearMappingDocId,
+  workProductAnswerHasText,
+  type AppSettings,
   type Observation,
   type Role,
   type RoleYearMapping,
   type Rubric,
+  type RubricDomain,
+  type WorkProductQuestion,
 } from '@ops/shared';
 import {
   ensureObservationFolder,
   getDriveLinks,
+  replaceFileContent,
   shareWithUser,
   uploadFileToFolder,
 } from '../lib/drive.js';
@@ -147,6 +154,53 @@ export const finalizeObservation = onCall(
       const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
       const activeComponentIds = mapping?.assignedComponentIds ?? [];
 
+      // Freeze the rubric content actually used so the finalized read-only
+      // view renders the criteria text as it stood at finalize time — later
+      // rubric edits must never silently rewrite the historical record (the
+      // archived PDF already keeps the old wording; this keeps the in-app
+      // view consistent with it). Domains are resolved the way the PDF
+      // template resolves them: narrowed to the role-year mapping when one
+      // exists, falling back to the full rubric otherwise.
+      const snapshotDomains = resolveSnapshotDomains(rubric.domains, activeComponentIds);
+
+      // Work Product / Instructional Round observations store their substance
+      // as Q&A answers keyed on questionId. Fetch the matching question bank
+      // so the PDF can print each answer under its question text. Every
+      // question of the type is fetched (not just active ones) so answers to
+      // since-deactivated questions still make it into the permanent record.
+      const questionType =
+        obs.type === OBSERVATION_TYPES.workProduct
+          ? 'work-product'
+          : obs.type === OBSERVATION_TYPES.instructionalRound
+            ? 'instructional-round'
+            : null;
+      let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text'>[] = [];
+      if (questionType) {
+        const questionsSnap = await db
+          .collection(COLLECTIONS.workProductQuestions)
+          .where('type', '==', questionType)
+          .get();
+        const answeredIds = new Set(
+          (obs.workProductAnswers ?? [])
+            .filter((a) => workProductAnswerHasText(a.answer))
+            .map((a) => a.questionId),
+        );
+        workProductQuestions = questionsSnap.docs
+          .map((doc) => doc.data() as WorkProductQuestion)
+          .filter((q) => q.isActive || answeredIds.has(q.questionId))
+          .sort((a, b) => a.order - b.order)
+          .map((q) => ({ questionId: q.questionId, text: q.text }));
+      }
+
+      // Thread admin-configured branding into the PDF so the archived
+      // record matches the web app / finalized-observation email header.
+      // Missing/unset appSettings is fine — the renderer falls back to the
+      // packaged OPS look.
+      const appSettingsSnap = await db
+        .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
+        .get();
+      const branding = (appSettingsSnap.data() as AppSettings | undefined)?.branding;
+
       const parentFolderId = PARENT_FOLDER_ID.value();
       if (!parentFolderId) {
         throw new HttpsError(
@@ -164,6 +218,8 @@ export const finalizeObservation = onCall(
           observation: { ...obs, observationId: obs.id, observedRole: role.displayName },
           rubric,
           activeComponentIds,
+          workProductQuestions,
+          ...(branding ? { branding } : {}),
         });
       } catch (err) {
         logger.error('finalizeObservation: PDF render failed', err);
@@ -181,13 +237,30 @@ export const finalizeObservation = onCall(
           existingFolderId: obs.driveFolderId,
         });
         const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
-        const uploaded = await uploadFileToFolder({
-          folderId,
-          filename,
-          mimeType: 'application/pdf',
-          body: pdfBuffer,
-        });
-        pdfFileId = uploaded.fileId;
+        // Re-finalize after an admin reopen: replace the previous PDF's
+        // content in place so the fileId — and any link already emailed or
+        // bookmarked — stays stable instead of a duplicate PDF piling up in
+        // the folder. Falls back to a fresh upload if the old file is gone.
+        let replacedFileId: string | null = null;
+        if (obs.pdfDriveFileId) {
+          replacedFileId = await replaceFileContent({
+            fileId: obs.pdfDriveFileId,
+            filename,
+            mimeType: 'application/pdf',
+            body: pdfBuffer,
+          });
+        }
+        if (replacedFileId) {
+          pdfFileId = replacedFileId;
+        } else {
+          const uploaded = await uploadFileToFolder({
+            folderId,
+            filename,
+            mimeType: 'application/pdf',
+            body: pdfBuffer,
+          });
+          pdfFileId = uploaded.fileId;
+        }
         // Grant the observed staff Reader on the folder so they can browse
         // both the PDF and any audio recordings inside.
         await shareWithUser({
@@ -209,6 +282,13 @@ export const finalizeObservation = onCall(
         finalizedAt,
         pdfDriveFileId: pdfFileId,
         driveFolderId: folderId,
+        rubricSnapshot: {
+          rubricId: rubric.rubricId,
+          displayName: rubric.displayName,
+          domains: snapshotDomains,
+          assignedComponentIds: snapshotDomains.flatMap((d) => d.components.map((c) => c.id)),
+          capturedAt: new Date(),
+        },
         lastModifiedAt: finalizedAt,
         finalizeStartedAt: FieldValue.delete(),
       });
@@ -268,4 +348,23 @@ export const finalizeObservation = onCall(
 
 function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Narrow rubric domains to the components active for the observed
+ * role/year, dropping domains that end up empty. Mirrors the PDF template's
+ * allow-list semantics: an empty `activeComponentIds` means "no mapping
+ * narrows this" and keeps the full rubric — as does a mapping that would
+ * filter everything out, so the stored snapshot is never empty.
+ */
+function resolveSnapshotDomains(
+  domains: RubricDomain[],
+  activeComponentIds: string[],
+): RubricDomain[] {
+  if (activeComponentIds.length === 0) return domains;
+  const allow = new Set(activeComponentIds);
+  const filtered = domains
+    .map((d) => ({ ...d, components: d.components.filter((c) => allow.has(c.id)) }))
+    .filter((d) => d.components.length > 0);
+  return filtered.length > 0 ? filtered : domains;
 }

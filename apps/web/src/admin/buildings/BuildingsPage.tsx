@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MoreVertical, Plus } from 'lucide-react';
+import { Check, ListChecks, MoreVertical, Plus, Power, PowerOff } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, PILL_COLORS, type Building, type PillColorName } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -31,6 +31,10 @@ import {
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
 import { PILL_COLOR_CLASSES } from '@/admin/_shared/pillColors';
+import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
+import { BulkActionBar } from '@/admin/_shared/BulkActionBar';
+import { bulkMerge } from '@/admin/_shared/bulkWrite';
+import { useRowSelection } from '@/admin/_shared/useRowSelection';
 
 function slugify(s: string): string {
   return s
@@ -55,6 +59,18 @@ export function BuildingsPage() {
     key: 'displayName',
     direction: 'asc',
   });
+  const [search, setSearch] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { selectMode, selected, toggleRow, toggleAll, clear, toggleSelectMode } = useRowSelection();
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return buildings ?? [];
+    return (buildings ?? []).filter(
+      (b) => b.displayName.toLowerCase().includes(q) || b.buildingId.toLowerCase().includes(q),
+    );
+  }, [buildings, search]);
 
   const columns: ColumnDef<BuildingRow>[] = useMemo(
     () => [
@@ -90,62 +106,127 @@ export function BuildingsPage() {
     [],
   );
 
-  const sorted = useMemo(
-    () => sortRows(buildings ?? [], columns, sort),
-    [buildings, columns, sort],
-  );
+  const sorted = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
+
+  async function bulkSetActive(isActive: boolean) {
+    setBulkError(null);
+    setBulkBusy(true);
+    try {
+      await bulkMerge(COLLECTIONS.buildings, Array.from(selected), { isActive });
+      clear();
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Bulk update failed.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   return (
     <PageHeader
       variant="light"
       breadcrumb={['Admin', 'Buildings']}
       title="Buildings"
-      subtitle={`${buildings ? `${String(buildings.length)} buildings` : 'Loading…'} — staff are assigned to one or more of these locations.`}
+      subtitle={
+        buildings
+          ? `${String(sorted.length)} of ${String(buildings.length)} buildings — staff are assigned to one or more of these locations.`
+          : 'Loading…'
+      }
       actions={
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus />
-          Add building
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={selectMode ? 'default' : 'outline'}
+            onClick={toggleSelectMode}
+            type="button"
+          >
+            {selectMode ? <Check /> : <ListChecks />}
+            {selectMode ? 'Done' : 'Select'}
+          </Button>
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus />
+            Add building
+          </Button>
+        </div>
       }
     >
+      <AdminSearchInput
+        value={search}
+        onChange={setSearch}
+        placeholder="Search by name or building ID"
+        aria-label="Search buildings"
+        className="mb-4"
+      />
+
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load buildings: {error.message}
         </div>
       ) : null}
 
-      <AdminDataView
-        columns={columns}
-        rows={loading && !buildings ? null : sorted}
-        loading={loading}
-        rowKey={(b) => b.id}
-        onRowClick={(b) => setEditing(b)}
-        empty="No buildings yet. Add one to get started."
-        sort={sort}
-        onSortChange={setSort}
-        rowActions={(b) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 min-h-9 w-9 min-w-9"
-                aria-label={`Actions for ${b.displayName}`}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setEditing(b)}>Edit</DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => navigate(`/admin/buildings/${b.buildingId}/schedule`)}
-              >
-                Edit schedule
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+      {bulkError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
+          {bulkError}
+        </div>
+      ) : null}
+
+      <BulkActionBar
+        count={selected.size}
+        noun="building"
+        busy={bulkBusy}
+        onClear={clear}
+        actions={[
+          {
+            key: 'activate',
+            label: 'Activate',
+            icon: Power,
+            onClick: () => void bulkSetActive(true),
+          },
+          {
+            key: 'deactivate',
+            label: 'Deactivate',
+            icon: PowerOff,
+            onClick: () => void bulkSetActive(false),
+          },
+        ]}
       />
+
+      <div className={selected.size > 0 ? 'pb-20 md:pb-0' : undefined}>
+        <AdminDataView
+          columns={columns}
+          rows={loading && !buildings ? null : sorted}
+          loading={loading}
+          rowKey={(b) => b.id}
+          empty={
+            search ? 'No buildings match that search.' : 'No buildings yet. Add one to get started.'
+          }
+          {...(selectMode
+            ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
+            : { onRowClick: (b: BuildingRow) => setEditing(b) })}
+          sort={sort}
+          onSortChange={setSort}
+          rowActions={(b) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 min-h-9 w-9 min-w-9"
+                  aria-label={`Actions for ${b.displayName}`}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setEditing(b)}>Edit</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/admin/buildings/${b.buildingId}/schedule`)}
+                >
+                  Edit schedule
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        />
+      </div>
 
       <BuildingDialog
         open={showCreate}

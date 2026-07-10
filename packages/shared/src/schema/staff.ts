@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
 import { OBSERVATION_YEARS } from '../constants.js';
+import { DEFAULT_EMAIL_PREFERENCES, emailPreferences } from './emailTemplate.js';
 
 /**
  * /staff/{email} — staff directory.
@@ -44,6 +45,10 @@ export const staff = z.object({
   isActive: z.boolean().default(true),
   /** Grants admin-console access independent of professional role. */
   hasAdminAccess: z.boolean().default(false),
+  /** Self-service opt-in/out per non-critical email category (see
+   *  emailTemplate.ts EMAIL_TRIGGER_CATEGORY). Missing/legacy docs parse as
+   *  all-true — fully opted in, matching pre-existing behavior. */
+  emailPreferences: emailPreferences.default(DEFAULT_EMAIL_PREFERENCES),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
@@ -53,3 +58,32 @@ export type Staff = z.infer<typeof staff>;
  *  added server-side). */
 export const staffInput = staff.omit({ createdAt: true, updatedAt: true });
 export type StaffInput = z.infer<typeof staffInput>;
+
+/**
+ * One staff member's planned change in an annual cycle rollover (see the
+ * applyStaffRollover callable). `fromYear` is an optimistic-concurrency
+ * guard: the server skips (and reports) any row whose stored year no longer
+ * matches what the admin previewed.
+ */
+export const staffRolloverEntry = z.object({
+  email,
+  fromYear: staffYear,
+  toYear: staffYear,
+  toSummativeYear: z.boolean(),
+});
+export type StaffRolloverEntry = z.infer<typeof staffRolloverEntry>;
+
+export const applyStaffRolloverInput = z.object({
+  entries: z.array(staffRolloverEntry).min(1).max(1000),
+});
+export type ApplyStaffRolloverInput = z.infer<typeof applyStaffRolloverInput>;
+
+/** Callable response — per-email outcomes so the admin UI can report
+ *  exactly what was (not) written. */
+export interface ApplyStaffRolloverResult {
+  applied: number;
+  /** Emails whose stored year no longer matched `fromYear` (concurrent edit). */
+  skippedStale: string[];
+  /** Emails with no /staff doc (deleted since the preview loaded). */
+  missing: string[];
+}

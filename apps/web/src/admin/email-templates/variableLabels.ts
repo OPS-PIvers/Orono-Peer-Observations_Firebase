@@ -32,8 +32,11 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   slotPeriodName: 'Class period',
   buildingName: 'Building name',
   cancellationReason: 'Cancellation reason',
+  previousSlotDateLocal: 'Previous slot date',
+  previousSlotStartLocal: 'Previous slot start time',
   windowStartLocal: 'Window start date',
   windowEndLocal: 'Window end date',
+  scheduleChangeReason: 'Bell-schedule change reason',
 };
 
 /** Friendly label for a variable key, falling back to the raw key. */

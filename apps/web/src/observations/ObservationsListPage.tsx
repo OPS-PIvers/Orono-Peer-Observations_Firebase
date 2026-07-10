@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
-import { type QueryConstraint, limit, orderBy, where } from 'firebase/firestore';
+import {
+  type QueryConstraint,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -11,6 +19,7 @@ import {
   type Role,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -27,11 +36,16 @@ import {
 } from '@/components/ui/table';
 
 type StatusFilter = ObservationStatus | 'all';
+type ObservationRow = Observation & { id: string };
 
 // This collection accumulates every observation district-wide, forever —
 // bound the live query with a page size and grow it via "Load more" rather
 // than ever streaming the full history.
 const PAGE_SIZE = 50;
+
+// Cap on each individual "search older records" lookup query — keeps the
+// on-demand server-side search bounded, same spirit as PAGE_SIZE above.
+const EXTRA_SEARCH_LIMIT = 25;
 
 /**
  * Landing page for PEs and admins (special-access roles). Shows the
@@ -112,12 +126,124 @@ export function ObservationsListPage() {
     );
   }, [observations, search]);
 
+  // Bounded server-side lookup, triggered on demand when the free-text
+  // search comes up empty against the loaded page. Runs exact-match
+  // queries on the email fields and prefix (`>=`/`<= `) queries on the
+  // name fields, scoped the same way the live subscription is (status
+  // filter + "mine only" for non-admin PEs), and merges hits into the view.
+  const [extraResults, setExtraResults] = useState<ObservationRow[] | null>(null);
+  const [extraSearchedFor, setExtraSearchedFor] = useState<string | null>(null);
+  const [searchingExtra, setSearchingExtra] = useState(false);
+  const [extraSearchError, setExtraSearchError] = useState<string | null>(null);
+
+  // Any change that invalidates the extra results (new search text, or the
+  // scope/filters the search was run under changing) clears them so a stale
+  // "no matches" doesn't linger.
+  useEffect(() => {
+    setExtraResults(null);
+    setExtraSearchedFor(null);
+    setExtraSearchError(null);
+  }, [search, statusFilter, showAllPEs, isAdmin, user?.email]);
+
+  async function searchOlderRecords() {
+    const q = search.trim();
+    if (!q) return;
+    setSearchingExtra(true);
+    setExtraSearchError(null);
+    try {
+      const qLower = q.toLowerCase();
+      const scope =
+        !isAdmin && !showAllPEs && user?.email
+          ? where('observerEmail', '==', user.email.toLowerCase())
+          : null;
+      const ref = collection(db, COLLECTIONS.observations);
+      // Firestore string ranges are case-sensitive but the local filter this
+      // lookup backstops matches case-insensitively — run each name prefix
+      // query with the text as typed plus lowercase and Title Case variants
+      // so e.g. "smith" still finds "Smith Jones" in older records.
+      const prefixVariants = Array.from(
+        new Set([
+          q,
+          qLower,
+          qLower.replace(/(^|\s)(\S)/g, (_m, ws: string, ch: string) => ws + ch.toUpperCase()),
+        ]),
+      );
+      const queryPlans: QueryConstraint[][] = [
+        [
+          ...(scope ? [scope] : []),
+          where('observedEmail', '==', qLower),
+          limit(EXTRA_SEARCH_LIMIT),
+        ],
+      ];
+      for (const prefix of prefixVariants) {
+        for (const field of ['observedName', 'observationName'] as const) {
+          queryPlans.push([
+            ...(scope ? [scope] : []),
+            where(field, '>=', prefix),
+            where(field, '<=', prefix + '\uf8ff'),
+            orderBy(field),
+            limit(EXTRA_SEARCH_LIMIT),
+          ]);
+        }
+      }
+      // observerEmail exact-match is only a distinct query when the view
+      // isn't already scoped to "mine" — otherwise it's redundant with scope.
+      if (!scope) {
+        queryPlans.push([where('observerEmail', '==', qLower), limit(EXTRA_SEARCH_LIMIT)]);
+      }
+
+      const snaps = await Promise.all(queryPlans.map((cs) => getDocs(query(ref, ...cs))));
+      const loadedIds = new Set((observations ?? []).map((o) => o.id));
+      const merged = new Map<string, ObservationRow>();
+      for (const snap of snaps) {
+        for (const d of snap.docs) {
+          if (loadedIds.has(d.id)) continue;
+          merged.set(d.id, { ...(d.data() as Observation), id: d.id });
+        }
+      }
+      // Status wasn't included as a query-level equality (to avoid a
+      // combinatorial explosion of composite indexes) — apply it client-side
+      // over the small, already-bounded result set instead.
+      const results = Array.from(merged.values()).filter(
+        (o) => statusFilter === 'all' || o.status === statusFilter,
+      );
+      setExtraResults(results);
+      setExtraSearchedFor(q);
+    } catch (err) {
+      setExtraSearchError(err instanceof Error ? err.message : 'Failed to search older records');
+    } finally {
+      setSearchingExtra(false);
+    }
+  }
+
+  const combined = useMemo<(ObservationRow & { isExtraResult: boolean })[]>(() => {
+    const primary = filtered.map((o) => ({ ...o, isExtraResult: false }));
+    if (!extraResults || extraResults.length === 0) return primary;
+    // Re-dedupe against the live page at render time: extraResults was only
+    // deduped when the search ran, and "Load more" can later pull the same
+    // doc into the subscription — without this a row (and its React key)
+    // would appear twice.
+    const primaryIds = new Set(primary.map((o) => o.id));
+    return [
+      ...primary,
+      ...extraResults
+        .filter((o) => !primaryIds.has(o.id))
+        .map((o) => ({ ...o, isExtraResult: true })),
+    ];
+  }, [filtered, extraResults]);
+
+  const hasSearchText = search.trim().length > 0;
+  const noLocalMatches = hasSearchText && filtered.length === 0;
+  const extraSearchStale = extraSearchedFor !== search.trim();
+
   return (
     <PageHeader
       title="Observations"
       subtitle={
         observations
-          ? `${String(filtered.length)} of ${String(observations.length)} observations`
+          ? extraResults && extraResults.length > 0
+            ? `${String(combined.length)} of ${String(observations.length)} loaded (+${String(extraResults.length)} found in older records)`
+            : `${String(filtered.length)} of ${String(observations.length)} observations`
           : 'Loading…'
       }
       actions={
@@ -202,19 +328,54 @@ export function ObservationsListPage() {
                   </TableCell>
                 </TableRow>
               ))
-            ) : filtered.length === 0 ? (
+            ) : observations?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  {observations?.length === 0
-                    ? 'No observations yet. Click "New observation" to start one.'
-                    : 'No observations match those filters.'}
+                  No observations yet. Click &quot;New observation&quot; to start one.
+                </TableCell>
+              </TableRow>
+            ) : combined.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
+                  {noLocalMatches ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <p>
+                        Searched all {String(observations?.length ?? 0)} loaded observation
+                        {observations?.length === 1 ? '' : 's'}; no matches.
+                      </p>
+                      {extraResults !== null && !extraSearchStale ? (
+                        <p>No matches in older records either.</p>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void searchOlderRecords()}
+                          disabled={searchingExtra}
+                        >
+                          {searchingExtra ? 'Searching older records…' : 'Search older records'}
+                        </Button>
+                      )}
+                      {extraSearchError ? (
+                        <p className="text-destructive text-xs">{extraSearchError}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    'No observations match those filters.'
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((o) => (
+              combined.map((o) => (
                 <TableRow key={o.id}>
                   <TableCell>
-                    <div className="font-medium">{o.observedName || o.observedEmail}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{o.observedName || o.observedEmail}</span>
+                      {o.isExtraResult ? (
+                        <span className="border-border text-muted-foreground inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] whitespace-nowrap">
+                          Older record
+                        </span>
+                      ) : null}
+                    </div>
                     {o.observationName ? (
                       <div className="text-muted-foreground text-xs">{o.observationName}</div>
                     ) : null}

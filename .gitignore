@@ -27,6 +27,10 @@ ui-debug.log
 # Emulator data (we keep ./fixtures/seed but not ephemeral runtime exports)
 .emulator-data/
 
+# Firestore data exports (scripts/export) — contain staff/observation PII,
+# never commit
+exports/
+
 # IDE
 .vscode/
 .idea/

@@ -7,6 +7,7 @@ import {
   DEFAULT_SCHEDULING_SETTINGS,
   type AppSettings,
   type BookingMode,
+  type GcalConflictPolicy,
   type SchedulingSettings,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
@@ -245,6 +246,23 @@ export function SchedulingSettingsPage() {
               </option>
               <option value="all">Let Google send native calendar invites</option>
             </select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Observer calendar conflicts</Label>
+            <select
+              value={form.gcalConflictPolicy}
+              onChange={(e) => set('gcalConflictPolicy', e.target.value as GcalConflictPolicy)}
+              className="border-input h-9 max-w-xs rounded-md border bg-white px-2 text-sm"
+            >
+              <option value="block">Block booking times the observer is busy</option>
+              <option value="warn">Allow but warn the booker</option>
+              <option value="ignore">Don&apos;t check the observer&apos;s calendar</option>
+            </select>
+            <p className="text-muted-foreground text-xs">
+              Checks the observer&apos;s real Google Calendar (free/busy) when staff book, and
+              badges busy times in the slot picker. Skipped automatically if the observer
+              hasn&apos;t connected their calendar or the lookup fails.
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input

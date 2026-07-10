@@ -49,6 +49,12 @@ export const STAFF_SUBCOLLECTIONS = {
   moduleProgress: 'moduleProgress',
 } as const;
 
+/** Subcollections under /buildingSchedules/{buildingId}. */
+export const BUILDING_SCHEDULE_SUBCOLLECTIONS = {
+  /** Archived year snapshots and the staged next-year draft. */
+  versions: 'versions',
+} as const;
+
 /** Observation window lifecycle states. */
 export const OBSERVATION_WINDOW_STATUS = {
   open: 'open',

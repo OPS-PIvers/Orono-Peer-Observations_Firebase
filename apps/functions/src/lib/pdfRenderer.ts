@@ -1,6 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { defineString } from 'firebase-functions/params';
-import type { Observation, Rubric } from '@ops/shared';
+import type { Branding, Observation, Rubric, WorkProductQuestion } from '@ops/shared';
 
 /**
  * URL of the deployed pdf-renderer Cloud Run service. Configured at deploy
@@ -19,6 +19,14 @@ export interface RenderObservationArgs {
   observation: Observation;
   rubric: Rubric;
   activeComponentIds: string[];
+  /** Question bank for Work Product / Instructional Round observations, in
+   *  display order, so the renderer can pair `workProductAnswers` with their
+   *  question text. Omit for Standard observations. */
+  workProductQuestions?: Pick<WorkProductQuestion, 'questionId' | 'text'>[];
+  /** appSettings.branding (logoUrl/appName/primaryColor), so the archived
+   *  PDF matches the web app and email branding. Omit to render with the
+   *  packaged OPS defaults. */
+  branding?: Pick<Branding, 'appName' | 'logoUrl' | 'primaryColor'>;
 }
 
 /**

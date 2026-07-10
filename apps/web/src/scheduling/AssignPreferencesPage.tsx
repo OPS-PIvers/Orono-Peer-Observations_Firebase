@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, CheckCircle2, Wand2 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -24,6 +24,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { functions } from '@/lib/firebase';
+import { AutoAssignDialog } from './AutoAssignDialog';
+import type { PreferenceDoc, SlotDoc } from './autoAssignPreferences';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
 
 interface AssignResult {
@@ -35,8 +37,7 @@ const assignFromPreferenceFn = httpsCallable<AssignObservationFromPreferenceInpu
   'assignObservationFromPreference',
 );
 
-type SlotDoc = ObservationSlot & { id: string };
-type PrefDoc = ObservationPreference & { id: string };
+type PrefDoc = PreferenceDoc;
 
 const SELECT_CLASS = 'border-input bg-background h-10 rounded-md border px-2 text-sm';
 
@@ -63,12 +64,18 @@ export function AssignPreferencesPage() {
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [autoAssignOpen, setAutoAssignOpen] = useState(false);
 
   const sortedPrefs = useMemo(() => {
     return (preferences ?? [])
       .slice()
       .sort((a, b) => a.preferredDateYMD.localeCompare(b.preferredDateYMD));
   }, [preferences]);
+
+  const pendingCount = useMemo(
+    () => sortedPrefs.filter((p) => p.assignedSlotId == null).length,
+    [sortedPrefs],
+  );
 
   function availableSlotsFor(pref: PrefDoc): SlotDoc[] {
     return (slots ?? [])
@@ -108,15 +115,28 @@ export function AssignPreferencesPage() {
         windowDoc ? `${windowDoc.startDate} – ${windowDoc.endDate}` : 'Day-preference window'
       }
       actions={
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/observations/windows')}
-          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Back
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDayPreference && pendingCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAutoAssignOpen(true)}
+              className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <Wand2 className="h-4 w-4" />
+              Auto-assign all
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/observations/windows')}
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </div>
       }
     >
       {error ? (
@@ -126,6 +146,17 @@ export function AssignPreferencesPage() {
         >
           {error}
         </div>
+      ) : null}
+
+      {windowDoc && windowId ? (
+        <AutoAssignDialog
+          open={autoAssignOpen}
+          onOpenChange={setAutoAssignOpen}
+          windowId={windowId}
+          preferences={sortedPrefs}
+          slots={slots ?? []}
+          window={windowDoc}
+        />
       ) : null}
 
       {windowLoading && !windowDoc ? (

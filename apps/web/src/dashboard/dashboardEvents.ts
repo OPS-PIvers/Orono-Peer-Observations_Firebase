@@ -1,5 +1,6 @@
 import {
   OBSERVATION_STATUS,
+  workProductAnswerHasText,
   type AppSettings,
   type BooleanEvent,
   type DateSource,
@@ -29,7 +30,10 @@ export interface DeriveContext {
   workProductQuestionsCount: number;
   instructionalRoundQuestionsCount: number;
   appSettings: AppSettings | null;
-  openBooking: { windowId: string; token: string } | null;
+  /** The open self-scheduling window this staff member is invited to but
+   *  hasn't booked yet. `windowEndDate` (booking deadline) is threaded
+   *  through here rather than a separate global lookup. */
+  openBooking: { windowId: string; token: string; endDate: Date | null } | null;
   /** True when the staff member has booked a slot in any invited window. */
   hasBookedSlot: boolean;
   hasWorkProduct: boolean;
@@ -106,7 +110,10 @@ export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
   },
 };
 
-export const DATE_SOURCE_FN: Record<DateSource, (obs: Observation | null) => Date | null> = {
+export const DATE_SOURCE_FN: Record<
+  DateSource,
+  (obs: Observation | null, ctx: DeriveContext) => Date | null
+> = {
   none: () => null,
   preObsDate: (obs) => toDate(obs?.preObsDate),
   observationDate: (obs) => toDate(obs?.observationDate),
@@ -114,6 +121,7 @@ export const DATE_SOURCE_FN: Record<DateSource, (obs: Observation | null) => Dat
   finalizedAt: (obs) => toDate(obs?.finalizedAt),
   createdAt: (obs) => toDate(obs?.createdAt),
   lastModifiedAt: (obs) => toDate(obs?.lastModifiedAt),
+  windowEndDate: (_obs, ctx) => ctx.openBooking?.endDate ?? null,
 };
 
 /** answered / total for the in-progress bar, keyed by the watched kind. */
@@ -122,7 +130,8 @@ export function responseProgress(
   obs: Observation | null,
   kind: WatchedKind,
 ): { answered: number; total: number } {
-  const answered = obs?.workProductAnswers?.filter((a) => a.answer.trim() !== '').length ?? 0;
+  const answered =
+    obs?.workProductAnswers?.filter((a) => workProductAnswerHasText(a.answer)).length ?? 0;
   const total =
     kind === 'instructionalRound'
       ? ctx.instructionalRoundQuestionsCount

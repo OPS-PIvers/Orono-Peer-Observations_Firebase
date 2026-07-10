@@ -41,7 +41,12 @@ describe('/staff', () => {
     await assertSucceeds(getDoc(doc(db, 'staff', email)));
   });
 
-  it('blocks a teacher from reading another staff doc', async () => {
+  it('blocks a domain teacher from getting a colleague staff doc', async () => {
+    // Staff docs carry evaluation-cycle status (year/summativeYear), the
+    // admin flag, and email preferences — none of a colleague's business.
+    // District emails are predictable, so a domain-wide `get` would be
+    // enumerable in practice; the Staff Dashboard's Peer Evaluator card
+    // reads the denormalized observerName on the observation doc instead.
     const me = 'a@orono.k12.mn.us';
     const other = 'b@orono.k12.mn.us';
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

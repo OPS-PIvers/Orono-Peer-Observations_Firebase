@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Loader2, Mic, RefreshCw, Sparkles, Square, Upload } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  FileInput,
+  Loader2,
+  Mic,
+  RefreshCw,
+  Sparkles,
+  Square,
+  Upload,
+} from 'lucide-react';
 import { getIdToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
+import type { TranscriptionJob } from '@ops/shared';
 import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/auth/AuthProvider';
 import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { cn } from '@/lib/utils';
+import { useTranscriptionJobs } from './useTranscriptionJobs';
 
 interface RequestTranscriptionResponse {
   jobId?: string;
@@ -25,6 +38,9 @@ export interface AudioRecorderProps {
   /** Notifies the parent when recording phase changes — used by the
    *  toolbar to render a red-dot indicator while recording is in flight. */
   onPhaseChange?: (phase: Phase) => void;
+  /** Appends the finished transcript for a recording into the observation's
+   *  script doc. Omit to hide the "Insert into script" action. */
+  onInsertTranscript?: ((audioFileId: string) => void) | undefined;
 }
 
 export type Phase = 'idle' | 'recording' | 'uploading' | 'error';
@@ -47,6 +63,7 @@ export function AudioRecorder({
   readOnly = false,
   onUploaded,
   onPhaseChange,
+  onInsertTranscript,
 }: AudioRecorderProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   useEffect(() => {
@@ -54,10 +71,21 @@ export function AudioRecorder({
   }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  /** fileIds with a transcription request in flight (local optimistic). */
-  const [transcribing, setTranscribing] = useState<Set<string>>(new Set());
-  const [transcribeError, setTranscribeError] = useState<Record<string, string>>({});
+  /** Request-time failures (e.g. the callable itself rejecting, before a
+   *  job doc even exists) — separate from a job's own `status: 'Failed'`,
+   *  which is surfaced from `jobsByAudioFileId` below. */
+  const [requestError, setRequestError] = useState<Record<string, string>>({});
+  /** fileIds whose transcript has been inserted into the script this
+   *  session (local feedback only — inserting again is always allowed). */
+  const [insertedIds, setInsertedIds] = useState<Set<string>>(new Set());
   const transcriptionEnabled = useGeminiFeatures().audioTranscription.enabled;
+  const { user } = useAuth();
+  // Job docs are the source of truth for in-flight/failed state so it
+  // survives a page reload — no local "transcribing" flag to lose.
+  const { jobsByAudioFileId } = useTranscriptionJobs(
+    observationId,
+    user?.email?.toLowerCase() ?? null,
+  );
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -65,38 +93,44 @@ export function AudioRecorder({
 
   const requestTranscription = useCallback(
     async (audioFileId: string) => {
-      setTranscribeError((prev) => {
+      // A job for this file is already Pending/Running — the server is
+      // idempotent about this too, but skip the round-trip client-side.
+      const inflightStatus = jobsByAudioFileId[audioFileId]?.status;
+      if (inflightStatus === 'Pending' || inflightStatus === 'Running') return;
+
+      setRequestError((prev) => {
         const { [audioFileId]: _omit, ...rest } = prev;
         void _omit;
         return rest;
       });
-      setTranscribing((prev) => new Set(prev).add(audioFileId));
+      // A re-transcribe produces new text, so the "inserted" feedback for
+      // this recording no longer reflects what's in the script.
+      setInsertedIds((prev) => {
+        if (!prev.has(audioFileId)) return prev;
+        const next = new Set(prev);
+        next.delete(audioFileId);
+        return next;
+      });
       try {
         await requestTranscriptionFn({ observationId, audioFileId });
       } catch (err) {
-        setTranscribeError((prev) => ({
+        setRequestError((prev) => ({
           ...prev,
           [audioFileId]: err instanceof Error ? err.message : 'Transcription request failed',
         }));
       }
     },
-    [observationId],
+    [observationId, jobsByAudioFileId],
   );
 
-  // Once the observation doc updates with a transcript for a file we
-  // optimistically marked "transcribing", clear the in-flight flag.
-  useEffect(() => {
-    if (transcribing.size === 0) return;
-    let changed = false;
-    const next = new Set(transcribing);
-    for (const id of transcribing) {
-      if (transcripts[id]) {
-        next.delete(id);
-        changed = true;
-      }
-    }
-    if (changed) setTranscribing(next);
-  }, [transcripts, transcribing]);
+  const handleInsertTranscript = useCallback(
+    (audioFileId: string) => {
+      if (!onInsertTranscript) return;
+      onInsertTranscript(audioFileId);
+      setInsertedIds((prev) => new Set(prev).add(audioFileId));
+    },
+    [onInsertTranscript],
+  );
 
   useEffect(() => {
     return () => {
@@ -212,8 +246,8 @@ export function AudioRecorder({
           <h3 className="font-heading text-lg font-semibold">Audio</h3>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Record voice notes during the observation. After stopping, the recording uploads to this
-            observation&apos;s Drive folder. Transcription is requested separately and lands in the
-            script when ready.
+            observation&apos;s Drive folder. When a transcript is ready, use{' '}
+            <strong>Insert into script</strong> to add it to the observation script for tagging.
           </p>
         </div>
         <RecordButton
@@ -230,11 +264,13 @@ export function AudioRecorder({
         observationId={observationId}
         audioFileIds={audioFileIds}
         transcripts={transcripts}
-        transcribing={transcribing}
-        transcribeError={transcribeError}
+        jobsByAudioFileId={jobsByAudioFileId}
+        requestError={requestError}
         onTranscribe={(id) => void requestTranscription(id)}
         transcriptionEnabled={transcriptionEnabled}
         readOnly={readOnly}
+        onInsert={onInsertTranscript ? handleInsertTranscript : null}
+        insertedIds={insertedIds}
       />
     </div>
   );
@@ -315,20 +351,24 @@ function RecordingsList({
   observationId,
   audioFileIds,
   transcripts,
-  transcribing,
-  transcribeError,
+  jobsByAudioFileId,
+  requestError,
   onTranscribe,
   transcriptionEnabled,
   readOnly,
+  onInsert,
+  insertedIds,
 }: {
   observationId: string;
   audioFileIds: string[];
   transcripts: Record<string, string>;
-  transcribing: Set<string>;
-  transcribeError: Record<string, string>;
+  jobsByAudioFileId: Record<string, TranscriptionJob>;
+  requestError: Record<string, string>;
   onTranscribe: (audioFileId: string) => void;
   transcriptionEnabled: boolean;
   readOnly: boolean;
+  onInsert: ((audioFileId: string) => void) | null;
+  insertedIds: Set<string>;
 }) {
   if (audioFileIds.length === 0) {
     return (
@@ -341,8 +381,14 @@ function RecordingsList({
     <ul className="divide-border divide-y">
       {audioFileIds.map((fileId, i) => {
         const transcript = transcripts[fileId];
-        const isTranscribing = transcribing.has(fileId);
-        const errMsg = transcribeError[fileId];
+        const job = jobsByAudioFileId[fileId];
+        const isTranscribing = job?.status === 'Pending' || job?.status === 'Running';
+        const isFailed = job?.status === 'Failed';
+        // A request-time failure (callable rejected outright) takes
+        // priority since it means no job doc exists to explain itself.
+        const errMsg =
+          requestError[fileId] ?? (isFailed ? (job.error ?? 'Transcription failed') : undefined);
+        const isInserted = insertedIds.has(fileId);
         return (
           <li key={fileId} className="py-3">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
@@ -351,8 +397,12 @@ function RecordingsList({
                 {transcript
                   ? ' · transcript ready'
                   : isTranscribing
-                    ? ' · transcribing…'
-                    : ' · no transcript yet'}
+                    ? job.status === 'Running'
+                      ? ' · transcribing…'
+                      : ' · queued…'
+                    : isFailed
+                      ? ' · transcription failed'
+                      : ' · no transcript yet'}
               </span>
               {!readOnly && transcriptionEnabled ? (
                 <Button
@@ -371,21 +421,58 @@ function RecordingsList({
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : transcript ? (
                     <RefreshCw className="h-3 w-3" />
+                  ) : isFailed ? (
+                    <RefreshCw className="h-3 w-3" />
                   ) : (
                     <Sparkles className="h-3 w-3" />
                   )}
-                  {isTranscribing ? 'Transcribing…' : transcript ? 'Re-transcribe' : 'Transcribe'}
+                  {isTranscribing
+                    ? job.status === 'Running'
+                      ? 'Transcribing…'
+                      : 'Queued…'
+                    : transcript
+                      ? 'Re-transcribe'
+                      : isFailed
+                        ? 'Retry'
+                        : 'Transcribe'}
                 </Button>
               ) : null}
             </div>
             <RecordingPlayer observationId={observationId} audioFileId={fileId} />
-            {errMsg ? <p className="text-destructive mt-1 text-xs">{errMsg}</p> : null}
+            {errMsg ? (
+              <p className="text-destructive mt-1 flex items-start gap-1 text-xs">
+                <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                <span>{errMsg}</span>
+              </p>
+            ) : null}
             {transcript ? (
               <details className="mt-2" open>
                 <summary className="text-muted-foreground cursor-pointer text-xs">
                   Transcript
                 </summary>
                 <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
+                {!readOnly && onInsert ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onInsert(fileId);
+                      }}
+                      className="h-7 text-xs"
+                      title="Append this transcript to the observation script so it can be tagged as rubric evidence"
+                    >
+                      <FileInput className="h-3 w-3" />
+                      {isInserted ? 'Insert into script again' : 'Insert into script'}
+                    </Button>
+                    {isInserted ? (
+                      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+                        <Check className="h-3 w-3" />
+                        Added to script
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </details>
             ) : null}
           </li>

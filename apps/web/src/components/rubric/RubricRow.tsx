@@ -11,6 +11,15 @@ import {
   type TiptapDoc,
 } from '@ops/shared';
 import { functions } from '@/lib/firebase';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
 import { hasTiptapContent } from '@/utils/tiptapContent';
@@ -30,6 +39,11 @@ const uploadEvidenceFn = httpsCallable<
   },
   { driveFileId: string; name: string }
 >(functions, 'uploadEvidenceFile');
+
+const removeEvidenceFn = httpsCallable<
+  { observationId: string; componentId: string; driveFileId: string },
+  { ok: true }
+>(functions, 'removeEvidenceFile');
 
 export const EMPTY_ENTRY: ObservationComponentEntry = {
   proficiency: null,
@@ -70,6 +84,8 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   const [active, setActive] = useState<ActivePanel>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [removingFileId, setRemovingFileId] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState<DriveFileRef | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const togglePanel = (panel: NonNullable<ActivePanel>) => {
@@ -101,6 +117,26 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  // Confirmed via RemoveEvidenceDialog (not window.confirm — destructive
+  // actions use the shared Dialog pattern; see WorkProductPage et al.).
+  async function handleRemoveFile(fileRef: DriveFileRef) {
+    if (mode.kind !== 'edit') return;
+    setConfirmingRemove(null);
+    setRemovingFileId(fileRef.driveFileId);
+    setUploadError(null);
+    try {
+      await removeEvidenceFn({
+        observationId: mode.observationId,
+        componentId: component.id,
+        driveFileId: fileRef.driveFileId,
+      });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Remove failed');
+    } finally {
+      setRemovingFileId(null);
     }
   }
 
@@ -190,6 +226,8 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
             uploading={uploading}
             uploadError={uploadError}
             onPickFile={() => fileInputRef.current?.click()}
+            onRemoveFile={setConfirmingRemove}
+            removingFileId={removingFileId}
             readOnly={readOnly}
           />
         ) : null}
@@ -259,6 +297,11 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
 
       {combinedPanel}
       {hiddenFileInput}
+      <RemoveEvidenceDialog
+        fileRef={confirmingRemove}
+        onCancel={() => setConfirmingRemove(null)}
+        onConfirm={(f) => void handleRemoveFile(f)}
+      />
     </div>
   );
 }
@@ -677,12 +720,16 @@ function EvidencePanel({
   uploading,
   uploadError,
   onPickFile,
+  onRemoveFile,
+  removingFileId,
   readOnly,
 }: {
   files: DriveFileRef[];
   uploading: boolean;
   uploadError: string | null;
   onPickFile: () => void;
+  onRemoveFile: (fileRef: DriveFileRef) => void;
+  removingFileId: string | null;
   readOnly: boolean;
 }) {
   return (
@@ -690,7 +737,13 @@ function EvidencePanel({
       {uploadError ? <p className="text-ops-red mb-2 text-xs">{uploadError}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         {files.map((ref) => (
-          <EvidenceChip key={ref.driveFileId} fileRef={ref} />
+          <EvidenceChip
+            key={ref.driveFileId}
+            fileRef={ref}
+            readOnly={readOnly}
+            removing={removingFileId === ref.driveFileId}
+            onRemove={() => onRemoveFile(ref)}
+          />
         ))}
         {!readOnly ? (
           <button
@@ -712,7 +765,17 @@ function EvidencePanel({
 
 // ─── EvidenceChip ─────────────────────────────────────────────────────────────
 
-function EvidenceChip({ fileRef }: { fileRef: DriveFileRef }) {
+function EvidenceChip({
+  fileRef,
+  readOnly,
+  removing,
+  onRemove,
+}: {
+  fileRef: DriveFileRef;
+  readOnly: boolean;
+  removing: boolean;
+  onRemove: () => void;
+}) {
   const truncated = fileRef.name.length > 20 ? fileRef.name.slice(0, 17) + '…' : fileRef.name;
   return (
     <div className="group hover:border-ops-blue flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs">
@@ -726,6 +789,18 @@ function EvidenceChip({ fileRef }: { fileRef: DriveFileRef }) {
       >
         View ↗
       </a>
+      {!readOnly ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={removing}
+          className="text-ops-red hover:underline disabled:opacity-60"
+          title={`Remove ${fileRef.name}`}
+          aria-label={`Remove ${fileRef.name}`}
+        >
+          {removing ? 'Removing…' : 'Remove'}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -837,6 +912,8 @@ export function MobileComponentBody({
   const [level, setLevel] = useState<ProficiencyLevel | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [removingFileId, setRemovingFileId] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState<DriveFileRef | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function toggleSection(s: NonNullable<MobileSection>) {
@@ -882,6 +959,26 @@ export function MobileComponentBody({
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  // Confirmed via RemoveEvidenceDialog (not window.confirm — destructive
+  // actions use the shared Dialog pattern; see WorkProductPage et al.).
+  async function handleRemoveFile(fileRef: DriveFileRef) {
+    if (mode.kind !== 'edit') return;
+    setConfirmingRemove(null);
+    setRemovingFileId(fileRef.driveFileId);
+    setUploadError(null);
+    try {
+      await removeEvidenceFn({
+        observationId: mode.observationId,
+        componentId: component.id,
+        driveFileId: fileRef.driveFileId,
+      });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Remove failed');
+    } finally {
+      setRemovingFileId(null);
     }
   }
 
@@ -959,6 +1056,8 @@ export function MobileComponentBody({
             uploading={uploading}
             uploadError={uploadError}
             onPickFile={() => fileInputRef.current?.click()}
+            onRemoveFile={setConfirmingRemove}
+            removingFileId={removingFileId}
             readOnly={readOnly}
           />
         </MobileSectionRow>
@@ -973,11 +1072,66 @@ export function MobileComponentBody({
           onChange={(e) => void handleFileSelect(e)}
         />
       ) : null}
+
+      <RemoveEvidenceDialog
+        fileRef={confirmingRemove}
+        onCancel={() => setConfirmingRemove(null)}
+        onConfirm={(f) => void handleRemoveFile(f)}
+      />
     </div>
   );
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Destructive-confirm dialog for removing an evidence file. Uses the shared
+ * Dialog confirmation pattern (like WorkProductPage / SignupFieldsPage /
+ * RoleYearMappingsPage delete flows) rather than window.confirm, and spells
+ * out the consequence: the uploaded file is trashed in Google Drive.
+ */
+function RemoveEvidenceDialog({
+  fileRef,
+  onCancel,
+  onConfirm,
+}: {
+  fileRef: DriveFileRef | null;
+  onCancel: () => void;
+  onConfirm: (fileRef: DriveFileRef) => void;
+}) {
+  return (
+    <Dialog
+      open={fileRef !== null}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove evidence file</DialogTitle>
+          <DialogDescription>
+            Remove &ldquo;{fileRef?.name}&rdquo; from this component&apos;s evidence? The uploaded
+            file will also be moved to the trash in Google Drive.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            type="button"
+            onClick={() => {
+              if (fileRef) onConfirm(fileRef);
+            }}
+          >
+            Remove
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

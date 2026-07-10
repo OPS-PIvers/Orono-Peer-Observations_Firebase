@@ -1,5 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Check, ListChecks, MoreVertical, Plus } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  Download,
+  ListChecks,
+  MoreVertical,
+  Plus,
+  Upload,
+} from 'lucide-react';
 import { doc, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
@@ -29,9 +37,12 @@ import {
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
 import { StaffDialog } from './StaffDialog';
+import { StaffImportDialog } from './StaffImportDialog';
+import { RolloverDialog } from './RolloverDialog';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterBar';
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
+import { downloadTextFile, serializeStaffCsv } from './staffCsv';
 import {
   BuildingsPill,
   ModuleAccessPill,
@@ -72,6 +83,13 @@ export function StaffPage() {
     `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
   );
 
+  // Unfiltered roles/modules for the CSV export's display-name maps: staff
+  // can still reference a deactivated role/module, and exporting the raw id
+  // for those would break the export→import round trip (the import dialog
+  // resolves against the full lists for the same reason).
+  const { data: allRolesRaw } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const { data: allModulesRaw } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
+
   const roles = useMemo(() => (rolesRaw ?? []).slice().sort(byDisplayName), [rolesRaw]);
   const buildings = useMemo(() => (buildingsRaw ?? []).slice().sort(byDisplayName), [buildingsRaw]);
   const modules = useMemo(() => (modulesRaw ?? []).slice().sort(byDisplayName), [modulesRaw]);
@@ -85,6 +103,8 @@ export function StaffPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkField, setBulkField] = useState<BulkEditField | null>(null);
   const [patchError, setPatchError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [showRollover, setShowRollover] = useState(false);
 
   const patchStaff = useCallback<PatchStaff>((email, patch) => {
     setPatchError(null);
@@ -206,6 +226,13 @@ export function StaffPage() {
     [staff, selected],
   );
 
+  function handleExport() {
+    if (!staff) return;
+    const csv = serializeStaffCsv(staff, allRolesRaw ?? roles, allModulesRaw ?? modules);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadTextFile(csv, `staff-roster-${date}.csv`, 'text/csv;charset=utf-8');
+  }
+
   return (
     <PageHeader
       title="Staff"
@@ -215,7 +242,7 @@ export function StaffPage() {
         staff ? `${String(sortedRows.length)} of ${String(staff.length)} staff` : 'Loading…'
       }
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={selectMode ? 'default' : 'outline'}
             onClick={() => {
@@ -225,6 +252,18 @@ export function StaffPage() {
           >
             {selectMode ? <Check /> : <ListChecks />}
             {selectMode ? 'Done' : 'Select'}
+          </Button>
+          <Button variant="outline" onClick={handleExport} disabled={!staff}>
+            <Download />
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload />
+            Import CSV
+          </Button>
+          <Button variant="outline" onClick={() => setShowRollover(true)} disabled={!staff}>
+            <CalendarClock />
+            Annual rollover
           </Button>
           <Button onClick={() => setShowCreate(true)}>
             <Plus />
@@ -290,6 +329,20 @@ export function StaffPage() {
         }}
         field={bulkField}
         selectedRows={selectedRows}
+        onApplied={() => setSelected(new Set())}
+      />
+
+      <StaffImportDialog
+        open={showImport}
+        onOpenChange={setShowImport}
+        staff={staff ?? []}
+        onApplied={() => setSelected(new Set())}
+      />
+
+      <RolloverDialog
+        open={showRollover}
+        onOpenChange={setShowRollover}
+        staff={staff ?? []}
         onApplied={() => setSelected(new Set())}
       />
     </PageHeader>

@@ -42,13 +42,15 @@ Firebase.
 
 ## Useful scripts
 
-| Command                      | What it does                                      |
-| ---------------------------- | ------------------------------------------------- |
-| `pnpm validate`              | typecheck + lint + format check + tests           |
-| `pnpm test:rules`            | Firestore security rules tests via emulator       |
-| `pnpm test:e2e`              | Playwright E2E (desktop + iPad viewports)         |
-| `pnpm import:emulator`       | Import current Sheet into the running emulator    |
-| `pnpm import:prod --confirm` | One-shot prod import (cutover only — destructive) |
+| Command                      | What it does                                                             |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `pnpm validate`              | typecheck + lint + format check + tests                                  |
+| `pnpm test:rules`            | Firestore security rules tests via emulator                              |
+| `pnpm test:e2e`              | Playwright E2E (desktop + iPad viewports)                                |
+| `pnpm import:emulator`       | Import current Sheet into the running emulator                           |
+| `pnpm import:prod --confirm` | One-shot prod import (cutover only — destructive)                        |
+| `pnpm export:emulator`       | Export staff/observations/rubrics/auditLog from the emulator to JSON/CSV |
+| `pnpm export:prod`           | Same, from live Firestore — see `scripts/export/README.md`               |
 
 ## Branches
 

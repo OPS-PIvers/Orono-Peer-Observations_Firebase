@@ -5,16 +5,22 @@ import { httpsCallable } from 'firebase/functions';
 import { AlertCircle, CalendarCheck, CalendarX, ChevronRight, Loader2, Mail } from 'lucide-react';
 import {
   COLLECTIONS,
+  DEFAULT_EMAIL_PREFERENCES,
+  EMAIL_PREFERENCE_CATEGORIES,
+  EMAIL_PREFERENCE_CATEGORY_LABELS,
   OBSERVATION_STATUS,
   SPECIAL_ROLES,
   type CalendarConnectionStatusResult,
+  type EmailPreferences,
   type Observation,
   type Role,
   type Staff,
+  type UpdateEmailPreferencesInput,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
@@ -42,6 +48,10 @@ const disconnectGoogleCalendarFn = httpsCallable<
   Record<string, never>,
   CalendarConnectionStatusResult
 >(functions, 'disconnectGoogleCalendar');
+const updateEmailPreferencesFn = httpsCallable<UpdateEmailPreferencesInput, EmailPreferences>(
+  functions,
+  'updateEmailPreferences',
+);
 
 /** Calendar integration section: connect/disconnect Google Calendar OAuth. */
 function CalendarIntegrationSection({ email }: { email: string }) {
@@ -146,6 +156,80 @@ function CalendarIntegrationSection({ email }: { email: string }) {
           </div>
         </div>
       )}
+
+      {error ? (
+        <div className="mt-4 flex items-start gap-2 text-sm">
+          <AlertCircle className="text-ops-red mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-ops-red">{error}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Email preferences section: per-category opt-in/out toggles, backed by the
+ *  updateEmailPreferences callable (own /staff doc is client-read-only, so a
+ *  callable is the only self-service write path — see firestore.rules). */
+function EmailPreferencesSection({ staff }: { staff: Staff }) {
+  const [prefs, setPrefs] = useState<EmailPreferences>({
+    ...DEFAULT_EMAIL_PREFERENCES,
+    ...staff.emailPreferences,
+  });
+  const [savingCategory, setSavingCategory] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrefs({ ...DEFAULT_EMAIL_PREFERENCES, ...staff.emailPreferences });
+  }, [staff.emailPreferences]);
+
+  const handleToggle = async (category: keyof EmailPreferences, checked: boolean) => {
+    const previous = prefs;
+    setError(null);
+    setSavingCategory(category);
+    setPrefs((p) => ({ ...p, [category]: checked }));
+    try {
+      const { data } = await updateEmailPreferencesFn({ [category]: checked });
+      setPrefs(data);
+    } catch (err) {
+      setPrefs(previous);
+      setError(err instanceof Error ? err.message : 'Failed to save your preference.');
+    } finally {
+      setSavingCategory(null);
+    }
+  };
+
+  return (
+    <section
+      id="email-preferences"
+      className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    >
+      <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">Email preferences</h2>
+      <p className="text-ops-gray mt-1 text-sm">
+        Turn off any notification category you don&apos;t want to receive by email. Booking
+        confirmations, cancellations/reschedules, and account-related notices always send regardless
+        of these settings.
+      </p>
+
+      <ul className="mt-4 divide-y divide-gray-100">
+        {EMAIL_PREFERENCE_CATEGORIES.map((category) => {
+          const { label, description } = EMAIL_PREFERENCE_CATEGORY_LABELS[category];
+          return (
+            <li key={category} className="flex items-center justify-between gap-4 py-3">
+              <label htmlFor={`email-pref-${category}`} className="flex-1">
+                <span className="block text-sm font-medium text-gray-900">{label}</span>
+                <span className="text-ops-gray block text-xs">{description}</span>
+              </label>
+              <Switch
+                id={`email-pref-${category}`}
+                checked={prefs[category]}
+                disabled={savingCategory === category}
+                onCheckedChange={(checked) => void handleToggle(category, checked)}
+                aria-label={label}
+              />
+            </li>
+          );
+        })}
+      </ul>
 
       {error ? (
         <div className="mt-4 flex items-start gap-2 text-sm">
@@ -327,6 +411,9 @@ export function ProfilePage() {
 
         {/* Calendar integration */}
         <CalendarIntegrationSection email={email} />
+
+        {/* Email preferences */}
+        <EmailPreferencesSection staff={staff} />
 
         {/* Finalized observations archive */}
         <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">

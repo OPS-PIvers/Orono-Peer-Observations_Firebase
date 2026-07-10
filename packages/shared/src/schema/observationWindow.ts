@@ -159,8 +159,56 @@ export const cancelBookingInput = z.object({
 });
 export type CancelBookingInput = z.infer<typeof cancelBookingInput>;
 
+/** Move an existing booking to a different slot in the same window. The old
+ *  slot is derived server-side from the invitee's `bookedSlotId`, so the
+ *  client only names the destination. */
+export const rescheduleBookingInput = z.object({
+  windowId: z.string().min(1),
+  newSlotId: z.string().min(1),
+  inviteToken: z.string().min(1),
+});
+export type RescheduleBookingInput = z.infer<typeof rescheduleBookingInput>;
+
+/**
+ * Ask which of a window's slots collide with busy time on the evaluator's
+ * REAL Google Calendar (freebusy) so the booking UI can badge them. Invitee-
+ * scoped: validated with the same invite token as booking itself.
+ */
+export const checkSlotConflictsInput = z.object({
+  windowId: z.string().min(1),
+  inviteToken: z.string().min(1),
+});
+export type CheckSlotConflictsInput = z.infer<typeof checkSlotConflictsInput>;
+
+/** `checked` is false when the freebusy lookup could not run (policy
+ *  'ignore', evaluator calendar not connected, or API error) — the UI then
+ *  shows no conflict badges rather than false negatives. */
+export const checkSlotConflictsResult = z.object({
+  checked: z.boolean(),
+  conflictedSlotIds: z.array(z.string()).default([]),
+});
+export type CheckSlotConflictsResult = z.infer<typeof checkSlotConflictsResult>;
+
 export const cancelObservationWindowInput = z.object({
   windowId: z.string().min(1),
   reason: z.string().trim().max(500).default(''),
 });
 export type CancelObservationWindowInput = z.infer<typeof cancelObservationWindowInput>;
+
+/**
+ * Post-creation window edits. All fields other than `windowId` are optional
+ * actions applied together in one call:
+ *   - `endDate`            — extend the booking period (never shrink it)
+ *   - `addInvitees`        — invite additional staff (tokens minted server-side,
+ *                            invite emails sent like at creation)
+ *   - `removeInviteeEmails`— drop invitees who have not booked yet
+ *   - `resendInviteEmails` — resend the invite email to un-booked invitees
+ */
+export const updateObservationWindowInput = z.object({
+  windowId: z.string().min(1),
+  endDate: localDate.optional(),
+  addInvitees: z.array(createWindowInvitee).default([]),
+  removeInviteeEmails: z.array(email).default([]),
+  resendInviteEmails: z.array(email).default([]),
+});
+export type UpdateObservationWindowInput = z.infer<typeof updateObservationWindowInput>;

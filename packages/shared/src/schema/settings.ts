@@ -138,6 +138,17 @@ export type GeminiFeatures = z.infer<typeof geminiFeatures>;
 export const BOOKING_MODES = ['direct', 'day-preference'] as const;
 export type BookingMode = (typeof BOOKING_MODES)[number];
 
+/**
+ * What to do when a slot overlaps a busy interval on the evaluator's REAL
+ * Google Calendar (freebusy), beyond the app's own peBusyIntervals ledger:
+ *   - 'ignore' — never query freebusy.
+ *   - 'warn'   — allow the booking but flag the conflict to the booker.
+ *   - 'block'  — reject the booking (soft-fails open when the evaluator's
+ *                calendar is not connected or the API errors).
+ */
+export const GCAL_CONFLICT_POLICIES = ['ignore', 'warn', 'block'] as const;
+export type GcalConflictPolicy = (typeof GCAL_CONFLICT_POLICIES)[number];
+
 export const schedulingSettings = z.object({
   /** Minutes the PE needs between observations (travel between buildings). */
   travelBufferMinutes: z.number().int().min(0).max(240).default(15),
@@ -156,6 +167,12 @@ export const schedulingSettings = z.object({
   gcalSendUpdates: z.enum(['none', 'all']).default('none'),
   /** Block booking until the staff member connects Google Calendar. */
   requireCalendarConnect: z.boolean().default(false),
+  /** How real-calendar (freebusy) conflicts on the evaluator's Google
+   *  Calendar are handled at booking time. Defaults to 'warn' (never hard-
+   *  rejects) so existing deployments — whose settings doc predates this
+   *  field — don't silently start blocking previously-bookable slots on
+   *  deploy; admins opt into 'block' from the Scheduling settings page. */
+  gcalConflictPolicy: z.enum(GCAL_CONFLICT_POLICIES).default('warn'),
   inviteEmailEnabled: z.boolean().default(true),
   confirmationEmailEnabled: z.boolean().default(true),
   cancellationEmailEnabled: z.boolean().default(true),
