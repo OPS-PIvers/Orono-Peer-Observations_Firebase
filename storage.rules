@@ -2,19 +2,38 @@ rules_version = '2';
 
 // Storage is intentionally minimal — primary blob storage is Google Drive
 // (via service account + Domain-Wide Delegation). Any file we do put in
-// Cloud Storage (e.g., temp uploads pre-Drive transfer, app branding logo
-// fallbacks) goes under /admin-uploads/ and is admin-only.
+// Cloud Storage goes under /admin-uploads/.
+//
+// Two sub-paths, different read scopes:
+//   - /admin-uploads/branding/**  — app branding logo/icon fallbacks. Written
+//     by admins; read by any authenticated user (the app fetches them via the
+//     SDK for logged-in chrome; they are ALSO served publicly via their
+//     tokenized download URL, which bypasses these rules entirely, so the
+//     auth-only read here is belt-and-suspenders).
+//   - everything else under /admin-uploads/ — any other admin staging (e.g.
+//     temp uploads pre-Drive transfer, which can hold staff PII). Admin-only
+//     for BOTH read and write so a signed-in non-admin can't read or list
+//     another user's sensitive uploads.
+//
+// isAdmin = the isAdmin custom claim, not the role slug. (The role slug may be
+// e.g. "instructional-specialist" while isAdmin is still true.)
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /admin-uploads/{path=**} {
-      // Mirror the Firestore rules: admin = the isAdmin custom claim, not the
-      // role slug. (The role slug may be e.g. "instructional-specialist" while
-      // isAdmin is still true.) Branding logos are read publicly via their
-      // tokenized download URL, so SDK read can stay auth-only.
+    // Branding assets: auth-readable, admin-writable.
+    match /admin-uploads/branding/{path=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.isAdmin == true;
     }
+
+    // All other admin-uploads content: admin-only, read and write. A more
+    // specific branding match above OR-grants auth read for that sub-path;
+    // this rule governs everything else under admin-uploads/.
+    match /admin-uploads/{path=**} {
+      allow read: if request.auth != null && request.auth.token.isAdmin == true;
+      allow write: if request.auth != null && request.auth.token.isAdmin == true;
+    }
+
     match /{path=**} {
       allow read, write: if false;
     }

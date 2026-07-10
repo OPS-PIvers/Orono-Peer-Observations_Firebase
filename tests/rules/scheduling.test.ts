@@ -220,8 +220,52 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('observer can update their window', async () => {
+  it('observer can update allowlisted cosmetic fields on their window', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'observationWindows/w1'),
+        {
+          calendarEventTitle: 'Peer observation',
+          calendarEventDescription: 'See you then',
+          defaultObservationName: 'Spring round',
+          updatedAt: new Date(),
+        },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('observer CANNOT change window status directly (must go through the cancel Function)', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+  });
+
+  it('observer CANNOT rewrite invitedEmails / peBusyIntervals / dayCounts', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/w1'), { invitedEmails: [OTHER_EMAIL] }, { merge: true }),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, 'observationWindows/w1'),
+        { peBusyIntervals: [{ startUTC: new Date(), endUTC: new Date(), slotId: 's1' }] },
+        { merge: true },
+      ),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, 'observationWindows/w1'),
+        { dayCounts: { '2026-05-20': 99 } },
+        { merge: true },
+      ),
+    );
+  });
+
+  it('admin can still change any window field directly', async () => {
+    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
     );
