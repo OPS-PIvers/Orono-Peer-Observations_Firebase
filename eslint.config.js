@@ -27,7 +27,9 @@ export default tseslint.config(
       '.firebase/**',
       // Standalone Node ESM scripts run directly via `node script.mjs`.
       // They aren't part of any tsconfig and don't need typed linting.
-      'scripts/**/*.mjs',
+      // Matches both the top-level scripts/ dir and per-workspace ones
+      // (e.g. apps/pdf-renderer/scripts/generate-fonts.mjs).
+      '**/scripts/**/*.mjs',
     ],
   },
 
