@@ -17,6 +17,7 @@ export { onStaffWritten } from './auth/onStaffWritten.js';
 export { updateEmailPreferences } from './auth/updateEmailPreferences.js';
 export { uploadAudio } from './audio/uploadAudio.js';
 export { getAudio } from './audio/getAudio.js';
+export { monitorDriveQuota } from './drive/monitorDriveQuota.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
