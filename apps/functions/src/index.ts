@@ -32,6 +32,7 @@ export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
 export { sendManualEmail } from './email/sendManualEmail.js';
 export { onMailWritten } from './email/onMailWritten.js';
+export { resendStaffInvite } from './email/resendStaffInvite.js';
 export { migrateRolesToSlugs } from './scripts/migrateRolesToSlugs.js';
 export { applyStaffRollover } from './scripts/applyStaffRollover.js';
 export { createObservationWindow } from './scheduling/createObservationWindow.js';
