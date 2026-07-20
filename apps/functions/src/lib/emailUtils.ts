@@ -220,6 +220,19 @@ export async function sendEmail(args: {
 }
 
 /**
+ * /mail doc id for a staff-invite email.
+ *
+ * Includes the send timestamp so re-inviting a staff member (e.g. after a
+ * delete + re-create, or a re-activation) creates a *new* /mail doc and
+ * actually re-sends. A static `invite-<email>` id would collide with the
+ * earlier invite and silently no-op (the Trigger Email extension only sends on
+ * doc creation).
+ */
+export function staffInviteMailDocId(email: string, nowMs: number): string {
+  return `invite-${email.replace('@', '-at-')}-${String(nowMs)}`;
+}
+
+/**
  * High-level helper: load the active template for a trigger type,
  * substitute variables, and send. Returns false if no active template.
  */
