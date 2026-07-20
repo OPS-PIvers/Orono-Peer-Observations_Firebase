@@ -46,6 +46,7 @@ export default tseslint.config(
         project: [
           './apps/web/tsconfig.app.json',
           './apps/web/tsconfig.node.json',
+          './apps/web/tsconfig.e2e.json',
           './apps/functions/tsconfig.json',
           './apps/pdf-renderer/tsconfig.json',
           './packages/shared/tsconfig.json',
