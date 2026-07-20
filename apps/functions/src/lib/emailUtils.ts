@@ -117,6 +117,18 @@ export interface SendEmailResult {
 }
 
 /**
+ * Resolve the configured security-admin email from /appSettings, or null when
+ * unset. Used to direct security/ops alerts (rejected sign-ins, rate-limit
+ * trips, Drive-quota warnings) to a monitored inbox.
+ */
+export async function loadSecurityAdminEmail(db: Firestore): Promise<string | null> {
+  const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+  const raw = snap.data()?.['securityAdminEmail'] as string | undefined;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  return raw.trim();
+}
+
+/**
  * Core send: wraps the content HTML in the branded email shell, writes a
  * document to /mail which the Trigger Email extension picks up and sends
  * immediately, and writes an `emailSent` audit log entry. Every templated/
