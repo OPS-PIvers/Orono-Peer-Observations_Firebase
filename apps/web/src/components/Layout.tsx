@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar, useSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { GlobalBanner } from '@/components/GlobalBanner';
 import { TopLoadingBar } from '@/components/TopLoadingBar';
 import { useAuth } from '@/auth/AuthProvider';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,7 @@ export function Layout() {
   const inner = (
     <div className="bg-ops-gray-lightest flex h-svh flex-col overflow-hidden">
       <AppHeader pcExpanded={pcExpanded} onTogglePc={togglePc} onOpenMobile={openMobile} />
+      <GlobalBanner />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <AppSidebar pcExpanded={pcExpanded} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
         <div
