@@ -20,6 +20,7 @@ export { getAudio } from './audio/getAudio.js';
 export { monitorDriveQuota } from './drive/monitorDriveQuota.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
+export { sweepStaleTranscriptionJobs } from './transcription/sweepStaleTranscriptionJobs.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
 export { backfillScriptTagColors } from './observations/backfillScriptTagColors.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
