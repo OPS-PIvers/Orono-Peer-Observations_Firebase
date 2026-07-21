@@ -143,6 +143,18 @@ export const submitDayPreferenceInput = z.object({
 });
 export type SubmitDayPreferenceInput = z.infer<typeof submitDayPreferenceInput>;
 
+/**
+ * Withdraw an unassigned day-preference submission (booking mode
+ * 'day-preference'). Only the preference's owner may call it, validated with
+ * the same invite token as booking; an already-assigned preference must be
+ * cancelled via `cancelBooking` instead.
+ */
+export const withdrawDayPreferenceInput = z.object({
+  windowId: z.string().min(1),
+  inviteToken: z.string().min(1),
+});
+export type WithdrawDayPreferenceInput = z.infer<typeof withdrawDayPreferenceInput>;
+
 export const assignObservationFromPreferenceInput = z.object({
   windowId: z.string().min(1),
   email,

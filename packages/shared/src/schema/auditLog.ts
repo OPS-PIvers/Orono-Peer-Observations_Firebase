@@ -38,6 +38,7 @@ export const AUDIT_ACTIONS = {
   transcriptionFailed: 'transcription_failed',
   driveFolderShared: 'drive_folder_shared',
   evidenceRemoved: 'evidence_removed',
+  dayPreferenceWithdrawn: 'day_preference_withdrawn',
   rateLimitTripped: 'rate_limit_tripped',
 } as const;
 

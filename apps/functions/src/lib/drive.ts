@@ -195,6 +195,58 @@ export async function shareWithUser(args: {
   }
 }
 
+/**
+ * Grant the observation's observer Reader access on its Drive folder so the
+ * observer-facing links the app renders (Finalized banner "Open PDF" /
+ * "Open Drive folder", StaffPersonPage "View PDF", evidence chips) actually
+ * open. The district parent folder is shared only with the service account
+ * and admins — Peer Evaluators are not admins, so without this per-folder
+ * grant every observer link lands on Drive's request-access page.
+ *
+ * Idempotent (`shareWithUser` dedupes existing grants) and deliberately
+ * best-effort: a failed grant is logged, never thrown, so a Drive permissions
+ * hiccup (or a suspended observer account when an admin finalizes on their
+ * behalf) can't fail an evidence/audio upload or brick finalization. Every
+ * call site re-attempts the grant, so a missed grant heals on the next Drive
+ * interaction.
+ */
+export async function shareObservationFolderWithObserver(args: {
+  folderId: string;
+  observerEmail: string;
+}): Promise<void> {
+  try {
+    await shareWithUser({
+      fileId: args.folderId,
+      email: args.observerEmail,
+      role: 'reader',
+      sendNotificationEmail: false,
+    });
+  } catch (err) {
+    logger.warn('shareObservationFolderWithObserver: share failed (non-fatal)', {
+      folderId: args.folderId,
+      observerEmail: args.observerEmail,
+      err,
+    });
+  }
+}
+
+/**
+ * Permanently delete a single Drive file. Used to remove an individual
+ * evidence/audio file or a superseded PDF (the SA owns these files, so the
+ * delete is unconditional). A missing file (404) is treated as success so a
+ * double-delete or an already-cleaned file never throws.
+ */
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const drive = await getDriveClient();
+  try {
+    await drive.files.delete({ fileId });
+  } catch (err) {
+    const status = (err as { code?: number })?.code;
+    if (status === 404) return; // already gone — nothing to delete
+    throw err;
+  }
+}
+
 export interface DriveLink {
   webViewLink: string;
   webContentLink: string | null;
