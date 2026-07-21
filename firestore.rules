@@ -357,6 +357,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- /rateLimitCounters/{id} --------------------------------------------
+    // Per-user fixed-window rate-limit counters (see
+    // functions/src/lib/rateLimit.ts). Server-only — Cloud Functions use the
+    // Admin SDK (which bypasses these rules); clients are denied entirely.
+    // Redundant with the default-deny above, but explicit for parity with the
+    // other server-only collections.
+    match /rateLimitCounters/{id} {
+      allow read, write: if false;
+    }
+
     // --- /auditLog -----------------------------------------------------------
     // Read: admin only. No client ever writes — Cloud Functions use admin SDK.
     match /auditLog/{id} {

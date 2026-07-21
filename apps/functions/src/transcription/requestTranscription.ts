@@ -3,8 +3,12 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS } from '@ops/shared';
+import { RATE_LIMIT_KEYS, checkRateLimit, rateLimitsFromSettings } from '../lib/rateLimit.js';
 
 if (getApps().length === 0) initializeApp();
+
+/** One day, in milliseconds — the transcriptionRequestsPerDay window. */
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface RequestData {
   observationId?: string;
@@ -46,7 +50,10 @@ export const requestTranscription = onCall(
     // are only applied during parse. Treat the whole tree as optional so a
     // partially-populated doc doesn't crash this guard.
     const settings = settingsSnap.exists
-      ? (settingsSnap.data() as { gemini?: { audioTranscription?: { enabled?: boolean } } })
+      ? (settingsSnap.data() as {
+          gemini?: { audioTranscription?: { enabled?: boolean } };
+          rateLimits?: unknown;
+        })
       : null;
     if (settings?.gemini?.audioTranscription?.enabled === false) {
       throw new HttpsError(
@@ -82,6 +89,23 @@ export const requestTranscription = onCall(
         jobId: existing?.id,
       });
       return { jobId: existing?.id };
+    }
+
+    // Per-user daily rate limit on genuinely new transcription jobs. The reuse
+    // short-circuit above runs first, so a rapid double-click that returns an
+    // in-flight job costs no slot; only creating a new job counts.
+    const limits = rateLimitsFromSettings(settings?.rateLimits);
+    const decision = await checkRateLimit(db, {
+      userEmail,
+      key: RATE_LIMIT_KEYS.transcription,
+      max: limits.transcriptionRequestsPerDay,
+      windowMs: DAY_MS,
+    });
+    if (!decision.allowed) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `Daily transcription limit reached (${String(limits.transcriptionRequestsPerDay)}/day). Try again tomorrow.`,
+      );
     }
 
     const jobRef = db.collection(COLLECTIONS.transcriptionJobs).doc();
