@@ -4,6 +4,7 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { Layout } from '@/components/Layout';
+import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
 import * as L from '@/lazyRoutes';
 import { NotFound } from '@/routes/NotFound';
@@ -84,6 +85,7 @@ export function App() {
             <Route element={<StandardShell />}>
               <Route path="/" element={<RoleAwareRedirect />} />
               <Route path="/dashboard" element={<L.StaffDashboardPage />} />
+              <Route path="/my-observations" element={<L.MyObservationsPage />} />
               <Route path="/my-rubric" element={<L.MyRubricPage />} />
               <Route path="/profile" element={<L.ProfilePage />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
@@ -128,12 +130,14 @@ export function App() {
                 <Route path="dashboard" element={<L.DashboardSettingsPage />} />
                 <Route path="settings" element={<L.SettingsPage />} />
                 <Route path="audit-log" element={<L.AuditLogPage />} />
+                <Route path="transcription-jobs" element={<L.TranscriptionJobsPage />} />
               </Route>
             </Route>
 
             <Route path="*" element={<NotFound />} />
           </Routes>
         </KeyedErrorBoundary>
+        <Toaster />
       </DevModeProvider>
     </AuthProvider>
   );
