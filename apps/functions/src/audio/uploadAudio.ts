@@ -6,8 +6,12 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
 import { ensureObservationFolder, uploadFileToFolder } from '../lib/drive.js';
+import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 
 if (getApps().length === 0) initializeApp();
+
+/** One hour, in milliseconds — the audioUploadsPerHour window. */
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * Drive folder ID where per-observation subfolders live. Configured via
@@ -99,6 +103,31 @@ export const uploadAudio = onRequest(
     if (obs.status !== OBSERVATION_STATUS.draft) {
       res.status(409).send('Observation is not in Draft state');
       return;
+    }
+
+    // Per-user rate limit: reject beyond audioUploadsPerHour before doing any
+    // Drive work, so a runaway client can't fill the district folder or burn
+    // SA quota. The counter only increments on an allowed request.
+    try {
+      const limits = await loadRateLimits(db);
+      const decision = await checkRateLimit(db, {
+        userEmail,
+        key: RATE_LIMIT_KEYS.audioUpload,
+        max: limits.audioUploadsPerHour,
+        windowMs: HOUR_MS,
+      });
+      if (!decision.allowed) {
+        const retryAfterSec = Math.max(1, Math.ceil((decision.resetAtMs - Date.now()) / 1000));
+        res.set('Retry-After', String(retryAfterSec));
+        res
+          .status(429)
+          .send(`Audio upload limit reached (${String(limits.audioUploadsPerHour)}/hour).`);
+        return;
+      }
+    } catch (err) {
+      // Fail-open: a transient Firestore error on the limiter must not block a
+      // legitimate upload (the observation/Draft guards still bound abuse).
+      logger.warn('uploadAudio: rate-limit check failed (allowing)', err);
     }
 
     try {
