@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
+import { BrandingProvider } from '@/components/BrandingProvider';
 import { Layout } from '@/components/Layout';
 import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
@@ -74,71 +75,79 @@ function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: S
 export function App() {
   return (
     <AuthProvider>
-      <DevModeProvider>
-        <KeyedErrorBoundary>
-          <Routes>
-            {/* Public */}
-            <Route path="/sign-in" element={<SignInScreen />} />
-            {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
+      <BrandingProvider>
+        <DevModeProvider>
+          <KeyedErrorBoundary>
+            <Routes>
+              {/* Public */}
+              <Route path="/sign-in" element={<SignInScreen />} />
+              {DevSignIn ? <Route path="/dev-sign-in" element={<DevSignIn />} /> : null}
 
-            {/* Authenticated routes (no special access required) */}
-            <Route element={<StandardShell />}>
-              <Route path="/" element={<RoleAwareRedirect />} />
-              <Route path="/dashboard" element={<L.StaffDashboardPage />} />
-              <Route path="/my-observations" element={<L.MyObservationsPage />} />
-              <Route path="/my-rubric" element={<L.MyRubricPage />} />
-              <Route path="/profile" element={<L.ProfilePage />} />
-              <Route path="/unauthorized" element={<Unauthorized />} />
-              <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
-              <Route path="/book/:windowId" element={<L.BookingPage />} />
-              <Route path="/oauth/google-calendar/callback" element={<L.CalendarCallbackPage />} />
-              <Route path="/m/:moduleId" element={<L.ModulePage />} />
-            </Route>
-
-            {/* Special access (PE + Full Access) */}
-            <Route element={<StandardShell requireSpecialAccess />}>
-              <Route path="/observations" element={<L.ObservationsListPage />} />
-              <Route path="/observations/new" element={<L.NewObservationPage />} />
-              <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
-              <Route
-                path="/observations/windows/:windowId/assign"
-                element={<L.AssignPreferencesPage />}
-              />
-              <Route path="/staff" element={<L.StaffDirectoryPage />} />
-              <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
-              <Route path="/my-staff" element={<L.MyStaffPage />} />
-            </Route>
-
-            {/* Admin section (gated to Administrator + Full Access) */}
-            <Route element={<StandardShell requireAdmin />}>
-              <Route path="/admin" element={<L.AdminLayout />}>
-                <Route index element={<Navigate to="staff" replace />} />
-                <Route path="staff" element={<L.StaffPage />} />
-                <Route path="roles" element={<L.RolesPage />} />
-                <Route path="modules" element={<L.ModulesPage />} />
-                <Route path="modules/:moduleId" element={<L.ModuleBuilderPage />} />
-                <Route path="buildings" element={<L.BuildingsPage />} />
-                <Route path="buildings/:buildingId/schedule" element={<L.BuildingSchedulePage />} />
-                <Route path="signup-fields" element={<L.SignupFieldsPage />} />
-                <Route path="scheduling-settings" element={<L.SchedulingSettingsPage />} />
-                <Route path="rubrics" element={<L.RubricsListPage />} />
-                <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
-                <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />
-                <Route path="work-product" element={<L.WorkProductPage />} />
-                <Route path="email-templates" element={<L.EmailTemplatesPage />} />
-                <Route path="branding" element={<L.BrandingPage />} />
-                <Route path="dashboard" element={<L.DashboardSettingsPage />} />
-                <Route path="settings" element={<L.SettingsPage />} />
-                <Route path="audit-log" element={<L.AuditLogPage />} />
-                <Route path="transcription-jobs" element={<L.TranscriptionJobsPage />} />
+              {/* Authenticated routes (no special access required) */}
+              <Route element={<StandardShell />}>
+                <Route path="/" element={<RoleAwareRedirect />} />
+                <Route path="/dashboard" element={<L.StaffDashboardPage />} />
+                <Route path="/my-observations" element={<L.MyObservationsPage />} />
+                <Route path="/my-rubric" element={<L.MyRubricPage />} />
+                <Route path="/profile" element={<L.ProfilePage />} />
+                <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
+                <Route path="/book/:windowId" element={<L.BookingPage />} />
+                <Route
+                  path="/oauth/google-calendar/callback"
+                  element={<L.CalendarCallbackPage />}
+                />
+                <Route path="/m/:moduleId" element={<L.ModulePage />} />
               </Route>
-            </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </KeyedErrorBoundary>
-        <Toaster />
-      </DevModeProvider>
+              {/* Special access (PE + Full Access) */}
+              <Route element={<StandardShell requireSpecialAccess />}>
+                <Route path="/observations" element={<L.ObservationsListPage />} />
+                <Route path="/observations/new" element={<L.NewObservationPage />} />
+                <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
+                <Route
+                  path="/observations/windows/:windowId/assign"
+                  element={<L.AssignPreferencesPage />}
+                />
+                <Route path="/staff" element={<L.StaffDirectoryPage />} />
+                <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
+                <Route path="/my-staff" element={<L.MyStaffPage />} />
+              </Route>
+
+              {/* Admin section (gated to Administrator + Full Access) */}
+              <Route element={<StandardShell requireAdmin />}>
+                <Route path="/admin" element={<L.AdminLayout />}>
+                  <Route index element={<Navigate to="staff" replace />} />
+                  <Route path="staff" element={<L.StaffPage />} />
+                  <Route path="roles" element={<L.RolesPage />} />
+                  <Route path="modules" element={<L.ModulesPage />} />
+                  <Route path="modules/:moduleId" element={<L.ModuleBuilderPage />} />
+                  <Route path="buildings" element={<L.BuildingsPage />} />
+                  <Route
+                    path="buildings/:buildingId/schedule"
+                    element={<L.BuildingSchedulePage />}
+                  />
+                  <Route path="signup-fields" element={<L.SignupFieldsPage />} />
+                  <Route path="scheduling-settings" element={<L.SchedulingSettingsPage />} />
+                  <Route path="rubrics" element={<L.RubricsListPage />} />
+                  <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
+                  <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />
+                  <Route path="work-product" element={<L.WorkProductPage />} />
+                  <Route path="email-templates" element={<L.EmailTemplatesPage />} />
+                  <Route path="branding" element={<L.BrandingPage />} />
+                  <Route path="dashboard" element={<L.DashboardSettingsPage />} />
+                  <Route path="settings" element={<L.SettingsPage />} />
+                  <Route path="audit-log" element={<L.AuditLogPage />} />
+                  <Route path="transcription-jobs" element={<L.TranscriptionJobsPage />} />
+                </Route>
+              </Route>
+
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </KeyedErrorBoundary>
+          <Toaster />
+        </DevModeProvider>
+      </BrandingProvider>
     </AuthProvider>
   );
 }
