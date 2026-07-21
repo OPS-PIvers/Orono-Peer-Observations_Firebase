@@ -16,6 +16,7 @@ import {
 } from '@ops/shared';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db, functions } from '@/lib/firebase';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
@@ -131,6 +132,7 @@ export function StaffPersonPage() {
 
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const newObservationsDisabled = useNewObservationsDisabled();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -321,6 +323,12 @@ export function StaffPersonPage() {
 
           <Button
             onClick={() => setDialogOpen(true)}
+            disabled={newObservationsDisabled}
+            title={
+              newObservationsDisabled
+                ? 'New observation creation is currently disabled by an administrator.'
+                : undefined
+            }
             className="text-ops-blue-dark bg-white hover:bg-white/90"
           >
             New Observation
@@ -357,7 +365,17 @@ export function StaffPersonPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
-          <Button onClick={() => setDialogOpen(true)}>Start first observation</Button>
+          <Button
+            onClick={() => setDialogOpen(true)}
+            disabled={newObservationsDisabled}
+            title={
+              newObservationsDisabled
+                ? 'New observation creation is currently disabled by an administrator.'
+                : undefined
+            }
+          >
+            Start first observation
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">

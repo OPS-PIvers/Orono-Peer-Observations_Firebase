@@ -23,6 +23,7 @@ import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +60,7 @@ const EXTRA_SEARCH_LIMIT = 25;
 export function ObservationsListPage() {
   const { user, claims } = useAuth();
   const isAdmin = isAdminRole(claims.role);
+  const newObservationsDisabled = useNewObservationsDisabled();
 
   // Status comes from the URL (?status=draft|finalized) so the sidebar's
   // In-progress / Finalized / All observations links land on the right view.
@@ -247,16 +249,28 @@ export function ObservationsListPage() {
           : 'Loading…'
       }
       actions={
-        <Button
-          asChild
-          variant="outline"
-          className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-        >
-          <Link to="/observations/new">
+        newObservationsDisabled ? (
+          <Button
+            variant="outline"
+            disabled
+            title="New observation creation is currently disabled by an administrator."
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
             <Plus />
             New observation
-          </Link>
-        </Button>
+          </Button>
+        ) : (
+          <Button
+            asChild
+            variant="outline"
+            className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            <Link to="/observations/new">
+              <Plus />
+              New observation
+            </Link>
+          </Button>
+        )
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3">

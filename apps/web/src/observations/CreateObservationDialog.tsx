@@ -12,6 +12,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { db } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { yearLabel } from '@/utils/staffFormatting';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,10 @@ export function CreateObservationDialog({
   const { data: observerStaff } = useFirestoreDoc<Staff>(
     observerEmailLower ? `${COLLECTIONS.staff}/${observerEmailLower}` : '',
   );
+  // Admin cutover switch: when the "Disable new observation creation" toggle is
+  // on, block creation at this shared funnel so both entry points (the staff
+  // page button and the New Observation staff picker) are covered.
+  const newObservationsDisabled = useNewObservationsDisabled();
   const [type, setType] = useState<ObservationType>(OBSERVATION_TYPES.standard);
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -64,6 +69,10 @@ export function CreateObservationDialog({
   }, [open]);
 
   async function create() {
+    if (newObservationsDisabled) {
+      setError('New observation creation is currently disabled by an administrator.');
+      return;
+    }
     const observerEmail = user?.email;
     if (!observerEmail) {
       setError('Missing observer context.');
@@ -146,6 +155,16 @@ export function CreateObservationDialog({
             </p>
           </div>
 
+          {newObservationsDisabled ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="border-ops-blue bg-ops-blue-lighter text-ops-blue-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
+              New observation creation is currently disabled by an administrator.
+            </div>
+          ) : null}
+
           {error ? (
             <div
               role="alert"
@@ -161,7 +180,7 @@ export function CreateObservationDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
             Cancel
           </Button>
-          <Button onClick={() => void create()} disabled={submitting}>
+          <Button onClick={() => void create()} disabled={submitting || newObservationsDisabled}>
             {submitting ? 'Creating…' : 'Create observation'}
           </Button>
         </DialogFooter>

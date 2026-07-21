@@ -16,6 +16,7 @@ import {
   type RubricComponent,
   type ReopenObservationInput,
   type RubricDomain,
+  type SignupFieldAnswer,
   type TiptapDoc,
   roleYearMappingDocId,
 } from '@ops/shared';
@@ -42,6 +43,8 @@ import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/
 import { roleDisplayName } from '@/utils/roleLookup';
 import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
+import { SignupDetailsCard } from './SignupDetailsCard';
+import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection } from './MeetingNotesSection';
 import { WorkProductResponseViewer } from './WorkProductResponseViewer';
 import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseViewer';
@@ -145,6 +148,12 @@ export function ObservationEditorPage() {
   }, [rubricSnapshot, observation, roles, rubrics]);
 
   const observedRoleLabel = roleDisplayName(roles, observation?.observedRole);
+
+  // An observation created from a booked slot carries scheduling linkage and,
+  // optionally, sign-up answers captured at booking. Surface that context (the
+  // scheduled window + Q&A) when present; manually-created observations have
+  // no slot and skip these read-only affordances entirely.
+  const isBookedObservation = observation?.slotId != null || observation?.scheduledStartAt != null;
 
   const mappingPath = observation
     ? (() => {
@@ -689,6 +698,15 @@ export function ObservationEditorPage() {
                 role={observedRoleLabel}
                 year={observation.observedYear}
                 type={observation.type}
+                {...(isBookedObservation
+                  ? {
+                      booking: {
+                        scheduledStartAt: observation.scheduledStartAt,
+                        scheduledEndAt: observation.scheduledEndAt,
+                        signupDetails: observation.signupDetails,
+                      },
+                    }
+                  : {})}
               />
               <StatusBadge status={observation.status} />
               <SaveStatusIndicator
@@ -781,6 +799,14 @@ export function ObservationEditorPage() {
               ? ' As an admin, you can reopen it for corrections using the Reopen button above.'
               : ''}
           </div>
+        ) : null}
+
+        {isBookedObservation ? (
+          <SignupDetailsCard
+            scheduledStartAt={observation.scheduledStartAt}
+            scheduledEndAt={observation.scheduledEndAt}
+            signupDetails={observation.signupDetails}
+          />
         ) : null}
 
         <MeetingNotesSection
@@ -958,10 +984,17 @@ function ObservationInfoPopover({
   role,
   year,
   type,
+  booking,
 }: {
   role: string;
   year: number | string;
   type: string;
+  /** Present only when the observation was created from a booked slot. */
+  booking?: {
+    scheduledStartAt: unknown;
+    scheduledEndAt: unknown;
+    signupDetails: SignupFieldAnswer[];
+  };
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -1032,6 +1065,15 @@ function ObservationInfoPopover({
               <dd className="font-medium">{typeLabel}</dd>
             </div>
           </dl>
+          {booking ? (
+            <div className="mt-2 border-t border-gray-100 pt-2">
+              <SignupDetailsDisplay
+                scheduledStartAt={booking.scheduledStartAt}
+                scheduledEndAt={booking.scheduledEndAt}
+                signupDetails={booking.signupDetails}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
