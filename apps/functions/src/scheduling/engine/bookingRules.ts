@@ -51,3 +51,19 @@ export function applyDayCountChange(
   }
   return next;
 }
+
+/**
+ * Recompute a window's `dayCounts` when an invitee fully withdraws their
+ * preference (no new day). Decrements the given day, never below zero.
+ *
+ * Returns a fresh map; the input is not mutated.
+ */
+export function removeDayCount(
+  dayCounts: Record<string, number>,
+  ymd: string,
+): Record<string, number> {
+  const next: Record<string, number> = { ...dayCounts };
+  const prev = next[ymd] ?? 0;
+  next[ymd] = Math.max(0, prev - 1);
+  return next;
+}

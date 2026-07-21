@@ -24,6 +24,7 @@ export { sweepStaleTranscriptionJobs } from './transcription/sweepStaleTranscrip
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';
 export { backfillScriptTagColors } from './observations/backfillScriptTagColors.js';
 export { finalizeObservation } from './observations/finalizeObservation.js';
+export { regenerateObservationPdf } from './observations/regenerateObservationPdf.js';
 export { reopenObservation } from './observations/reopenObservation.js';
 export { geminiTagScript } from './observations/geminiTagScript.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
@@ -50,6 +51,7 @@ export { submitDayPreference } from './scheduling/submitDayPreference.js';
 export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
 export { cancelBooking } from './scheduling/cancelBooking.js';
 export { rescheduleBooking } from './scheduling/rescheduleBooking.js';
+export { withdrawDayPreference } from './scheduling/withdrawDayPreference.js';
 export { checkSlotConflicts } from './scheduling/checkSlotConflicts.js';
 export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js';
 export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalendar.js';
