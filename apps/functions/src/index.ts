@@ -51,6 +51,7 @@ export { submitDayPreference } from './scheduling/submitDayPreference.js';
 export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
 export { cancelBooking } from './scheduling/cancelBooking.js';
 export { rescheduleBooking } from './scheduling/rescheduleBooking.js';
+export { resendWindowInvite } from './scheduling/resendWindowInvite.js';
 export { withdrawDayPreference } from './scheduling/withdrawDayPreference.js';
 export { checkSlotConflicts } from './scheduling/checkSlotConflicts.js';
 export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js';
