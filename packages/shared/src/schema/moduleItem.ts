@@ -3,6 +3,15 @@ import { localDate } from './buildingSchedule.js';
 import { email, isoDate, slugId } from './common.js';
 
 /**
+ * Hard upper bound (bytes) on a resource file an admin uploads to a module.
+ * Matched between the client picker and the `uploadModuleFile` callable so a
+ * file that would be rejected server-side never gets base64-encoded and sent.
+ * 20 MB mirrors the observation-evidence limit and comfortably covers
+ * handbooks/PDFs while respecting the callable request-size ceiling.
+ */
+export const MAX_MODULE_FILE_BYTES = 20 * 1024 * 1024;
+
+/**
  * /modules/{moduleId}/items/{itemId} — the resource and material content for a
  * module page. `moduleId` is denormalized onto each item so a single
  * collectionGroup('items') query can power the dashboard and so the recursive

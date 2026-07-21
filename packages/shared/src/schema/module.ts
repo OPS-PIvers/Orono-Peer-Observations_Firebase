@@ -40,6 +40,10 @@ export const MODULE_ICONS = [
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
 export const moduleIcon = z.enum(MODULE_ICONS);
 
+/** Subcollection (under /modules/{id}) holding gated rich-text section bodies.
+ *  The firestore.rules `content` matcher must stay in sync. */
+export const MODULE_CONTENT_SUBCOLLECTION = 'content';
+
 /** The three section types an admin can compose a module page from. */
 export const MODULE_SECTION_TYPES = ['richtext', 'resources', 'materials'] as const;
 export type ModuleSectionType = (typeof MODULE_SECTION_TYPES)[number];
