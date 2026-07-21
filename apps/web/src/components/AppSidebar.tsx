@@ -6,6 +6,7 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  ClipboardCheck,
   ClipboardList,
   Eye,
   FileText,
@@ -171,6 +172,7 @@ function buildNavItems(
   const staffMain: NavItem[] = [
     dashboardItem,
     myRubricItem,
+    { icon: ClipboardCheck, label: 'My Observations', href: '/my-observations' },
     {
       icon: ClipboardList,
       label: 'Observations',
