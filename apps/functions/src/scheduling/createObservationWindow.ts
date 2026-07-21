@@ -28,6 +28,16 @@ if (getApps().length === 0) initializeApp();
 const MAX_BATCH_WRITES = 450;
 
 /**
+ * Key identifying a single invitee *entry* on a window. The same person can
+ * legitimately be invited at two buildings (two entries, two invite tokens),
+ * so email alone is not unique — every per-entry lookup must key on
+ * email + buildingId.
+ */
+export function inviteeEntryKey(email: string, buildingId: string): string {
+  return `${email}::${buildingId}`;
+}
+
+/**
  * Create an observation window plus all its bookable slots.
  *
  * Requires special access (PE / Full Access / Admin). Validates the input

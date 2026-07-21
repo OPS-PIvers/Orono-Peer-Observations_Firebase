@@ -245,6 +245,25 @@ export function staffInviteMailDocId(email: string, nowMs: number): string {
 }
 
 /**
+ * /mail doc id for a *resent* window-invite email.
+ *
+ * Mirrors createObservationWindow's window-invite id but adds a `-resend`
+ * marker and the send timestamp so a resend never collides with the original
+ * static invite id (which would silently no-op — the Trigger Email extension
+ * only sends on doc creation). Keyed per invitee entry (email + building) and
+ * per instant so the same person can be resent at two buildings, and the same
+ * entry can be resent repeatedly.
+ */
+export function resendWindowInviteMailDocId(
+  windowId: string,
+  email: string,
+  buildingId: string,
+  nowMs: number,
+): string {
+  return `scheduling.windowInvite-resend-${windowId}-${email}-${buildingId}-${String(nowMs)}`;
+}
+
+/**
  * High-level helper: load the active template for a trigger type,
  * substitute variables, and send. Returns false if no active template.
  */

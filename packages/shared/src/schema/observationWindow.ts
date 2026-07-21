@@ -224,3 +224,14 @@ export const updateObservationWindowInput = z.object({
   resendInviteEmails: z.array(email).default([]),
 });
 export type UpdateObservationWindowInput = z.infer<typeof updateObservationWindowInput>;
+
+/**
+ * Resend a single invitee's window-invite email. Keyed on email + building
+ * because the same person can be invited at two buildings (two entries).
+ */
+export const resendWindowInviteInput = z.object({
+  windowId: z.string().min(1),
+  email,
+  buildingId: slugId,
+});
+export type ResendWindowInviteInput = z.infer<typeof resendWindowInviteInput>;
