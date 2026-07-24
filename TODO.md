@@ -19,11 +19,11 @@ _Empty — everything that was here shipped on 2026-07-24. See "Shipped" below._
 
 ## Follow-ups from the sweep
 
-- [ ] **Verify the WebKit Firestore stall on a real iPad.** The `tablet-ipad` Playwright project runs the iPad viewport on Chromium because under WebKit the Firestore *collection* listeners never advance past their first cached snapshot against the emulator suite (the staff picker sits at "0 of 1 match" past a 30s wait; single-document listeners are fine, so sign-in and dashboard chrome pass). Unknown whether this is emulator-transport-specific or reproduces on iPad Safari against production Firestore — needs a device, not CI. See the comment in `apps/web/playwright.config.ts`. (M)
+- [ ] **Verify the WebKit Firestore stall on a real iPad.** The `tablet-ipad` Playwright project runs the iPad viewport on Chromium because under WebKit the Firestore _collection_ listeners never advance past their first cached snapshot against the emulator suite (the staff picker sits at "0 of 1 match" past a 30s wait; single-document listeners are fine, so sign-in and dashboard chrome pass). Unknown whether this is emulator-transport-specific or reproduces on iPad Safari against production Firestore — needs a device, not CI. See the comment in `apps/web/playwright.config.ts`. (M)
 - [ ] **Adopt the shared Tiptap toolbar in `EmailBodyField`** — #50 deduped `tiptap-editor.tsx` and `ScriptEditor.tsx` into `components/ui/tiptap-toolbar.tsx`; `EmailBodyField` still carries its own copy. (S)
 - [ ] **Re-validate stored link hrefs server-side in the email path** — #52 validates URLs at input time (`lib/url.ts`), but `renderEmailShell` inserts stored `bodyHtml` as-is, so a value written before that validation existed is still trusted at send time. (S)
 - [ ] **Give `apps/pdf-renderer` a `test:coverage` script** and add it to the coverage job's package list in `.github/workflows/ci.yml` — the job currently covers `@ops/shared`, `@ops/functions`, `@ops/web` and fails on a missing summary, so pdf-renderer must be added deliberately, not implicitly. (S)
-- [ ] **Narrow the `**/lib/**` ESLint ignore in `apps/web`** — it is aimed at build output but also silently skips `src/lib/**`, which is real source (`lib/url.ts`, `lib/firebase.ts`). (S)
+- [ ] **Narrow the ESLint ignore glob in `apps/web`** — the `'**/lib/**'` entry in `eslint.config.js` is aimed at build output but also silently skips `src/lib/**`, which is real source (`lib/url.ts`, `lib/firebase.ts`). (S)
 
 ## Future feature (needs its own brainstorm → spec → plan)
 
