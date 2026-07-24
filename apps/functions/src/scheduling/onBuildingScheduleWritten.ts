@@ -3,7 +3,6 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import {
   FieldValue,
-  Timestamp,
   getFirestore,
   type DocumentReference,
   type Firestore,
@@ -14,6 +13,7 @@ import {
   OBSERVATION_WINDOW_STATUS,
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
+  toDate as sharedToDate,
   type Building,
   type BuildingSchedule,
   type ObservationSlot,
@@ -99,10 +99,7 @@ export const onBuildingScheduleWritten = onDocumentWritten(
 );
 
 function toDate(value: unknown): Date {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'number') return new Date(value);
-  return new Date(NaN);
+  return sharedToDate(value) ?? new Date(NaN);
 }
 
 /** Human-readable reason shown in the schedule-change-impact email. */
