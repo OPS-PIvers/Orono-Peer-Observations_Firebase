@@ -18,12 +18,14 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

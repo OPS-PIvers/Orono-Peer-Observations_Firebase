@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "serve": "pnpm build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@ops/shared": "workspace:*",
     "@types/node": "^22.10.10",
+    "@vitest/coverage-v8": "^4.0.18",
     "esbuild": "^0.28.1",
     "firebase-functions-test": "^3.4.1",
     "tsup": "^8.5.0",
