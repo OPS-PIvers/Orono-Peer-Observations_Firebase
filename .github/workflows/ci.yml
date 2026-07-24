@@ -140,17 +140,33 @@ jobs:
       - name: Build functions
         run: pnpm --filter @ops/functions build
 
-      # Two functions declare defineSecret() params (GEMINI_API_KEY,
-      # GOOGLE_OAUTH_CLIENT_SECRET). When the Functions emulator loads them it
-      # resolves secret values, and if no local override exists it reaches out
-      # to Google Cloud Secret Manager via ADC — which, on a credential-less CI
-      # runner, hangs on metadata-server detection and stalls the whole job.
-      # firebase-tools reads overrides from <functionsSource>/.secret.local
-      # (firebase.json source = apps/functions/lib), so seed dummy values there
-      # to keep the emulator fully offline. Written after the build since the
-      # build output dir is (re)created by tsup.
-      - name: Provide dummy Functions secrets for the offline emulator
+      # The Functions emulator resolves every declared param at startup. Any
+      # non-secret defineString() param that has no value and no default is
+      # resolved by prompting on stdin — and because firebase-tools calls
+      # resolveBackend() with nonInteractive:false, a credential-less CI runner
+      # with no TTY blocks forever on that prompt, hanging the whole job before
+      # any test runs. Provide every string param in the emulator dotenv file
+      # (firebase-tools reads <functionsSource>/.env.local; firebase.json source
+      # = apps/functions/lib) so none of them prompt. Empty values are treated
+      # as "provided" (the resolver only checks key presence), and the functions
+      # that read them are either never triggered by the specs or skip on an
+      # empty value (e.g. onObservationWritten skips sheet sync when
+      # MASTER_LOG_SHEET_ID is unset).
+      #
+      # Secrets (defineSecret) are NOT prompted in emulator mode; they are read
+      # at invocation time from .secret.local. Provide dummy values there too so
+      # the emulator never falls back to Google Cloud Secret Manager (an ADC
+      # call that also hangs on metadata-server detection in CI).
+      #
+      # Written after the build since tsup recreates the output dir.
+      - name: Provide offline Functions params/secrets for the emulator
         run: |
+          cat > apps/functions/lib/.env.local <<'EOF'
+          DRIVE_PARENT_FOLDER_ID=
+          GOOGLE_OAUTH_CLIENT_ID=
+          MASTER_LOG_SHEET_ID=
+          PDF_RENDERER_URL=
+          EOF
           cat > apps/functions/lib/.secret.local <<'EOF'
           GEMINI_API_KEY=demo-gemini-key
           GOOGLE_OAUTH_CLIENT_SECRET=demo-oauth-secret
