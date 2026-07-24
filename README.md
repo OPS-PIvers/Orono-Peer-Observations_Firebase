@@ -60,3 +60,4 @@ Firebase.
 ## See also
 
 - DESIGN.md — brand tokens
+- docs/dependency-overrides.md — why each `pnpm.overrides` entry in package.json exists and when it can be removed
