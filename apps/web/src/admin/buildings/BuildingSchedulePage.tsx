@@ -42,7 +42,7 @@ import { PageHeader } from '@/components/PageHeader';
 
 /** Local form-only wrapper giving each override a stable key so React can
  *  track rows correctly across remove-from-middle edits (list `key` must
- *  not be the array index — see docs/CODEBASE_AUDIT.md P2 "index-as-key").
+ *  not be the array index — see docs/archive/CODEBASE_AUDIT.md P2 "index-as-key").
  *  The persisted shape (`ScheduleDateOverride`) is unchanged; `key` is
  *  stripped again on save. */
 interface OverrideEntry {
