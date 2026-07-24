@@ -207,11 +207,7 @@ export function RubricEditorPage() {
           {savedAt ? (
             <span className="text-xs text-white/70">Saved {savedAt.toLocaleTimeString()}</span>
           ) : null}
-          <Button
-            onClick={() => void save()}
-            disabled={saving || !dirty}
-            className="text-ops-blue-dark bg-white hover:bg-white/90 disabled:bg-white/40"
-          >
+          <Button variant="onDark" onClick={() => void save()} disabled={saving || !dirty}>
             {saving ? 'Saving…' : 'Save rubric'}
           </Button>
         </div>
