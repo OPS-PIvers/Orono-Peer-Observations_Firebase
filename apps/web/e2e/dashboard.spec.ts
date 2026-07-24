@@ -47,6 +47,13 @@ async function devSignIn(page: Page, email: string): Promise<void> {
     .catch(() => false);
 
   if (!landed) {
+    // In CI (against the emulator stack) an unreachable backend is a real
+    // failure, not an expected local condition — skipping here would let a
+    // broken/slow dev-auth-server produce a false-green run. Only skip when
+    // running locally without the emulator stack up.
+    if (process.env.CI) {
+      throw new Error('dev-auth-server / emulator backend not reachable');
+    }
     test.skip(true, 'dev-auth-server / emulator backend not reachable');
   }
 }

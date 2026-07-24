@@ -45,6 +45,13 @@ async function devSignIn(page: Page, email: string): Promise<void> {
     .catch(() => false);
 
   if (!landed) {
+    // In CI (against the emulator stack) an unreachable backend is a real
+    // failure, not an expected local condition — skipping here would let a
+    // broken/slow dev-auth-server produce a false-green run. Only skip when
+    // running locally without the emulator stack up.
+    if (process.env.CI) {
+      throw new Error('dev-auth-server / emulator backend not reachable');
+    }
     test.skip(true, 'dev-auth-server / emulator backend not reachable');
   }
 }
@@ -81,13 +88,16 @@ test.describe('404 routing for unknown paths', () => {
     await page.waitForURL((url) => url.pathname !== '/nonexistent');
   });
 
-  test('authenticated user visiting an unknown admin path sees the NotFound page', async ({
+  test('unmatched admin-prefixed path falls through to the top-level NotFound catch-all', async ({
     page,
   }) => {
+    // Note: this does NOT exercise the requireAdmin branch — /admin/nonexistent
+    // never matches a nested admin route, so React Router falls straight
+    // through to the top-level catch-all below any auth/role check. This just
+    // confirms an admin-prefixed unknown path isn't special-cased away from
+    // NotFound.
     await devSignIn(page, SEED_ADMIN_EMAIL);
 
-    // No nested catch-all under /admin, so this falls through to the
-    // top-level NotFound rather than an unauthorized screen.
     await page.goto('/admin/nonexistent');
     await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
   });
