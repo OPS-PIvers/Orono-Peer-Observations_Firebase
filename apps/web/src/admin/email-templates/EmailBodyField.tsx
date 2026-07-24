@@ -16,6 +16,7 @@ import type { TemplateVariable } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { PromptDialog } from '@/components/PromptDialog';
 import { CtaButton } from './CtaButton';
 import { VariableToken } from './VariableToken';
 import { VARIABLE_LABELS, variableLabel } from './variableLabels';
@@ -96,6 +97,9 @@ function WysiwygBody({ value, onChange, variables }: EmailBodyFieldProps) {
 }
 
 function Toolbar({ editor }: { editor: Editor }) {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [ctaDialogOpen, setCtaDialogOpen] = useState(false);
+
   return (
     <div className="border-input bg-muted/40 flex flex-wrap items-center gap-1 border-b px-2 py-1">
       <ToolbarButton
@@ -126,29 +130,59 @@ function Toolbar({ editor }: { editor: Editor }) {
       <span className="bg-border mx-1 h-5 w-px" />
       <ToolbarButton
         active={editor.isActive('link')}
-        onClick={() => insertOrEditLink(editor)}
+        onClick={() => setLinkDialogOpen(true)}
         title="Add/edit link"
         icon={<LinkIcon className="h-4 w-4" />}
       />
       <ToolbarButton
-        onClick={() => insertCtaButton(editor)}
+        onClick={() => setCtaDialogOpen(true)}
         title="Insert button"
         icon={<MousePointerClick className="h-4 w-4" />}
       />
+
+      <PromptDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        title="Add/edit link"
+        description="Leave blank and save to remove the link."
+        fields={[
+          {
+            key: 'url',
+            label: 'URL',
+            defaultValue:
+              (editor.getAttributes('link')['href'] as string | undefined) ?? 'https://',
+            type: 'url',
+          },
+        ]}
+        onConfirm={({ url }) => applyLink(editor, url ?? '')}
+      />
+
+      <PromptDialog
+        open={ctaDialogOpen}
+        onOpenChange={setCtaDialogOpen}
+        title="Insert button"
+        fields={[
+          { key: 'label', label: 'Button label', defaultValue: 'Sign in', required: true },
+          {
+            key: 'href',
+            label: 'Button link',
+            defaultValue: '{{signInLink}}',
+            placeholder: 'URL or {{variable}}',
+            type: 'url',
+            allowTemplateToken: true,
+            required: true,
+          },
+        ]}
+        onConfirm={({ label, href }) => {
+          editor
+            .chain()
+            .focus()
+            .insertContent({ type: 'ctaButton', attrs: { href: href ?? '', label: label ?? '' } })
+            .run();
+        }}
+      />
     </div>
   );
-}
-
-function insertCtaButton(editor: Editor) {
-  const label = window.prompt('Button label', 'Sign in');
-  if (label === null || label.trim() === '') return;
-  const href = window.prompt('Button link (URL or {{variable}})', '{{signInLink}}');
-  if (href === null || href.trim() === '') return;
-  editor
-    .chain()
-    .focus()
-    .insertContent({ type: 'ctaButton', attrs: { href: href.trim(), label: label.trim() } })
-    .run();
 }
 
 function ToolbarButton({
@@ -179,10 +213,7 @@ function ToolbarButton({
   );
 }
 
-function insertOrEditLink(editor: Editor) {
-  const previous = editor.getAttributes('link')['href'] as string | undefined;
-  const url = window.prompt('URL', previous ?? 'https://');
-  if (url === null) return;
+function applyLink(editor: Editor, url: string) {
   if (url === '') {
     editor.chain().focus().extendMarkRange('link').unsetLink().run();
     return;

@@ -9,7 +9,6 @@ import {
   Heading2,
   Heading3,
   Italic,
-  Link as LinkIcon,
   List,
   ListOrdered,
   Quote,
@@ -19,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { Divider, ToolbarButton, insertOrEditLink } from './tiptap-toolbar';
+import { Divider, ToolbarButton, useLinkDialog } from './tiptap-toolbar';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -111,6 +110,8 @@ export function TiptapEditor({
 }
 
 function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'full' }) {
+  const linkDialog = useLinkDialog(editor);
+
   return (
     <div className="border-input bg-muted/40 flex flex-wrap items-center gap-1 border-b px-2 py-1">
       <ToolbarButton
@@ -173,12 +174,7 @@ function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'fu
       ) : null}
 
       <Divider />
-      <ToolbarButton
-        active={editor.isActive('link')}
-        onClick={() => insertOrEditLink(editor)}
-        title="Add/edit link"
-        icon={<LinkIcon className="h-4 w-4" />}
-      />
+      {linkDialog.button}
 
       <div className="ml-auto flex items-center gap-1">
         <ToolbarButton
@@ -194,6 +190,8 @@ function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'fu
           icon={<Redo2 className="h-4 w-4" />}
         />
       </div>
+
+      {linkDialog.dialog}
     </div>
   );
 }
