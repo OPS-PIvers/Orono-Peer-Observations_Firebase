@@ -21,8 +21,7 @@ const buttonVariants = cva(
          * ever flipped to `variant="light"`, where the surrounding chrome is
          * also white.
          */
-        onDark:
-          'border border-ops-blue-lighter bg-white text-ops-blue-dark hover:bg-white/90 disabled:bg-white/40',
+        onDark: 'border border-ops-blue-lighter bg-white text-ops-blue-dark hover:bg-white/90',
       },
       size: {
         default: 'h-11 min-h-11 px-4 py-2',
