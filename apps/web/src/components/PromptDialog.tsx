@@ -10,14 +10,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { isSafeUrl } from '@/lib/url';
+import { toSafeUrl } from '@/lib/url';
 
 export interface PromptField {
   key: string;
   label: string;
   defaultValue?: string;
   placeholder?: string;
-  /** 'url' fields are validated to block javascript:/data:/etc — only http(s) (or relative) is allowed. */
+  /** 'url' fields are validated to block javascript:/data:/etc — only http:, https:, and mailto: are allowed. */
   type?: 'text' | 'url';
   /** For 'url' fields: also accept a single `{{templateVariable}}` token (used by email CTA links). */
   allowTemplateToken?: boolean;
@@ -40,7 +40,7 @@ export interface PromptDialogProps {
  * Generic "prompt for a string" dialog — a shadcn Dialog + Input replacement
  * for `window.prompt()`. Supports one or more fields (e.g. label + URL for a
  * CTA button) and optional URL protocol validation so link-collecting sites
- * can't be used to inject a `javascript:` (or other non-http(s)) href.
+ * can't be used to inject a `javascript:` (or other non-allowlisted-protocol) href.
  *
  * Dismissing the dialog (Cancel, overlay click, Esc) never calls onConfirm,
  * matching `window.prompt` returning `null`.
@@ -69,22 +69,40 @@ export function PromptDialog({
 
   function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // The URL fields are prefilled with a bare 'https://' placeholder (see
+    // call sites). If the user saves without actually typing a URL, that
+    // isn't a real edit -- treat it as Cancel instead of surfacing a
+    // validation error for a value the user never chose.
+    const hasUntouchedPlaceholder = fields.some((field) => {
+      if (field.type !== 'url') return false;
+      const raw = (values[field.key] ?? '').trim();
+      return raw === 'https://' || raw === 'http://';
+    });
+    if (hasUntouchedPlaceholder) {
+      onOpenChange(false);
+      return;
+    }
+
+    const normalized: Record<string, string> = {};
     for (const field of fields) {
       const value = (values[field.key] ?? '').trim();
       if (field.required && value === '') {
         setError(`${field.label} is required.`);
         return;
       }
-      if (
-        field.type === 'url' &&
-        !isSafeUrl(value, { allowTemplateToken: field.allowTemplateToken ?? false })
-      ) {
-        setError(`${field.label} must be a valid web address starting with http:// or https://.`);
-        return;
+      if (field.type === 'url') {
+        const safe = toSafeUrl(value, { allowTemplateToken: field.allowTemplateToken ?? false });
+        if (safe === null) {
+          setError(`${field.label} must be a valid web address (http://, https://, or mailto:).`);
+          return;
+        }
+        normalized[field.key] = safe;
+      } else {
+        normalized[field.key] = value;
       }
     }
-    const trimmed = Object.fromEntries(fields.map((f) => [f.key, (values[f.key] ?? '').trim()]));
-    onConfirm(trimmed);
+    onConfirm(normalized);
     onOpenChange(false);
   }
 
