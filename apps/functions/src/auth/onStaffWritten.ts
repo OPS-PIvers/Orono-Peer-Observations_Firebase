@@ -1,4 +1,5 @@
-import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onDocumentWritten, type FirestoreEvent } from 'firebase-functions/v2/firestore';
+import type { Change, DocumentSnapshot } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -27,7 +28,19 @@ if (getApps().length === 0) initializeApp();
  */
 export const onStaffWritten = onDocumentWritten(
   { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
-  async (event) => {
+  (event) => handleStaffWritten(event),
+);
+
+/**
+ * Core handler for the /staff/{email} write trigger, extracted from the
+ * onDocumentWritten wrapper so it can be unit-tested with a plain event object
+ * (the wrapper itself reconstructs the event from a raw CloudEvent envelope,
+ * which is impractical to fake).
+ */
+export async function handleStaffWritten(
+  event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { email: string }>,
+): Promise<void> {
+  {
     const email = event.params.email;
     const after = event.data?.after.data() as
       | {
@@ -93,5 +106,5 @@ export const onStaffWritten = onDocumentWritten(
         logger.error('onStaffWritten: invite email failed (non-fatal)', emailErr);
       }
     }
-  },
-);
+  }
+}
