@@ -45,6 +45,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
     secrets: [GEMINI_API_KEY],
     memory: '1GiB',
     timeoutSeconds: 540,
+    maxInstances: 10,
   },
   async (event) => {
     const snapshot = event.data;

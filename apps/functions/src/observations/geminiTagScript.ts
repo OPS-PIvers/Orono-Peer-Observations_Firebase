@@ -53,6 +53,7 @@ export const geminiTagScript = onCall(
     secrets: [GEMINI_API_KEY],
     memory: '512MiB',
     timeoutSeconds: 120,
+    maxInstances: 10,
   },
   async (request): Promise<GeminiTagResponse> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');

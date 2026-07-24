@@ -65,7 +65,7 @@ interface FinalizeRequest {
  * user can retry instead of being permanently locked out of finalizing.
  */
 export const finalizeObservation = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, maxInstances: 10 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
