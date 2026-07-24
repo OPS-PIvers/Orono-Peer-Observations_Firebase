@@ -26,12 +26,23 @@ const PORT = Number(process.env.DEV_AUTH_PORT ?? '8787');
 const SERVICE_ACCOUNT_ID =
   process.env.FIREBASE_SERVICE_ACCOUNT ?? `peer-eval-svc@${PROJECT_ID}.iam.gserviceaccount.com`;
 
+// When the Auth emulator is targeted (FIREBASE_AUTH_EMULATOR_HOST set — the
+// case in CI and `pnpm dev:emulators`), the Admin SDK mints custom tokens
+// with the emulator's built-in signer, so no real credentials are needed.
+// Initialize with just the project id in that mode; fall back to ADC only
+// when talking to a live Auth backend (Paul's local `pnpm dev:auth-server`).
+const usingAuthEmulator = Boolean(process.env.FIREBASE_AUTH_EMULATOR_HOST);
+
 if (getApps().length === 0) {
-  initializeApp({
-    credential: applicationDefault(),
-    projectId: PROJECT_ID,
-    serviceAccountId: SERVICE_ACCOUNT_ID,
-  });
+  if (usingAuthEmulator) {
+    initializeApp({ projectId: PROJECT_ID });
+  } else {
+    initializeApp({
+      credential: applicationDefault(),
+      projectId: PROJECT_ID,
+      serviceAccountId: SERVICE_ACCOUNT_ID,
+    });
+  }
 }
 
 const auth = getAuth();

@@ -50,6 +50,13 @@ async function devSignIn(page: Page, email: string): Promise<void> {
     .catch(() => false);
 
   if (!landed) {
+    // In CI (against the emulator stack) an unreachable backend is a real
+    // failure, not an expected local condition — skipping here would let a
+    // broken/slow dev-auth-server produce a false-green run. Only skip when
+    // running locally without the emulator stack up.
+    if (process.env.CI) {
+      throw new Error('dev-auth-server / emulator backend not reachable');
+    }
     test.skip(true, 'dev-auth-server / emulator backend not reachable');
   }
 }
@@ -110,10 +117,10 @@ test.describe('observation create -> edit -> autosave', () => {
     await expect(page.getByText('Draft', { exact: true })).toBeVisible();
 
     // Autosave: typing into the observation-name field flips the save
-    // indicator's live region to "All changes saved" after the debounce.
+    // indicator to "Saved" once the debounced flush completes.
     const nameInput = page.getByLabel('Observation name');
     await nameInput.fill('E2E smoke — Period 1');
-    await expect(page.getByText('All changes saved')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // The edit survives a reload (it was persisted, not just local state).
     await page.reload();
