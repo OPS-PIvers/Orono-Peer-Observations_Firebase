@@ -124,9 +124,12 @@ describe('toDate', () => {
     expect(toDate('not a date')).toBeNull();
   });
 
-  it('returns null for null/number', () => {
+  it('returns null for null and parses epoch-ms numbers', () => {
     expect(toDate(null)).toBeNull();
-    expect(toDate(123)).toBeNull();
+    // Shared @ops/shared toDate accepts epoch-ms numbers (union of the five
+    // consolidated implementations); the pre-consolidation local helper
+    // returned null here.
+    expect(toDate(123)).toEqual(new Date(123));
   });
 
   it('handles a toDate()-bearing duck type', () => {
