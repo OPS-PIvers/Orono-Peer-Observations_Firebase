@@ -376,10 +376,13 @@ function styles(primaryColor: string): string {
   let embeddedFonts = '';
   try {
     embeddedFonts = readFileSync(fontsPath, 'utf-8');
-  } catch {
+  } catch (err) {
     // If the fonts file doesn't exist at runtime (e.g. in tests before the
-    // build step generates it), fall back to empty string; the template
-    // still renders, just without embedded fonts.
+    // build step generates it, or a missing asset in the runtime image),
+    // fall back to empty string so the template still renders — but log
+    // loudly so a missing asset in production is diagnosable instead of
+    // silently producing PDFs without embedded fonts.
+    console.error(`[pdf-renderer] failed to read embedded fonts CSS at ${fontsPath}:`, err);
     embeddedFonts = '';
   }
 
