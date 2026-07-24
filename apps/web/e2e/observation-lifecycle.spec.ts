@@ -110,10 +110,10 @@ test.describe('observation create -> edit -> autosave', () => {
     await expect(page.getByText('Draft', { exact: true })).toBeVisible();
 
     // Autosave: typing into the observation-name field flips the save
-    // indicator's live region to "All changes saved" after the debounce.
+    // indicator to "Saved" once the debounced flush completes.
     const nameInput = page.getByLabel('Observation name');
     await nameInput.fill('E2E smoke — Period 1');
-    await expect(page.getByText('All changes saved')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // The edit survives a reload (it was persisted, not just local state).
     await page.reload();

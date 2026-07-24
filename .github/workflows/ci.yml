@@ -97,3 +97,82 @@ jobs:
 
       - name: Run rules tests
         run: pnpm test:rules
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    # Uses a `demo-` project id so the emulators run fully offline (no
+    # credentials or live Firebase project needed), mirroring how the specs
+    # run against `pnpm dev:emulators` locally.
+    env:
+      FIREBASE_PROJECT_ID: demo-ops
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # firebase-tools' Firestore + Storage emulators are Java processes and
+      # require Java 21+ (see the rules-tests job above for the same pin).
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @ops/shared build
+
+      # The Functions emulator serves the compiled output in apps/functions/lib
+      # (firebase.json points there) — syncMyClaims must be callable so the app
+      # can resolve custom claims after dev sign-in.
+      - name: Build functions
+        run: pnpm --filter @ops/functions build
+
+      - name: Install Playwright browser
+        run: pnpm --filter @ops/web exec playwright install --with-deps chromium
+
+      # Vite only wires the SDKs to the emulator suite when VITE_USE_EMULATORS
+      # is set; the demo project id keeps everything offline. The dev-sign-in
+      # page fetches custom tokens from the local dev-auth-server.
+      - name: Write web env for the emulator run
+        run: |
+          cat > apps/web/.env.local <<'EOF'
+          VITE_FIREBASE_API_KEY=demo-key
+          VITE_FIREBASE_AUTH_DOMAIN=demo-ops.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID=demo-ops
+          VITE_FIREBASE_STORAGE_BUCKET=demo-ops.appspot.com
+          VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+          VITE_FIREBASE_APP_ID=1:000000000000:web:0000000000000000000000
+          VITE_USE_EMULATORS=true
+          VITE_DEV_AUTH_SERVER=http://127.0.0.1:8787
+          EOF
+
+      # emulators:exec boots Firestore/Auth/Functions/Storage, exports the
+      # *_EMULATOR_HOST vars into the child command, then tears everything down
+      # when it exits. Inside: start the dev-auth-server (mints custom tokens
+      # against the Auth emulator — no real credentials needed), seed the
+      # synthetic dataset the specs expect, then run Playwright (which starts
+      # the Vite dev server via its own webServer config).
+      - name: Run E2E against the emulator suite
+        run: >
+          pnpm exec firebase emulators:exec
+          --project demo-ops
+          --only firestore,auth,functions,storage
+          "node scripts/dev-auth-server.mjs & pnpm seed:dev && pnpm test:e2e"
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
