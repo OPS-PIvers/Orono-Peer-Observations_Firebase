@@ -32,6 +32,13 @@ app.post('/render-observation', async (c) => {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    // 'networkidle0' waits for outstanding network activity to settle before
+    // we snapshot the page. Fonts are embedded as base64 now, so this no
+    // longer blocks on font fetches — but the district branding logo
+    // (<img class="brand-logo">) is still a remote image, and
+    // 'domcontentloaded' can fire before it finishes loading, producing a
+    // PDF with a missing/blank logo. 'networkidle0' is the simplest way to
+    // guarantee the logo (and anything else async) is in before page.pdf().
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'Letter',

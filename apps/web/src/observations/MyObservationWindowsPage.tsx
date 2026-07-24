@@ -136,11 +136,7 @@ export function MyObservationWindowsPage() {
             <ChevronLeft className="h-4 w-4" />
             Back
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setDialogOpen(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
+          <Button variant="onDark" size="sm" onClick={() => setDialogOpen(true)}>
             Open window
           </Button>
         </div>

@@ -14,6 +14,14 @@ const buttonVariants = cva(
         secondary: 'bg-secondary text-secondary-foreground hover:bg-ops-gray-lighter',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
+        /**
+         * Primary action rendered inside a dark `PageHeader` (variant="dark").
+         * A white pill with brand-blue text reads clearly against the dark
+         * strip. A hairline border keeps it visible even if that header is
+         * ever flipped to `variant="light"`, where the surrounding chrome is
+         * also white.
+         */
+        onDark: 'border border-ops-blue-lighter bg-white text-ops-blue-dark hover:bg-white/90',
       },
       size: {
         default: 'h-11 min-h-11 px-4 py-2',
