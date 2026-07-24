@@ -94,6 +94,7 @@ jobs:
       - name: Write coverage summary
         if: always()
         run: |
+          missing=0
           {
             echo "## Coverage Summary"
             echo
@@ -103,15 +104,27 @@ jobs:
                 echo "### $pkg"
                 echo '```'
                 node -e "
-                  const s = require('./$summary').total;
-                  for (const [k, v] of Object.entries(s)) {
-                    console.log(k.padEnd(12), v.pct + '%', '(' + v.covered + '/' + v.total + ')');
+                  try {
+                    const s = require('./$summary').total;
+                    for (const [k, v] of Object.entries(s)) {
+                      console.log(k.padEnd(12), v.pct + '%', '(' + v.covered + '/' + v.total + ')');
+                    }
+                  } catch (err) {
+                    console.log('⚠️ could not parse coverage summary for $pkg (' + err.message + ')');
                   }
                 "
                 echo '```'
+              else
+                echo "### $pkg"
+                echo "⚠️ missing coverage-summary.json for $pkg"
+                missing=1
               fi
             done
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$missing" -eq 1 ]; then
+            echo "::error::Missing coverage-summary.json for one or more expected packages (packages/shared, apps/functions, apps/web) — coverage was not collected."
+            exit 1
+          fi
 
       - name: Upload coverage reports
         if: always()
