@@ -82,7 +82,7 @@
       "@tootallnate/once": "^3.0.1",
       "protobufjs": "^7.5.8",
       "@protobufjs/utf8": "^1.1.1",
-      "hono": "^4.12.18",
+      "hono": "^4.12.32",
       "ws@8": "^8.20.1",
       "basic-ftp": "^5.3.1",
       "fast-uri": "^3.1.2",
