@@ -2,16 +2,15 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
-Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes).
+Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes) and the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents.
 
 ## Human-gated (needs a decision, secret, or deploy)
 
 - [ ] **KMS envelope-encryption of Google Calendar OAuth tokens** — tokens are plaintext in `/userCalendarTokens`. Needs a Cloud KMS key provisioned + deploy config. (M) _From CODEBASE_AUDIT; real residual security exposure._
 - [ ] **Firestore backup completion monitoring** — Cloud Scheduler function to alert admins if the daily backup misses its window. Flagged as future work in `docs/operations.md:148`; post-cutover enhancement. (M)
 - [ ] **Adopt (or reject) the Firestore Send Email extension** — add `extensions/firestore-send-email.env` + extensions block to `firebase.json` and deploy, vs. keeping the existing email flow. (S)
-- [ ] **Review dev-paul's CLAUDE.md** before deciding whether/how to merge into main's. (S)
-- [ ] **Triage the 18 DUPLICATE refactors from dev-paul** — per-file adopt/skip decision; `computeClaims.ts` specifically carries a genuinely new `elevatedAccessRevoked` revoke-on-demotion behavior worth a deliberate look. (M)
-- [ ] **Close PR #23 (dev-paul)** once the residual items above are triaged. Tree preserved via tag `dev-paul-snapshot-2026-07-21`. (S)
+- [ ] **Review the CLAUDE.md preserved in tag `dev-paul-snapshot-2026-07-21`** — `main` has no CLAUDE.md at all, so this is an adopt-or-drop decision, not a merge. (S)
+- [ ] **Triage the 18 DUPLICATE refactors from dev-paul** — per-file adopt/skip decision against tag `dev-paul-snapshot-2026-07-21`; `computeClaims.ts` specifically carries a genuinely new `elevatedAccessRevoked` revoke-on-demotion behavior worth a deliberate look. PR #23 is already closed (unmerged, 2026-07-21), so the tag is the only source. (M)
 
 ## Ready code work (no blockers)
 
@@ -23,7 +22,7 @@ _Empty — everything that was here shipped on 2026-07-24. See "Shipped" below._
 - [ ] **Adopt the shared Tiptap toolbar in `EmailBodyField`** — #50 deduped `tiptap-editor.tsx` and `ScriptEditor.tsx` into `components/ui/tiptap-toolbar.tsx`; `EmailBodyField` still carries its own copy. (S)
 - [ ] **Re-validate stored link hrefs server-side in the email path** — #52 validates URLs at input time (`lib/url.ts`), but `renderEmailShell` inserts stored `bodyHtml` as-is, so a value written before that validation existed is still trusted at send time. (S)
 - [ ] **Give `apps/pdf-renderer` a `test:coverage` script** and add it to the coverage job's package list in `.github/workflows/ci.yml` — the job currently covers `@ops/shared`, `@ops/functions`, `@ops/web` and fails on a missing summary, so pdf-renderer must be added deliberately, not implicitly. (S)
-- [ ] **Narrow the ESLint ignore glob in `apps/web`** — the `'**/lib/**'` entry in `eslint.config.js` is aimed at build output but also silently skips `src/lib/**`, which is real source (`lib/url.ts`, `lib/firebase.ts`). (S)
+- [ ] **Narrow the repo-wide ESLint ignore glob** — the `'**/lib/**'` entry at `eslint.config.js:20` is aimed at build output but also silently skips `apps/web/src/lib/**`, which is real source (`lib/url.ts`, `lib/firebase.ts`). (S)
 
 ## Future feature (needs its own brainstorm → spec → plan)
 

@@ -37,7 +37,7 @@ loadDotenv();
 
 /** Collections this script knows how to export, and the CLI name used to
  *  select them via --collections=. Keep in sync with the "Key files" list
- *  in docs/FEATURE_AUDIT.md finding #18. */
+ *  in docs/archive/FEATURE_AUDIT.md finding #18. */
 const EXPORTABLE_COLLECTIONS = {
   staff: COLLECTIONS.staff,
   observations: COLLECTIONS.observations,
