@@ -4,7 +4,12 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import type { calendar_v3 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-import { COLLECTIONS, type Observation, type ObservationWindow } from '@ops/shared';
+import {
+  COLLECTIONS,
+  toDate as sharedToDate,
+  type Observation,
+  type ObservationWindow,
+} from '@ops/shared';
 import { APP_URL } from '../../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -194,23 +199,7 @@ async function primaryCalendarId(email: string): Promise<string> {
 }
 
 /** Coerce a Firestore Timestamp / Date / ISO string into a JS Date. */
-export function toDate(value: unknown): Date | null {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'string') {
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? null : new Date(ms);
-  }
-  if (value && typeof value === 'object' && 'toDate' in value) {
-    try {
-      const d = (value as { toDate: () => Date }).toDate();
-      return d instanceof Date ? d : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
+export const toDate = sharedToDate;
 
 export interface CreateObservationEventArgs {
   observation: Observation;
