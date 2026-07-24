@@ -281,23 +281,29 @@ describe('finalizeObservation — input & auth guards', () => {
 
 describe('finalizeObservation — claim transaction', () => {
   it('rejects an observation that is already finalized', async () => {
-    const { db } = buildDb(happyConfig({ status: OBSERVATION_STATUS.finalized }));
+    const { db, rec } = buildDb(happyConfig({ status: OBSERVATION_STATUS.finalized }));
     h.db = db;
     await expect(run(observerRequest())).rejects.toMatchObject({ code: 'failed-precondition' });
+    // no claim write should happen once the observation is already finalized
+    expect(rec.txUpdates).toHaveLength(0);
   });
 
   it('rejects when another finalize claim is still fresh', async () => {
     const recentClaim = { toMillis: () => Date.now() - 1000 };
-    const { db } = buildDb(happyConfig({ finalizeStartedAt: recentClaim }));
+    const { db, rec } = buildDb(happyConfig({ finalizeStartedAt: recentClaim }));
     h.db = db;
     await expect(run(observerRequest())).rejects.toMatchObject({ code: 'failed-precondition' });
+    // no claim write should happen while another claim is still fresh
+    expect(rec.txUpdates).toHaveLength(0);
   });
 
   it('allows a retry when the prior claim is older than the TTL', async () => {
     const staleClaim = { toMillis: () => Date.now() - 11 * 60 * 1000 };
-    const { db } = buildDb(happyConfig({ finalizeStartedAt: staleClaim }));
+    const { db, rec } = buildDb(happyConfig({ finalizeStartedAt: staleClaim }));
     h.db = db;
     await expect(run(observerRequest())).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
+    // the retry re-claims the observation via the transaction
+    expect(rec.txUpdates).toContainEqual({ finalizeStartedAt: '__server_ts__' });
   });
 });
 
@@ -316,6 +322,8 @@ describe('finalizeObservation — finalize flow', () => {
       driveFolderId: 'folder-1',
       pdfWebViewLink: 'https://drive/view/pdf-1',
     });
+    // the finalize claim transaction stamped a fresh finalizeStartedAt
+    expect(rec.txUpdates).toContainEqual({ finalizeStartedAt: '__server_ts__' });
     // shared the folder (not the file) with the observed staff as reader
     expect(h.drive.shareWithUser).toHaveBeenCalledWith(
       expect.objectContaining({ email: OBSERVED, role: 'reader', sendNotificationEmail: false }),
