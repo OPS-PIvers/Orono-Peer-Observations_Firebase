@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { type Content, type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
+import { PromptDialog } from '@/components/PromptDialog';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -110,6 +111,8 @@ export function TiptapEditor({
 }
 
 function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'full' }) {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+
   return (
     <div className="border-input bg-muted/40 flex flex-wrap items-center gap-1 border-b px-2 py-1">
       <ToolbarButton
@@ -174,7 +177,7 @@ function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'fu
       <Divider />
       <ToolbarButton
         active={editor.isActive('link')}
-        onClick={() => insertOrEditLink(editor)}
+        onClick={() => setLinkDialogOpen(true)}
         title="Add/edit link"
         icon={<LinkIcon className="h-4 w-4" />}
       />
@@ -193,6 +196,23 @@ function Toolbar({ editor, variant }: { editor: Editor; variant: 'compact' | 'fu
           icon={<Redo2 className="h-4 w-4" />}
         />
       </div>
+
+      <PromptDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        title="Add/edit link"
+        description="Leave blank and save to remove the link."
+        fields={[
+          {
+            key: 'url',
+            label: 'URL',
+            defaultValue:
+              (editor.getAttributes('link')['href'] as string | undefined) ?? 'https://',
+            type: 'url',
+          },
+        ]}
+        onConfirm={({ url }) => applyLink(editor, url ?? '')}
+      />
     </div>
   );
 }
@@ -233,10 +253,7 @@ function Divider() {
   return <span className="bg-border mx-1 h-5 w-px" />;
 }
 
-function insertOrEditLink(editor: Editor) {
-  const previous = editor.getAttributes('link')['href'] as string | undefined;
-  const url = window.prompt('URL', previous ?? 'https://');
-  if (url === null) return;
+function applyLink(editor: Editor, url: string) {
   if (url === '') {
     editor.chain().focus().extendMarkRange('link').unsetLink().run();
     return;

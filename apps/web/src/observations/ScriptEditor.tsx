@@ -24,6 +24,7 @@ import {
 import type { RubricComponent, RubricDomain, TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { functions } from '@/lib/firebase';
+import { PromptDialog } from '@/components/PromptDialog';
 import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { ComponentTagMark } from './component-tag-mark';
 import { colorFor } from './component-colors';
@@ -230,6 +231,8 @@ function ScriptToolbar({
   onAutoTag: (() => void) | null;
   autoTagBusy: boolean;
 }) {
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+
   return (
     <div className="border-input bg-muted/40 flex flex-wrap items-center gap-1 border-b px-2 py-1">
       <ToolbarButton
@@ -285,9 +288,25 @@ function ScriptToolbar({
       <Divider />
       <ToolbarButton
         active={editor.isActive('link')}
-        onClick={() => insertOrEditLink(editor)}
+        onClick={() => setLinkDialogOpen(true)}
         title="Add/edit link"
         icon={<LinkIcon className="h-4 w-4" />}
+      />
+      <PromptDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        title="Add/edit link"
+        description="Leave blank and save to remove the link."
+        fields={[
+          {
+            key: 'url',
+            label: 'URL',
+            defaultValue:
+              (editor.getAttributes('link')['href'] as string | undefined) ?? 'https://',
+            type: 'url',
+          },
+        ]}
+        onConfirm={({ url }) => applyLink(editor, url ?? '')}
       />
       <Divider />
       <button
@@ -487,10 +506,7 @@ function Divider() {
   return <span className="bg-border mx-1 h-5 w-px" />;
 }
 
-function insertOrEditLink(editor: Editor) {
-  const previous = editor.getAttributes('link')['href'] as string | undefined;
-  const url = window.prompt('URL', previous ?? 'https://');
-  if (url === null) return;
+function applyLink(editor: Editor, url: string) {
   if (url === '') {
     editor.chain().focus().extendMarkRange('link').unsetLink().run();
     return;

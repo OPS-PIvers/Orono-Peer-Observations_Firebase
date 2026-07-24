@@ -24,6 +24,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { PromptDialog } from '@/components/PromptDialog';
 import { functions } from '@/lib/firebase';
 import { SlotGrid } from './SlotGrid';
 import { SignupDetailFields, buildDetailAnswers, signupFieldsComplete } from './SignupDetailFields';
@@ -135,6 +136,7 @@ export function BookingPage() {
   const [rescheduling, setRescheduling] = useState(false);
   const [rescheduledNote, setRescheduledNote] = useState<string | null>(null);
   const [conflictNote, setConflictNote] = useState<string | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [conflictedSlotIds, setConflictedSlotIds] = useState<ReadonlySet<string>>(
     () => new Set<string>(),
   );
@@ -318,11 +320,25 @@ export function BookingPage() {
             <Button
               variant="destructive"
               disabled={submitting || windowCancelled}
-              onClick={() => void cancel(invitee.bookedSlotId ?? '')}
+              onClick={() => setCancelDialogOpen(true)}
             >
               {submitting ? 'Cancelling…' : 'Cancel booking'}
             </Button>
           </div>
+          <PromptDialog
+            open={cancelDialogOpen}
+            onOpenChange={setCancelDialogOpen}
+            title="Cancel your booking?"
+            fields={[
+              {
+                key: 'reason',
+                label: 'Reason (optional)',
+                placeholder: 'Optional reason',
+              },
+            ]}
+            confirmLabel="Cancel booking"
+            onConfirm={({ reason }) => void cancel(invitee.bookedSlotId ?? '', reason ?? '')}
+          />
         </div>
       );
     }
@@ -558,10 +574,8 @@ export function BookingPage() {
     }
   }
 
-  async function cancel(slotId: string) {
+  async function cancel(slotId: string, reason: string) {
     if (!windowId || !slotId) return;
-    const reason = window.prompt('Cancel your booking? Optional reason:', '');
-    if (reason === null) return;
     setError(null);
     setSubmitting(true);
     try {
