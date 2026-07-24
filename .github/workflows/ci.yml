@@ -172,10 +172,11 @@ jobs:
           GOOGLE_OAUTH_CLIENT_SECRET=demo-oauth-secret
           EOF
 
-      # The Playwright config defines a desktop-chrome (Chromium) project and a
-      # tablet-ipad project that uses WebKit, so both browsers must be present.
+      # Both Playwright projects (desktop-chrome and the iPad-viewport
+      # tablet-ipad) run on Chromium — see the comment in playwright.config.ts
+      # for why the tablet profile does not use WebKit.
       - name: Install Playwright browsers
-        run: pnpm --filter @ops/web exec playwright install --with-deps chromium webkit
+        run: pnpm --filter @ops/web exec playwright install --with-deps chromium
 
       # Vite only wires the SDKs to the emulator suite when VITE_USE_EMULATORS
       # is set; the demo project id keeps everything offline. The dev-sign-in
