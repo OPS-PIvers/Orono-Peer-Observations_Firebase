@@ -1,9 +1,10 @@
-import { Timestamp, type Firestore } from 'firebase-admin/firestore';
+import type { Firestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_SLOT_STATUS,
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
+  toDate as sharedToDate,
   type ObservationSlot,
   type ObservationWindow,
 } from '@ops/shared';
@@ -13,10 +14,7 @@ const MAX_BATCH_WRITES = 450;
 
 /** Coerce a Firestore Timestamp / Date / number into a Date. */
 function toDate(value: unknown): Date {
-  if (value instanceof Timestamp) return value.toDate();
-  if (value instanceof Date) return value;
-  if (typeof value === 'number') return new Date(value);
-  return new Date(NaN);
+  return sharedToDate(value) ?? new Date(NaN);
 }
 
 /**

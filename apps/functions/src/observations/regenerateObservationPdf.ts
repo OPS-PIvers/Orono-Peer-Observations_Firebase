@@ -2,13 +2,14 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, Timestamp, getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_STATUS,
   isAdminRole,
   roleYearMappingDocId,
+  toDate as sharedToDate,
   type DriveFileRef,
   type Observation,
   type RoleYearMapping,
@@ -236,13 +237,7 @@ function formatDateIso(date: Date): string {
  * the template can't format. (Mirrors finalizeObservation's `toDate`.)
  */
 function toDate(value: unknown): Date | undefined {
-  if (value instanceof Date) return value;
-  if (value instanceof Timestamp) return value.toDate();
-  if (typeof value === 'string' || typeof value === 'number') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  return undefined;
+  return sharedToDate(value) ?? undefined;
 }
 
 /**
