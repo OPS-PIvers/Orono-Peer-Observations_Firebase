@@ -67,6 +67,64 @@ jobs:
       - name: Build pdf-renderer
         run: pnpm --filter @ops/pdf-renderer build
 
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @ops/shared build
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      - name: Write coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Coverage Summary"
+            echo
+            for pkg in "packages/shared" "apps/functions" "apps/web"; do
+              summary="$pkg/coverage/coverage-summary.json"
+              if [ -f "$summary" ]; then
+                echo "### $pkg"
+                echo '```'
+                node -e "
+                  const s = require('./$summary').total;
+                  for (const [k, v] of Object.entries(s)) {
+                    console.log(k.padEnd(12), v.pct + '%', '(' + v.covered + '/' + v.total + ')');
+                  }
+                "
+                echo '```'
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            packages/shared/coverage
+            apps/functions/coverage
+            apps/web/coverage
+          retention-days: 14
+          if-no-files-found: warn
+
   rules-tests:
     name: Firestore Rules
     runs-on: ubuntu-latest
