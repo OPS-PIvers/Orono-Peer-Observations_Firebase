@@ -137,8 +137,10 @@ jobs:
       - name: Build functions
         run: pnpm --filter @ops/functions build
 
-      - name: Install Playwright browser
-        run: pnpm --filter @ops/web exec playwright install --with-deps chromium
+      # The Playwright config defines a desktop-chrome (Chromium) project and a
+      # tablet-ipad project that uses WebKit, so both browsers must be present.
+      - name: Install Playwright browsers
+        run: pnpm --filter @ops/web exec playwright install --with-deps chromium webkit
 
       # Vite only wires the SDKs to the emulator suite when VITE_USE_EMULATORS
       # is set; the demo project id keeps everything offline. The dev-sign-in
