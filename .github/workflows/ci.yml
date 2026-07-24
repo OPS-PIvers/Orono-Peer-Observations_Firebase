@@ -101,6 +101,9 @@ jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
+    # Hard cap so a hung emulator/browser can never block CI for hours. A
+    # healthy run finishes in ~5-8 min; 25 leaves ample headroom.
+    timeout-minutes: 25
     # Uses a `demo-` project id so the emulators run fully offline (no
     # credentials or live Firebase project needed), mirroring how the specs
     # run against `pnpm dev:emulators` locally.
@@ -136,6 +139,22 @@ jobs:
       # can resolve custom claims after dev sign-in.
       - name: Build functions
         run: pnpm --filter @ops/functions build
+
+      # Two functions declare defineSecret() params (GEMINI_API_KEY,
+      # GOOGLE_OAUTH_CLIENT_SECRET). When the Functions emulator loads them it
+      # resolves secret values, and if no local override exists it reaches out
+      # to Google Cloud Secret Manager via ADC — which, on a credential-less CI
+      # runner, hangs on metadata-server detection and stalls the whole job.
+      # firebase-tools reads overrides from <functionsSource>/.secret.local
+      # (firebase.json source = apps/functions/lib), so seed dummy values there
+      # to keep the emulator fully offline. Written after the build since the
+      # build output dir is (re)created by tsup.
+      - name: Provide dummy Functions secrets for the offline emulator
+        run: |
+          cat > apps/functions/lib/.secret.local <<'EOF'
+          GEMINI_API_KEY=demo-gemini-key
+          GOOGLE_OAUTH_CLIENT_SECRET=demo-oauth-secret
+          EOF
 
       # The Playwright config defines a desktop-chrome (Chromium) project and a
       # tablet-ipad project that uses WebKit, so both browsers must be present.
