@@ -45,6 +45,9 @@ export const onTranscriptionJobCreated = onDocumentCreated(
     secrets: [GEMINI_API_KEY],
     memory: '1GiB',
     timeoutSeconds: 540,
+    // maxInstances caps concurrent transcription work to bound cost/abuse
+    // exposure — not copied from onObservationWritten's maxInstances: 1, which
+    // exists there solely to respect the Sheets API's 60-writes/min quota.
     maxInstances: 10,
   },
   async (event) => {

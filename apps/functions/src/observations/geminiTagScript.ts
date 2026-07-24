@@ -53,6 +53,9 @@ export const geminiTagScript = onCall(
     secrets: [GEMINI_API_KEY],
     memory: '512MiB',
     timeoutSeconds: 120,
+    // maxInstances caps concurrent Gemini-tagging work to bound cost/abuse
+    // exposure — not copied from onObservationWritten's maxInstances: 1, which
+    // exists there solely to respect the Sheets API's 60-writes/min quota.
     maxInstances: 10,
   },
   async (request): Promise<GeminiTagResponse> => {

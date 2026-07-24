@@ -47,7 +47,10 @@ interface RegenerateRequest {
  * observed/observer needs a fresh copy without changing any content.
  */
 export const regenerateObservationPdf = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+  // maxInstances caps concurrent Drive/pdf-renderer work to bound cost/abuse
+  // exposure — not copied from onObservationWritten's maxInstances: 1, which
+  // exists there solely to respect the Sheets API's 60-writes/min quota.
+  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, maxInstances: 10 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
