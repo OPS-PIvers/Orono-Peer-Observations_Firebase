@@ -7,17 +7,13 @@
  * Timestamps); templates show them in the district's local zone.
  */
 
+import { toDate as sharedToDate } from '@ops/shared';
+
 const TZ = 'America/Chicago';
 
 /** Coerce a Firestore Timestamp / Date / number / ISO string into a Date. */
 export function toDate(value: unknown): Date {
-  if (value instanceof Date) return value;
-  if (typeof value === 'object' && value !== null && 'toDate' in value) {
-    return (value as { toDate(): Date }).toDate();
-  }
-  if (typeof value === 'number') return new Date(value);
-  if (typeof value === 'string') return new Date(value);
-  return new Date(NaN);
+  return sharedToDate(value) ?? new Date(NaN);
 }
 
 /** e.g. "Monday, March 10, 2025" in Chicago local time. */

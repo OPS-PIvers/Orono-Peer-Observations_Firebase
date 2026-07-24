@@ -322,6 +322,7 @@ export function StaffPersonPage() {
           </div>
 
           <Button
+            variant="onDark"
             onClick={() => setDialogOpen(true)}
             disabled={newObservationsDisabled}
             title={
@@ -329,7 +330,6 @@ export function StaffPersonPage() {
                 ? 'New observation creation is currently disabled by an administrator.'
                 : undefined
             }
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
           >
             New Observation
           </Button>

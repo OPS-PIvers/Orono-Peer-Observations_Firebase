@@ -2,13 +2,14 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, Timestamp, getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_STATUS,
   isAdminRole,
   roleYearMappingDocId,
+  toDate as sharedToDate,
   type DriveFileRef,
   type Observation,
   type RoleYearMapping,
@@ -47,7 +48,10 @@ interface RegenerateRequest {
  * observed/observer needs a fresh copy without changing any content.
  */
 export const regenerateObservationPdf = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+  // maxInstances caps concurrent Drive/pdf-renderer work to bound cost/abuse
+  // exposure — not copied from onObservationWritten's maxInstances: 1, which
+  // exists there solely to respect the Sheets API's 60-writes/min quota.
+  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, maxInstances: 10 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
@@ -236,13 +240,7 @@ function formatDateIso(date: Date): string {
  * the template can't format. (Mirrors finalizeObservation's `toDate`.)
  */
 function toDate(value: unknown): Date | undefined {
-  if (value instanceof Date) return value;
-  if (value instanceof Timestamp) return value.toDate();
-  if (typeof value === 'string' || typeof value === 'number') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  return undefined;
+  return sharedToDate(value) ?? undefined;
 }
 
 /**

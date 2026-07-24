@@ -60,7 +60,7 @@ export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLD
   return (
     <div
       className={cn(
-        'bg-background flex flex-col-reverse gap-2 border-t px-6 py-4 sm:flex-row sm:justify-end',
+        'bg-background sticky bottom-0 -mx-6 -mb-6 flex flex-col-reverse gap-2 border-t px-6 py-4 sm:flex-row sm:justify-end',
         className,
       )}
       {...props}

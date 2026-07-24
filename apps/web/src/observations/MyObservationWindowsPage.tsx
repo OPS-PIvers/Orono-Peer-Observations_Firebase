@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { PromptDialog } from '@/components/PromptDialog';
 import {
   Table,
   TableBody,
@@ -74,6 +75,9 @@ export function MyObservationWindowsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<(ObservationWindow & { id: string }) | null>(
+    null,
+  );
 
   // Admins see every window; everyone else sees only the windows they opened.
   const visible = useMemo(() => {
@@ -105,12 +109,7 @@ export function MyObservationWindowsPage() {
     }
   }
 
-  async function cancel(w: ObservationWindow & { id: string }) {
-    const reason = window.prompt(
-      `Cancel this observation window? This notifies invitees. Optional reason:`,
-      '',
-    );
-    if (reason === null) return;
+  async function cancel(w: ObservationWindow & { id: string }, reason: string) {
     setError(null);
     setCancellingId(w.id);
     try {
@@ -137,11 +136,7 @@ export function MyObservationWindowsPage() {
             <ChevronLeft className="h-4 w-4" />
             Back
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setDialogOpen(true)}
-            className="text-ops-blue-dark bg-white hover:bg-white/90"
-          >
+          <Button variant="onDark" size="sm" onClick={() => setDialogOpen(true)}>
             Open window
           </Button>
         </div>
@@ -258,7 +253,7 @@ export function MyObservationWindowsPage() {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => void cancel(w)}
+                          onClick={() => setCancelTarget(w)}
                           disabled={isCancelled || cancellingId === w.id}
                         >
                           {cancellingId === w.id ? 'Cancelling…' : 'Cancel'}
@@ -272,6 +267,26 @@ export function MyObservationWindowsPage() {
           </TableBody>
         </Table>
       </div>
+
+      <PromptDialog
+        open={cancelTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelTarget(null);
+        }}
+        title="Cancel this observation window?"
+        description="This notifies invitees."
+        fields={[
+          {
+            key: 'reason',
+            label: 'Reason (optional)',
+            placeholder: 'Optional reason',
+          },
+        ]}
+        confirmLabel="Cancel window"
+        onConfirm={({ reason }) => {
+          if (cancelTarget) void cancel(cancelTarget, reason ?? '');
+        }}
+      />
 
       <CreateObservationWindowDialog
         open={dialogOpen}

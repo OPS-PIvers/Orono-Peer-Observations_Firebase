@@ -15,6 +15,9 @@ import {
 import { ComponentTagMark } from './component-tag-mark.js';
 import { colorFor } from './component-colors.js';
 import { extractTaggedSpansForComponent } from './extract-script-tags.js';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const TIPTAP_EXTENSIONS = [StarterKit, Link, ComponentTagMark];
 
@@ -90,9 +93,8 @@ function shade(hex: string, amount: number): string {
 
 /**
  * Render an observation to a self-contained HTML document for Puppeteer to
- * print. All styling lives inline; Google Fonts are loaded via @import in
- * the <style> block. Puppeteer's `waitUntil: 'networkidle0'` ensures fonts
- * arrive before the PDF snapshot.
+ * print. All styling lives inline; fonts are embedded via @font-face in the
+ * <style> block (no network fetches required).
  */
 export function renderObservationHtml(payload: RenderPayload): string {
   const { observation, rubric, activeComponentIds } = payload;
@@ -366,8 +368,26 @@ function styles(primaryColor: string): string {
   const blueDark = shade(primaryColor, -0.35);
   const blueLight = shade(primaryColor, 0.2);
   const blueLighter = shade(primaryColor, 0.88);
+
+  // Load embedded @font-face CSS (fonts are baked into the Docker image).
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const fontsPath = join(__dirname, '../assets/fonts-embedded.css');
+  let embeddedFonts = '';
+  try {
+    embeddedFonts = readFileSync(fontsPath, 'utf-8');
+  } catch (err) {
+    // If the fonts file doesn't exist at runtime (e.g. in tests before the
+    // build step generates it, or a missing asset in the runtime image),
+    // fall back to empty string so the template still renders — but log
+    // loudly so a missing asset in production is diagnosable instead of
+    // silently producing PDFs without embedded fonts.
+    console.error(`[pdf-renderer] failed to read embedded fonts CSS at ${fontsPath}:`, err);
+    embeddedFonts = '';
+  }
+
   return `
-    @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap');
+    ${embeddedFonts}
     :root {
       --ops-blue-dark: ${blueDark};
       --ops-blue: ${blue};
