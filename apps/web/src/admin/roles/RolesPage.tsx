@@ -34,6 +34,12 @@ import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
 import { BulkActionBar } from '@/admin/_shared/BulkActionBar';
 import { bulkMerge } from '@/admin/_shared/bulkWrite';
 import { useRowSelection } from '@/admin/_shared/useRowSelection';
+import { StatusFilterChip } from '@/admin/_shared/StatusFilterChip';
+import {
+  DEFAULT_STATUS_FILTER,
+  matchesStatusFilter,
+  type StatusFilter,
+} from '@/admin/_shared/statusFilter';
 
 function slugify(s: string): string {
   return s
@@ -54,20 +60,24 @@ export function RolesPage() {
     direction: 'asc',
   });
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS_FILTER);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const { selectMode, selected, toggleRow, toggleAll, clear, toggleSelectMode } = useRowSelection();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return roles ?? [];
-    return (roles ?? []).filter(
-      (r) =>
-        r.displayName.toLowerCase().includes(q) ||
-        r.roleId.toLowerCase().includes(q) ||
-        r.rubricId.toLowerCase().includes(q),
-    );
-  }, [roles, search]);
+    return (roles ?? []).filter((r) => {
+      if (q) {
+        const matches =
+          r.displayName.toLowerCase().includes(q) ||
+          r.roleId.toLowerCase().includes(q) ||
+          r.rubricId.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      return matchesStatusFilter(r.isActive, statusFilter);
+    });
+  }, [roles, search, statusFilter]);
 
   const columns: ColumnDef<RoleRow>[] = useMemo(
     () => [
@@ -165,13 +175,17 @@ export function RolesPage() {
         </div>
       }
     >
-      <AdminSearchInput
-        value={search}
-        onChange={setSearch}
-        placeholder="Search by name, role ID, or rubric ID"
-        aria-label="Search roles"
-        className="mb-4"
-      />
+      <div className="mb-4 flex flex-col gap-3">
+        <AdminSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by name, role ID, or rubric ID"
+          aria-label="Search roles"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusFilterChip value={statusFilter} onChange={setStatusFilter} />
+        </div>
+      </div>
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -212,7 +226,13 @@ export function RolesPage() {
           rows={loading && !roles ? null : sorted}
           loading={loading}
           rowKey={(r) => r.id}
-          empty={search ? 'No roles match that search.' : 'No roles yet. Add one to get started.'}
+          empty={
+            search || statusFilter !== DEFAULT_STATUS_FILTER
+              ? 'No roles match the current filters.'
+              : (roles?.length ?? 0) > 0
+                ? 'No active roles. Try Archived or All.'
+                : 'No roles yet. Add one to get started.'
+          }
           {...(selectMode
             ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
             : { onRowClick: (r: RoleRow) => setEditing(r) })}
