@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, WifiOff } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { OBSERVATION_STATUS, type Observation } from '@ops/shared';
 import { cn } from '@/lib/utils';
 
@@ -22,8 +22,14 @@ export function SaveStatusIndicator({
   // so callers that don't track it (none currently) keep the prior
   // behavior. When `false` and a save is in flight or failed, we know the
   // cause is the network drop rather than a real server/client error, so we
-  // show a distinct "offline" message instead of a dead-end error string —
-  // the caller auto-retries once the browser reports it's back online.
+  // show a "will retry" message instead of a dead-end error string — the
+  // caller auto-retries once the browser reports it's back online.
+  //
+  // Deliberately doesn't say "offline" here: `<OfflineIndicator>` (mounted
+  // app-wide by `<Layout>`) is the single source of truth for announcing
+  // connectivity loss. Duplicating that wording here produced two
+  // contradictory-looking notices on the editor when a save was in flight
+  // while offline.
   isOnline?: boolean;
 }) {
   const [showSavingLabel, setShowSavingLabel] = useState(false);
@@ -42,7 +48,7 @@ export function SaveStatusIndicator({
   if (!isOnline && (state === 'saving' || state === 'error')) {
     return (
       <span className="inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-amber-700">
-        <WifiOff className="h-3 w-3" /> Offline — will retry when back online
+        <Loader2 className="h-3 w-3 animate-spin" /> Will retry when reconnected
       </span>
     );
   }

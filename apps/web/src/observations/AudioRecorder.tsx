@@ -438,7 +438,11 @@ function RecordingsList({
                 </Button>
               ) : null}
             </div>
-            <RecordingPlayer observationId={observationId} audioFileId={fileId} />
+            <RecordingPlayer
+              observationId={observationId}
+              audioFileId={fileId}
+              recordingLabel={`Recording ${String(i + 1)}`}
+            />
             {errMsg ? (
               <p className="text-destructive mt-1 flex items-start gap-1 text-xs">
                 <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
@@ -482,16 +486,30 @@ function RecordingsList({
   );
 }
 
+/** Playback speed options offered on each recording — local UI state only,
+ *  never persisted (see AI-01 owner notes). */
+const PLAYBACK_RATES = [0.5, 1, 1.25, 1.5, 2] as const;
+type PlaybackRate = (typeof PLAYBACK_RATES)[number];
+const DEFAULT_PLAYBACK_RATE: PlaybackRate = 1;
+
 function RecordingPlayer({
   observationId,
   audioFileId,
+  recordingLabel,
 }: {
   observationId: string;
   audioFileId: string;
+  /** Human-readable label (e.g. "Recording 1") used to scope the playback
+   *  speed control's accessible name when multiple players are on screen. */
+  recordingLabel: string;
 }) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Local to this player only — resets on reload, never written to
+  // Firestore or any other persistence layer.
+  const [playbackRate, setPlaybackRate] = useState<PlaybackRate>(DEFAULT_PLAYBACK_RATE);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   async function loadAudio() {
     setLoading(true);
@@ -518,10 +536,33 @@ function RecordingPlayer({
     };
   }, [src]);
 
+  // Applies the selected rate whenever it changes and whenever a new <audio>
+  // element mounts (src loads), since playbackRate resets on element swap.
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate, src]);
+
   if (src) {
     return (
-      // eslint-disable-next-line jsx-a11y/media-has-caption -- voice recording, no captions available
-      <audio controls src={src} className="w-full" />
+      <div className="flex items-center gap-2">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- voice recording, no captions available */}
+        <audio ref={audioRef} controls src={src} className="w-full min-w-0 flex-1" />
+        <select
+          value={playbackRate}
+          onChange={(e) => {
+            setPlaybackRate(Number(e.target.value) as PlaybackRate);
+          }}
+          aria-label={`Playback speed for ${recordingLabel}`}
+          title="Playback speed"
+          className="border-input bg-background h-8 shrink-0 rounded-md border px-1.5 text-xs"
+        >
+          {PLAYBACK_RATES.map((rate) => (
+            <option key={rate} value={rate}>
+              {rate}x
+            </option>
+          ))}
+        </select>
+      </div>
     );
   }
   return (
