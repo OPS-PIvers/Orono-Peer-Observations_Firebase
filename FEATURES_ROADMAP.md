@@ -2,6 +2,8 @@
 
 _88 feature briefs, generated 2026-07-24 by a multi-agent discovery pass over the codebase (6 domain explore→ideate pairs plus a cross-cutting critic)._
 
+_**8 shipped 2026-07-25** — see [Shipped](#shipped) below. 80 remain open._
+
 ## How to use this document
 
 This is a **menu of opportunities, not a commitment.** Nothing here is scheduled, sequenced, or approved — it exists so that when there is capacity, the next thing to build can be chosen from a grounded list rather than invented on the spot.
@@ -30,6 +32,33 @@ Each brief is self-contained by design: description, why it fits, concrete imple
 | [Communications & platform](#plat)             |     12 |      3 |      2 |      6 |      1 |     0 |          4 |
 | [Cross-cutting (critic pass)](#xcut)           |      9 |      0 |      1 |      4 |      3 |     1 |          4 |
 | **Total**                                      | **88** | **15** | **26** | **34** | **10** | **3** |     **22** |
+
+<a id="shipped"></a>
+
+## Shipped
+
+Counts in the table above are as-generated and are **not** decremented as items ship — this section is the record of what has left the menu.
+
+**2026-07-25 — tier 1 + tier 2 sweep (8 items).** Every `small`+`high` brief and every `tweak`+`medium` brief, implemented in parallel worktrees, each reviewed by 2–3 adversarial reviewers before merge.
+
+| ID         | Feature                                               | Size  | PR                                                                            |
+| ---------- | ----------------------------------------------------- | ----- | ----------------------------------------------------------------------------- |
+| `OBS-03`   | Wire up the existing 'Regenerate PDF' button          | small | [#66](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/66) |
+| `OBS-04`   | Finalize-readiness checklist                          | small | [#71](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/71) |
+| `SCHED-02` | Clone/duplicate an observation window                 | small | [#65](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/65) |
+| `STAFF-04` | "Add to Calendar" (.ics) download                     | small | [#67](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/67) |
+| `OBS-01`   | Acknowledge a finalized observation from the editor   | tweak | [#72](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/72) |
+| `AI-01`    | Playback speed control on recordings                  | tweak | [#69](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/69) |
+| `ADMIN-01` | Active/Inactive status filter for Roles and Buildings | tweak | [#70](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/70) |
+| `STAFF-01` | App-wide offline indicator                            | tweak | [#68](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/68) |
+
+**Notes for anyone picking up an adjacent brief:**
+
+- `STAFF-04` shipped `apps/web/src/lib/ics.ts` as a reusable RFC 5545 builder, exactly as `SCHED-07` anticipated — that brief should consume it rather than write its own. A timed VEVENT is emitted **only** when the observation has a real booked slot (`scheduledStartAt`); everything else is all-day. An earlier attempt keyed this off "does the date have a non-midnight time component" and had to be reverted: `CreateObservationDialog` writes `observationDate: new Date()` at creation, so that heuristic fabricated precise-looking appointments at the record-creation instant.
+- `STAFF-04` also moved `downloadTextFile` out of `admin/staff/staffCsv.ts` into `apps/web/src/lib/download.ts`. Use that.
+- `ADMIN-01` extracted `FilterChip`, `StatusFilterChip`, and `statusFilter` into `apps/web/src/admin/_shared/`, and `StaffPage` now consumes them. Any new admin list page should reuse those instead of duplicating the idiom. Note that `AdminSearchInput` collapses if placed as a flex-row sibling — keep search on its own row, as `StaffFilterBar` does.
+- `STAFF-01` made the app-wide strip the single source of truth for "you are offline"; `GlobalToolsBar` now shows only save/retry state. Don't reintroduce a second offline assertion on any screen.
+- `OBS-03` left one gap open: `regenerateObservationPdf` is still not rate-limited. Tracked in [`TODO.md`](TODO.md) under "Ready code work".
 
 ## Index
 
@@ -132,6 +161,8 @@ Each brief is self-contained by design: description, why it fits, concrete imple
 
 ### OBS-01 — Acknowledge a finalized observation from the editor itself
 
+> ✅ **Shipped 2026-07-25** — PR #72. `firestore.rules` was not modified; the security review confirmed the existing rule already permitted the write.
+
 **tweak** · value: **medium**
 
 When an observed staff member opens their own finalized observation at /observations/:id, the read-only banner currently just says 'finalized and read-only' with no way to acknowledge it — they have to know to go back to My Observations to click Acknowledge. Add the same acknowledge action directly into ObservationEditorPage's finalized banner.
@@ -156,6 +187,8 @@ Evidence chips in the rubric row currently show only a truncated filename and a 
 
 ### OBS-03 — Wire up the existing 'Regenerate PDF' button
 
+> ✅ **Shipped 2026-07-25** — PR #66. Shipped with a confirmation dialog. Follow-up open: the callable is still not rate-limited (see `TODO.md`).
+
 **small** · value: **high**
 
 The `regenerateObservationPdf` callable (re-renders and re-uploads the PDF for a Finalized observation, replacing the old file in-place) is fully implemented and exported server-side but has zero callers anywhere in apps/web — there is no button that invokes it. Add a 'Regenerate PDF' action to the finalized observation view for the observer/admin.
@@ -167,6 +200,8 @@ The `regenerateObservationPdf` callable (re-renders and re-uploads the PDF for a
 **Files.** `apps/web/src/observations/ObservationEditorPage.tsx`, `apps/functions/src/observations/regenerateObservationPdf.ts`
 
 ### OBS-04 — Finalize-readiness checklist
+
+> ✅ **Shipped 2026-07-25** — PR #71. Non-blocking warning, as specified: Finalize stays enabled regardless of unscored components.
 
 **small** · value: **high**
 
@@ -348,6 +383,8 @@ Add a small progress bar or 'closes in N days' badge to each row of MyObservatio
 
 ### SCHED-02 — Clone/duplicate an observation window
 
+> ✅ **Shipped 2026-07-25** — PR #65. Uses the `CopyPlus` icon, since `Copy` was already taken by the adjacent "Copy invite links" action.
+
 **small** · value: **high**
 
 Add a 'Duplicate' action next to Edit/Cancel on each window row in MyObservationWindowsPage that opens CreateObservationWindowDialog pre-filled with the source window's mode, weekdays, time bounds, travel buffer, per-day cap, signup fields, default observation type/name, calendar event title/description, and gcalSendUpdates — leaving dates and invitees blank for the PE to set fresh. Saves a PE from re-entering identical settings every time they open a similar window (e.g. 'Fall round' repeated per quarter).
@@ -481,6 +518,8 @@ Let a PE define a recurrence (e.g. 'every 4 weeks' or 'once per quarter') when o
 ## Audio, transcription & AI tagging
 
 ### AI-01 — Playback speed control on recordings
+
+> ✅ **Shipped 2026-07-25** — PR #69. Rate is per-player local state, not persisted.
 
 **tweak** · value: **medium**
 
@@ -674,6 +713,8 @@ After a transcript completes, run a second Gemini pass that segments it into tea
 
 ### ADMIN-01 — Active/Inactive status filter for Roles and Buildings pages
 
+> ✅ **Shipped 2026-07-25** — PR #70. Went beyond the brief: the filter chip and predicate were extracted into `apps/web/src/admin/_shared/` and `StaffPage` now consumes them, so all three admin pages share one idiom.
+
 **tweak** · value: **medium**
 
 Add a status filter (All / Active / Inactive) to the Roles and Buildings admin list pages, matching the filter that already exists on the Staff page. Right now the only way to see which roles/buildings are deactivated is to scan the whole table for an 'Inactive' badge, which gets tedious as the list grows through the pre-cutover cleanup pass.
@@ -846,6 +887,8 @@ A scheduled weekly email to the security admin (and optionally other opted-in ad
 
 ### STAFF-01 — App-wide offline indicator
 
+> ✅ **Shipped 2026-07-25** — PR #68. The strip is now the single source of truth for offline messaging; `GlobalToolsBar` was changed to show only save/retry state so the editor no longer shows two contradictory notices.
+
 **tweak** · value: **medium**
 
 Surface a small persistent "You're offline — changes may not save" strip whenever the browser loses connectivity, on every authenticated page (dashboard, directory, profile, modules), not just the observation editor. Teachers on flaky building Wi-Fi or an iPad that drops network get an honest signal instead of a page that silently stops updating.
@@ -881,6 +924,8 @@ Show a small "New" pill next to a module's sidebar entry and on its ModulePage h
 **Files.** `apps/web/src/components/AppSidebar.tsx`, `apps/web/src/modules/ModulePage.tsx`, `packages/shared/src/schema/module.ts`
 
 ### STAFF-04 — "Add to Calendar" (.ics) download for pre-obs/post-obs meetings and the observation itself
+
+> ✅ **Shipped 2026-07-25** — PR #67. Reusable builder at `apps/web/src/lib/ics.ts`; `SCHED-07` should consume it. Calendar eligibility is keyed on the step's date **source**, not its chip style — deadline-type dates (`windowEndDate`, `createdAt`) correctly produce no event. Timed VEVENTs only for real booked slots.
 
 **small** · value: **high**
 

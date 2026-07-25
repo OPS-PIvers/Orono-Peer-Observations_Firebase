@@ -2,9 +2,9 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
-**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, none of them scheduled or approved.
+**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, of which 8 shipped in the 2026-07-25 tier-1/tier-2 sweep and 80 remain open.
 
-Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
+Last updated 2026-07-25, after the tier-1/tier-2 `FEATURES_ROADMAP.md` sweep (PRs #65–#72) added one new item to "Ready code work". Before that: the 2026-07-24 parallel implementation sweep that cleared "Ready code work" (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
 
 ## Human-gated (needs a decision, secret, or deploy)
 
@@ -16,7 +16,7 @@ Last updated 2026-07-24, after the parallel implementation sweep that cleared th
 
 ## Ready code work (no blockers)
 
-_Empty — everything that was here shipped on 2026-07-24. See "Shipped" below._
+- [ ] **Rate-limit `regenerateObservationPdf`** — #46 added the fixed-window limiter in `apps/functions/src/lib/rateLimit.ts` and wired it into the two abuse-prone entry points (`uploadAudio`, `requestTranscription`); `regenerateObservationPdf` was left out because it had zero callers. #66 gave it a one-click UI trigger, so the gap is now live: each call is a full Puppeteer render on Cloud Run plus a Drive upload/share/delete round-trip plus Firestore and audit writes, bounded only by `maxInstances: 10`. The confirm dialog is not a boundary — an observer or admin can drive the callable directly with a valid ID token. Not an auth hole (the callable still enforces observer-or-admin and Finalized-only), a cost/abuse surface. Apply the same wrapper with a per-user hourly limit. (S) _Raised by the security lens during the 2026-07-25 roadmap sweep; deferred because implementers were barred from touching `apps/functions`._
 
 ## Follow-ups from the sweep
 
