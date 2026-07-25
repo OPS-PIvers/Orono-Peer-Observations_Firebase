@@ -11,6 +11,7 @@ import {
   type Building,
   type CreateObservationWindowInput,
   type ObservationType,
+  type ObservationWindow,
   type Role,
   type SignupField,
   type Staff,
@@ -76,12 +77,20 @@ export interface CreateObservationWindowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (windowId: string) => void;
+  /**
+   * When set, the dialog pre-fills every setting from this window instead of
+   * from the app's scheduling defaults — used by the "Duplicate" row action
+   * on MyObservationWindowsPage. Dates and invitees are always left blank
+   * regardless, so the PE consciously sets them fresh for the new window.
+   */
+  seedFrom?: ObservationWindow | null;
 }
 
 export function CreateObservationWindowDialog({
   open,
   onOpenChange,
   onCreated,
+  seedFrom = null,
 }: CreateObservationWindowDialogProps) {
   const { data: settingsDoc } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
   const settings = settingsDoc?.scheduling ?? DEFAULT_SCHEDULING_SETTINGS;
@@ -124,32 +133,38 @@ export function CreateObservationWindowDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset the form each time the dialog opens, seeding from current settings.
+  // Reset the form each time the dialog opens, seeding from `seedFrom` (when
+  // duplicating an existing window) or from current settings otherwise.
+  // startDate/endDate/invitees are always left blank so the PE consciously
+  // sets those fresh, even when duplicating.
   useEffect(() => {
     if (!open) return;
     const allowed = settings.allowedBookingModes;
-    const initialMode = allowed.includes(settings.defaultBookingMode)
-      ? settings.defaultBookingMode
-      : (allowed[0] ?? 'direct');
+    const initialMode =
+      seedFrom && allowed.includes(seedFrom.bookingMode)
+        ? seedFrom.bookingMode
+        : allowed.includes(settings.defaultBookingMode)
+          ? settings.defaultBookingMode
+          : (allowed[0] ?? 'direct');
     setBookingMode(initialMode);
     setStartDate('');
     setEndDate('');
-    setWeekdays(settings.defaultWeekdays);
-    setEarliestMinute(settings.defaultEarliestMinute);
-    setLatestMinute(settings.defaultLatestMinute);
-    setTravelBuffer(settings.travelBufferMinutes);
-    setPerDayCap(settings.defaultPerDayCap);
-    setSelectedFieldIds(new Set());
-    setObservationType(OBSERVATION_TYPES.standard);
-    setObservationName('');
-    setEventTitle('');
-    setEventDescription('');
-    setGcalSendUpdates(settings.gcalSendUpdates);
+    setWeekdays(seedFrom?.weekdaysIncluded ?? settings.defaultWeekdays);
+    setEarliestMinute(seedFrom?.earliestMinute ?? settings.defaultEarliestMinute);
+    setLatestMinute(seedFrom?.latestMinute ?? settings.defaultLatestMinute);
+    setTravelBuffer(seedFrom?.travelBufferMinutes ?? settings.travelBufferMinutes);
+    setPerDayCap(seedFrom?.perDayCap ?? settings.defaultPerDayCap);
+    setSelectedFieldIds(new Set(seedFrom?.signupFieldIds ?? []));
+    setObservationType(seedFrom?.defaultObservationType ?? OBSERVATION_TYPES.standard);
+    setObservationName(seedFrom?.defaultObservationName ?? '');
+    setEventTitle(seedFrom?.calendarEventTitle ?? '');
+    setEventDescription(seedFrom?.calendarEventDescription ?? '');
+    setGcalSendUpdates(seedFrom?.gcalSendUpdates ?? settings.gcalSendUpdates);
     setFilters(EMPTY_FILTERS);
     setSelected(new Map());
     setError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only on open
-  }, [open]);
+  }, [open, seedFrom]);
 
   const allowedModes = settings.allowedBookingModes;
 
@@ -336,9 +351,13 @@ export function CreateObservationWindowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Open observation window</DialogTitle>
+          <DialogTitle>
+            {seedFrom ? 'Duplicate observation window' : 'Open observation window'}
+          </DialogTitle>
           <DialogDescription>
-            Invite staff across buildings to schedule an observation within a date range.
+            {seedFrom
+              ? 'Settings copied from the source window. Pick fresh dates and invitees below.'
+              : 'Invite staff across buildings to schedule an observation within a date range.'}
           </DialogDescription>
         </DialogHeader>
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Copy, Check, Pencil } from 'lucide-react';
+import { ChevronLeft, Copy, CopyPlus, Check, Pencil } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { orderBy, type QueryConstraint } from 'firebase/firestore';
 import {
@@ -71,6 +71,7 @@ export function MyObservationWindowsPage() {
   );
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [duplicateSource, setDuplicateSource] = useState<ObservationWindow | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -136,7 +137,14 @@ export function MyObservationWindowsPage() {
             <ChevronLeft className="h-4 w-4" />
             Back
           </Button>
-          <Button variant="onDark" size="sm" onClick={() => setDialogOpen(true)}>
+          <Button
+            variant="onDark"
+            size="sm"
+            onClick={() => {
+              setDuplicateSource(null);
+              setDialogOpen(true);
+            }}
+          >
             Open window
           </Button>
         </div>
@@ -235,6 +243,17 @@ export function MyObservationWindowsPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => {
+                            setDuplicateSource(w);
+                            setDialogOpen(true);
+                          }}
+                        >
+                          <CopyPlus className="h-4 w-4" />
+                          Duplicate
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => void copyLinks(w)}
                           disabled={total === 0}
                         >
@@ -290,10 +309,15 @@ export function MyObservationWindowsPage() {
 
       <CreateObservationWindowDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setDuplicateSource(null);
+        }}
         onCreated={() => {
           setDialogOpen(false);
+          setDuplicateSource(null);
         }}
+        seedFrom={duplicateSource}
       />
 
       <EditObservationWindowDialog
