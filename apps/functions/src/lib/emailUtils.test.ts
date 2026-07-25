@@ -48,27 +48,27 @@ function makeDb(opts: {
         filters.push([field, val]);
         return q;
       },
-      limit(_n: number) {
+      limit() {
         return q;
       },
-      async get() {
+      get() {
         let arr = name === COLLECTIONS.emailTemplates ? templates : [];
         for (const [f, v] of filters) arr = arr.filter((d) => d[f] === v);
-        const docs = arr.map((d) => ({ id: (d.id as string) ?? 'tmpl', data: () => d }));
+        const docs = arr.map((d) => ({ id: d.id ?? 'tmpl', data: () => d }));
         return { empty: docs.length === 0, docs };
       },
       doc(id: string) {
         return {
-          async set(data: Record<string, unknown>) {
+          set(data: Record<string, unknown>) {
             if (name === COLLECTIONS.mail) writes.mailSets.push({ id, data });
           },
-          async get() {
+          get() {
             const data = docsMap[`${name}/${id}`];
             return { exists: data !== undefined, data: () => data };
           },
         };
       },
-      async add(data: Record<string, unknown>) {
+      add(data: Record<string, unknown>) {
         writes.added.push({ col: name, data });
         return { id: 'added' };
       },
@@ -78,7 +78,7 @@ function makeDb(opts: {
 
   function doc(path: string) {
     return {
-      async get() {
+      get() {
         const data = docsMap[path];
         return { exists: data !== undefined, data: () => data };
       },
@@ -332,6 +332,41 @@ describe('sendEmail', () => {
     expect(result.to).toEqual(['real@orono.k12.mn.us']);
     expect(writes.mailSets[0]?.data['to']).toEqual(['real@orono.k12.mn.us']);
   });
+
+  it('rewrites an unsafe href in the body before queueing and records it in the audit entry', async () => {
+    const { db, writes } = makeDb({ docs: { [appSettingsPath]: {} } });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p><a href="javascript:alert(1)">click</a></p>',
+      mailDocId: 'm4-unsafe',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { html: string };
+    expect(msg.html).toContain('<a href="#">click</a>');
+    expect(msg.html).not.toContain('javascript:alert(1)');
+    const audit = writes.added.find((w) => w.col === COLLECTIONS.auditLog);
+    expect((audit?.data['details'] as { rejectedHrefs?: string[] }).rejectedHrefs).toEqual([
+      'javascript:alert(1)',
+    ]);
+  });
+
+  it('leaves a safe body untouched and omits rejectedHrefs from the audit entry', async () => {
+    const { db, writes } = makeDb({ docs: { [appSettingsPath]: {} } });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p><a href="https://example.com">click</a></p>',
+      mailDocId: 'm4-safe',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { html: string };
+    expect(msg.html).toContain('<a href="https://example.com">click</a>');
+    const audit = writes.added.find((w) => w.col === COLLECTIONS.auditLog);
+    expect(audit?.data['details']).not.toHaveProperty('rejectedHrefs');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -377,5 +412,34 @@ describe('sendTemplatedEmail', () => {
     const msg = writes.mailSets[0]?.data['message'] as { subject: string; html: string };
     expect(msg.subject).toBe('For Jane');
     expect(msg.html).toContain('Hello Jane');
+  });
+
+  it('sanitizes an unsafe href that arrives through a substituted variable', async () => {
+    // Ordering guard: substitution runs before the send-time sanitize, so a
+    // protocol smuggled in via an /appSettings value (not the template body)
+    // still gets rewritten on the way out.
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { signupLink: 'javascript:alert(1)' } },
+      templates: [
+        {
+          id: 't2',
+          triggerType: 'observation.finalized',
+          isActive: true,
+          subject: 'Sign up',
+          bodyHtml: '<a href="{{signupLink}}">Sign up</a>',
+        },
+      ],
+    });
+    const sent = await sendTemplatedEmail({
+      db,
+      triggerType: 'observation.finalized',
+      to: 'a@orono.k12.mn.us',
+      vars: {},
+      mailDocId: 'm7',
+    });
+    expect(sent).toBe(true);
+    const msg = writes.mailSets[0]?.data['message'] as { html: string };
+    expect(msg.html).toContain('<a href="#">Sign up</a>');
+    expect(msg.html).not.toContain('javascript:');
   });
 });

@@ -194,7 +194,7 @@ export async function getCalendarClientFor(
 /** Resolve the primary calendar id stored for a user (defaults to 'primary'). */
 async function primaryCalendarId(email: string): Promise<string> {
   const snap = await tokensRef(email).get();
-  const id = snap.data()?.['primaryCalendarId'];
+  const id: unknown = snap.data()?.['primaryCalendarId'];
   return typeof id === 'string' && id.length > 0 ? id : 'primary';
 }
 
@@ -235,6 +235,7 @@ export function buildObservationEventContent(
       : observation.observationName || 'Peer Observation';
 
   const link = `${APP_URL}/observations/${observation.observationId}`;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const baseDescription = window.calendarEventDescription ?? '';
   const description = baseDescription ? `${baseDescription}\n\n${link}` : link;
 
@@ -415,7 +416,7 @@ export async function deleteObservationEvent(email: string, eventId: string): Pr
       sendUpdates: 'none',
     });
   } catch (err) {
-    const status = (err as { code?: number })?.code;
+    const status = (err as { code?: number }).code;
     // 404/410 — already gone; treat as success.
     if (status === 404 || status === 410) return;
     logger.warn('deleteObservationEvent: delete failed (best-effort)', { email: email.toLowerCase(), err });

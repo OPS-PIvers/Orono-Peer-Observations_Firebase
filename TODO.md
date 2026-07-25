@@ -2,7 +2,7 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
-Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes) and the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents.
+Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
 
 ## Human-gated (needs a decision, secret, or deploy)
 
@@ -20,9 +20,7 @@ _Empty — everything that was here shipped on 2026-07-24. See "Shipped" below._
 
 - [ ] **Verify the WebKit Firestore stall on a real iPad.** The `tablet-ipad` Playwright project runs the iPad viewport on Chromium because under WebKit the Firestore _collection_ listeners never advance past their first cached snapshot against the emulator suite (the staff picker sits at "0 of 1 match" past a 30s wait; single-document listeners are fine, so sign-in and dashboard chrome pass). Unknown whether this is emulator-transport-specific or reproduces on iPad Safari against production Firestore — needs a device, not CI. See the comment in `apps/web/playwright.config.ts`. (M)
 - [ ] **Adopt the shared Tiptap toolbar in `EmailBodyField`** — #50 deduped `tiptap-editor.tsx` and `ScriptEditor.tsx` into `components/ui/tiptap-toolbar.tsx`; `EmailBodyField` still carries its own copy. (S)
-- [ ] **Re-validate stored link hrefs server-side in the email path** — #52 validates URLs at input time (`lib/url.ts`), but `renderEmailShell` inserts stored `bodyHtml` as-is, so a value written before that validation existed is still trusted at send time. (S)
 - [ ] **Give `apps/pdf-renderer` a `test:coverage` script** and add it to the coverage job's package list in `.github/workflows/ci.yml` — the job currently covers `@ops/shared`, `@ops/functions`, `@ops/web` and fails on a missing summary, so pdf-renderer must be added deliberately, not implicitly. (S)
-- [ ] **Narrow the repo-wide ESLint ignore glob** — the `'**/lib/**'` entry at `eslint.config.js:20` is aimed at build output but also silently skips `apps/web/src/lib/**`, which is real source (`lib/url.ts`, `lib/firebase.ts`). (S)
 
 ## Future feature (needs its own brainstorm → spec → plan)
 
@@ -30,6 +28,8 @@ _Empty — everything that was here shipped on 2026-07-24. See "Shipped" below._
 
 ## Shipped (2026-07-24 sweep)
 
+- [x] **Re-validate stored link hrefs server-side in the email path** — `sanitizeHtmlHrefs` in `@ops/shared` rewrites any non-http/https/mailto href to `#` inside `sendEmail`, after variable substitution and before `renderEmailShell`, so every templated/manual/scheduled path is covered; rejected values are logged and recorded on the `emailSent` audit entry. The `isSafeUrl`/`toSafeUrl` validator moved from `apps/web/src/lib/url.ts` to `@ops/shared` so both sides share one implementation. (#64)
+- [x] **Narrow the repo-wide ESLint ignore glob** — `'**/lib/**'` replaced with the two real build-output paths. It had been hiding four source directories, not the one the backlog assumed: `apps/web/src/lib`, `apps/functions/src/lib`, `apps/functions/src/calendar/lib`, and `scripts/lib` (the last is `.mjs`, still ignored by the separate scripts rule). 32 previously-invisible lint errors fixed. (#64)
 - [x] **Wire Playwright e2e specs into CI** — emulator-backed `Playwright E2E` job boots Firestore/Auth/Functions/Storage, mints dev custom tokens, seeds, then runs both browser projects. (#49)
 - [x] **Unit tests for `finalizeObservation`, `syncMyClaims`, `onStaffWritten`, email delivery, calendar subsystems.** (#48)
 - [x] **Replace remaining `window.prompt()` call sites (7)** with a shared `PromptDialog` plus `lib/url.ts` protocol/control-character validation, closing the `javascript:` href injection path. (#52)

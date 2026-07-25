@@ -3,9 +3,13 @@
  * email-client-safe shell: white card on a light page, logo header, footer.
  *
  * Pure string builder — safe to call from both the Cloud Functions backend
- * (at send time) and the web admin preview. The body is trusted HTML from the
- * template editor and is inserted as-is; only the small dynamic header/footer
- * strings are escaped.
+ * (at send time) and the web admin preview. The body is inserted as-is; only
+ * the small dynamic header/footer strings are escaped.
+ *
+ * Href safety is deliberately *not* handled here: `sendEmail` runs the body
+ * through `sanitizeHtmlHrefs` on the way out, which keeps the outbound mail
+ * sanitized while leaving the admin preview free to render unsubstituted
+ * `{{tokens}}` as the author typed them.
  */
 
 export interface EmailShellOptions {

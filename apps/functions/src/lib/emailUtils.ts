@@ -8,6 +8,7 @@ import {
   EMAIL_TRIGGER_CATEGORY,
   isCriticalEmailTrigger,
   renderEmailShell,
+  sanitizeHtmlHrefs,
   type EmailPreferences,
   type EmailTemplate,
   type EmailTriggerType,
@@ -55,9 +56,8 @@ export async function loadActiveTemplate(
     .where('isActive', '==', true)
     .limit(1)
     .get();
-  if (snap.empty) return null;
-  // snap.empty guard above ensures docs[0] exists
-  const doc = snap.docs[0]!;
+  const doc = snap.docs[0];
+  if (!doc) return null;
   return { id: doc.id, ...(doc.data() as EmailTemplate) };
 }
 
@@ -102,7 +102,7 @@ export async function isEmailSuppressed(
   const category = EMAIL_TRIGGER_CATEGORY[triggerType];
   if (!category) return false; // unmapped + non-critical: treat as always-send
   const prefs = await loadEmailPreferences(db, recipientEmail);
-  return prefs[category] === false;
+  return !prefs[category];
 }
 
 /** Outcome of a sendEmail call, so callers (e.g. sendManualEmail) can tell
@@ -190,7 +190,24 @@ export async function sendEmail(args: {
   }
 
   const branding = await loadEmailBranding(db);
-  const wrappedHtml = renderEmailShell(html, {
+
+  // Re-validate every href in the (already variable-substituted) body. Input-
+  // time validation via toSafeUrl only governs what the link editor writes, so
+  // a template body stored before that validation existed -- or written by any
+  // path that bypasses the editor, including a substituted variable that
+  // itself carries a protocol -- is still untrusted at this point. Sanitizing
+  // here puts the trust boundary at the send rather than at whichever write
+  // produced the value.
+  const { html: safeHtml, rejected: rejectedHrefs } = sanitizeHtmlHrefs(html);
+  if (rejectedHrefs.length > 0) {
+    logger.warn('emailUtils: unsafe href(s) rewritten to # before send', {
+      mailDocId,
+      triggerType,
+      rejectedHrefs,
+    });
+  }
+
+  const wrappedHtml = renderEmailShell(safeHtml, {
     appName: branding.appName,
     logoUrl: branding.logoUrl,
     signInLink: APP_URL,
@@ -223,6 +240,10 @@ export async function sendEmail(args: {
       subject,
       mailDocId,
       ...(suppressed.length > 0 ? { suppressed } : {}),
+      // Persist the security-relevant rewrite, not just the log line, so a
+      // stored body that still carries an unsafe href is discoverable after
+      // the fact rather than only in Cloud Logging retention.
+      ...(rejectedHrefs.length > 0 ? { rejectedHrefs } : {}),
       ...auditDetails,
     },
   });
@@ -286,9 +307,8 @@ export async function sendTemplatedEmail(args: {
   const appSettingsSnap = await db
     .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
     .get();
-  const appName: string =
-    (appSettingsSnap.data()?.['branding']?.['appName'] as string | undefined) ??
-    'Orono Peer Observations';
+  const branding = appSettingsSnap.data()?.['branding'] as { appName?: string } | undefined;
+  const appName: string = branding?.appName ?? 'Orono Peer Observations';
   const signupLink: string =
     (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
 
@@ -318,7 +338,7 @@ export async function sendTemplatedEmail(args: {
 export function formatDate(value: unknown): string {
   if (!value) return '';
   const d =
-    typeof value === 'object' && 'toDate' in (value as object)
+    typeof value === 'object' && 'toDate' in value
       ? (value as { toDate(): Date }).toDate()
       : value instanceof Date
         ? value

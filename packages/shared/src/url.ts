@@ -53,3 +53,51 @@ export function toSafeUrl(value: string, opts?: { allowTemplateToken?: boolean }
   if (!isSafeUrl(value, opts)) return null;
   return normalize(value);
 }
+
+/** Matches an `href` attribute in either quoting style, or unquoted. The
+ *  leading whitespace is part of the match so the replacement can restore a
+ *  single separating space. */
+const HREF_ATTR_RE = /\s+href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+/** Result of {@link sanitizeHtmlHrefs}. */
+export interface HrefSanitizeResult {
+  /** The HTML with every unsafe href rewritten to `#`. */
+  html: string;
+  /** The raw attribute values that were rejected, for logging/auditing.
+   *  Empty when the input was already clean. */
+  rejected: string[];
+}
+
+/**
+ * Rewrites every `href` in `html` that is not a safe absolute http/https/
+ * mailto URL to `#`, and reports what was rejected.
+ *
+ * This is the send-time counterpart to input-time validation. `toSafeUrl`
+ * guards what the link editor writes, but a stored template body predating
+ * that validation -- or one written by any path that bypasses the editor --
+ * is still untrusted when it is finally rendered into an outbound email.
+ * Validating again here means the trust boundary sits at the send, not at
+ * whichever write happened to create the value.
+ *
+ * Attribute values are checked exactly as they appear, with no entity
+ * decoding: anything that does not parse as an allowlisted absolute URL is
+ * rejected, so entity-encoded or otherwise mangled protocols
+ * (`&#106;avascript:`) fail closed rather than being guessed at.
+ *
+ * Template tokens are deliberately *not* allowed. Callers substitute
+ * variables before sending, so a surviving `{{token}}` in an href is an
+ * unresolved value rather than a legitimate placeholder.
+ */
+export function sanitizeHtmlHrefs(html: string): HrefSanitizeResult {
+  const rejected: string[] = [];
+  const cleaned = html.replace(
+    HREF_ATTR_RE,
+    (match: string, doubleQuoted?: string, singleQuoted?: string, unquoted?: string) => {
+      const raw = doubleQuoted ?? singleQuoted ?? unquoted ?? '';
+      if (isSafeUrl(raw)) return match;
+      rejected.push(raw);
+      return ' href="#"';
+    },
+  );
+  return { html: cleaned, rejected };
+}

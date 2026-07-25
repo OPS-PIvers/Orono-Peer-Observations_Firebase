@@ -17,7 +17,13 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/build/**',
-      '**/lib/**',
+      // Compiled output only, named explicitly rather than as `**/lib/**`:
+      // that broader glob also swallowed apps/web/src/lib and
+      // apps/functions/src/lib, which are real source. These two paths are
+      // the same ones .gitignore lists as build artifacts (@ops/shared emits
+      // to dist/, already covered above).
+      'apps/functions/lib/**',
+      'apps/pdf-renderer/lib/**',
       '**/node_modules/**',
       '**/coverage/**',
       '**/playwright-report/**',
