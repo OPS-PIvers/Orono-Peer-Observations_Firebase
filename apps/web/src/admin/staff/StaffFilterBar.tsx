@@ -1,5 +1,5 @@
-import { forwardRef, useMemo, type ButtonHTMLAttributes } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { useMemo } from 'react';
+import { Search, X } from 'lucide-react';
 import { OBSERVATION_YEARS, type Building, type Role, type StaffYear } from '@ops/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,9 +12,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { yearLabel } from '@/utils/staffFormatting';
-import { cn } from '@/lib/utils';
+import { FilterChip } from '@/admin/_shared/FilterChip';
+import { StatusFilterChip } from '@/admin/_shared/StatusFilterChip';
+import { DEFAULT_STATUS_FILTER, type StatusFilter } from '@/admin/_shared/statusFilter';
 
-export type StatusFilter = 'all' | 'active' | 'archived';
+export type { StatusFilter };
 
 export interface StaffFilters {
   search: string;
@@ -29,7 +31,7 @@ export const EMPTY_FILTERS: StaffFilters = {
   roles: new Set<string>(),
   years: new Set<StaffYear>(),
   buildings: new Set<string>(),
-  status: 'active',
+  status: DEFAULT_STATUS_FILTER,
 };
 
 interface StaffFilterBarProps {
@@ -54,7 +56,7 @@ export function StaffFilterBar({ filters, onChange, roles, buildings }: StaffFil
     filters.roles.size +
     filters.years.size +
     filters.buildings.size +
-    (filters.status !== 'active' ? 1 : 0);
+    (filters.status !== DEFAULT_STATUS_FILTER ? 1 : 0);
 
   const roleLabelByRoleId = useMemo(() => {
     const map = new Map<string, string>();
@@ -176,31 +178,7 @@ export function StaffFilterBar({ filters, onChange, roles, buildings }: StaffFil
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <FilterChip
-              label="Status"
-              count={filters.status !== 'active' ? 1 : 0}
-              activeSummary={
-                filters.status === 'all' ? 'All' : filters.status === 'archived' ? 'Archived' : null
-              }
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Status</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {(['active', 'archived', 'all'] as const).map((s) => (
-              <DropdownMenuCheckboxItem
-                key={s}
-                checked={filters.status === s}
-                onCheckedChange={() => update('status', s)}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {s === 'active' ? 'Active' : s === 'archived' ? 'Archived' : 'All'}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <StatusFilterChip value={filters.status} onChange={(s) => update('status', s)} />
 
         {activeChipCount > 0 ? (
           <Button
@@ -217,46 +195,3 @@ export function StaffFilterBar({ filters, onChange, roles, buildings }: StaffFil
     </div>
   );
 }
-
-interface FilterChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  label: string;
-  count: number;
-  activeSummary: string | null;
-}
-
-const FilterChip = forwardRef<HTMLButtonElement, FilterChipProps>(function FilterChip(
-  { label, count, activeSummary, ...rest },
-  ref,
-) {
-  const isActive = count > 0;
-  return (
-    <button
-      ref={ref}
-      type="button"
-      {...rest}
-      className={cn(
-        'inline-flex h-9 min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors',
-        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
-        isActive
-          ? 'border-ops-blue bg-ops-blue text-primary-foreground hover:bg-ops-blue-dark'
-          : 'border-input bg-background hover:bg-accent hover:text-accent-foreground',
-      )}
-    >
-      <span>{label}</span>
-      {activeSummary ? (
-        <span className="max-w-[140px] truncate text-xs opacity-90">{activeSummary}</span>
-      ) : null}
-      {count > 0 ? (
-        <span
-          className={cn(
-            'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold',
-            'bg-white/20',
-          )}
-        >
-          {count}
-        </span>
-      ) : null}
-      <ChevronDown className="h-3.5 w-3.5 opacity-70" />
-    </button>
-  );
-});

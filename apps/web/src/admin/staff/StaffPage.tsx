@@ -36,6 +36,7 @@ import {
   type ColumnDef,
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
+import { matchesStatusFilter } from '@/admin/_shared/statusFilter';
 import { StaffDialog } from './StaffDialog';
 import { StaffImportDialog } from './StaffImportDialog';
 import { RolloverDialog } from './RolloverDialog';
@@ -141,8 +142,7 @@ export function StaffPage() {
         const overlap = s.buildings.some((b) => filters.buildings.has(b));
         if (!overlap) return false;
       }
-      if (filters.status === 'active' && !s.isActive) return false;
-      if (filters.status === 'archived' && s.isActive) return false;
+      if (!matchesStatusFilter(s.isActive, filters.status)) return false;
       return true;
     });
   }, [staff, filters]);

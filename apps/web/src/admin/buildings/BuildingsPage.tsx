@@ -35,6 +35,12 @@ import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
 import { BulkActionBar } from '@/admin/_shared/BulkActionBar';
 import { bulkMerge } from '@/admin/_shared/bulkWrite';
 import { useRowSelection } from '@/admin/_shared/useRowSelection';
+import { StatusFilterChip } from '@/admin/_shared/StatusFilterChip';
+import {
+  DEFAULT_STATUS_FILTER,
+  matchesStatusFilter,
+  type StatusFilter,
+} from '@/admin/_shared/statusFilter';
 
 function slugify(s: string): string {
   return s
@@ -60,17 +66,22 @@ export function BuildingsPage() {
     direction: 'asc',
   });
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS_FILTER);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const { selectMode, selected, toggleRow, toggleAll, clear, toggleSelectMode } = useRowSelection();
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return buildings ?? [];
-    return (buildings ?? []).filter(
-      (b) => b.displayName.toLowerCase().includes(q) || b.buildingId.toLowerCase().includes(q),
-    );
-  }, [buildings, search]);
+    return (buildings ?? []).filter((b) => {
+      if (q) {
+        const matches =
+          b.displayName.toLowerCase().includes(q) || b.buildingId.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      return matchesStatusFilter(b.isActive, statusFilter);
+    });
+  }, [buildings, search, statusFilter]);
 
   const columns: ColumnDef<BuildingRow>[] = useMemo(
     () => [
@@ -148,13 +159,15 @@ export function BuildingsPage() {
         </div>
       }
     >
-      <AdminSearchInput
-        value={search}
-        onChange={setSearch}
-        placeholder="Search by name or building ID"
-        aria-label="Search buildings"
-        className="mb-4"
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <AdminSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by name or building ID"
+          aria-label="Search buildings"
+        />
+        <StatusFilterChip value={statusFilter} onChange={setStatusFilter} />
+      </div>
 
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -196,7 +209,11 @@ export function BuildingsPage() {
           loading={loading}
           rowKey={(b) => b.id}
           empty={
-            search ? 'No buildings match that search.' : 'No buildings yet. Add one to get started.'
+            search || statusFilter !== DEFAULT_STATUS_FILTER
+              ? 'No buildings match the current filters.'
+              : (buildings?.length ?? 0) > 0
+                ? 'No active buildings. Try Archived or All.'
+                : 'No buildings yet. Add one to get started.'
           }
           {...(selectMode
             ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
