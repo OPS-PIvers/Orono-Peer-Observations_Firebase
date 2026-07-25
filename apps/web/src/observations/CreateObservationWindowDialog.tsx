@@ -153,7 +153,11 @@ export function CreateObservationWindowDialog({
     setEarliestMinute(seedFrom?.earliestMinute ?? settings.defaultEarliestMinute);
     setLatestMinute(seedFrom?.latestMinute ?? settings.defaultLatestMinute);
     setTravelBuffer(seedFrom?.travelBufferMinutes ?? settings.travelBufferMinutes);
-    setPerDayCap(seedFrom?.perDayCap ?? settings.defaultPerDayCap);
+    // perDayCap is nullable-with-meaning in the schema (null = intentionally
+    // uncapped), so `??` would silently discard an explicit null from the
+    // source window and fall back to the org default. Only fall back to the
+    // default when there's no source window at all.
+    setPerDayCap(seedFrom ? seedFrom.perDayCap : settings.defaultPerDayCap);
     setSelectedFieldIds(new Set(seedFrom?.signupFieldIds ?? []));
     setObservationType(seedFrom?.defaultObservationType ?? OBSERVATION_TYPES.standard);
     setObservationName(seedFrom?.defaultObservationName ?? '');
