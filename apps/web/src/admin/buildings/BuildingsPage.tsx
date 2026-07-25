@@ -159,14 +159,16 @@ export function BuildingsPage() {
         </div>
       }
     >
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col gap-3">
         <AdminSearchInput
           value={search}
           onChange={setSearch}
           placeholder="Search by name or building ID"
           aria-label="Search buildings"
         />
-        <StatusFilterChip value={statusFilter} onChange={setStatusFilter} />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusFilterChip value={statusFilter} onChange={setStatusFilter} />
+        </div>
       </div>
 
       {error ? (
