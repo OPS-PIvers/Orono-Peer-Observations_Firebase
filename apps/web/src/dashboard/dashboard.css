@@ -1027,6 +1027,18 @@
 .staff-dashboard .task-row__cta {
   margin-top: 4px;
 }
+/* Row wrapping the primary CTA plus secondary actions (e.g. "Add to
+ * calendar" — STAFF-04) so they sit side by side and wrap on narrow
+ * viewports instead of overlapping. */
+.staff-dashboard .task-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.staff-dashboard .task-row__ics {
+  margin-top: 4px;
+}
 
 /* ---------- BUTTONS ---------- */
 .staff-dashboard .ot-btn {

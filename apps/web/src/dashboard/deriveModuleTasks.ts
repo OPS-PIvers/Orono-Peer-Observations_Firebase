@@ -45,6 +45,15 @@ export function deriveModuleTasks(args: {
         desc: m.description,
         monthLabel: due ? due.toLocaleDateString('en-US', { month: 'short' }) : '',
         dateLabel: due ? shortLabel(due) : '',
+        rawDate: due,
+        // A module material's due date is a deadline, not a scheduled event
+        // — same category as the built-in steps' `windowEndDate`. 'none' is
+        // not itself ICS-eligible (see `ICS_ELIGIBLE_DATE_SOURCES`), so this
+        // correctly keeps "Add to calendar" off module-material cards.
+        dateSource: 'none' as const,
+        // A module material was never backed by a booked observation slot.
+        scheduledStartAt: null,
+        scheduledEndAt: null,
         dueRelative: '',
         cta: m.ctaUrl ? 'Open' : '',
         ctaUrl: m.ctaUrl ?? '',

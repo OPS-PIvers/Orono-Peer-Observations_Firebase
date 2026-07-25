@@ -5,8 +5,14 @@ import {
   type ModuleColor,
   type Staff,
 } from '@ops/shared';
+import { downloadTextFile } from '@/lib/download';
+import { buildIcsEvent, icsFileName } from '@/lib/ics';
 import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
-import { type CheckpointWithStatus, initialsFromName } from './deriveCheckpoints';
+import {
+  checkpointToIcsEvent,
+  type CheckpointWithStatus,
+  initialsFromName,
+} from './deriveCheckpoints';
 import './dashboard.css';
 
 /** Icon glyph per visual type — shown in the collapsed row to differentiate
@@ -72,6 +78,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
     readOnly = false,
     onCompleteModuleItem,
   } = props;
+  const staffEmail = props.staff.email;
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const completed = useMemo(() => tasks.filter((t) => t.status === 'done'), [tasks]);
@@ -126,6 +133,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                   <section style={{ marginBottom: 8 }}>
                     <TaskRow
                       task={featured}
+                      staffEmail={staffEmail}
                       featured
                       defaultExpanded
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
@@ -143,6 +151,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       <TaskRow
                         key={t.id}
                         task={t}
+                        staffEmail={staffEmail}
                         {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
                         {...(props.acknowledging !== undefined
                           ? { acknowledging: props.acknowledging }
@@ -159,6 +168,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       <TaskRow
                         key={t.id}
                         task={t}
+                        staffEmail={staffEmail}
                         {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                         readOnly={readOnly}
                       />
@@ -175,7 +185,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     onAction={() => setFilter('completed')}
                   >
                     {completed.slice(0, 3).map((t) => (
-                      <TaskRow key={t.id} task={t} readOnly={readOnly} />
+                      <TaskRow key={t.id} task={t} staffEmail={staffEmail} readOnly={readOnly} />
                     ))}
                   </TaskGroup>
                 ) : null}
@@ -189,6 +199,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     <TaskRow
                       key={t.id}
                       task={t}
+                      staffEmail={staffEmail}
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
                       {...(props.acknowledging !== undefined
                         ? { acknowledging: props.acknowledging }
@@ -210,6 +221,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     <TaskRow
                       key={t.id}
                       task={t}
+                      staffEmail={staffEmail}
                       {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                       readOnly={readOnly}
                     />
@@ -223,7 +235,9 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'completed' ? (
               <TaskGroup title="Completed" count={completed.length}>
                 {completed.length > 0 ? (
-                  completed.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
+                  completed.map((t) => (
+                    <TaskRow key={t.id} task={t} staffEmail={staffEmail} readOnly={readOnly} />
+                  ))
                 ) : (
                   <p className="empty-note">Nothing completed yet.</p>
                 )}
@@ -500,6 +514,7 @@ function FilterBar({
  */
 function TaskRow({
   task,
+  staffEmail,
   defaultExpanded,
   featured,
   onAcknowledge,
@@ -508,6 +523,9 @@ function TaskRow({
   readOnly,
 }: {
   task: CheckpointWithStatus;
+  /** The dashboard owner's email — threaded down to give the "Add to
+   *  calendar" .ics UID per-staff entropy. See `checkpointToIcsEvent`. */
+  staffEmail: string;
   defaultExpanded?: boolean;
   featured?: boolean;
   onAcknowledge?: (observationId: string) => void;
@@ -521,6 +539,31 @@ function TaskRow({
   const isAck = !!task.ackObservationId;
   const dateLabel = task.status === 'done' ? (task.completedLabel ?? '') : task.dateLabel;
   const expandedId = `task-row-detail-${task.id}`;
+
+  // STAFF-04 — "Add to calendar" .ics download for dated meeting/observation
+  // checkpoints. Client-only: builds the file in memory and triggers a
+  // browser download, no backend involved.
+  const icsEvent = checkpointToIcsEvent(task, staffEmail);
+  const handleAddToCalendar = icsEvent
+    ? () => {
+        downloadTextFile(
+          buildIcsEvent(icsEvent),
+          icsFileName(task.title),
+          'text/calendar;charset=utf-8',
+        );
+      }
+    : undefined;
+  const icsButton =
+    handleAddToCalendar && !readOnly ? (
+      <button
+        type="button"
+        className="ot-btn ot-btn--tertiary ot-btn--sm task-row__ics"
+        onClick={handleAddToCalendar}
+      >
+        <DashboardIcon name="calendar" size={12} />
+        Add to calendar
+      </button>
+    ) : null;
 
   return (
     <article
@@ -570,51 +613,63 @@ function TaskRow({
             </div>
           ) : null}
           {task.status !== 'done' ? (
-            isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
-              <button
-                type="button"
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-                onClick={() => onAcknowledge(task.ackObservationId ?? '')}
-                disabled={acknowledging}
-              >
-                {acknowledging ? 'Acknowledging…' : task.cta}
-              </button>
-            ) : task.moduleItemId && task.moduleId && onCompleteModuleItem && !readOnly ? (
-              <button
-                type="button"
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-                onClick={() => onCompleteModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
-              >
-                Mark done
-              </button>
-            ) : task.ctaUrl && !readOnly ? (
-              <a
-                href={task.ctaUrl}
-                {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-              >
-                {task.cta}
-                <DashboardIcon name="arrow-right" size={12} />
-              </a>
-            ) : (
-              <button
-                type="button"
-                disabled={readOnly}
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-              >
-                {task.cta}
-                <DashboardIcon name="arrow-right" size={12} />
-              </button>
-            )
-          ) : task.ctaUrl && !readOnly ? (
-            <a
-              href={task.ctaUrl}
-              {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-              className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
-            >
-              Open observation
-              <DashboardIcon name="arrow-right" size={12} />
-            </a>
+            <div className="task-row__actions">
+              {icsButton}
+              {isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
+                <button
+                  type="button"
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                  onClick={() => onAcknowledge(task.ackObservationId ?? '')}
+                  disabled={acknowledging}
+                >
+                  {acknowledging ? 'Acknowledging…' : task.cta}
+                </button>
+              ) : task.moduleItemId && task.moduleId && onCompleteModuleItem && !readOnly ? (
+                <button
+                  type="button"
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                  onClick={() => onCompleteModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
+                >
+                  Mark done
+                </button>
+              ) : task.ctaUrl && !readOnly ? (
+                <a
+                  href={task.ctaUrl}
+                  {...(task.ctaUrl.startsWith('http')
+                    ? { target: '_blank', rel: 'noreferrer' }
+                    : {})}
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled={readOnly}
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </button>
+              )}
+            </div>
+          ) : icsButton || (task.ctaUrl && !readOnly) ? (
+            <div className="task-row__actions">
+              {icsButton}
+              {task.ctaUrl && !readOnly ? (
+                <a
+                  href={task.ctaUrl}
+                  {...(task.ctaUrl.startsWith('http')
+                    ? { target: '_blank', rel: 'noreferrer' }
+                    : {})}
+                  className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
+                >
+                  Open observation
+                  <DashboardIcon name="arrow-right" size={12} />
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

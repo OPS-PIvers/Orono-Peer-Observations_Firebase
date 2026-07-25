@@ -201,23 +201,6 @@ export function serializeStaffCsv(
   return lines.join('\r\n') + '\r\n';
 }
 
-/** Trigger a browser download of `text` as a file. Browser-only — not
- *  meaningful in a test/node environment. */
-export function downloadTextFile(text: string, filename: string, mimeType: string): void {
-  const blob = new Blob([text], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Import: parse + validate + diff
 // ---------------------------------------------------------------------------
