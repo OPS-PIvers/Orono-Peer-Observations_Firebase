@@ -45,6 +45,7 @@ export function deriveModuleTasks(args: {
         desc: m.description,
         monthLabel: due ? due.toLocaleDateString('en-US', { month: 'short' }) : '',
         dateLabel: due ? shortLabel(due) : '',
+        rawDate: due,
         dueRelative: '',
         cta: m.ctaUrl ? 'Open' : '',
         ctaUrl: m.ctaUrl ?? '',

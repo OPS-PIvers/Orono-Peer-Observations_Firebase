@@ -5,8 +5,14 @@ import {
   type ModuleColor,
   type Staff,
 } from '@ops/shared';
+import { downloadTextFile } from '@/admin/staff/staffCsv';
+import { buildIcsEvent, icsFileName } from '@/lib/ics';
 import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
-import { type CheckpointWithStatus, initialsFromName } from './deriveCheckpoints';
+import {
+  checkpointToIcsEvent,
+  type CheckpointWithStatus,
+  initialsFromName,
+} from './deriveCheckpoints';
 import './dashboard.css';
 
 /** Icon glyph per visual type — shown in the collapsed row to differentiate
@@ -522,6 +528,31 @@ function TaskRow({
   const dateLabel = task.status === 'done' ? (task.completedLabel ?? '') : task.dateLabel;
   const expandedId = `task-row-detail-${task.id}`;
 
+  // STAFF-04 — "Add to calendar" .ics download for dated meeting/observation
+  // checkpoints. Client-only: builds the file in memory and triggers a
+  // browser download, no backend involved.
+  const icsEvent = checkpointToIcsEvent(task);
+  const handleAddToCalendar = icsEvent
+    ? () => {
+        downloadTextFile(
+          buildIcsEvent(icsEvent),
+          icsFileName(task.title),
+          'text/calendar;charset=utf-8',
+        );
+      }
+    : undefined;
+  const icsButton =
+    handleAddToCalendar && !readOnly ? (
+      <button
+        type="button"
+        className="ot-btn ot-btn--tertiary ot-btn--sm task-row__ics"
+        onClick={handleAddToCalendar}
+      >
+        <DashboardIcon name="calendar" size={12} />
+        Add to calendar
+      </button>
+    ) : null;
+
   return (
     <article
       className={`task-row ${statusClass} ${featured ? 'task-row--featured' : ''} ${expanded ? 'is-expanded' : ''} ${task.urgent ? 'task-row--urgent' : ''}`}
@@ -570,51 +601,63 @@ function TaskRow({
             </div>
           ) : null}
           {task.status !== 'done' ? (
-            isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
-              <button
-                type="button"
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-                onClick={() => onAcknowledge(task.ackObservationId ?? '')}
-                disabled={acknowledging}
-              >
-                {acknowledging ? 'Acknowledging…' : task.cta}
-              </button>
-            ) : task.moduleItemId && task.moduleId && onCompleteModuleItem && !readOnly ? (
-              <button
-                type="button"
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-                onClick={() => onCompleteModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
-              >
-                Mark done
-              </button>
-            ) : task.ctaUrl && !readOnly ? (
-              <a
-                href={task.ctaUrl}
-                {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-              >
-                {task.cta}
-                <DashboardIcon name="arrow-right" size={12} />
-              </a>
-            ) : (
-              <button
-                type="button"
-                disabled={readOnly}
-                className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
-              >
-                {task.cta}
-                <DashboardIcon name="arrow-right" size={12} />
-              </button>
-            )
-          ) : task.ctaUrl && !readOnly ? (
-            <a
-              href={task.ctaUrl}
-              {...(task.ctaUrl.startsWith('http') ? { target: '_blank', rel: 'noreferrer' } : {})}
-              className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
-            >
-              Open observation
-              <DashboardIcon name="arrow-right" size={12} />
-            </a>
+            <div className="task-row__actions">
+              {icsButton}
+              {isAck && task.ackObservationId && onAcknowledge && !readOnly ? (
+                <button
+                  type="button"
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                  onClick={() => onAcknowledge(task.ackObservationId ?? '')}
+                  disabled={acknowledging}
+                >
+                  {acknowledging ? 'Acknowledging…' : task.cta}
+                </button>
+              ) : task.moduleItemId && task.moduleId && onCompleteModuleItem && !readOnly ? (
+                <button
+                  type="button"
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                  onClick={() => onCompleteModuleItem(task.moduleId ?? '', task.moduleItemId ?? '')}
+                >
+                  Mark done
+                </button>
+              ) : task.ctaUrl && !readOnly ? (
+                <a
+                  href={task.ctaUrl}
+                  {...(task.ctaUrl.startsWith('http')
+                    ? { target: '_blank', rel: 'noreferrer' }
+                    : {})}
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled={readOnly}
+                  className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
+                >
+                  {task.cta}
+                  <DashboardIcon name="arrow-right" size={12} />
+                </button>
+              )}
+            </div>
+          ) : icsButton || (task.ctaUrl && !readOnly) ? (
+            <div className="task-row__actions">
+              {icsButton}
+              {task.ctaUrl && !readOnly ? (
+                <a
+                  href={task.ctaUrl}
+                  {...(task.ctaUrl.startsWith('http')
+                    ? { target: '_blank', rel: 'noreferrer' }
+                    : {})}
+                  className="ot-btn ot-btn--tertiary ot-btn--sm task-row__cta"
+                >
+                  Open observation
+                  <DashboardIcon name="arrow-right" size={12} />
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

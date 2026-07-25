@@ -1,4 +1,5 @@
 import { type DashboardStep, type DoneWhen, type Observation, type ShowWhen } from '@ops/shared';
+import { type IcsEventInput } from '@/lib/ics';
 import {
   DATE_SOURCE_FN,
   EVENT_EVALUATORS,
@@ -32,6 +33,12 @@ export interface CheckpointWithStatus {
   desc: string;
   monthLabel: string;
   dateLabel: string;
+  /** The concrete Date backing `dateLabel`/`monthLabel`, or null when the
+   *  card has no concrete date yet (see `fallbackDateLabel`). Kept alongside
+   *  the formatted labels so consumers that need the real Date — e.g. the
+   *  "Add to calendar" .ics download (STAFF-04) — don't have to re-parse a
+   *  human-readable string. */
+  rawDate: Date | null;
   dueRelative: string;
   cta: string;
   ctaUrl: string;
@@ -189,6 +196,7 @@ export function deriveCheckpoints(
       desc: step.description,
       monthLabel: stepDate ? monthLabel(stepDate) : '',
       dateLabel: cardDateLabel,
+      rawDate: stepDate,
       dueRelative,
       cta: step.buttonLabel,
       ctaUrl,
@@ -213,6 +221,47 @@ export function initialsFromName(name: string, email: string): string {
   }
   if (parts.length === 1 && parts[0]) return parts[0].slice(0, 2).toUpperCase();
   return (email[0] ?? '?').toUpperCase();
+}
+
+/** Checkpoint types that represent a single dated meeting/event worth
+ *  putting on a calendar — forms and reviews don't. */
+const ICS_ELIGIBLE_TYPES: ReadonlySet<CheckpointWithStatus['type']> = new Set([
+  'meeting',
+  'observation',
+]);
+
+/** `YYYYMMDD` for a Date's LOCAL calendar date — used to key the .ics UID. */
+function dateStamp(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${String(d.getFullYear())}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+/**
+ * Build the `.ics` event input for a checkpoint card's "Add to calendar"
+ * link (STAFF-04), or `null` when the checkpoint isn't a dated
+ * meeting/observation, or has no concrete date yet. Pure — the caller turns
+ * this into a downloadable file via `buildIcsEvent`/`downloadTextFile`.
+ *
+ * Checkpoint dates (`preObsDate`/`observationDate`/`postObsDate`) are
+ * captured from a plain HTML `<input type="date">` with no time-of-day, so
+ * these are emitted as all-day events rather than fabricating a fake time.
+ *
+ * The UID is keyed on the step id + date rather than the underlying
+ * observation id (not available on every checkpoint type) — stable across
+ * repeat downloads of the same checkpoint, and scoped to the signed-in
+ * staff member's own dashboard, so this doesn't need to be unique across
+ * the whole district the way a shared calendar's UID would.
+ */
+export function checkpointToIcsEvent(task: CheckpointWithStatus): IcsEventInput | null {
+  if (!ICS_ELIGIBLE_TYPES.has(task.type) || !task.rawDate) return null;
+  return {
+    uid: `${task.key}-${dateStamp(task.rawDate)}@peerobservations.orono.k12.mn.us`,
+    summary: task.title,
+    ...(task.desc ? { description: task.desc } : {}),
+    start: task.rawDate,
+    end: task.rawDate,
+    allDay: true,
+  };
 }
 
 export function extractFirstName(fullName: string): string {

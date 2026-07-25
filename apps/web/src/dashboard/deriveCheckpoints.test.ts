@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_STEPS, dashboardStep, type Observation } from '@ops/shared';
-import { deriveCheckpoints } from './deriveCheckpoints';
+import {
+  checkpointToIcsEvent,
+  deriveCheckpoints,
+  type CheckpointWithStatus,
+} from './deriveCheckpoints';
 import type { DeriveContext } from './dashboardEvents';
 
 const NOW = new Date('2026-03-01T00:00:00Z');
@@ -174,7 +178,23 @@ describe('deriveCheckpoints (generic slots)', () => {
   it('falls back to "Awaiting date" when shown with no concrete date', () => {
     // pre-obs is shown (observation created) but has no pre-obs date yet
     const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW);
-    expect(cards.find((c) => c.id === 'preObs')?.dateLabel).toBe('Awaiting date');
+    const preObs = cards.find((c) => c.id === 'preObs');
+    expect(preObs?.dateLabel).toBe('Awaiting date');
+    expect(preObs?.rawDate).toBeNull();
+  });
+
+  it('exposes rawDate alongside dateLabel once a concrete date is set', () => {
+    // Local (no 'Z') — checkpoint dates come from an HTML date input parsed
+    // as local midnight (see apps/web/src/utils/dateHelpers.ts), so tests
+    // must construct them the same way rather than anchoring to UTC.
+    const preObsDate = new Date('2026-03-10T00:00:00');
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ standardDraft: obs({ preObsDate }) }),
+      NOW,
+    );
+    const preObs = cards.find((c) => c.id === 'preObs');
+    expect(preObs?.rawDate).toEqual(preObsDate);
   });
 
   it('fixedUrl button uses buttonUrl; none renders inert', () => {
@@ -188,5 +208,60 @@ describe('deriveCheckpoints (generic slots)', () => {
     const cards = deriveCheckpoints([link, inert], ctx({}), NOW);
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');
     expect(cards.find((c) => c.id === 'i')?.ctaUrl).toBe('');
+  });
+});
+
+describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
+  function checkpoint(partial: Partial<CheckpointWithStatus>): CheckpointWithStatus {
+    return {
+      id: 'preObs',
+      key: 'preObs',
+      type: 'meeting',
+      typeLabel: 'Meeting',
+      title: 'Pre-Observation Conversation',
+      desc: 'Meet with your peer evaluator.',
+      monthLabel: 'Mar',
+      dateLabel: 'Mar 10',
+      rawDate: new Date('2026-03-10T00:00:00'),
+      dueRelative: '',
+      cta: 'View',
+      ctaUrl: '',
+      status: 'soon',
+      urgent: false,
+      completedLabel: null,
+      percent: null,
+      percentLabel: '',
+      ...partial,
+    };
+  }
+
+  it('builds an all-day .ics event input for a meeting checkpoint with a date', () => {
+    const event = checkpointToIcsEvent(checkpoint({}));
+    expect(event).not.toBeNull();
+    expect(event?.uid).toBe('preObs-20260310@peerobservations.orono.k12.mn.us');
+    expect(event?.summary).toBe('Pre-Observation Conversation');
+    expect(event?.description).toBe('Meet with your peer evaluator.');
+    expect(event?.allDay).toBe(true);
+  });
+
+  it('builds an event for the observation type too', () => {
+    const event = checkpointToIcsEvent(
+      checkpoint({ id: 'observation', key: 'observation', type: 'observation' }),
+    );
+    expect(event).not.toBeNull();
+  });
+
+  it('returns null for non-dated checkpoint types (form/review)', () => {
+    expect(checkpointToIcsEvent(checkpoint({ type: 'form' }))).toBeNull();
+    expect(checkpointToIcsEvent(checkpoint({ type: 'review' }))).toBeNull();
+  });
+
+  it('returns null when the checkpoint has no concrete date yet', () => {
+    expect(checkpointToIcsEvent(checkpoint({ rawDate: null }))).toBeNull();
+  });
+
+  it('omits description when the checkpoint has none', () => {
+    const event = checkpointToIcsEvent(checkpoint({ desc: '' }));
+    expect(event?.description).toBeUndefined();
   });
 });
