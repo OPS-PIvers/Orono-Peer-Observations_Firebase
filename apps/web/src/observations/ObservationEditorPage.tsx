@@ -11,7 +11,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -261,6 +261,9 @@ export function ObservationEditorPage() {
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
 
+  const [acknowledging, setAcknowledging] = useState(false);
+  const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
+
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
@@ -412,6 +415,10 @@ export function ObservationEditorPage() {
   // would silently flip to read-only for their original observer.
   const isReadOnly = observation?.status === OBSERVATION_STATUS.finalized;
   const isObserver = observation?.observerEmail === user?.email?.toLowerCase();
+  // Same lowercase-normalization rationale as isObserver — observedEmail is
+  // stored lowercased, but Firebase Auth's User#email preserves input case.
+  const isObservedStaff = observation?.observedEmail === user?.email?.toLowerCase();
+  const showAcknowledge = isReadOnly && isObservedStaff && !observation.acknowledgedAt;
   // Admins may also edit Drafts (firestore.rules allows admin updates of any
   // field) — most importantly after reopening a finalized observation to fix
   // a mistake, when the admin isn't necessarily the original observer.
@@ -667,6 +674,26 @@ export function ObservationEditorPage() {
     }
   }
 
+  // Mirrors MyObservationsPage.tsx's ackMutation — same fields, same
+  // lowercase-normalized acknowledgedBy (firestore.rules requires it to
+  // equal the caller's auth token email exactly).
+  async function handleAcknowledge() {
+    if (!observation) return;
+    setAcknowledging(true);
+    setAcknowledgeError(null);
+    try {
+      await updateDoc(doc(db, `${COLLECTIONS.observations}/${observation.id}`), {
+        acknowledgedAt: serverTimestamp(),
+        acknowledgedBy: user?.email?.toLowerCase() ?? '',
+        lastModifiedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      setAcknowledgeError(err instanceof Error ? err.message : 'Acknowledge failed');
+    } finally {
+      setAcknowledging(false);
+    }
+  }
+
   async function handleRegenerate() {
     if (!observation) return;
     setRegenerating(true);
@@ -863,13 +890,44 @@ export function ObservationEditorPage() {
         ) : null}
         {isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
-            This observation is finalized and read-only.
-            {rubricSnapshot
-              ? ' Rubric criteria are shown exactly as they were when it was finalized, even if the rubric has since been edited.'
-              : ''}
-            {showReopen
-              ? ' As an admin, you can reopen it for corrections using the Reopen button above.'
-              : ''}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p>
+                This observation is finalized and read-only.
+                {rubricSnapshot
+                  ? ' Rubric criteria are shown exactly as they were when it was finalized, even if the rubric has since been edited.'
+                  : ''}
+                {showReopen
+                  ? ' As an admin, you can reopen it for corrections using the Reopen button above.'
+                  : ''}
+              </p>
+              {showAcknowledge ? (
+                <Button size="sm" onClick={() => void handleAcknowledge()} disabled={acknowledging}>
+                  {acknowledging ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Acknowledging…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      Acknowledge
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              {isObservedStaff && observation.acknowledgedAt ? (
+                <span className="text-ops-blue-dark inline-flex items-center gap-1 font-medium">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  Acknowledged on{' '}
+                  {(toJsDate(observation.acknowledgedAt) ?? new Date()).toLocaleDateString()}
+                </span>
+              ) : null}
+            </div>
+            {acknowledgeError ? (
+              <p className="border-destructive bg-ops-red-lighter text-ops-red-dark mt-2 rounded-md border-l-4 px-3 py-2 text-sm">
+                {acknowledgeError}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
