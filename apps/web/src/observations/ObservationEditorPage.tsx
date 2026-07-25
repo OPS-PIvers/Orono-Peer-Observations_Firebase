@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2, RotateCcw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -51,6 +59,7 @@ import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseVi
 import { AudioPopoverButton } from './AudioPopoverButton';
 import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
+import { computeUnscoredComponents, type ActiveComponent } from './unscoredComponents';
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -397,6 +406,15 @@ export function ObservationEditorPage() {
   const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
   // Admin-only escape hatch: reopen a finalized observation for correction.
   const showReopen = isReadOnly && isAdminUser;
+
+  // Components assigned to this role-year that have no proficiency selected
+  // yet. Surfaced as a non-blocking warning in FinalizeDialog — some
+  // components are legitimately not observed in a given lesson, so this
+  // never gates the Finalize action, only informs it.
+  const unscoredComponents = useMemo(
+    () => computeUnscoredComponents(activeComponents, draft.observationData),
+    [activeComponents, draft.observationData],
+  );
 
   // Warn before the tab/page is discarded while a save is pending or has
   // failed — a debounced-but-not-yet-flushed edit, an in-flight write, or a
@@ -770,6 +788,7 @@ export function ObservationEditorPage() {
           observation={observation}
           finalizing={finalizing}
           error={finalizeError}
+          unscoredComponents={unscoredComponents}
           onConfirm={() => void handleFinalize()}
         />
 
@@ -1086,6 +1105,7 @@ function FinalizeDialog({
   observation,
   finalizing,
   error,
+  unscoredComponents,
   onConfirm,
 }: {
   open: boolean;
@@ -1093,6 +1113,7 @@ function FinalizeDialog({
   observation: Observation;
   finalizing: boolean;
   error: string | null;
+  unscoredComponents: ActiveComponent[];
   onConfirm: () => void;
 }) {
   return (
@@ -1116,6 +1137,27 @@ function FinalizeDialog({
               : `${String(observation.audioDriveFileIds.length)} (will remain in the Drive folder)`}
           </li>
         </ul>
+        {unscoredComponents.length > 0 ? (
+          <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p>
+                <strong>
+                  {unscoredComponents.length} component{unscoredComponents.length === 1 ? '' : 's'}
+                </strong>{' '}
+                {unscoredComponents.length === 1 ? 'has' : 'have'} no rating selected — finalizing
+                will freeze {unscoredComponents.length === 1 ? 'it' : 'them'} as unscored.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {unscoredComponents.map((ac) => (
+                  <li key={ac.component.id}>
+                    <strong>{ac.component.id}</strong> {ac.component.title}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
         {error ? (
           <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
             {error}
