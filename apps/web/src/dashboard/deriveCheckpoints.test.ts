@@ -132,6 +132,49 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(checkpointToIcsEvent(instructionalRound, 'x@orono.k12.mn.us')).toBeNull();
   });
 
+  it("threads a real booked slot's scheduledStartAt/scheduledEndAt onto the observation checkpoint (Finding 2)", () => {
+    const slotStart = new Date('2026-03-05T09:15:00');
+    const slotEnd = new Date('2026-03-05T09:45:00');
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({
+        standardDraft: obs({
+          observationDate: slotStart,
+          scheduledStartAt: slotStart,
+          scheduledEndAt: slotEnd,
+        }),
+      }),
+      NOW,
+    );
+    const observation = cards.find((c) => c.id === 'observation');
+    expect(observation).toBeDefined();
+    expect(observation?.scheduledStartAt).toEqual(slotStart);
+    expect(observation?.scheduledEndAt).toEqual(slotEnd);
+    const event = observation && checkpointToIcsEvent(observation, 'jane.doe@orono.k12.mn.us');
+    expect(event?.allDay).toBe(false);
+    expect(event?.end).toEqual(slotEnd);
+  });
+
+  it("does NOT treat a freshly-created observation's record-creation timestamp as a booked slot (Finding 1 regression)", () => {
+    // CreateObservationDialog writes observationDate: new Date() the instant
+    // a peer evaluator starts a manual observation, before any real meeting
+    // time is chosen — no scheduledStartAt/scheduledEndAt exist yet.
+    const createdInstant = new Date('2026-03-05T14:15:33');
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ standardDraft: obs({ observationDate: createdInstant }) }),
+      NOW,
+    );
+    const observation = cards.find((c) => c.id === 'observation');
+    expect(observation).toBeDefined();
+    expect(observation?.scheduledStartAt).toBeNull();
+    const event = observation && checkpointToIcsEvent(observation, 'jane.doe@orono.k12.mn.us');
+    expect(event).not.toBeNull();
+    expect(event?.allDay).toBe(true);
+    expect(event?.start).toEqual(createdInstant);
+    expect(event?.end).toEqual(createdInstant);
+  });
+
   it('drives the work-product progress bar from answers', () => {
     const wp = obs({
       observationId: 'wp',
@@ -247,6 +290,8 @@ describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
       dateLabel: 'Mar 10',
       rawDate: new Date('2026-03-10T00:00:00'),
       dateSource: 'preObsDate',
+      scheduledStartAt: null,
+      scheduledEndAt: null,
       dueRelative: '',
       cta: 'View',
       ctaUrl: '',
@@ -346,12 +391,68 @@ describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
       expect(event?.end).toEqual(new Date('2026-03-10T00:00:00'));
     });
 
-    it('emits a timed event with a default duration when rawDate carries a real time-of-day', () => {
-      const start = new Date('2026-03-10T09:15:00');
-      const event = checkpointToIcsEvent(checkpoint({ rawDate: start }), STAFF_EMAIL);
+    // Regression test for Finding 1 (PR #67, 2nd fix cycle): a freshly
+    // created observation writes `observationDate: new Date()` client-side
+    // the instant a peer evaluator clicks "New observation" — BEFORE any
+    // real meeting time is chosen (see CreateObservationDialog). That Date
+    // carries a real time-of-day (record-creation instant, e.g. 14:15:33)
+    // but has no relationship to any actual meeting. Against the buggy
+    // hasTimeOfDay()-only heuristic this produced a fabricated TIMED event
+    // at the exact creation instant; the fix must key "timed" solely on
+    // `scheduledStartAt` (a genuine booked slot), which is absent here, so
+    // this must remain an ALL-DAY event on rawDate's calendar day.
+    it('emits an all-day event for a freshly-created observation with no booked slot, even though rawDate carries a time-of-day', () => {
+      const createdInstant = new Date('2026-03-10T14:15:33');
+      const event = checkpointToIcsEvent(
+        checkpoint({
+          dateSource: 'observationDate',
+          rawDate: createdInstant,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+        }),
+        STAFF_EMAIL,
+      );
+      expect(event).not.toBeNull();
+      expect(event?.allDay).toBe(true);
+      expect(event?.start).toEqual(createdInstant);
+      expect(event?.end).toEqual(createdInstant);
+    });
+
+    it('emits a timed event ending at the real scheduledEndAt when a slot is booked', () => {
+      // Mirrors bookObservationSlot: observationDate === scheduledStartAt,
+      // and scheduledEndAt reflects the slot's real (possibly non-45-min)
+      // length — here a 30-minute slot, which must NOT be widened to 45.
+      const slotStart = new Date('2026-03-10T09:15:00');
+      const slotEnd = new Date('2026-03-10T09:45:00');
+      const event = checkpointToIcsEvent(
+        checkpoint({
+          dateSource: 'observationDate',
+          rawDate: slotStart,
+          scheduledStartAt: slotStart,
+          scheduledEndAt: slotEnd,
+        }),
+        STAFF_EMAIL,
+      );
+      expect(event).not.toBeNull();
       expect(event?.allDay).toBe(false);
-      expect(event?.start).toEqual(start);
-      expect(event?.end).toEqual(new Date(start.getTime() + 45 * 60_000));
+      expect(event?.start).toEqual(slotStart);
+      expect(event?.end).toEqual(slotEnd);
+      expect(event?.end).not.toEqual(new Date(slotStart.getTime() + 45 * 60_000));
+    });
+
+    it('falls back to the default duration when a booked slot is missing scheduledEndAt', () => {
+      const slotStart = new Date('2026-03-10T09:15:00');
+      const event = checkpointToIcsEvent(
+        checkpoint({
+          dateSource: 'observationDate',
+          rawDate: slotStart,
+          scheduledStartAt: slotStart,
+          scheduledEndAt: null,
+        }),
+        STAFF_EMAIL,
+      );
+      expect(event?.allDay).toBe(false);
+      expect(event?.end).toEqual(new Date(slotStart.getTime() + 45 * 60_000));
     });
   });
 

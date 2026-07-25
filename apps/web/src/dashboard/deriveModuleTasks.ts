@@ -51,6 +51,9 @@ export function deriveModuleTasks(args: {
         // not itself ICS-eligible (see `ICS_ELIGIBLE_DATE_SOURCES`), so this
         // correctly keeps "Add to calendar" off module-material cards.
         dateSource: 'none' as const,
+        // A module material was never backed by a booked observation slot.
+        scheduledStartAt: null,
+        scheduledEndAt: null,
         dueRelative: '',
         cta: m.ctaUrl ? 'Open' : '',
         ctaUrl: m.ctaUrl ?? '',

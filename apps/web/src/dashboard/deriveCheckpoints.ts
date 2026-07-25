@@ -11,6 +11,7 @@ import {
   EVENT_EVALUATORS,
   resolveObservation,
   responseProgress,
+  toDate,
   type DeriveContext,
 } from './dashboardEvents';
 
@@ -52,6 +53,16 @@ export interface CheckpointWithStatus {
    *  happens to resolve to a Date but isn't an event to put on a calendar.
    *  See `checkpointToIcsEvent`. */
   dateSource: DateSource;
+  /** The observation's real booked-slot start/end (`scheduledStartAt` /
+   *  `scheduledEndAt`), threaded through only for the `observationDate`
+   *  dateSource. Non-null `scheduledStartAt` is the sole signal that
+   *  `rawDate` reflects an actual booked meeting time rather than e.g. a
+   *  record-creation timestamp that happens to carry a time-of-day (see
+   *  `checkpointToIcsEvent` — a bare Date's time-of-day is NOT a reliable
+   *  signal, since `new Date()` at draft-creation time almost never lands
+   *  on exact local midnight either). Null for every other checkpoint. */
+  scheduledStartAt: Date | null;
+  scheduledEndAt: Date | null;
   dueRelative: string;
   cta: string;
   ctaUrl: string;
@@ -186,6 +197,14 @@ export function deriveCheckpoints(
     }
 
     const stepDate = DATE_SOURCE_FN[step.dateFrom](obs, ctx);
+    // Only the observationDate step can ever back onto a real booked slot
+    // (bookObservationSlot writes observationDate = scheduledStartAt). Every
+    // other dateFrom — including a manually-created observation's
+    // record-creation `observationDate` — has no booked-slot backing, so
+    // leave these null rather than reading fields that don't apply.
+    const scheduledStartAt =
+      step.dateFrom === 'observationDate' ? toDate(obs?.scheduledStartAt) : null;
+    const scheduledEndAt = step.dateFrom === 'observationDate' ? toDate(obs?.scheduledEndAt) : null;
     const { ctaUrl, ackObservationId } = resolveButton(step, ctx, obs);
     const isAck = step.buttonTarget === 'acknowledge';
     const isDeadline = step.dateFrom === 'windowEndDate';
@@ -211,6 +230,8 @@ export function deriveCheckpoints(
       dateLabel: cardDateLabel,
       rawDate: stepDate,
       dateSource: step.dateFrom,
+      scheduledStartAt,
+      scheduledEndAt,
       dueRelative,
       cta: step.buttonLabel,
       ctaUrl,
@@ -253,24 +274,18 @@ const ICS_ELIGIBLE_DATE_SOURCES: ReadonlySet<DateSource> = new Set([
   'postObsDate',
 ]);
 
-/** Default event duration when a checkpoint's `rawDate` carries a real
- *  time-of-day but the derive pipeline only exposes a single instant (no
- *  explicit end) — a typical class period. */
+/** Fallback event duration for the narrow case where a real booked slot's
+ *  `scheduledStartAt` is known but its `scheduledEndAt` is missing. Every
+ *  write site that sets `scheduledStartAt` (bookObservationSlot,
+ *  rescheduleBooking) sets `scheduledEndAt` in the same write, so this
+ *  should be unreachable in practice — kept only as a defensive fallback
+ *  rather than surfacing a start-only event with no visible end. */
 export const DEFAULT_ICS_EVENT_DURATION_MINUTES = 45;
 
 /** `YYYYMMDD` for a Date's LOCAL calendar date — used to key the .ics UID. */
 function dateStamp(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${String(d.getFullYear())}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-}
-
-/** True when `d` carries a meaningful local time-of-day rather than
- *  midnight — i.e. it came from something more precise than an
- *  `<input type="date">` (no time-of-day). */
-function hasTimeOfDay(d: Date): boolean {
-  return (
-    d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0
-  );
 }
 
 /**
@@ -283,12 +298,21 @@ function hasTimeOfDay(d: Date): boolean {
  * Eligibility is keyed on `task.dateSource` (the step's `dateFrom`), not on
  * `task.type` — see `ICS_ELIGIBLE_DATE_SOURCES`.
  *
- * Checkpoint dates are usually captured from a plain HTML
- * `<input type="date">` with no time-of-day, so those are emitted as
- * all-day events rather than fabricating a fake time. When `rawDate` does
- * carry a real time-of-day (e.g. a booked class period), a timed event is
- * emitted instead, defaulting its end to `DEFAULT_ICS_EVENT_DURATION_MINUTES`
- * after the start since only a single instant is available here.
+ * Whether the event is emitted as timed or all-day is decided ONLY by
+ * `task.scheduledStartAt` (a real booked slot's `scheduledStartAt`,
+ * threaded through by `deriveCheckpoints` — see `CheckpointWithStatus`),
+ * never by inspecting `rawDate`'s time-of-day. A bare Date's time-of-day is
+ * not a trustworthy signal: e.g. a brand-new manually-created observation's
+ * `observationDate` is set client-side to `new Date()` at record-creation
+ * time (see CreateObservationDialog), which is a real clock instant but has
+ * no relationship whatsoever to any actual meeting — treating that as
+ * "timed" would fabricate a fake appointment on the staff member's
+ * calendar. So: a real booked slot (`scheduledStartAt` present) always
+ * produces a timed event ending at the true `scheduledEndAt` (falling back
+ * to `DEFAULT_ICS_EVENT_DURATION_MINUTES` only if `scheduledEndAt` is
+ * somehow missing); everything else — including an as-yet-unscheduled
+ * `observationDate` — produces an all-day event on `rawDate`'s calendar
+ * day, exactly as if it had come from a plain `<input type="date">`.
  *
  * `staffEmail` gives the UID entropy scoped to the observed staff member —
  * without it, two different staff members with the same checkpoint type on
@@ -304,15 +328,18 @@ export function checkpointToIcsEvent(
   if (!ICS_ELIGIBLE_DATE_SOURCES.has(task.dateSource) || !task.rawDate || !task.title.trim()) {
     return null;
   }
-  const timed = hasTimeOfDay(task.rawDate);
+  const scheduledStartAt = task.scheduledStartAt;
+  const timed = scheduledStartAt != null;
+  const start = timed ? scheduledStartAt : task.rawDate;
   const end = timed
-    ? new Date(task.rawDate.getTime() + DEFAULT_ICS_EVENT_DURATION_MINUTES * 60_000)
+    ? (task.scheduledEndAt ??
+      new Date(scheduledStartAt.getTime() + DEFAULT_ICS_EVENT_DURATION_MINUTES * 60_000))
     : task.rawDate;
   return {
     uid: `${staffEmail}-${task.key}-${dateStamp(task.rawDate)}@peerobservations.orono.k12.mn.us`,
     summary: task.title,
     ...(task.desc ? { description: task.desc } : {}),
-    start: task.rawDate,
+    start,
     end,
     allDay: !timed,
   };
