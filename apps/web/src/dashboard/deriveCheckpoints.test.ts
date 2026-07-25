@@ -111,6 +111,27 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(review?.status).toBe('soon');
   });
 
+  it('the built-in signup and instructionalRound steps carry a non-ICS-eligible dateSource', () => {
+    // Regression test for the reported defect: both steps use a "meeting" /
+    // "observation" chipStyle but their dates are a booking deadline and a
+    // record-creation timestamp, respectively — neither is a real event.
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({
+        openBooking: { windowId: 'w', token: 't', endDate: FUTURE },
+        instructionalRoundDraft: obs({ createdAt: PAST }),
+      }),
+      NOW,
+    );
+    const signup = cards.find((c) => c.id === 'signup');
+    const instructionalRound = cards.find((c) => c.id === 'instructionalRound');
+    if (!signup || !instructionalRound) throw new Error('expected both cards to be present');
+    expect(signup.dateSource).toBe('windowEndDate');
+    expect(checkpointToIcsEvent(signup, 'x@orono.k12.mn.us')).toBeNull();
+    expect(instructionalRound.dateSource).toBe('createdAt');
+    expect(checkpointToIcsEvent(instructionalRound, 'x@orono.k12.mn.us')).toBeNull();
+  });
+
   it('drives the work-product progress bar from answers', () => {
     const wp = obs({
       observationId: 'wp',
@@ -212,6 +233,8 @@ describe('deriveCheckpoints (generic slots)', () => {
 });
 
 describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
+  const STAFF_EMAIL = 'jane.doe@orono.k12.mn.us';
+
   function checkpoint(partial: Partial<CheckpointWithStatus>): CheckpointWithStatus {
     return {
       id: 'preObs',
@@ -223,6 +246,7 @@ describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
       monthLabel: 'Mar',
       dateLabel: 'Mar 10',
       rawDate: new Date('2026-03-10T00:00:00'),
+      dateSource: 'preObsDate',
       dueRelative: '',
       cta: 'View',
       ctaUrl: '',
@@ -235,33 +259,114 @@ describe('checkpointToIcsEvent (STAFF-04 — "Add to calendar")', () => {
     };
   }
 
-  it('builds an all-day .ics event input for a meeting checkpoint with a date', () => {
-    const event = checkpointToIcsEvent(checkpoint({}));
+  it('builds an all-day .ics event input for a date-only checkpoint', () => {
+    const event = checkpointToIcsEvent(checkpoint({}), STAFF_EMAIL);
     expect(event).not.toBeNull();
-    expect(event?.uid).toBe('preObs-20260310@peerobservations.orono.k12.mn.us');
+    expect(event?.uid).toBe(
+      'jane.doe@orono.k12.mn.us-preObs-20260310@peerobservations.orono.k12.mn.us',
+    );
     expect(event?.summary).toBe('Pre-Observation Conversation');
     expect(event?.description).toBe('Meet with your peer evaluator.');
     expect(event?.allDay).toBe(true);
   });
 
-  it('builds an event for the observation type too', () => {
+  it('builds an event for the observation-date source too', () => {
     const event = checkpointToIcsEvent(
-      checkpoint({ id: 'observation', key: 'observation', type: 'observation' }),
+      checkpoint({
+        id: 'observation',
+        key: 'observation',
+        type: 'observation',
+        dateSource: 'observationDate',
+      }),
+      STAFF_EMAIL,
     );
     expect(event).not.toBeNull();
   });
 
-  it('returns null for non-dated checkpoint types (form/review)', () => {
-    expect(checkpointToIcsEvent(checkpoint({ type: 'form' }))).toBeNull();
-    expect(checkpointToIcsEvent(checkpoint({ type: 'review' }))).toBeNull();
-  });
-
   it('returns null when the checkpoint has no concrete date yet', () => {
-    expect(checkpointToIcsEvent(checkpoint({ rawDate: null }))).toBeNull();
+    expect(checkpointToIcsEvent(checkpoint({ rawDate: null }), STAFF_EMAIL)).toBeNull();
   });
 
   it('omits description when the checkpoint has none', () => {
-    const event = checkpointToIcsEvent(checkpoint({ desc: '' }));
+    const event = checkpointToIcsEvent(checkpoint({ desc: '' }), STAFF_EMAIL);
     expect(event?.description).toBeUndefined();
+  });
+
+  describe('eligibility is keyed on dateSource, not chipStyle', () => {
+    it('returns null for deadline dates (windowEndDate) even with a "meeting" chip style', () => {
+      // Mirrors the built-in "signup" step: chipStyle 'meeting' but the date
+      // is the booking-window CLOSE deadline, not a meeting time.
+      const signupLike = checkpoint({
+        id: 'signup',
+        key: 'signup',
+        type: 'meeting',
+        dateSource: 'windowEndDate',
+      });
+      expect(checkpointToIcsEvent(signupLike, STAFF_EMAIL)).toBeNull();
+    });
+
+    it('returns null for record-metadata dates (createdAt) even with an "observation" chip style', () => {
+      // Mirrors the built-in "instructionalRound" step: chipStyle
+      // 'observation' but the date is a Firestore createdAt timestamp.
+      const instructionalRoundLike = checkpoint({
+        id: 'instructionalRound',
+        key: 'instructionalRound',
+        type: 'observation',
+        dateSource: 'createdAt',
+      });
+      expect(checkpointToIcsEvent(instructionalRoundLike, STAFF_EMAIL)).toBeNull();
+    });
+
+    it('returns null for lastModifiedAt and finalizedAt sources', () => {
+      expect(
+        checkpointToIcsEvent(checkpoint({ dateSource: 'lastModifiedAt' }), STAFF_EMAIL),
+      ).toBeNull();
+      expect(
+        checkpointToIcsEvent(checkpoint({ dateSource: 'finalizedAt' }), STAFF_EMAIL),
+      ).toBeNull();
+    });
+
+    it('is eligible for postObsDate regardless of chip style', () => {
+      const event = checkpointToIcsEvent(
+        checkpoint({ type: 'review', dateSource: 'postObsDate' }),
+        STAFF_EMAIL,
+      );
+      expect(event).not.toBeNull();
+    });
+  });
+
+  describe('timed vs. all-day', () => {
+    it('emits an all-day event when rawDate is local midnight (date-only input)', () => {
+      const event = checkpointToIcsEvent(
+        checkpoint({ rawDate: new Date('2026-03-10T00:00:00') }),
+        STAFF_EMAIL,
+      );
+      expect(event?.allDay).toBe(true);
+      expect(event?.start).toEqual(new Date('2026-03-10T00:00:00'));
+      expect(event?.end).toEqual(new Date('2026-03-10T00:00:00'));
+    });
+
+    it('emits a timed event with a default duration when rawDate carries a real time-of-day', () => {
+      const start = new Date('2026-03-10T09:15:00');
+      const event = checkpointToIcsEvent(checkpoint({ rawDate: start }), STAFF_EMAIL);
+      expect(event?.allDay).toBe(false);
+      expect(event?.start).toEqual(start);
+      expect(event?.end).toEqual(new Date(start.getTime() + 45 * 60_000));
+    });
+  });
+
+  describe('UID uniqueness', () => {
+    it('produces different UIDs for two different staff on the same checkpoint and date', () => {
+      const a = checkpointToIcsEvent(checkpoint({}), 'staff-a@orono.k12.mn.us');
+      const b = checkpointToIcsEvent(checkpoint({}), 'staff-b@orono.k12.mn.us');
+      expect(a?.uid).not.toBe(b?.uid);
+    });
+  });
+
+  describe('blank title', () => {
+    it('returns null when the checkpoint has no title (untitled admin step)', () => {
+      expect(checkpointToIcsEvent(checkpoint({ title: '' }), STAFF_EMAIL)).toBeNull();
+      expect(checkpointToIcsEvent(checkpoint({ title: '   ' }), STAFF_EMAIL)).toBeNull();
+    });
   });
 });

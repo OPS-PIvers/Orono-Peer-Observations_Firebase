@@ -5,7 +5,7 @@ import {
   type ModuleColor,
   type Staff,
 } from '@ops/shared';
-import { downloadTextFile } from '@/admin/staff/staffCsv';
+import { downloadTextFile } from '@/lib/download';
 import { buildIcsEvent, icsFileName } from '@/lib/ics';
 import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
 import {
@@ -78,6 +78,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
     readOnly = false,
     onCompleteModuleItem,
   } = props;
+  const staffEmail = props.staff.email;
   const [filter, setFilter] = useState<FilterKey>('all');
 
   const completed = useMemo(() => tasks.filter((t) => t.status === 'done'), [tasks]);
@@ -132,6 +133,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                   <section style={{ marginBottom: 8 }}>
                     <TaskRow
                       task={featured}
+                      staffEmail={staffEmail}
                       featured
                       defaultExpanded
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
@@ -149,6 +151,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       <TaskRow
                         key={t.id}
                         task={t}
+                        staffEmail={staffEmail}
                         {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
                         {...(props.acknowledging !== undefined
                           ? { acknowledging: props.acknowledging }
@@ -165,6 +168,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                       <TaskRow
                         key={t.id}
                         task={t}
+                        staffEmail={staffEmail}
                         {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                         readOnly={readOnly}
                       />
@@ -181,7 +185,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     onAction={() => setFilter('completed')}
                   >
                     {completed.slice(0, 3).map((t) => (
-                      <TaskRow key={t.id} task={t} readOnly={readOnly} />
+                      <TaskRow key={t.id} task={t} staffEmail={staffEmail} readOnly={readOnly} />
                     ))}
                   </TaskGroup>
                 ) : null}
@@ -195,6 +199,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     <TaskRow
                       key={t.id}
                       task={t}
+                      staffEmail={staffEmail}
                       {...(props.onAcknowledge ? { onAcknowledge: props.onAcknowledge } : {})}
                       {...(props.acknowledging !== undefined
                         ? { acknowledging: props.acknowledging }
@@ -216,6 +221,7 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
                     <TaskRow
                       key={t.id}
                       task={t}
+                      staffEmail={staffEmail}
                       {...(onCompleteModuleItem ? { onCompleteModuleItem } : {})}
                       readOnly={readOnly}
                     />
@@ -229,7 +235,9 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
             {filter === 'completed' ? (
               <TaskGroup title="Completed" count={completed.length}>
                 {completed.length > 0 ? (
-                  completed.map((t) => <TaskRow key={t.id} task={t} readOnly={readOnly} />)
+                  completed.map((t) => (
+                    <TaskRow key={t.id} task={t} staffEmail={staffEmail} readOnly={readOnly} />
+                  ))
                 ) : (
                   <p className="empty-note">Nothing completed yet.</p>
                 )}
@@ -506,6 +514,7 @@ function FilterBar({
  */
 function TaskRow({
   task,
+  staffEmail,
   defaultExpanded,
   featured,
   onAcknowledge,
@@ -514,6 +523,9 @@ function TaskRow({
   readOnly,
 }: {
   task: CheckpointWithStatus;
+  /** The dashboard owner's email — threaded down to give the "Add to
+   *  calendar" .ics UID per-staff entropy. See `checkpointToIcsEvent`. */
+  staffEmail: string;
   defaultExpanded?: boolean;
   featured?: boolean;
   onAcknowledge?: (observationId: string) => void;
@@ -531,7 +543,7 @@ function TaskRow({
   // STAFF-04 — "Add to calendar" .ics download for dated meeting/observation
   // checkpoints. Client-only: builds the file in memory and triggers a
   // browser download, no backend involved.
-  const icsEvent = checkpointToIcsEvent(task);
+  const icsEvent = checkpointToIcsEvent(task, staffEmail);
   const handleAddToCalendar = icsEvent
     ? () => {
         downloadTextFile(

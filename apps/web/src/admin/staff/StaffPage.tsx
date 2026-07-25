@@ -21,6 +21,7 @@ import {
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
+import { downloadTextFile } from '@/lib/download';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import {
@@ -42,7 +43,7 @@ import { RolloverDialog } from './RolloverDialog';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterBar';
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
-import { downloadTextFile, serializeStaffCsv } from './staffCsv';
+import { serializeStaffCsv } from './staffCsv';
 import {
   BuildingsPill,
   ModuleAccessPill,

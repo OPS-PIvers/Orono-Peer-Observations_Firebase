@@ -21,7 +21,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/PageHeader';
 import { AdminDataView, type ColumnDef } from '@/admin/_shared/AdminDataView';
-import { csvSerializeRow, downloadTextFile } from '@/admin/staff/staffCsv';
+import { csvSerializeRow } from '@/admin/staff/staffCsv';
+import { downloadTextFile } from '@/lib/download';
 
 const PAGE_SIZE = 50;
 const FAILURES_PREVIEW_SIZE = 5;

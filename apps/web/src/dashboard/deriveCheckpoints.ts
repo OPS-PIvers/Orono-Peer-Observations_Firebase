@@ -1,4 +1,10 @@
-import { type DashboardStep, type DoneWhen, type Observation, type ShowWhen } from '@ops/shared';
+import {
+  type DashboardStep,
+  type DateSource,
+  type DoneWhen,
+  type Observation,
+  type ShowWhen,
+} from '@ops/shared';
 import { type IcsEventInput } from '@/lib/ics';
 import {
   DATE_SOURCE_FN,
@@ -39,6 +45,13 @@ export interface CheckpointWithStatus {
    *  "Add to calendar" .ics download (STAFF-04) — don't have to re-parse a
    *  human-readable string. */
   rawDate: Date | null;
+  /** The step's configured `dateFrom` — kept alongside `rawDate` so
+   *  consumers can tell a genuinely scheduled event date (preObsDate /
+   *  observationDate / postObsDate) apart from a deadline (windowEndDate)
+   *  or record metadata (createdAt / lastModifiedAt / finalizedAt) that
+   *  happens to resolve to a Date but isn't an event to put on a calendar.
+   *  See `checkpointToIcsEvent`. */
+  dateSource: DateSource;
   dueRelative: string;
   cta: string;
   ctaUrl: string;
@@ -197,6 +210,7 @@ export function deriveCheckpoints(
       monthLabel: stepDate ? monthLabel(stepDate) : '',
       dateLabel: cardDateLabel,
       rawDate: stepDate,
+      dateSource: step.dateFrom,
       dueRelative,
       cta: step.buttonLabel,
       ctaUrl,
@@ -223,12 +237,26 @@ export function initialsFromName(name: string, email: string): string {
   return (email[0] ?? '?').toUpperCase();
 }
 
-/** Checkpoint types that represent a single dated meeting/event worth
- *  putting on a calendar — forms and reviews don't. */
-const ICS_ELIGIBLE_TYPES: ReadonlySet<CheckpointWithStatus['type']> = new Set([
-  'meeting',
-  'observation',
+/**
+ * Date sources that represent a genuinely scheduled event with a concrete
+ * date the staff member would want on their calendar. Deliberately a
+ * whitelist, not keyed on the card's visual `chipStyle` — chip color is an
+ * admin display choice, not a signal about what the date means. Excluded by
+ * omission: `windowEndDate` (a booking *deadline*, already relabeled
+ * "Closes {date}" by the `isDeadline` handling above) and `createdAt` /
+ * `lastModifiedAt` / `finalizedAt` (Firestore record metadata that happens
+ * to be a Date but was never a scheduled event).
+ */
+const ICS_ELIGIBLE_DATE_SOURCES: ReadonlySet<DateSource> = new Set([
+  'preObsDate',
+  'observationDate',
+  'postObsDate',
 ]);
+
+/** Default event duration when a checkpoint's `rawDate` carries a real
+ *  time-of-day but the derive pipeline only exposes a single instant (no
+ *  explicit end) — a typical class period. */
+export const DEFAULT_ICS_EVENT_DURATION_MINUTES = 45;
 
 /** `YYYYMMDD` for a Date's LOCAL calendar date — used to key the .ics UID. */
 function dateStamp(d: Date): string {
@@ -236,31 +264,57 @@ function dateStamp(d: Date): string {
   return `${String(d.getFullYear())}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 }
 
+/** True when `d` carries a meaningful local time-of-day rather than
+ *  midnight — i.e. it came from something more precise than an
+ *  `<input type="date">` (no time-of-day). */
+function hasTimeOfDay(d: Date): boolean {
+  return (
+    d.getHours() !== 0 || d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0
+  );
+}
+
 /**
  * Build the `.ics` event input for a checkpoint card's "Add to calendar"
- * link (STAFF-04), or `null` when the checkpoint isn't a dated
- * meeting/observation, or has no concrete date yet. Pure — the caller turns
- * this into a downloadable file via `buildIcsEvent`/`downloadTextFile`.
+ * link (STAFF-04), or `null` when the checkpoint isn't a genuinely
+ * scheduled event, has no concrete date yet, or has no title to put in the
+ * calendar entry. Pure — the caller turns this into a downloadable file via
+ * `buildIcsEvent`/`downloadTextFile`.
  *
- * Checkpoint dates (`preObsDate`/`observationDate`/`postObsDate`) are
- * captured from a plain HTML `<input type="date">` with no time-of-day, so
- * these are emitted as all-day events rather than fabricating a fake time.
+ * Eligibility is keyed on `task.dateSource` (the step's `dateFrom`), not on
+ * `task.type` — see `ICS_ELIGIBLE_DATE_SOURCES`.
  *
- * The UID is keyed on the step id + date rather than the underlying
- * observation id (not available on every checkpoint type) — stable across
- * repeat downloads of the same checkpoint, and scoped to the signed-in
- * staff member's own dashboard, so this doesn't need to be unique across
- * the whole district the way a shared calendar's UID would.
+ * Checkpoint dates are usually captured from a plain HTML
+ * `<input type="date">` with no time-of-day, so those are emitted as
+ * all-day events rather than fabricating a fake time. When `rawDate` does
+ * carry a real time-of-day (e.g. a booked class period), a timed event is
+ * emitted instead, defaulting its end to `DEFAULT_ICS_EVENT_DURATION_MINUTES`
+ * after the start since only a single instant is available here.
+ *
+ * `staffEmail` gives the UID entropy scoped to the observed staff member —
+ * without it, two different staff members with the same checkpoint type on
+ * the same date would produce byte-identical UIDs (the step id + date are
+ * both drawn from the shared admin step template), which RFC 5545 3.8.4.7
+ * forbids and which calendar clients treat as one event overwriting the
+ * other on import into any shared calendar.
  */
-export function checkpointToIcsEvent(task: CheckpointWithStatus): IcsEventInput | null {
-  if (!ICS_ELIGIBLE_TYPES.has(task.type) || !task.rawDate) return null;
+export function checkpointToIcsEvent(
+  task: CheckpointWithStatus,
+  staffEmail: string,
+): IcsEventInput | null {
+  if (!ICS_ELIGIBLE_DATE_SOURCES.has(task.dateSource) || !task.rawDate || !task.title.trim()) {
+    return null;
+  }
+  const timed = hasTimeOfDay(task.rawDate);
+  const end = timed
+    ? new Date(task.rawDate.getTime() + DEFAULT_ICS_EVENT_DURATION_MINUTES * 60_000)
+    : task.rawDate;
   return {
-    uid: `${task.key}-${dateStamp(task.rawDate)}@peerobservations.orono.k12.mn.us`,
+    uid: `${staffEmail}-${task.key}-${dateStamp(task.rawDate)}@peerobservations.orono.k12.mn.us`,
     summary: task.title,
     ...(task.desc ? { description: task.desc } : {}),
     start: task.rawDate,
-    end: task.rawDate,
-    allDay: true,
+    end,
+    allDay: !timed,
   };
 }
 
