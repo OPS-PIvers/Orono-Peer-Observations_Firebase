@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, Info, Loader2, RotateCcw } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+} from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -66,6 +74,13 @@ const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeR
 const reopenObservationFn = httpsCallable<ReopenObservationInput, { ok: boolean }>(
   functions,
   'reopenObservation',
+);
+
+// Same response shape as finalizeObservation — both hand back the fresh PDF's
+// Drive identifiers so the UI can link straight to it.
+const regenerateObservationPdfFn = httpsCallable<{ observationId: string }, FinalizeResponse>(
+  functions,
+  'regenerateObservationPdf',
 );
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -244,6 +259,11 @@ export function ObservationEditorPage() {
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
 
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [justRegenerated, setJustRegenerated] = useState<FinalizeResponse | null>(null);
+
   // Sticky chrome ref — `EditorChrome` consumes it via `usePublishChromeHeight`
   // so `DomainSection.tsx`'s `top-[var(--page-chrome-h)]` resolves correctly.
   const chromeRef = useRef<HTMLDivElement>(null);
@@ -397,6 +417,10 @@ export function ObservationEditorPage() {
   const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
   // Admin-only escape hatch: reopen a finalized observation for correction.
   const showReopen = isReadOnly && isAdminUser;
+  // Observer-or-admin action: re-render and re-upload the PDF for a
+  // finalized observation without a full reopen/re-finalize cycle. Mirrors
+  // the callable's own auth check server-side — this is UX gating only.
+  const showRegenerate = isReadOnly && (isObserver || isAdminUser);
 
   // Warn before the tab/page is discarded while a save is pending or has
   // failed — a debounced-but-not-yet-flushed edit, an in-flight write, or a
@@ -602,6 +626,9 @@ export function ObservationEditorPage() {
       await flush();
       const result = await finalizeObservationFn({ observationId: observation.id });
       setJustFinalized(result.data);
+      // Drop a stale "PDF regenerated" banner from a previous
+      // reopen→regenerate cycle — it no longer reflects the latest PDF.
+      setJustRegenerated(null);
       setFinalizeOpen(false);
     } catch (err) {
       setFinalizeError(err instanceof Error ? err.message : 'Finalize failed');
@@ -616,15 +643,33 @@ export function ObservationEditorPage() {
     setReopenError(null);
     try {
       await reopenObservationFn({ observationId: observation.id, reason });
-      // Clear the stale "just finalized" banner — its links still work (the
-      // Drive folder/PDF survive a reopen), but the message no longer
-      // reflects the observation's state.
+      // Clear the stale "just finalized"/"PDF regenerated" banners — their
+      // links still work (the Drive folder/PDF survive a reopen), but the
+      // messages no longer reflect the observation's state.
       setJustFinalized(null);
+      setJustRegenerated(null);
       setReopenOpen(false);
     } catch (err) {
       setReopenError(err instanceof Error ? err.message : 'Reopen failed');
     } finally {
       setReopening(false);
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!observation) return;
+    setRegenerating(true);
+    setRegenerateError(null);
+    try {
+      const result = await regenerateObservationPdfFn({ observationId: observation.id });
+      setJustRegenerated(result.data);
+      // Superseded by the fresh regenerate result.
+      setJustFinalized(null);
+      setRegenerateOpen(false);
+    } catch (err) {
+      setRegenerateError(err instanceof Error ? err.message : 'Regenerate failed');
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -755,10 +800,14 @@ export function ObservationEditorPage() {
         onFinalize={() => setFinalizeOpen(true)}
         showReopen={showReopen}
         onReopen={() => setReopenOpen(true)}
+        showRegenerate={showRegenerate}
+        onRegenerate={() => setRegenerateOpen(true)}
       />
 
       <div className={bodyWrapperCls}>
-        {justFinalized ? (
+        {justRegenerated ? (
+          <RegeneratedBanner result={justRegenerated} />
+        ) : justFinalized ? (
           <FinalizedBanner result={justFinalized} observedEmail={observation.observedEmail} />
         ) : null}
 
@@ -782,6 +831,17 @@ export function ObservationEditorPage() {
           reopening={reopening}
           error={reopenError}
           onConfirm={(reason) => void handleReopen(reason)}
+        />
+
+        <RegenerateDialog
+          open={regenerateOpen}
+          onOpenChange={(open) => {
+            if (!regenerating) setRegenerateOpen(open);
+          }}
+          observation={observation}
+          regenerating={regenerating}
+          error={regenerateError}
+          onConfirm={() => void handleRegenerate()}
         />
 
         {!canEdit && !isReadOnly ? (
@@ -895,6 +955,8 @@ interface EditorToolbarProps {
   onFinalize: () => void;
   showReopen: boolean;
   onReopen: () => void;
+  showRegenerate: boolean;
+  onRegenerate: () => void;
 }
 
 /**
@@ -920,6 +982,8 @@ function EditorToolbar({
   onFinalize,
   showReopen,
   onReopen,
+  showRegenerate,
+  onRegenerate,
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
   const hasDomains = !!rubric && rubric.domains.length > 0;
@@ -967,6 +1031,17 @@ function EditorToolbar({
             >
               <RotateCcw className="h-4 w-4" />
               Reopen
+            </Button>
+          ) : null}
+          {showRegenerate ? (
+            <Button
+              onClick={onRegenerate}
+              size="sm"
+              variant="outline"
+              className="border-ops-blue text-ops-blue hover:bg-ops-blue-lighter/40 hover:text-ops-blue-dark h-9 px-3 font-semibold"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Regenerate PDF
             </Button>
           ) : null}
         </div>
@@ -1246,26 +1321,100 @@ function ReopenDialog({
   );
 }
 
-function FinalizedBanner({
-  result,
-  observedEmail,
+/**
+ * Confirm dialog for regenerating a finalized observation's PDF. This is a
+ * destructive-adjacent action even though it changes no scored content: it
+ * replaces the Drive file in place, and the observed staff member may
+ * already have the old copy open — so it gets a confirm step like Reopen,
+ * just without a reason field (the callable doesn't accept one).
+ */
+function RegenerateDialog({
+  open,
+  onOpenChange,
+  observation,
+  regenerating,
+  error,
+  onConfirm,
 }: {
-  result: FinalizeResponse;
-  observedEmail: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  observation: Observation;
+  regenerating: boolean;
+  error: string | null;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Regenerate PDF</DialogTitle>
+          <DialogDescription>
+            This re-renders <strong>{observation.observedName}</strong>&apos;s finalized observation
+            and replaces the current PDF in Drive in place. The share link keeps working, but anyone
+            with the old file already open will need to reopen it to see the fresh copy.
+          </DialogDescription>
+        </DialogHeader>
+        {error ? (
+          <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
+            {error}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={regenerating}
+            type="button"
+          >
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={regenerating}>
+            {regenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Regenerating…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Regenerate PDF
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Shared success-banner shell for both finalize and regenerate results —
+ * both hand back the same `{ pdfWebViewLink, driveFolderId }` pair, only the
+ * icon and message differ.
+ */
+function PdfResultBanner({
+  icon,
+  title,
+  message,
+  pdfWebViewLink,
+  driveFolderId,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  message: React.ReactNode;
+  pdfWebViewLink: string;
+  driveFolderId: string;
 }) {
   return (
     <div className="border-primary bg-accent text-accent-foreground rounded-md border-l-4 px-4 py-3">
       <div className="flex items-start gap-3">
-        <CheckCircle2 className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />
+        {icon}
         <div className="space-y-1 text-sm">
-          <p className="font-medium">Observation finalized.</p>
-          <p>
-            The Drive folder has been shared with <strong>{observedEmail}</strong> as Reader.
-            They&apos;ll see the observation when they sign in.
-          </p>
+          <p className="font-medium">{title}</p>
+          {message}
           <div className="flex flex-wrap gap-3 pt-1 text-xs">
             <a
-              href={result.pdfWebViewLink}
+              href={pdfWebViewLink}
               target="_blank"
               rel="noreferrer"
               className="text-primary inline-flex items-center gap-1 underline hover:no-underline"
@@ -1273,7 +1422,7 @@ function FinalizedBanner({
               Open PDF <ExternalLink className="h-3 w-3" />
             </a>
             <a
-              href={`https://drive.google.com/drive/folders/${result.driveFolderId}`}
+              href={`https://drive.google.com/drive/folders/${driveFolderId}`}
               target="_blank"
               rel="noreferrer"
               className="text-primary inline-flex items-center gap-1 underline hover:no-underline"
@@ -1284,6 +1433,46 @@ function FinalizedBanner({
         </div>
       </div>
     </div>
+  );
+}
+
+function FinalizedBanner({
+  result,
+  observedEmail,
+}: {
+  result: FinalizeResponse;
+  observedEmail: string;
+}) {
+  return (
+    <PdfResultBanner
+      icon={<CheckCircle2 className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />}
+      title="Observation finalized."
+      message={
+        <p>
+          The Drive folder has been shared with <strong>{observedEmail}</strong> as Reader.
+          They&apos;ll see the observation when they sign in.
+        </p>
+      }
+      pdfWebViewLink={result.pdfWebViewLink}
+      driveFolderId={result.driveFolderId}
+    />
+  );
+}
+
+function RegeneratedBanner({ result }: { result: FinalizeResponse }) {
+  return (
+    <PdfResultBanner
+      icon={<RefreshCw className="text-primary mt-0.5 h-5 w-5 flex-shrink-0" />}
+      title="PDF regenerated."
+      message={
+        <p>
+          The finalized PDF has been re-rendered and replaces the previous file in Drive — the share
+          link keeps working.
+        </p>
+      }
+      pdfWebViewLink={result.pdfWebViewLink}
+      driveFolderId={result.driveFolderId}
+    />
   );
 }
 
