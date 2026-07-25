@@ -2,6 +2,8 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
+**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, none of them scheduled or approved.
+
 Last updated 2026-07-24, after the parallel implementation sweep that cleared the "Ready code work" section (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
 
 ## Human-gated (needs a decision, secret, or deploy)

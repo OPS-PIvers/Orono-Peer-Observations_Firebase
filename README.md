@@ -60,4 +60,6 @@ Firebase.
 ## See also
 
 - DESIGN.md — brand tokens
+- TODO.md — backlog: bugs, ops work, committed follow-ups
+- FEATURES_ROADMAP.md — 88 feature briefs from a codebase discovery pass; a menu of opportunities, not a plan
 - docs/dependency-overrides.md — why each `pnpm.overrides` entry in package.json exists and when it can be removed
