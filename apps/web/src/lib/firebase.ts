@@ -58,7 +58,7 @@ if (import.meta.env.MODE === 'development') {
  */
 export function functionsHttpUrl(name: string): string {
   if (import.meta.env.VITE_USE_EMULATORS === 'true') {
-    return `http://127.0.0.1:5001/${String(import.meta.env.VITE_FIREBASE_PROJECT_ID)}/us-central1/${name}`;
+    return `http://127.0.0.1:5001/${import.meta.env.VITE_FIREBASE_PROJECT_ID}/us-central1/${name}`;
   }
-  return `https://us-central1-${String(import.meta.env.VITE_FIREBASE_PROJECT_ID)}.cloudfunctions.net/${name}`;
+  return `https://us-central1-${import.meta.env.VITE_FIREBASE_PROJECT_ID}.cloudfunctions.net/${name}`;
 }

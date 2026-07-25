@@ -114,7 +114,7 @@ export async function replaceFileContent(args: {
     });
     return result.data.id ?? null;
   } catch (err) {
-    const status = (err as { code?: number })?.code;
+    const status = (err as { code?: number }).code;
     if (status === 404) return null;
     throw err;
   }
@@ -133,7 +133,7 @@ export async function trashDriveFile(fileId: string): Promise<void> {
   try {
     await drive.files.update({ fileId, requestBody: { trashed: true } });
   } catch (err) {
-    const status = (err as { code?: number })?.code;
+    const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
   }
 }
@@ -170,7 +170,7 @@ export async function shareWithUser(args: {
   const match = existing.data.permissions?.find(
     (p) => p.emailAddress?.toLowerCase() === lower,
   );
-  if (match && match.role === args.role) return;
+  if (match?.role === args.role) return;
   if (match?.id) {
     await drive.permissions.update({
       fileId: args.fileId,
@@ -241,7 +241,7 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
   try {
     await drive.files.delete({ fileId });
   } catch (err) {
-    const status = (err as { code?: number })?.code;
+    const status = (err as { code?: number }).code;
     if (status === 404) return; // already gone — nothing to delete
     throw err;
   }
@@ -289,7 +289,7 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
   } while (pageToken);
 
   await drive.files.delete({ fileId: folderId }).catch((err: unknown) => {
-    const status = (err as { code?: number })?.code;
+    const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
   });
 }

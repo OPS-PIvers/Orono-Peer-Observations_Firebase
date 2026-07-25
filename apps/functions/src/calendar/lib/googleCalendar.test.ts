@@ -14,13 +14,14 @@ const state = vi.hoisted(() => ({
 // Keep the real Timestamp (toDate uses `instanceof Timestamp`); only swap
 // getFirestore so primaryCalendarId reads from our fake token doc.
 vi.mock('firebase-admin/firestore', async (orig) => {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- vitest types importOriginal as () => Promise<unknown>; tsc needs the assertion to spread it
   const actual = (await orig()) as Record<string, unknown>;
   return {
     ...actual,
     getFirestore: () => ({
       collection: () => ({
         doc: () => ({
-          async get() {
+          get() {
             return {
               exists: true,
               data: () =>
@@ -168,7 +169,7 @@ describe('overlapsBusy', () => {
 // ---------------------------------------------------------------------------
 
 function fakeCal(insertImpl?: () => Promise<{ data: { id?: string } }>) {
-  const insert = vi.fn(insertImpl ?? (async () => ({ data: { id: 'evt-1' } })));
+  const insert = vi.fn(insertImpl ?? (() => Promise.resolve({ data: { id: 'evt-1' } })));
   return { cal: { events: { insert } } as never, insert };
 }
 
@@ -189,8 +190,8 @@ const baseWindow = {
 
 describe('createObservationEvent', () => {
   it('inserts on both calendars and returns both event ids', async () => {
-    const observer = fakeCal(async () => ({ data: { id: 'evt-observer' } }));
-    const observed = fakeCal(async () => ({ data: { id: 'evt-observed' } }));
+    const observer = fakeCal(() => Promise.resolve({ data: { id: 'evt-observer' } }));
+    const observed = fakeCal(() => Promise.resolve({ data: { id: 'evt-observed' } }));
     const result = await createObservationEvent({
       observation: baseObs,
       window: baseWindow,
@@ -203,7 +204,7 @@ describe('createObservationEvent', () => {
   });
 
   it('inserts only on the observer calendar when observed is not connected', async () => {
-    const observer = fakeCal(async () => ({ data: { id: 'evt-observer' } }));
+    const observer = fakeCal(() => Promise.resolve({ data: { id: 'evt-observer' } }));
     const result = await createObservationEvent({
       observation: baseObs,
       window: baseWindow,
@@ -216,7 +217,7 @@ describe('createObservationEvent', () => {
   it('returns {} and inserts nothing when scheduled times are missing', async () => {
     const observer = fakeCal();
     const result = await createObservationEvent({
-      observation: { ...baseObs, scheduledStartAt: null } as unknown as Observation,
+      observation: { ...baseObs, scheduledStartAt: null },
       window: baseWindow,
       observerCal: observer.cal,
       observedCal: null,
@@ -226,10 +227,8 @@ describe('createObservationEvent', () => {
   });
 
   it('is best-effort: a failing insert on one calendar does not block the other', async () => {
-    const observer = fakeCal(async () => {
-      throw new Error('403 rate limited');
-    });
-    const observed = fakeCal(async () => ({ data: { id: 'evt-observed' } }));
+    const observer = fakeCal(() => Promise.reject(new Error('403 rate limited')));
+    const observed = fakeCal(() => Promise.resolve({ data: { id: 'evt-observed' } }));
     const result = await createObservationEvent({
       observation: baseObs,
       window: baseWindow,
