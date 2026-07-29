@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   GoogleAuthProvider,
@@ -29,6 +30,9 @@ import {
 import { auth, functions } from '@/lib/firebase';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { Button } from '@/components/ui/button';
+import { DialogInterruptProvider, useHasOpenDialogLayer } from '@/components/ui/dialog-interrupt';
+import { cn } from '@/lib/utils';
+import { runForcedSignOutFlush } from './forcedSignOutFlush';
 import {
   DEFAULT_SESSION_DURATION_HOURS,
   SESSION_CHECK_INTERVAL_MS,
@@ -91,6 +95,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *  banner stays up (and the countdown keeps running against the real
    *  auth_time-based deadline) — the user can just try again. */
   const [reauthError, setReauthError] = useState<string | null>(null);
+  /** While a Dialog/Sheet is open the warning renders inside it instead of in
+   *  the page-level portal, so it's never shown (or announced) twice. */
+  const hasOpenDialogLayer = useHasOpenDialogLayer();
 
   // Only subscribe once signed in — the doc is Orono-domain-readable, not
   // public, and there's nothing to enforce before a session exists anyway.
@@ -106,13 +113,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionDurationMsRef.current = hours * HOURS_TO_MS;
   }, [appSettingsData]);
 
+  /** Guards against a second deadline check (interval, focus, visibility)
+   *  re-entering while the flush below is still running. Released again if
+   *  the sign-out attempt itself fails — see forceSignOutForTimeout. */
+  const forcedSignOutInFlightRef = useRef(false);
+
   const forceSignOutForTimeout = useCallback(() => {
+    if (forcedSignOutInFlightRef.current) return;
+    forcedSignOutInFlightRef.current = true;
     void (async () => {
       try {
-        await firebaseSignOut(auth);
-      } finally {
-        void navigate('/sign-in', { replace: true, state: { sessionExpired: true } });
+        // Land any debounced editor write FIRST, while the token is still
+        // valid. Signing out and then navigating unmounts the observation
+        // editor, and its unmount flush would run against a null
+        // `auth.currentUser` — silently dropping up to AUTOSAVE_DEBOUNCE_MS
+        // of work (a rubric toggle, a keystroke, freshly applied auto-tags).
+        // The wait is bounded inside runForcedSignOutFlush, so this cannot
+        // weaken the deadline: sign-out happens regardless of what the
+        // flushes do. See forcedSignOutFlush.ts.
+        await runForcedSignOutFlush();
+      } catch (err) {
+        console.warn('Pending-work flush before forced sign-out failed', err);
       }
+      try {
+        await firebaseSignOut(auth);
+      } catch (err) {
+        // firebaseSignOut can genuinely reject — the documented case being an
+        // IndexedDB/persistence write failure under Safari private browsing,
+        // i.e. exactly the iPads this timeout exists for. If we left the
+        // re-entrancy guard latched here, forceSignOutForTimeout would become
+        // a permanent no-op for the rest of this mount and the deadline would
+        // be silently disabled while the session stayed live. Release it so
+        // the next interval / focus / visibility tick retries.
+        //
+        // This cannot make a SUCCESSFUL sign-out double-fire: once the user
+        // is actually signed out, `check()` bails on `!auth.currentUser` and
+        // the status effect below resets this ref anyway.
+        forcedSignOutInFlightRef.current = false;
+        console.warn('Forced sign-out failed; will retry on the next session check', err);
+      }
+      // Navigate either way: on success this is the redirect to /sign-in; on
+      // failure it still gets the observation off the screen of a session
+      // that has already expired.
+      void navigate('/sign-in', { replace: true, state: { sessionExpired: true } });
     })();
   }, [navigate]);
 
@@ -168,6 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (status !== 'signed-in') {
       setSessionWarningRemainingMs(null);
       setReauthError(null);
+      // Signing in again (same mount) must re-arm the forced sign-out.
+      forcedSignOutInFlightRef.current = false;
       return;
     }
     function check() {
@@ -314,44 +359,110 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [status, user, claims],
   );
 
+  const warningVisible = status === 'signed-in' && sessionWarningRemainingMs != null;
+
   return (
     <AuthContext.Provider value={value}>
-      {status === 'signed-in' && sessionWarningRemainingMs != null ? (
-        <SessionTimeoutBanner
-          remainingMs={sessionWarningRemainingMs}
-          onStaySignedIn={staySignedIn}
-          pending={reauthPending}
-          error={reauthError}
-        />
-      ) : null}
-      {children}
+      {/* Two placements, never both at once: while a modal layer is open the
+          warning renders INSIDE it (the only place that's above the overlay,
+          inside Radix's pointer-events island and focus trap, and outside its
+          aria-hidden subtree); otherwise it rides in its own top-of-page
+          portal. See dialog-interrupt.tsx. The provider itself is
+          unconditional — moving `children` in and out of it would remount the
+          whole app every time the warning appeared. */}
+      <DialogInterruptProvider
+        content={
+          warningVisible ? (
+            <SessionTimeoutBanner
+              placement="dialog"
+              remainingMs={sessionWarningRemainingMs}
+              onStaySignedIn={staySignedIn}
+              pending={reauthPending}
+              error={reauthError}
+            />
+          ) : null
+        }
+      >
+        {warningVisible && !hasOpenDialogLayer ? (
+          <SessionTimeoutBannerPortal>
+            <SessionTimeoutBanner
+              placement="page"
+              remainingMs={sessionWarningRemainingMs}
+              onStaySignedIn={staySignedIn}
+              pending={reauthPending}
+              error={reauthError}
+            />
+          </SessionTimeoutBannerPortal>
+        ) : null}
+        {children}
+      </DialogInterruptProvider>
     </AuthContext.Provider>
   );
 }
 
 /**
- * Fixed, non-dismissible countdown banner shown ~5 minutes before the
- * configured session duration expires. Deliberately has no close button —
- * unlike GlobalBanner (an admin announcement), acting on this one actually
- * matters, so it stays until the user clicks "Stay signed in" or the
- * deadline passes and they're signed out.
+ * Portals the page-level banner to `<body>` at a z-index above the `z-50`
+ * overlay/popover layer, rather than leaving it in document order where the
+ * sticky AppHeader (also `z-50`, but later in the DOM) paints over it.
+ */
+function SessionTimeoutBannerPortal({ children }: { children: ReactNode }) {
+  return createPortal(
+    <div
+      // `pointer-events-none` on the wrapper so the strip either side of the
+      // banner never swallows clicks meant for the page.
+      //
+      // `aria-live` is load-bearing, not decoration: the aria-hidden library
+      // Radix uses to hide the rest of the page behind a modal deliberately
+      // exempts `[aria-live]` elements, so this container survives a modal
+      // that doesn't route through DialogInterruptSlot (a modal dropdown
+      // menu, say) opening on top of the warning. "off" because the alert
+      // inside is already the live region; a second one would double-announce.
+      aria-live="off"
+      className="pointer-events-none fixed inset-x-0 top-0 z-[60]"
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Non-dismissible countdown shown ~5 minutes before the configured session
+ * duration expires. Deliberately has no close button — unlike GlobalBanner
+ * (an admin announcement), acting on this one actually matters, so it stays
+ * until the user clicks "Stay signed in" or the deadline passes and they're
+ * signed out.
+ *
+ * `placement="page"` is the full-bleed bar across the top of the app;
+ * `placement="dialog"` is the same alert as a DESIGN.md warning callout at the
+ * top of an open dialog's content.
  */
 function SessionTimeoutBanner({
   remainingMs,
   onStaySignedIn,
   pending,
   error,
+  placement,
 }: {
   remainingMs: number;
   onStaySignedIn: () => void;
   pending: boolean;
   error: string | null;
+  placement: 'page' | 'dialog';
 }) {
   return (
     <div
       role="alert"
       aria-live="assertive"
-      className="border-ops-red bg-ops-red-lighter text-ops-red-dark fixed inset-x-0 top-0 z-50 flex flex-wrap items-center justify-center gap-3 border-b-2 px-4 py-3 text-center text-sm font-medium shadow-sm"
+      className={cn(
+        'border-ops-red bg-ops-red-lighter text-ops-red-dark pointer-events-auto flex flex-wrap items-center justify-center gap-3 px-4 py-3 text-center text-sm font-medium',
+        placement === 'page'
+          ? 'border-b-2 shadow-sm'
+          : // Sticky so a long dialog (the auto-tag review list) can't scroll
+            // the warning out of sight, and pr-10 to clear the dialog's
+            // absolutely-positioned close button.
+            'sticky top-0 z-10 rounded-md border-l-[3px] pr-10',
+      )}
     >
       <span>
         Your session will expire in {formatRemaining(remainingMs)}

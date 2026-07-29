@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DialogInterruptSlot } from './dialog-interrupt';
 
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
@@ -60,6 +61,9 @@ export const SheetContent = React.forwardRef<
       className={cn(sheetVariants({ side }), 'p-6', className)}
       {...props}
     >
+      {/* Same modal layer, same problem as DialogContent — see
+          dialog-interrupt.tsx. Renders nothing when idle. */}
+      <DialogInterruptSlot />
       {children}
       {showClose ? (
         <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden">
