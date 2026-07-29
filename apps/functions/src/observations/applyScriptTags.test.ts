@@ -65,9 +65,17 @@ interface DbConfig {
   observation: Record<string, unknown> | null;
   /**
    * Doc returned by the read *inside* the transaction. Defaults to the same
-   * object; set it to model the observer editing the script mid-review.
+   * object; set it to model the observer editing the script — or an admin
+   * finalizing the observation — mid-review.
    */
   observationInTransaction?: Record<string, unknown> | null;
+  /** Components assigned to this role/year on the pre-transaction read. */
+  assignedComponentIds?: string[];
+  /**
+   * Components assigned on the read *inside* the transaction. Defaults to the
+   * same list; set it to model a role/year mapping edited mid-review.
+   */
+  assignedComponentIdsInTransaction?: string[];
   settings?: Record<string, unknown>;
 }
 
@@ -75,24 +83,29 @@ interface Recorder {
   txUpdates: Record<string, unknown>[];
 }
 
+/** Marker fields the fake attaches so the fake transaction can route reads. */
+interface FakeDocRef {
+  path: string;
+  get: () => Promise<unknown>;
+}
+interface FakeQuery {
+  collectionName: string;
+  filters: [string, unknown][];
+  get: () => Promise<unknown>;
+}
+
 function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
   const rec: Recorder = { txUpdates: [] };
   const obsPath = `${COLLECTIONS.observations}/${OBS_ID}`;
-  const txDoc =
+  const mappingPath = `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId('teacher', 1)}`;
+  const txObservation =
     config.observationInTransaction === undefined
       ? config.observation
       : config.observationInTransaction;
+  const assigned = config.assignedComponentIds ?? ['1a', '2b'];
+  const txAssigned = config.assignedComponentIdsInTransaction ?? assigned;
 
-  const obsRef = {
-    get: () =>
-      Promise.resolve({
-        exists: config.observation !== null,
-        id: OBS_ID,
-        data: () => config.observation ?? undefined,
-      }),
-  };
-
-  const docs: Record<string, Record<string, unknown> | undefined> = {
+  const staticDocs: Record<string, Record<string, unknown> | undefined> = {
     [`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`]: config.settings,
     [`${COLLECTIONS.rubrics}/rubric-1`]: {
       rubricId: 'rubric-1',
@@ -106,16 +119,48 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
         },
       ],
     },
-    [`${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId('teacher', 1)}`]: {
-      roleId: 'teacher',
-      year: 1,
-      assignedComponentIds: ['1a', '2b'],
-    },
   };
 
-  function collection(name: string) {
+  /**
+   * `inTransaction` is what makes the mid-review race testable: the same path
+   * can answer differently depending on whether the caller read it before the
+   * transaction or from inside it.
+   */
+  function docData(path: string, inTransaction: boolean) {
+    if (path === obsPath) return (inTransaction ? txObservation : config.observation) ?? undefined;
+    if (path === mappingPath) {
+      return {
+        roleId: 'teacher',
+        year: 1,
+        assignedComponentIds: inTransaction ? txAssigned : assigned,
+      };
+    }
+    return staticDocs[path];
+  }
+
+  function snapshot(path: string, inTransaction: boolean) {
+    const data = docData(path, inTransaction);
+    return { exists: data !== undefined, id: path.split('/').pop() ?? '', data: () => data };
+  }
+
+  function runQuery(collectionName: string, filters: [string, unknown][]) {
+    let rows: (Record<string, unknown> & { id?: string })[] =
+      collectionName === COLLECTIONS.roles
+        ? [{ id: 'r1', roleId: 'teacher', displayName: 'Teacher', rubricId: 'rubric-1' }]
+        : [];
+    for (const [f, v] of filters) rows = rows.filter((r) => r[f] === v);
+    const rowDocs = rows.map((r) => ({ id: r.id ?? 'doc', data: () => r }));
+    return { empty: rowDocs.length === 0, docs: rowDocs };
+  }
+
+  function collection(name: string): FakeQuery {
     const filters: [string, unknown][] = [];
-    const q = {
+    const q: FakeQuery & {
+      where: (field: string, op: string, val: unknown) => FakeQuery;
+      limit: () => FakeQuery;
+    } = {
+      collectionName: name,
+      filters,
       where(field: string, _op: string, val: unknown) {
         filters.push([field, val]);
         return q;
@@ -123,38 +168,30 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
       limit() {
         return q;
       },
-      get: () => {
-        let rows: (Record<string, unknown> & { id?: string })[] =
-          name === COLLECTIONS.roles
-            ? [{ id: 'r1', roleId: 'teacher', displayName: 'Teacher', rubricId: 'rubric-1' }]
-            : [];
-        for (const [f, v] of filters) rows = rows.filter((r) => r[f] === v);
-        const rowDocs = rows.map((r) => ({ id: r.id ?? 'doc', data: () => r }));
-        return Promise.resolve({ empty: rowDocs.length === 0, docs: rowDocs });
-      },
+      get: () => Promise.resolve(runQuery(name, filters)),
     };
     return q;
   }
 
-  function doc(path: string) {
-    if (path === obsPath) return obsRef;
-    return {
-      get: () => {
-        const data = docs[path];
-        return Promise.resolve({ exists: data !== undefined, data: () => data });
-      },
-    };
+  function doc(path: string): FakeDocRef {
+    return { path, get: () => Promise.resolve(snapshot(path, false)) };
   }
 
   function runTransaction<T>(fn: (tx: unknown) => Promise<T>): Promise<T> {
+    let hasWritten = false;
     const tx = {
-      get: () =>
-        Promise.resolve({
-          exists: txDoc !== null,
-          id: OBS_ID,
-          data: () => txDoc ?? undefined,
-        }),
+      get: (target: FakeDocRef | FakeQuery) => {
+        // Firestore rejects a read issued after a write in the same
+        // transaction — surface that here rather than letting a re-ordered
+        // re-validation pass silently in tests and fail in production.
+        if (hasWritten) {
+          throw new Error('transaction read after write');
+        }
+        if ('path' in target) return Promise.resolve(snapshot(target.path, true));
+        return Promise.resolve(runQuery(target.collectionName, target.filters));
+      },
       update: (_ref: unknown, patch: Record<string, unknown>) => {
+        hasWritten = true;
         rec.txUpdates.push(patch);
       },
     };
@@ -410,6 +447,81 @@ describe('applyScriptTags — stale suggestion rejection', () => {
 
     expect(res.appliedCount).toBe(0);
     expect(res.rejectedCount).toBe(1);
+    expect(rec.txUpdates).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mid-review races — the pre-transaction read is a courtesy check only, so
+// every invariant has to be re-established from inside the transaction.
+// ---------------------------------------------------------------------------
+
+describe('applyScriptTags — invariants re-established inside the transaction', () => {
+  const SUGGESTIONS = [
+    { paragraphIndex: 0, text: 'turned and talked', componentId: '1a' },
+    { paragraphIndex: 1, text: 'circulated', componentId: '2b' },
+  ];
+
+  it('refuses to write when the observation is finalized between suggest and apply', async () => {
+    // Draft when the review dialog opened; finalized by the time Apply landed
+    // (the observer in another tab, or an admin). A finalized observation has
+    // an issued PDF and an emailed record — no AI-driven edit may touch it.
+    install({
+      observation: observation(),
+      observationInTransaction: observation({ status: OBSERVATION_STATUS.finalized }),
+    });
+
+    await expect(
+      run(callerRequest({ observationId: OBS_ID, suggestions: SUGGESTIONS })),
+    ).rejects.toThrow(/finalized/);
+    expect(rec.txUpdates).toHaveLength(0);
+  });
+
+  it('drops a component unassigned from the role/year between suggest and apply', async () => {
+    // Both components were assignable when Gemini proposed them; an admin
+    // pulled 1a off this role/year before Apply ran.
+    install({
+      observation: observation(),
+      assignedComponentIds: ['1a', '2b'],
+      assignedComponentIdsInTransaction: ['2b'],
+    });
+
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, suggestions: SUGGESTIONS }),
+    )) as ApplyResult;
+
+    expect(res.appliedCount).toBe(1);
+    expect(res.rejectedCount).toBe(1);
+    expect(taggedTexts(res.scriptDoc)).toEqual(['circulated']);
+    expect(rec.txUpdates).toHaveLength(1);
+    expect(taggedTexts(rec.txUpdates[0]?.['scriptDoc'] as TiptapDoc)).toEqual(['circulated']);
+  });
+
+  it('writes nothing when every component was unassigned mid-review', async () => {
+    install({
+      observation: observation(),
+      assignedComponentIds: ['1a', '2b'],
+      assignedComponentIdsInTransaction: ['2b'],
+    });
+
+    const res = (await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
+      }),
+    )) as ApplyResult;
+
+    expect(res.appliedCount).toBe(0);
+    expect(res.rejectedCount).toBe(1);
+    expect(rec.txUpdates).toHaveLength(0);
+  });
+
+  it('aborts when the observation is deleted between suggest and apply', async () => {
+    install({ observation: observation(), observationInTransaction: null });
+
+    await expect(
+      run(callerRequest({ observationId: OBS_ID, suggestions: SUGGESTIONS })),
+    ).rejects.toThrow(/not found/i);
     expect(rec.txUpdates).toHaveLength(0);
   });
 });

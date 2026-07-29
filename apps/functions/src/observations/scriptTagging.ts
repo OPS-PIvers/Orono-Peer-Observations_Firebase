@@ -1,5 +1,12 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
+import type {
+  DocumentReference,
+  DocumentSnapshot,
+  Firestore,
+  Query,
+  QuerySnapshot,
+  Transaction,
+} from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
@@ -103,34 +110,52 @@ export function assertScriptAutoTagEnabled(feature: GeminiFeature): void {
 
 // ─── Observation + rubric context ────────────────────────────────────────────
 
-export interface TaggingContext {
-  obsRef: DocumentReference;
-  scriptDoc: TiptapDoc;
-  /** One flattened string per top-level textblock, as Gemini sees them. */
-  paragraphs: string[];
-  /** Components assigned to this observation's role/year, in rubric order. */
-  activeComponents: RubricComponent[];
-  componentColorMap: Map<string, ComponentColor>;
+/**
+ * The narrow read surface {@link resolveActiveComponents} needs. Firestore's
+ * plain reads and a transaction's reads have different call shapes
+ * (`ref.get()` vs `tx.get(ref)`), so both are funnelled through this — which
+ * is what lets `applyScriptTags` re-derive the *same* component set from
+ * inside its transaction instead of trusting a pre-transaction snapshot.
+ */
+export interface TaggingReader {
+  getDoc(ref: DocumentReference): Promise<DocumentSnapshot>;
+  getQuery(query: Query): Promise<QuerySnapshot>;
+}
+
+/** Reads straight off the database — no transaction, no consistency guarantee. */
+export const directReader: TaggingReader = {
+  getDoc: (ref) => ref.get(),
+  getQuery: (query) => query.get(),
+};
+
+/**
+ * Reads through a transaction, so every document read is locked against the
+ * commit. Every call must happen before the transaction's first write —
+ * Firestore rejects a read that follows a write in the same transaction.
+ */
+export function transactionReader(tx: Transaction): TaggingReader {
+  return {
+    getDoc: (ref) => tx.get(ref),
+    getQuery: (query) => tx.get(query),
+  };
 }
 
 /**
- * Resolve everything both steps need from an observation id: the doc ref, the
- * current script, and the rubric components the script may be tagged against.
- * Also enforces the caller's permission and that the observation is still an
- * editable draft — a finalized observation has an issued PDF and an emailed
- * record, so no AI-driven edit may touch it until it is reopened.
+ * Enforce that this caller may auto-tag this observation at all: they are the
+ * observer or an admin, and the observation is still an editable draft — a
+ * finalized observation has an issued PDF and an emailed record, so no
+ * AI-driven edit may touch it until it is reopened.
+ *
+ * The apply path calls this twice: once on the pre-transaction read to fail
+ * fast and cheaply, and again on the read *inside* the transaction, because
+ * the observation can be finalized (by the observer in another tab, or by an
+ * admin) in the window between the review dialog opening and Apply.
  */
-export async function loadTaggingContext(
-  db: Firestore,
-  observationId: string,
+export function assertObservationTaggable(
+  obs: Pick<Observation, 'status' | 'observerEmail'>,
   userEmail: string,
   callerRole: string | undefined,
-): Promise<TaggingContext> {
-  const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
-  const obsSnap = await obsRef.get();
-  if (!obsSnap.exists) throw new HttpsError('not-found', 'Observation not found');
-  const obs = obsSnap.data() as unknown as Observation;
-
+): void {
   const isAdmin = isAdminRole(callerRole ?? null);
   if (!isAdmin && obs.observerEmail !== userEmail) {
     throw new HttpsError('permission-denied', 'Only the observer or an admin can auto-tag.');
@@ -141,40 +166,52 @@ export async function loadTaggingContext(
       'This observation is finalized — reopen it before tagging the script.',
     );
   }
+}
 
-  const scriptDoc = obs.scriptDoc;
-  if (!scriptDoc) {
-    throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
-  }
-  const paragraphs = extractParagraphs(scriptDoc);
-  if (paragraphs.every((p) => p.trim().length === 0)) {
-    throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
-  }
+export interface ActiveComponentSet {
+  /** Components assigned to this observation's role/year, in rubric order. */
+  activeComponents: RubricComponent[];
+  componentColorMap: Map<string, ComponentColor>;
+  /** `activeComponents` ids — the only ids a tag may reference. */
+  validComponentIds: Set<string>;
+}
 
-  const roleByIdSnap = await db
-    .collection(COLLECTIONS.roles)
-    .where('roleId', '==', obs.observedRole)
-    .limit(1)
-    .get();
+/**
+ * Resolve the rubric components this observation's script may be tagged
+ * against, by walking role → rubric → role/year mapping through `reader`.
+ *
+ * This is deliberately re-runnable: the apply step re-derives it inside its
+ * transaction, so a rubric edit or a role/year assignment change made while
+ * the review dialog sat open cannot smuggle a component id onto the script
+ * that is no longer assigned.
+ */
+export async function resolveActiveComponents(
+  db: Firestore,
+  reader: TaggingReader,
+  obs: Pick<Observation, 'observedRole' | 'observedYear'>,
+): Promise<ActiveComponentSet> {
+  const roleByIdSnap = await reader.getQuery(
+    db.collection(COLLECTIONS.roles).where('roleId', '==', obs.observedRole).limit(1),
+  );
   const roleByNameSnap = roleByIdSnap.empty
-    ? await db
-        .collection(COLLECTIONS.roles)
-        .where('displayName', '==', obs.observedRole)
-        .limit(1)
-        .get()
+    ? await reader.getQuery(
+        db.collection(COLLECTIONS.roles).where('displayName', '==', obs.observedRole).limit(1),
+      )
     : null;
   const roleDoc = !roleByIdSnap.empty ? roleByIdSnap.docs[0] : roleByNameSnap?.docs[0];
   if (!roleDoc) throw new HttpsError('failed-precondition', `Role "${obs.observedRole}" missing.`);
   const role = roleDoc.data() as Role;
 
-  const rubricSnap = await db.doc(`${COLLECTIONS.rubrics}/${role.rubricId}`).get();
+  const rubricSnap = await reader.getDoc(db.doc(`${COLLECTIONS.rubrics}/${role.rubricId}`));
   if (!rubricSnap.exists) {
     throw new HttpsError('failed-precondition', `Rubric "${role.rubricId}" missing.`);
   }
   const rubric = rubricSnap.data() as Rubric;
 
   const mappingDocId = roleYearMappingDocId(role.roleId, obs.observedYear);
-  const mappingSnap = await db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`).get();
+  const mappingSnap = await reader.getDoc(
+    db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`),
+  );
   const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
   const allowSet = mapping ? new Set(mapping.assignedComponentIds) : null;
 
@@ -191,7 +228,54 @@ export async function loadTaggingContext(
   const componentColorMap = new Map<string, ComponentColor>();
   for (const c of activeComponents) componentColorMap.set(c.id, colorFor(c));
 
-  return { obsRef, scriptDoc, paragraphs, activeComponents, componentColorMap };
+  return {
+    activeComponents,
+    componentColorMap,
+    validComponentIds: new Set(activeComponents.map((c) => c.id)),
+  };
+}
+
+export interface TaggingContext extends ActiveComponentSet {
+  obsRef: DocumentReference;
+  scriptDoc: TiptapDoc;
+  /** One flattened string per top-level textblock, as Gemini sees them. */
+  paragraphs: string[];
+}
+
+/**
+ * Resolve everything both steps need from an observation id: the doc ref, the
+ * current script, and the rubric components the script may be tagged against.
+ * Also enforces the caller's permission and that the observation is still an
+ * editable draft.
+ *
+ * Everything here is read *outside* any transaction, so it is a fail-fast
+ * gate, not a guarantee. `applyScriptTags` re-establishes both the draft
+ * status and the component set from inside its transaction before writing.
+ */
+export async function loadTaggingContext(
+  db: Firestore,
+  observationId: string,
+  userEmail: string,
+  callerRole: string | undefined,
+): Promise<TaggingContext> {
+  const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
+  const obsSnap = await obsRef.get();
+  if (!obsSnap.exists) throw new HttpsError('not-found', 'Observation not found');
+  const obs = obsSnap.data() as unknown as Observation;
+
+  assertObservationTaggable(obs, userEmail, callerRole);
+
+  const scriptDoc = obs.scriptDoc;
+  if (!scriptDoc) {
+    throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
+  }
+  const paragraphs = extractParagraphs(scriptDoc);
+  if (paragraphs.every((p) => p.trim().length === 0)) {
+    throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
+  }
+
+  const components = await resolveActiveComponents(db, directReader, obs);
+  return { obsRef, scriptDoc, paragraphs, ...components };
 }
 
 // ─── Tiptap doc walking ──────────────────────────────────────────────────────

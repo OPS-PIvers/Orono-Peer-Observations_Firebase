@@ -85,8 +85,11 @@ export const suggestScriptTags = onCall(
       feature.model,
     );
 
-    const validIds = new Set(ctx.activeComponents.map((c) => c.id));
-    const { accepted, rejected } = filterVerbatimSuggestions(raw, ctx.paragraphs, validIds);
+    const { accepted, rejected } = filterVerbatimSuggestions(
+      raw,
+      ctx.paragraphs,
+      ctx.validComponentIds,
+    );
 
     const titleById = new Map(ctx.activeComponents.map((c) => [c.id, c.title]));
     const suggestions: ReviewableScriptTagSuggestion[] = accepted.map((s) => ({

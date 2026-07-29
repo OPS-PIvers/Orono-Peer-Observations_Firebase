@@ -2,14 +2,17 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import type { TiptapDoc } from '@ops/shared';
+import type { Observation, TiptapDoc } from '@ops/shared';
 import {
   applyTagsToScriptDoc,
+  assertObservationTaggable,
   assertScriptAutoTagEnabled,
   extractParagraphs,
   filterVerbatimSuggestions,
   loadScriptAutoTagFeature,
   loadTaggingContext,
+  resolveActiveComponents,
+  transactionReader,
   type ScriptTagSuggestion,
 } from './scriptTagging.js';
 
@@ -47,6 +50,13 @@ interface ApplyScriptTagsResponse {
  * stale spans across text they no longer describe: the non-matching ones are
  * counted in `rejectedCount` and dropped.
  *
+ * The transaction re-establishes *every* invariant from its own reads rather
+ * than trusting the pre-transaction one: that the observation is still an
+ * editable draft, that the caller still owns it, and that each `componentId`
+ * is still assigned to this role/year. All of those can change while the
+ * review dialog sits open, so anything the pre-transaction read learned is a
+ * fail-fast courtesy, never a permission to write.
+ *
  * No `maxInstances` ceiling here on purpose: this is a plain Firestore write
  * with no Gemini call, and it must not consume the AI concurrency budget that
  * `suggestScriptTags` reserves.
@@ -74,28 +84,51 @@ export const applyScriptTags = onCall(
     assertScriptAutoTagEnabled(feature);
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    // Permission, draft-status and rubric resolution run off the pre-transaction
-    // read; the transaction below re-reads the script itself, which is the only
-    // part that can race with the editor's autosave.
+    // Fail fast on a cheap non-transactional read. This is a courtesy check
+    // only — nothing it learns is trusted at write time. The transaction below
+    // re-establishes every invariant from its own reads.
     const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole);
-    const validIds = new Set(ctx.activeComponents.map((c) => c.id));
 
     const result = await db.runTransaction(async (tx): Promise<ApplyScriptTagsResponse> => {
+      // ── Reads first. Firestore rejects any read that follows a write in the
+      // same transaction, so every re-validation below must happen up here.
       const snap = await tx.get(ctx.obsRef);
       if (!snap.exists) throw new HttpsError('not-found', 'Observation not found');
-      const currentDoc = (snap.data() as { scriptDoc?: TiptapDoc } | undefined)?.scriptDoc;
+      const obs = snap.data() as unknown as Observation;
+
+      // Re-check permission and draft status against the transaction's own
+      // read: the observation may have been finalized while the review dialog
+      // sat open, and a finalized record is locked to AI edits just as firmly
+      // as it is to hand edits.
+      assertObservationTaggable(obs, userEmail, callerRole);
+
+      const currentDoc: TiptapDoc | undefined = obs.scriptDoc;
       if (!currentDoc) {
         throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
       }
 
+      // Re-derive the assignable components too. A rubric edit or a role/year
+      // assignment change between suggest and apply must not let a stale
+      // componentId through the verbatim safety net.
+      const { componentColorMap, validComponentIds } = await resolveActiveComponents(
+        db,
+        transactionReader(tx),
+        obs,
+      );
+
       const paragraphs = extractParagraphs(currentDoc);
-      const { accepted, rejected } = filterVerbatimSuggestions(submitted, paragraphs, validIds);
+      const { accepted, rejected } = filterVerbatimSuggestions(
+        submitted,
+        paragraphs,
+        validComponentIds,
+      );
       if (accepted.length === 0) {
         // Every approved span went stale — leave the script exactly as it is.
         return { appliedCount: 0, rejectedCount: rejected.length, scriptDoc: currentDoc };
       }
 
-      const newDoc = applyTagsToScriptDoc(currentDoc, accepted, ctx.componentColorMap);
+      // ── Write. No reads past this point.
+      const newDoc = applyTagsToScriptDoc(currentDoc, accepted, componentColorMap);
       tx.update(ctx.obsRef, {
         scriptDoc: newDoc,
         lastModifiedAt: FieldValue.serverTimestamp(),
