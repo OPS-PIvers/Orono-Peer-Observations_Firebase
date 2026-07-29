@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
+import { where } from 'firebase/firestore';
 import { CheckCircle2 } from 'lucide-react';
 import {
   COLLECTIONS,
+  OBSERVATION_STATUS,
   WINDOW_SUBCOLLECTIONS,
   type BookObservationSlotInput,
   type CancelBookingInput,
   type CheckSlotConflictsInput,
   type CheckSlotConflictsResult,
+  type Observation,
   type ObservationPreference,
   type ObservationSlot,
   type ObservationWindow,
@@ -28,6 +31,10 @@ import { PromptDialog } from '@/components/PromptDialog';
 import { functions } from '@/lib/firebase';
 import { SlotGrid } from './SlotGrid';
 import { SignupDetailFields, buildDetailAnswers, signupFieldsComplete } from './SignupDetailFields';
+import {
+  computeStaffConflictedSlotIds,
+  staffBusyIntervalsFromObservations,
+} from './staffConflicts';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
 
 interface BookResult {
@@ -143,6 +150,35 @@ export function BookingPage() {
 
   const mode = windowDoc?.bookingMode ?? 'direct';
 
+  // Cross-window double-booking warning (SCHED-05): query the invitee's
+  // OTHER Draft observations (any window) to badge slots that overlap one.
+  // Two pure equality filters, no orderBy — Firestore serves this from
+  // automatic single-field indexes, so no new composite index is needed
+  // (contrast with MyObservationsPage's observedEmail+status+finalizedAt
+  // query, which adds an orderBy and therefore needs its own composite
+  // index). Scoped to 'direct' mode only, same as the checkSlotConflicts
+  // effect below — day-preference mode never renders SlotGrid.
+  const staffObservationsPath = myEmail && mode === 'direct' ? COLLECTIONS.observations : '';
+  const staffObservationConstraints = useMemo(
+    () =>
+      myEmail
+        ? [where('observedEmail', '==', myEmail), where('status', '==', OBSERVATION_STATUS.draft)]
+        : [],
+    [myEmail],
+  );
+  const { data: myOtherObservations } = useFirestoreCollection<Observation>(
+    staffObservationsPath,
+    staffObservationConstraints,
+    [myEmail],
+  );
+  // Excludes the observation (if any) tied to THIS window — a reschedule
+  // within the same window replaces that booking rather than double-booking
+  // it; this warning is specifically for OTHER windows (see staffConflicts.ts).
+  const staffBusyIntervals = useMemo(
+    () => staffBusyIntervalsFromObservations(myOtherObservations ?? [], windowId ?? null),
+    [myOtherObservations, windowId],
+  );
+
   // Seed the day picker from an existing (unassigned) preference.
   useEffect(() => {
     if (existingPref && !existingPref.assignedSlotId) {
@@ -204,6 +240,10 @@ export function BookingPage() {
 
   const windowCancelled = windowDoc.status === 'cancelled' || windowDoc.status === 'expired';
   const myBuildingSlots = (slots ?? []).filter((s) => s.buildingId === invitee.buildingId);
+  // See staffObservationsPath/staffBusyIntervals above — plain computation,
+  // not a hook, since myBuildingSlots is only available past the loading /
+  // invalid-link guards.
+  const staffConflictedSlotIds = computeStaffConflictedSlotIds(myBuildingSlots, staffBusyIntervals);
 
   // ------------------------------------------------------------------ DIRECT
   function renderDirect() {
@@ -234,11 +274,18 @@ export function BookingPage() {
                 onSelect={(s) => setSelectedSlotId(s.slotId)}
                 disabled={submitting || windowCancelled}
                 conflictedSlotIds={conflictedSlotIds}
+                staffConflictedSlotIds={staffConflictedSlotIds}
               />
               {conflictedSlotIds.size > 0 ? (
                 <p className="text-muted-foreground text-xs">
                   Times marked &ldquo;Observer busy&rdquo; overlap events on your observer&apos;s
                   Google Calendar.
+                </p>
+              ) : null}
+              {staffConflictedSlotIds.size > 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Times marked &ldquo;You have another observation at this time&rdquo; overlap
+                  another observation already scheduled for you.
                 </p>
               ) : null}
             </div>
@@ -374,11 +421,18 @@ export function BookingPage() {
             onSelect={(s) => setSelectedSlotId(s.slotId)}
             disabled={submitting || windowCancelled}
             conflictedSlotIds={conflictedSlotIds}
+            staffConflictedSlotIds={staffConflictedSlotIds}
           />
           {conflictedSlotIds.size > 0 ? (
             <p className="text-muted-foreground text-xs">
               Times marked &ldquo;Observer busy&rdquo; overlap events on your observer&apos;s Google
               Calendar. You can still pick one, but it may be rejected or need adjusting.
+            </p>
+          ) : null}
+          {staffConflictedSlotIds.size > 0 ? (
+            <p className="text-muted-foreground text-xs">
+              Times marked &ldquo;You have another observation at this time&rdquo; overlap another
+              observation already scheduled for you. You can still pick one.
             </p>
           ) : null}
         </div>
