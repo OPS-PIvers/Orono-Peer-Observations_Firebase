@@ -14,7 +14,6 @@ describe('computeSessionTimeoutStatus', () => {
     const status = computeSessionTimeoutStatus({
       authTimeMs: AUTH_TIME_MS,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: null,
       nowMs: AUTH_TIME_MS + HOUR_MS,
     });
     expect(status).toEqual({ kind: 'ok' });
@@ -26,7 +25,6 @@ describe('computeSessionTimeoutStatus', () => {
     const status = computeSessionTimeoutStatus({
       authTimeMs: AUTH_TIME_MS,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: null,
       nowMs,
     });
     expect(status.kind).toBe('warning');
@@ -40,7 +38,6 @@ describe('computeSessionTimeoutStatus', () => {
     const status = computeSessionTimeoutStatus({
       authTimeMs: AUTH_TIME_MS,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: null,
       nowMs: deadlineMs - SESSION_WARNING_WINDOW_MS - 1,
     });
     expect(status).toEqual({ kind: 'ok' });
@@ -51,7 +48,6 @@ describe('computeSessionTimeoutStatus', () => {
     const status = computeSessionTimeoutStatus({
       authTimeMs: AUTH_TIME_MS,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: null,
       nowMs: deadlineMs,
     });
     expect(status).toEqual({ kind: 'expired' });
@@ -62,33 +58,23 @@ describe('computeSessionTimeoutStatus', () => {
     const status = computeSessionTimeoutStatus({
       authTimeMs: AUTH_TIME_MS,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: null,
       nowMs: deadlineMs + 1,
     });
     expect(status).toEqual({ kind: 'expired' });
   });
 
-  it('a "Stay signed in" extension pushes the deadline out even though auth_time is unchanged', () => {
+  it('a real re-authentication (fresh auth_time) pushes the deadline out', () => {
+    // Simulates what `reauthenticateWithPopup` produces: a brand new
+    // auth_time, not a client-tracked extension anchor. There is exactly
+    // one input that can move the deadline now — authTimeMs itself.
     const originalDeadlineMs = AUTH_TIME_MS + SESSION_DURATION_MS;
-    const extendedUntilMs = originalDeadlineMs + HOUR_MS;
+    const reauthTimeMs = originalDeadlineMs - 30 * 1000; // re-authed just before expiry
     const status = computeSessionTimeoutStatus({
-      authTimeMs: AUTH_TIME_MS,
+      authTimeMs: reauthTimeMs,
       sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs,
-      nowMs: originalDeadlineMs + 30 * 1000,
+      nowMs: reauthTimeMs + HOUR_MS,
     });
     expect(status).toEqual({ kind: 'ok' });
-  });
-
-  it('ignores an extension that is earlier than the auth_time-based deadline', () => {
-    const deadlineMs = AUTH_TIME_MS + SESSION_DURATION_MS;
-    const status = computeSessionTimeoutStatus({
-      authTimeMs: AUTH_TIME_MS,
-      sessionDurationMs: SESSION_DURATION_MS,
-      extendedUntilMs: AUTH_TIME_MS + HOUR_MS, // long past, earlier than deadline
-      nowMs: deadlineMs + 1,
-    });
-    expect(status).toEqual({ kind: 'expired' });
   });
 });
 

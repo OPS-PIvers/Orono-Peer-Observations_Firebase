@@ -31,24 +31,16 @@ export const DEFAULT_SESSION_DURATION_HOURS = 24;
 
 export interface SessionTimeoutInput {
   /** The signed-in ID token's `auth_time` claim, as epoch ms. This is the
-   *  anchor for the deadline specifically because it's minted server-side at
-   *  sign-in and can't be rewound by a user clearing localStorage. */
+   *  ONE source of truth for the deadline specifically because it's minted
+   *  server-side at sign-in (or re-authentication) and can't be rewound by
+   *  a user clearing localStorage, nor advanced without genuinely
+   *  re-proving identity. There is deliberately no separate client-tracked
+   *  "extended until" anchor — see AuthProvider.tsx's `staySignedIn`, which
+   *  uses `reauthenticateWithPopup` precisely so this field is the only
+   *  thing that ever moves the deadline. */
   authTimeMs: number;
   /** `appSettings.sessionDurationHours * 3_600_000`. */
   sessionDurationMs: number;
-  /**
-   * Set by the "Stay signed in" action. A plain ID-token refresh
-   * (`getIdToken(true)`) does NOT change the `auth_time` claim — Firebase
-   * only stamps a new `auth_time` on genuine re-authentication — so acting
-   * on the refreshed token alone would leave the original deadline
-   * unmoved and the warning would just reappear moments later. Tracking a
-   * separate client-side "extended until" anchor lets a user who
-   * acknowledges the warning genuinely buy another full session window
-   * instead of the banner being cosmetic. Still entirely a soft, in-tab
-   * limit: reloading the page drops this and falls back to the
-   * `auth_time`-based deadline.
-   */
-  extendedUntilMs: number | null;
   nowMs: number;
 }
 
@@ -58,11 +50,7 @@ export type SessionTimeoutStatus =
   | { kind: 'expired' };
 
 export function computeSessionTimeoutStatus(input: SessionTimeoutInput): SessionTimeoutStatus {
-  const baseDeadlineMs = input.authTimeMs + input.sessionDurationMs;
-  const deadlineMs =
-    input.extendedUntilMs != null
-      ? Math.max(baseDeadlineMs, input.extendedUntilMs)
-      : baseDeadlineMs;
+  const deadlineMs = input.authTimeMs + input.sessionDurationMs;
   const remainingMs = deadlineMs - input.nowMs;
   if (remainingMs <= 0) {
     return { kind: 'expired' };

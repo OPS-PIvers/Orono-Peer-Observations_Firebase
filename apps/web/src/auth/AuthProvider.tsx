@@ -10,8 +10,10 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  GoogleAuthProvider,
   onAuthStateChanged,
   onIdTokenChanged,
+  reauthenticateWithPopup,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
@@ -76,13 +78,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // --- PLAT-09: enforce appSettings.sessionDurationHours (soft, client-side) ---
   const navigate = useNavigate();
   /** The signed-in token's `auth_time` claim, epoch ms. Not user-tamperable
-   *  (unlike a localStorage timestamp) since it's minted server-side. */
+   *  (unlike a localStorage timestamp) since it's minted server-side, and
+   *  it's the ONLY thing that ever moves the deadline — see
+   *  sessionTimeout.ts and `staySignedIn` below. */
   const authTimeMsRef = useRef<number | null>(null);
-  /** Set by "Stay signed in" — see sessionTimeout.ts for why this can't just
-   *  be derived from a refreshed ID token. */
-  const extendedUntilMsRef = useRef<number | null>(null);
   const sessionDurationMsRef = useRef<number>(DEFAULT_SESSION_DURATION_HOURS * HOURS_TO_MS);
   const [sessionWarningRemainingMs, setSessionWarningRemainingMs] = useState<number | null>(null);
+  /** True while a "Stay signed in" re-auth popup is in flight. */
+  const [reauthPending, setReauthPending] = useState(false);
+  /** Set when the re-auth popup was dismissed, blocked, or otherwise
+   *  failed. Cleared on the next attempt or on success. The warning
+   *  banner stays up (and the countdown keeps running against the real
+   *  auth_time-based deadline) — the user can just try again. */
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   // Only subscribe once signed in — the doc is Orono-domain-readable, not
   // public, and there's nothing to enforce before a session exists anyway.
@@ -112,18 +120,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const current = auth.currentUser;
       if (!current) return;
+      setReauthError(null);
+      setReauthPending(true);
       try {
-        // Per owner spec: refresh the ID token itself. Note this alone does
-        // NOT move the auth_time-based deadline (see sessionTimeout.ts) —
-        // the extendedUntilMsRef line below is what actually buys more time.
-        await current.getIdToken(true);
-        const result = await current.getIdTokenResult();
+        // OWNER DECISION: genuinely re-authenticate rather than tracking a
+        // client-side "extended until" anchor. A plain ID-token refresh
+        // (`getIdToken(true)`) does NOT change the `auth_time` claim —
+        // Firebase only stamps a new `auth_time` on real re-auth — so this
+        // is the only way "Stay signed in" can actually move the deadline
+        // instead of being a client assertion a shared/lab-device user
+        // could exploit to extend their session forever.
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+        const credential = await reauthenticateWithPopup(current, provider);
+        const result = await credential.user.getIdTokenResult();
         authTimeMsRef.current = Date.parse(result.authTime);
+        // Optimistic clear: the poll below would pick this up within
+        // SESSION_CHECK_INTERVAL_MS anyway, but there's no reason to make
+        // the user wait to see the banner go away after a successful reauth.
+        setSessionWarningRemainingMs(null);
       } catch (err) {
-        console.warn('Failed to refresh ID token for "Stay signed in"', err);
+        // Popup dismissed/blocked, or any other reauth failure: leave
+        // authTimeMsRef untouched (there's exactly one source of truth for
+        // the deadline, and none of these paths get to move it) and leave
+        // the warning banner up so the user can retry, or be signed out for
+        // real once the actual deadline arrives.
+        const code = (err as { code?: string } | null)?.code;
+        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+          setReauthError('Sign-in was cancelled. Try again before your session expires.');
+        } else if (code === 'auth/popup-blocked') {
+          setReauthError('Your browser blocked the sign-in popup. Allow popups and try again.');
+        } else {
+          console.warn('Failed to re-authenticate for "Stay signed in"', err);
+          setReauthError('Could not verify your identity. Try again.');
+        }
+      } finally {
+        setReauthPending(false);
       }
-      extendedUntilMsRef.current = Date.now() + sessionDurationMsRef.current;
-      setSessionWarningRemainingMs(null);
     })();
   }, []);
 
@@ -134,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'signed-in') {
       setSessionWarningRemainingMs(null);
+      setReauthError(null);
       return;
     }
     function check() {
@@ -143,11 +177,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = computeSessionTimeoutStatus({
         authTimeMs,
         sessionDurationMs: sessionDurationMsRef.current,
-        extendedUntilMs: extendedUntilMsRef.current,
         nowMs: Date.now(),
       });
       if (result.kind === 'expired') {
         setSessionWarningRemainingMs(null);
+        setReauthError(null);
         forceSignOutForTimeout();
         return;
       }
@@ -190,7 +224,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('signed-out');
         syncedUidRef.current = null;
         authTimeMsRef.current = null;
-        extendedUntilMsRef.current = null;
       }
     });
     const unsubToken = onIdTokenChanged(auth, (next) => {
@@ -208,9 +241,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isFirstSignIn = syncedUidRef.current !== next.uid;
         if (isFirstSignIn) {
           syncedUidRef.current = next.uid;
-          // A new sign-in starts a fresh session-duration window; drop any
-          // extension granted during a previous session in this tab.
-          extendedUntilMsRef.current = null;
           try {
             await syncMyClaimsFn({});
             await next.getIdToken(true);
@@ -290,6 +320,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         <SessionTimeoutBanner
           remainingMs={sessionWarningRemainingMs}
           onStaySignedIn={staySignedIn}
+          pending={reauthPending}
+          error={reauthError}
         />
       ) : null}
       {children}
@@ -307,9 +339,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 function SessionTimeoutBanner({
   remainingMs,
   onStaySignedIn,
+  pending,
+  error,
 }: {
   remainingMs: number;
   onStaySignedIn: () => void;
+  pending: boolean;
+  error: string | null;
 }) {
   return (
     <div
@@ -317,9 +353,12 @@ function SessionTimeoutBanner({
       aria-live="assertive"
       className="border-ops-red bg-ops-red-lighter text-ops-red-dark fixed inset-x-0 top-0 z-50 flex flex-wrap items-center justify-center gap-3 border-b-2 px-4 py-3 text-center text-sm font-medium shadow-sm"
     >
-      <span>Your session will expire in {formatRemaining(remainingMs)}.</span>
-      <Button size="sm" onClick={onStaySignedIn}>
-        Stay signed in
+      <span>
+        Your session will expire in {formatRemaining(remainingMs)}
+        {error ? `. ${error}` : '.'}
+      </span>
+      <Button size="sm" onClick={onStaySignedIn} disabled={pending}>
+        {pending ? 'Verifying…' : error ? 'Try again' : 'Stay signed in'}
       </Button>
     </div>
   );
