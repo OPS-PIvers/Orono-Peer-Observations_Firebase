@@ -267,13 +267,28 @@ describe('regenerateObservationPdf — rate limiting', () => {
     expect(tripAudit?.['target']).toBe(`${COLLECTIONS.observations}/obs-1`);
   });
 
-  it('fails open (still regenerates) when the limiter itself throws', async () => {
+  it('fails closed (does not regenerate) when loadRateLimits throws', async () => {
     h.loadRateLimits = vi.fn().mockRejectedValue(new Error('firestore unavailable'));
-    const { db } = buildDb(happyConfig());
+    const { db, rec } = buildDb(happyConfig());
     h.db = db;
 
-    await expect(run(observerRequest())).resolves.toMatchObject({ pdfDriveFileId: 'pdf-new' });
-    expect(h.renderObservationPdf).toHaveBeenCalled();
+    await expect(run(observerRequest())).rejects.toThrow('firestore unavailable');
+    expect(h.renderObservationPdf).not.toHaveBeenCalled();
+    expect(h.drive.uploadFileToFolder).not.toHaveBeenCalled();
+    expect(rec.obsUpdates).toHaveLength(0);
+  });
+
+  it('fails closed (does not regenerate) when checkRateLimit throws', async () => {
+    // e.g. the counter transaction exhausting its optimistic-concurrency
+    // retries under sustained contention from concurrent tabs.
+    h.checkRateLimit = vi.fn().mockRejectedValue(new Error('transaction retries exhausted'));
+    const { db, rec } = buildDb(happyConfig());
+    h.db = db;
+
+    await expect(run(observerRequest())).rejects.toThrow('transaction retries exhausted');
+    expect(h.renderObservationPdf).not.toHaveBeenCalled();
+    expect(h.drive.uploadFileToFolder).not.toHaveBeenCalled();
+    expect(rec.obsUpdates).toHaveLength(0);
   });
 
   it('does not consult the limiter before the existing observer-or-admin guard', async () => {

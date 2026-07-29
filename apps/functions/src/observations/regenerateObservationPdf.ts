@@ -24,12 +24,7 @@ import {
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
-import {
-  RATE_LIMIT_KEYS,
-  checkRateLimit,
-  loadRateLimits,
-  type RateLimitDecision,
-} from '../lib/rateLimit.js';
+import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
 
 if (getApps().length === 0) initializeApp();
@@ -100,23 +95,23 @@ export const regenerateObservationPdf = onCall(
     // maxInstances. Not an auth boundary (the observer-or-admin +
     // Finalized-only checks above already are); this is pure cost/abuse
     // control. The counter only increments on an allowed request.
-    let rateLimitDecision: RateLimitDecision | null = null;
-    let pdfRegenerationsPerHour = 0;
-    try {
-      const limits = await loadRateLimits(db);
-      pdfRegenerationsPerHour = limits.pdfRegenerationsPerHour;
-      rateLimitDecision = await checkRateLimit(db, {
-        userEmail,
-        key: RATE_LIMIT_KEYS.pdfRegeneration,
-        max: pdfRegenerationsPerHour,
-        windowMs: HOUR_MS,
-      });
-    } catch (err) {
-      // Fail-open: a transient Firestore error on the limiter must not block a
-      // legitimate regenerate (the guards above still bound abuse).
-      logger.warn('regenerateObservationPdf: rate-limit check failed (allowing)', err);
-    }
-    if (rateLimitDecision && !rateLimitDecision.allowed) {
+    //
+    // Fails CLOSED: unlike uploadAudio, this callable does not catch errors
+    // from loadRateLimits/checkRateLimit, so a limiter outage (e.g. the
+    // counter transaction exhausting its retries under contention) throws
+    // and blocks the call instead of letting it through uncounted — this is
+    // the most expensive of the three limited operations (full Puppeteer
+    // render + Drive upload/share/delete), so it's the worst one to fail
+    // open. Matches requestTranscription.ts's handling of the same limiter.
+    const limits = await loadRateLimits(db);
+    const pdfRegenerationsPerHour = limits.pdfRegenerationsPerHour;
+    const rateLimitDecision = await checkRateLimit(db, {
+      userEmail,
+      key: RATE_LIMIT_KEYS.pdfRegeneration,
+      max: pdfRegenerationsPerHour,
+      windowMs: HOUR_MS,
+    });
+    if (!rateLimitDecision.allowed) {
       try {
         await db.collection(COLLECTIONS.auditLog).add({
           timestamp: FieldValue.serverTimestamp(),
