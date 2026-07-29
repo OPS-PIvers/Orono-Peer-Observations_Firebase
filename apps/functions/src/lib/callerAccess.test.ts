@@ -111,6 +111,44 @@ describe('callerMeetsAccessLevel — admin level', () => {
       }),
     ).resolves.toBe(false);
   });
+
+  // Regression test: a deactivated staff member (offboarding sets
+  // isActive: false) must not be able to reach admin-only callables via the
+  // live-doc fallback, even if hasAdminAccess was left true on their doc and
+  // their session hasn't been revoked yet.
+  it('rejects an inactive caller even when hasAdminAccess is still true on the live doc', async () => {
+    const db = fakeDb({
+      'staff/offboarded@orono.k12.mn.us': {
+        role: 'teacher',
+        hasAdminAccess: true,
+        isActive: false,
+      },
+    });
+    await expect(
+      callerMeetsAccessLevel(db, {
+        email: 'offboarded@orono.k12.mn.us',
+        tokenRole: 'teacher',
+        level: 'admin',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('allows a hasAdminAccess-only caller whose live doc omits isActive (Zod default is true)', async () => {
+    const db = fakeDb({
+      'staff/legacy-active@orono.k12.mn.us': {
+        role: 'teacher',
+        hasAdminAccess: true,
+        // isActive intentionally omitted, as on a pre-existing doc.
+      },
+    });
+    await expect(
+      callerMeetsAccessLevel(db, {
+        email: 'legacy-active@orono.k12.mn.us',
+        tokenRole: 'teacher',
+        level: 'admin',
+      }),
+    ).resolves.toBe(true);
+  });
 });
 
 describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
@@ -198,6 +236,28 @@ describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
       callerMeetsAccessLevel(db, {
         email: 'ghost@orono.k12.mn.us',
         tokenRole: undefined,
+        level: 'special',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  // Regression test: this is exactly the gap sendBulkManualEmail widened —
+  // a deactivated staff member (offboarding sets isActive: false) whose
+  // hasAdminAccess was left true and whose session hasn't been revoked yet
+  // must not be able to broadcast a template to up to 200 active staff
+  // addresses via the live-doc fallback.
+  it('rejects an inactive caller even when hasAdminAccess is still true on the live doc', async () => {
+    const db = fakeDb({
+      'staff/offboarded@orono.k12.mn.us': {
+        role: 'teacher',
+        hasAdminAccess: true,
+        isActive: false,
+      },
+    });
+    await expect(
+      callerMeetsAccessLevel(db, {
+        email: 'offboarded@orono.k12.mn.us',
+        tokenRole: 'teacher',
         level: 'special',
       }),
     ).resolves.toBe(false);
