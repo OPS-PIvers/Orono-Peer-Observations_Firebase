@@ -91,17 +91,39 @@ export function AutoAssignDialog({
     }
   }, [open]);
 
-  function withOverride(proposal: AutoAssignProposal): AutoAssignProposal {
+  // Re-validates a PE's chosen override against the CURRENT slot list, not
+  // just its slotId — the live snapshot backing `slots` can refresh while
+  // the dialog sits open (e.g. another PE books the overridden slot from a
+  // different tab). `overrideInvalid: true` means the override no longer
+  // points at a bookable slot (booked/blocked, or otherwise no longer a
+  // match for this preference's building/day), so the row falls back to the
+  // algorithm's original pick rather than silently submitting a doomed
+  // booking against a slot that's gone.
+  function withOverride(proposal: AutoAssignProposal): {
+    row: AutoAssignProposal;
+    overrideInvalid: boolean;
+  } {
     const overrideSlotId = overrides[proposal.prefId];
-    if (!overrideSlotId || overrideSlotId === proposal.slotId) return proposal;
-    const slot = slots.find((s) => s.slotId === overrideSlotId);
-    if (!slot) return proposal;
+    if (!overrideSlotId || overrideSlotId === proposal.slotId) {
+      return { row: proposal, overrideInvalid: false };
+    }
+    const slot = slots.find(
+      (s) =>
+        s.slotId === overrideSlotId &&
+        s.status === 'available' &&
+        s.buildingId === proposal.buildingId &&
+        s.dateYMD === proposal.preferredDateYMD,
+    );
+    if (!slot) return { row: proposal, overrideInvalid: true };
     return {
-      ...proposal,
-      slotId: slot.slotId,
-      slotStartUTC: slot.startUTC,
-      slotEndUTC: slot.endUTC,
-      periodName: slot.periodName,
+      row: {
+        ...proposal,
+        slotId: slot.slotId,
+        slotStartUTC: slot.startUTC,
+        slotEndUTC: slot.endUTC,
+        periodName: slot.periodName,
+      },
+      overrideInvalid: false,
     };
   }
 
@@ -116,8 +138,17 @@ export function AutoAssignDialog({
       .sort((a, b) => a.startMinute - b.startMinute);
   }
 
+  // Preferences whose override was reset this render because the slot they
+  // pointed at is no longer available — surfaced in the row so the PE knows
+  // why the select reverted instead of assuming their pick stuck.
+  const staleOverridePrefIds = new Set<string>();
   const displayRows: ExecutionRow[] =
-    rows ?? plan.proposals.map((p) => ({ ...withOverride(p), status: 'pending' as const }));
+    rows ??
+    plan.proposals.map((p) => {
+      const { row, overrideInvalid } = withOverride(p);
+      if (overrideInvalid) staleOverridePrefIds.add(p.prefId);
+      return { ...row, status: 'pending' as const };
+    });
   const total = displayRows.length;
   const doneCount = displayRows.filter((r) => r.status === 'done').length;
   const errorCount = displayRows.filter((r) => r.status === 'error').length;
@@ -136,7 +167,7 @@ export function AutoAssignDialog({
     if (total === 0) return;
     setRunning(true);
     const working: ExecutionRow[] = plan.proposals.map((p) => ({
-      ...withOverride(p),
+      ...withOverride(p).row,
       status: 'pending',
     }));
     setRows(working);
@@ -258,7 +289,15 @@ export function AutoAssignDialog({
                                   </option>
                                 ))}
                               </select>
-                              {duplicateSlotIds.has(row.slotId) ? (
+                              {staleOverridePrefIds.has(row.prefId) ? (
+                                <span
+                                  className="text-ops-red-dark flex items-center gap-1 text-xs"
+                                  title="Your selected time was booked by someone else — reset to the suggested time."
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                  No longer available
+                                </span>
+                              ) : duplicateSlotIds.has(row.slotId) ? (
                                 <span
                                   className="text-ops-red-dark flex items-center gap-1 text-xs"
                                   title="Another row is also pointed at this slot — one of them will fail."
