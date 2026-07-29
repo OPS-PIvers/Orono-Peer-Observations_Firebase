@@ -19,12 +19,14 @@ import {
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
+import { PROFICIENCY_LABELS } from '@/components/rubric/RubricGrid';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
 import { beginCalendarConnect } from '@/scheduling/connectCalendar';
+import { computeGrowthTrend, type GrowthTrendSeries } from '@/utils/growthTrend';
 import { roleDisplayName } from '@/utils/roleLookup';
 import {
   schoolYearOf,
@@ -33,6 +35,440 @@ import {
   yearLabel,
   yearStatusLabel,
 } from '@/utils/staffFormatting';
+
+/** Domain-id → chart stroke color, mirroring RubricGridEditor's
+ *  `DOMAIN_ACCENTS` (border-l-ops-blue/red/blue-light/red-light) so a given
+ *  rubric domain reads as the same color everywhere in the app. */
+const DOMAIN_CHART_COLORS: Record<string, string> = {
+  '1': 'var(--color-ops-blue)',
+  '2': 'var(--color-ops-red)',
+  '3': 'var(--color-ops-blue-light)',
+  '4': 'var(--color-ops-red-light)',
+};
+/** Full 6-step chart-series ramp from DESIGN.md's chart-sequencing
+ *  convention (blue-700 → red-700 → blue-600 → red-600 → blue-400 →
+ *  red-400). The last two steps have no `--color-ops-*` custom property in
+ *  this app (only the 4 used above are wired up), so they're inlined as
+ *  the literal computed-tint hex values DESIGN.md documents for them —
+ *  not a new, off-palette hue. */
+const FALLBACK_CHART_COLORS = [
+  'var(--color-ops-blue)',
+  'var(--color-ops-red)',
+  'var(--color-ops-blue-light)',
+  'var(--color-ops-red-light)',
+  '#6d7cb5', // blue-400 (DESIGN.md computed tint)
+  '#d06f70', // red-400 (DESIGN.md computed tint)
+];
+/** `FALLBACK_CHART_COLORS[0]` as a definite `string` — the array literal
+ *  above is always non-empty, but TypeScript can't infer that from an
+ *  indexed access, so this is the one place that's spelled out instead of
+ *  reaching for a non-null assertion everywhere a default color is needed. */
+const DEFAULT_CHART_COLOR = FALLBACK_CHART_COLORS[0] ?? 'var(--color-ops-blue)';
+/** Non-color differentiators (WCAG 1.4.1 Use of Color) — every series gets
+ *  a dash pattern + marker shape from its position within the chart, so
+ *  two series never render identically even when the color palette above
+ *  has to repeat. 4 dash patterns × 4 marker shapes = 16 distinguishable
+ *  combinations per chart, far more than a rubric's realistic domain
+ *  count, and each rubric's series render as their own chart (see
+ *  `MyGrowthTrendSection`) so this only ever has to cover one rubric's
+ *  domains at a time. */
+const CHART_DASH_PATTERNS = ['', '7 4', '2 3', '9 3 2 3'];
+type MarkerShape = 'circle' | 'square' | 'diamond' | 'triangle';
+const CHART_MARKER_SHAPES: MarkerShape[] = ['circle', 'square', 'diamond', 'triangle'];
+
+interface SeriesVisualStyle {
+  color: string;
+  dash: string;
+  marker: MarkerShape;
+}
+
+/**
+ * Assigns each series in one rubric's chart a distinguishable color, dash
+ * pattern, and marker shape.
+ *
+ * Domains numbered '1'-'4' (the framework convention) get the app-wide
+ * brand color for that domain id. Any other domain id — a rubric with more
+ * than 4 domains, or a differently-keyed one — draws from the remaining,
+ * not-yet-claimed colors in `FALLBACK_CHART_COLORS` so it can never
+ * silently collide with a mapped domain's color.
+ *
+ * Independent of color, every series also gets a dash pattern + marker
+ * shape keyed to its position in `series` — this is the actual
+ * distinguishability guarantee (finding: WCAG 1.4.1), since the color
+ * palette alone can still repeat once a rubric has more domains than
+ * `FALLBACK_CHART_COLORS` has entries.
+ */
+function computeSeriesStyles(series: readonly GrowthTrendSeries[]): Map<string, SeriesVisualStyle> {
+  const styles = new Map<string, SeriesVisualStyle>();
+  const usedColors = new Set<string>();
+  const unmapped: GrowthTrendSeries[] = [];
+
+  for (const s of series) {
+    const mapped = DOMAIN_CHART_COLORS[s.domainId];
+    if (mapped) {
+      styles.set(s.domainId, { color: mapped, dash: '', marker: 'circle' });
+      usedColors.add(mapped);
+    } else {
+      unmapped.push(s);
+    }
+  }
+
+  const availableColors = FALLBACK_CHART_COLORS.filter((c) => !usedColors.has(c));
+  const colorPalette = availableColors.length > 0 ? availableColors : FALLBACK_CHART_COLORS;
+  unmapped.forEach((s, i) => {
+    styles.set(s.domainId, {
+      color: colorPalette[i % colorPalette.length] ?? DEFAULT_CHART_COLOR,
+      dash: '',
+      marker: 'circle',
+    });
+  });
+
+  series.forEach((s, i) => {
+    const existing = styles.get(s.domainId);
+    const dash =
+      CHART_DASH_PATTERNS[
+        Math.floor(i / CHART_MARKER_SHAPES.length) % CHART_DASH_PATTERNS.length
+      ] ?? '';
+    const marker = CHART_MARKER_SHAPES[i % CHART_MARKER_SHAPES.length] ?? 'circle';
+    styles.set(s.domainId, { color: existing?.color ?? DEFAULT_CHART_COLOR, dash, marker });
+  });
+
+  return styles;
+}
+
+/** Renders a series' point marker as a distinct shape (not just a colored
+ *  dot) so the chart never relies on color alone to tell two series apart. */
+function SeriesMarker({
+  shape,
+  cx,
+  cy,
+  color,
+}: {
+  shape: MarkerShape;
+  cx: number;
+  cy: number;
+  color: string;
+}) {
+  switch (shape) {
+    case 'square':
+      return <rect x={cx - 3} y={cy - 3} width={6} height={6} fill={color} />;
+    case 'diamond':
+      return (
+        <path
+          d={`M ${String(cx)} ${String(cy - 4.2)} L ${String(cx + 4.2)} ${String(cy)} L ${String(cx)} ${String(cy + 4.2)} L ${String(cx - 4.2)} ${String(cy)} Z`}
+          fill={color}
+        />
+      );
+    case 'triangle':
+      return (
+        <path
+          d={`M ${String(cx)} ${String(cy - 4.5)} L ${String(cx + 4)} ${String(cy + 3.2)} L ${String(cx - 4)} ${String(cy + 3.2)} Z`}
+          fill={color}
+        />
+      );
+    case 'circle':
+    default:
+      return <circle cx={cx} cy={cy} r={3.5} fill={color} />;
+  }
+}
+
+const PROFICIENCY_LEVEL_LABELS = [
+  PROFICIENCY_LABELS.developing,
+  PROFICIENCY_LABELS.basic,
+  PROFICIENCY_LABELS.proficient,
+  PROFICIENCY_LABELS.distinguished,
+];
+
+/**
+ * "My growth" — self-only proficiency trend by rubric domain (STAFF-08).
+ *
+ * Deliberately self-only: no org-aggregate/district-average comparison
+ * line. Adding one would be a new data-exposure surface and would read as
+ * ranking teachers against each other in an evaluation context.
+ *
+ * Hand-rolled inline SVG (no charting dependency), following the
+ * `ProgressRing`/`Timeline` precedent in DashboardView.tsx. The chart
+ * carries an accessible name + description (`<title>`/`<desc>`) plus a
+ * visually-hidden data table with the full underlying values, so the trend
+ * is available to screen-reader users too.
+ */
+/** Renders the accessible text label for one point's average proficiency,
+ *  guarding against the accessible table ever showing "undefined" or "NaN"
+ *  — `PROFICIENCY_LEVEL_LABELS[Math.round(average)]` is undefined if
+ *  `average` is ever NaN or out of [0,3], which would otherwise render as
+ *  the literal string "undefined" next to the number. `computeGrowthTrend`
+ *  should never produce such a value (unrecognized proficiencies are
+ *  skipped before they can corrupt the average), but the table's own
+ *  rendering doesn't rely on that invariant holding forever. */
+function proficiencyAverageLabel(average: number): string {
+  const rounded = Math.round(average);
+  const label = PROFICIENCY_LEVEL_LABELS[rounded];
+  return label ?? 'Unknown';
+}
+
+/** One rubric's proficiency-by-domain line chart, plus its legend and
+ *  accessible data table. Extracted so `MyGrowthTrendSection` can render
+ *  one of these per rubric the staff member has been observed under
+ *  (see that component's doc comment for why rubrics are never merged). */
+function RubricGrowthChart({
+  rubricName,
+  series,
+  headingId,
+}: {
+  rubricName: string;
+  series: GrowthTrendSeries[];
+  headingId: string;
+}) {
+  const width = 640;
+  const height = 280;
+  const marginLeft = 100;
+  const marginRight = 16;
+  const marginTop = 16;
+  const marginBottom = 32;
+  const plotWidth = width - marginLeft - marginRight;
+  const plotHeight = height - marginTop - marginBottom;
+
+  const allPoints = series.flatMap((s) => s.points);
+  const times = allPoints.map((p) => p.date.getTime());
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const timeRange = maxTime - minTime;
+
+  const xFor = (date: Date) =>
+    marginLeft +
+    (timeRange === 0 ? plotWidth / 2 : ((date.getTime() - minTime) / timeRange) * plotWidth);
+  const yFor = (average: number) => marginTop + (1 - average / 3) * plotHeight;
+
+  const observationCount = new Set(allPoints.map((p) => p.observationId)).size;
+  const startLabel = new Date(minTime).toLocaleDateString();
+  const endLabel = new Date(maxTime).toLocaleDateString();
+  const styles = computeSeriesStyles(series);
+  const titleId = `${headingId}-title`;
+  const descId = `${headingId}-desc`;
+
+  return (
+    <div>
+      <div className="mt-4 overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${String(width)} ${String(height)}`}
+          className="h-auto w-full min-w-[480px]"
+          role="img"
+          aria-labelledby={`${titleId} ${descId}`}
+        >
+          <title id={titleId}>{rubricName}: proficiency trend by rubric domain</title>
+          <desc id={descId}>
+            Line chart of {series.length} rubric domain{series.length === 1 ? '' : 's'} in the{' '}
+            {rubricName} across {observationCount} finalized observation
+            {observationCount === 1 ? '' : 's'} from {startLabel} to {endLabel}, rated from
+            Developing to Distinguished. Each domain is drawn with its own line color, dash pattern,
+            and point marker shape. Full values are listed in the table below the chart.
+          </desc>
+
+          {PROFICIENCY_LEVEL_LABELS.map((label, i) => {
+            const y = yFor(i);
+            return (
+              <g key={label}>
+                <line
+                  x1={marginLeft}
+                  x2={width - marginRight}
+                  y1={y}
+                  y2={y}
+                  stroke="var(--color-ops-gray-lighter)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={marginLeft - 8}
+                  y={y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize={10}
+                  fill="var(--color-ops-gray)"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+
+          {series.map((s) => {
+            const style = styles.get(s.domainId) ?? {
+              color: DEFAULT_CHART_COLOR,
+              dash: '',
+              marker: 'circle' as MarkerShape,
+            };
+            const points = s.points
+              .map((p) => `${String(xFor(p.date))},${String(yFor(p.average))}`)
+              .join(' ');
+            return (
+              <g key={s.domainId}>
+                <polyline
+                  points={points}
+                  fill="none"
+                  stroke={style.color}
+                  strokeWidth={2}
+                  strokeDasharray={style.dash || undefined}
+                />
+                {s.points.map((p) => (
+                  <SeriesMarker
+                    key={p.observationId}
+                    shape={style.marker}
+                    cx={xFor(p.date)}
+                    cy={yFor(p.average)}
+                    color={style.color}
+                  />
+                ))}
+              </g>
+            );
+          })}
+
+          <text
+            x={marginLeft}
+            y={height - 8}
+            textAnchor="start"
+            fontSize={10}
+            fill="var(--color-ops-gray)"
+          >
+            {startLabel}
+          </text>
+          <text
+            x={width - marginRight}
+            y={height - 8}
+            textAnchor="end"
+            fontSize={10}
+            fill="var(--color-ops-gray)"
+          >
+            {endLabel}
+          </text>
+        </svg>
+      </div>
+
+      {/* Direct, non-color-keyed legend: each entry shows the domain's line
+          via a small inline SVG swatch carrying the same dash pattern +
+          marker shape as the chart, not just a colored dot (WCAG 1.4.1). */}
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+        {series.map((s) => {
+          const style = styles.get(s.domainId) ?? {
+            color: DEFAULT_CHART_COLOR,
+            dash: '',
+            marker: 'circle' as MarkerShape,
+          };
+          return (
+            <li key={s.domainId} className="flex items-center gap-1.5 text-xs text-gray-700">
+              <svg width={24} height={12} aria-hidden="true" className="shrink-0">
+                <line
+                  x1={1}
+                  x2={23}
+                  y1={6}
+                  y2={6}
+                  stroke={style.color}
+                  strokeWidth={2}
+                  strokeDasharray={style.dash || undefined}
+                />
+                <SeriesMarker shape={style.marker} cx={12} cy={6} color={style.color} />
+              </svg>
+              {s.domainName}
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Visually-hidden data table — the full text alternative for the
+          hand-rolled SVG chart above (screen-reader users get every value,
+          not just the chart's summary description). Rubric domain names are
+          listed per row so the text alternative preserves the same
+          rubric-vs-domain distinction as the chart. */}
+      <table className="sr-only">
+        <caption>{rubricName}: proficiency by rubric domain and observation date</caption>
+        <thead>
+          <tr>
+            <th scope="col">Rubric domain</th>
+            <th scope="col">Observation</th>
+            <th scope="col">Date</th>
+            <th scope="col">Average proficiency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {series.flatMap((s) =>
+            s.points.map((p) => (
+              <tr key={`${s.domainId}-${p.observationId}`}>
+                <td>{s.domainName}</td>
+                <td>{p.observationName}</td>
+                <td>{p.date.toLocaleDateString()}</td>
+                <td>
+                  {proficiencyAverageLabel(p.average)} ({p.average.toFixed(2)} of 3 &nbsp;&mdash;{' '}
+                  {p.scoredCount} of {p.totalCount} components scored)
+                </td>
+              </tr>
+            )),
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MyGrowthTrendSection({ series }: { series: GrowthTrendSeries[] }) {
+  if (series.length === 0) {
+    return (
+      <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">My growth</h2>
+        <p className="text-ops-gray mt-2 text-sm italic">
+          Your proficiency trend will appear here once a finalized observation includes rubric
+          scoring.
+        </p>
+      </section>
+    );
+  }
+
+  // Group by rubric identity, never domain id alone (see `growthTrend.ts`'s
+  // `GrowthTrendSeries` doc comment for why): a staff member observed under
+  // two different rubrics (e.g. after a role change) gets one chart per
+  // rubric below, each clearly labeled with its rubric name, rather than
+  // one chart silently averaging two incommensurable measures together.
+  // Grouping preserves first-seen order, which is chronological (the
+  // earliest-observed rubric's chart appears first).
+  const rubricGroups = new Map<string, { rubricName: string; series: GrowthTrendSeries[] }>();
+  for (const s of series) {
+    let group = rubricGroups.get(s.rubricId);
+    if (!group) {
+      group = { rubricName: s.rubricName, series: [] };
+      rubricGroups.set(s.rubricId, group);
+    }
+    group.series.push(s);
+  }
+  const groups = Array.from(rubricGroups.entries());
+  const multipleRubrics = groups.length > 1;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">My growth</h2>
+      <p className="text-ops-gray mt-1 text-sm">
+        Your average proficiency rating per rubric domain across your finalized observations.
+        {multipleRubrics
+          ? " You've been observed under more than one rubric, so each rubric has its own chart below — domains aren't compared across rubrics."
+          : ''}
+      </p>
+
+      {groups.map(([rubricId, group], i) => (
+        <div
+          key={rubricId}
+          className={multipleRubrics && i > 0 ? 'mt-6 border-t border-gray-200 pt-6' : undefined}
+        >
+          {multipleRubrics ? (
+            <h3 className="font-heading text-ops-blue-dark mt-2 text-sm font-semibold">
+              {group.rubricName}
+            </h3>
+          ) : null}
+          <RubricGrowthChart
+            rubricName={group.rubricName}
+            series={group.series}
+            headingId={`my-growth-trend-${String(i)}`}
+          />
+        </div>
+      ))}
+    </section>
+  );
+}
 
 const ADMIN_CONSTRAINTS = [
   where('role', '==', SPECIAL_ROLES.administrator),
@@ -298,6 +734,8 @@ export function ProfilePage() {
     return Array.from(out.entries());
   }, [observations]);
 
+  const growthTrend = useMemo(() => computeGrowthTrend(observations ?? []), [observations]);
+
   if (staffLoading) {
     return (
       <div className="animate-pulse space-y-4">
@@ -462,7 +900,8 @@ export function ProfilePage() {
           )}
         </section>
 
-        {/* Future: rubric-rating data viz vs. org aggregate goes here. */}
+        {/* My growth — self-only proficiency trend by rubric domain (STAFF-08). */}
+        {finalizedByYear.length > 0 ? <MyGrowthTrendSection series={growthTrend} /> : null}
       </div>
     </PageHeader>
   );

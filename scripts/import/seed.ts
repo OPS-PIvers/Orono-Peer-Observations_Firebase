@@ -464,6 +464,7 @@ export function defaultAppSettings(securityAdminEmail: string): Omit<AppSettings
       observationSavesPerMinute: 60,
       audioUploadsPerHour: 20,
       transcriptionRequestsPerDay: 50,
+      pdfRegenerationsPerHour: 10,
     },
     branding: {
       appName: 'Orono Peer Observations',

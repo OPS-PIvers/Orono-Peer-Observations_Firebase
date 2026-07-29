@@ -41,6 +41,7 @@ export const rateLimits = z.object({
   observationSavesPerMinute: z.number().int().positive().default(60),
   audioUploadsPerHour: z.number().int().positive().default(20),
   transcriptionRequestsPerDay: z.number().int().positive().default(50),
+  pdfRegenerationsPerHour: z.number().int().positive().default(10),
 });
 export type RateLimits = z.infer<typeof rateLimits>;
 
@@ -188,6 +189,7 @@ export const appSettings = z.object({
     observationSavesPerMinute: 60,
     audioUploadsPerHour: 20,
     transcriptionRequestsPerDay: 50,
+    pdfRegenerationsPerHour: 10,
   }),
   branding: branding.default({
     appName: 'Orono Peer Observations',
@@ -202,8 +204,15 @@ export const appSettings = z.object({
   }),
   /** Where security alerts go. */
   securityAdminEmail: email,
-  /** Send-as address for finalized observation notification emails. */
+  /** Send-as address for finalized observation notification emails. Must be
+   *  an address the district is authorized to send mail as (SPF/DKIM) —
+   *  the admin UI surfaces that hazard as helper text rather than validating
+   *  it here, since only the district's mail admin can confirm it. */
   outboundEmailAddress: email.default('observations@orono.k12.mn.us'),
+  /** Optional reply-to address for outbound notification emails. When unset,
+   *  replies from recipients land wherever their mail client defaults to
+   *  (typically the From address) instead of a separately monitored inbox. */
+  replyToEmail: email.optional(),
   /** Display banner at top of all pages. Empty = no banner. */
   globalBannerText: z.string().trim().max(280).default(''),
   /** When set, blocks new observation creation in the GAS-cutover window. */

@@ -37,6 +37,8 @@ const assignFromPreferenceFn = httpsCallable<AssignObservationFromPreferenceInpu
   'assignObservationFromPreference',
 );
 
+const SELECT_CLASS = 'border-input bg-background h-9 rounded-md border px-2 text-sm';
+
 type RowStatus = 'pending' | 'assigning' | 'done' | 'error';
 
 interface ExecutionRow extends AutoAssignProposal {
@@ -70,6 +72,10 @@ export function AutoAssignDialog({
   // live snapshot updates (e.g. another PE booking a slot concurrently).
   const [rows, setRows] = useState<ExecutionRow[] | null>(null);
   const [running, setRunning] = useState(false);
+  // PE overrides of the algorithm's picked slot, keyed by prefId. Only
+  // consulted while the plan is still being reviewed (before runAssignments
+  // freezes `rows`).
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const plan = useMemo(
     () => buildAutoAssignPlan(preferences, slots, obsWindow),
@@ -81,20 +87,89 @@ export function AutoAssignDialog({
     if (open) {
       setRows(null);
       setRunning(false);
+      setOverrides({});
     }
   }, [open]);
 
+  // Re-validates a PE's chosen override against the CURRENT slot list, not
+  // just its slotId — the live snapshot backing `slots` can refresh while
+  // the dialog sits open (e.g. another PE books the overridden slot from a
+  // different tab). `overrideInvalid: true` means the override no longer
+  // points at a bookable slot (booked/blocked, or otherwise no longer a
+  // match for this preference's building/day), so the row falls back to the
+  // algorithm's original pick rather than silently submitting a doomed
+  // booking against a slot that's gone.
+  function withOverride(proposal: AutoAssignProposal): {
+    row: AutoAssignProposal;
+    overrideInvalid: boolean;
+  } {
+    const overrideSlotId = overrides[proposal.prefId];
+    if (!overrideSlotId || overrideSlotId === proposal.slotId) {
+      return { row: proposal, overrideInvalid: false };
+    }
+    const slot = slots.find(
+      (s) =>
+        s.slotId === overrideSlotId &&
+        s.status === 'available' &&
+        s.buildingId === proposal.buildingId &&
+        s.dateYMD === proposal.preferredDateYMD,
+    );
+    if (!slot) return { row: proposal, overrideInvalid: true };
+    return {
+      row: {
+        ...proposal,
+        slotId: slot.slotId,
+        slotStartUTC: slot.startUTC,
+        slotEndUTC: slot.endUTC,
+        periodName: slot.periodName,
+      },
+      overrideInvalid: false,
+    };
+  }
+
+  function availableSlotsFor(proposal: AutoAssignProposal): SlotDoc[] {
+    return slots
+      .filter(
+        (s) =>
+          s.buildingId === proposal.buildingId &&
+          s.dateYMD === proposal.preferredDateYMD &&
+          s.status === 'available',
+      )
+      .sort((a, b) => a.startMinute - b.startMinute);
+  }
+
+  // Preferences whose override was reset this render because the slot they
+  // pointed at is no longer available — surfaced in the row so the PE knows
+  // why the select reverted instead of assuming their pick stuck.
+  const staleOverridePrefIds = new Set<string>();
   const displayRows: ExecutionRow[] =
-    rows ?? plan.proposals.map((p) => ({ ...p, status: 'pending' as const }));
+    rows ??
+    plan.proposals.map((p) => {
+      const { row, overrideInvalid } = withOverride(p);
+      if (overrideInvalid) staleOverridePrefIds.add(p.prefId);
+      return { ...row, status: 'pending' as const };
+    });
   const total = displayRows.length;
   const doneCount = displayRows.filter((r) => r.status === 'done').length;
   const errorCount = displayRows.filter((r) => r.status === 'error').length;
   const finished = rows !== null && !running;
 
+  // Two rows can end up pointed at the same slot once the PE overrides the
+  // algorithm's picks. The server transaction rejects the second one, but a
+  // pre-flight warning avoids a wasted round-trip.
+  const slotIdCounts = new Map<string, number>();
+  for (const r of displayRows) slotIdCounts.set(r.slotId, (slotIdCounts.get(r.slotId) ?? 0) + 1);
+  const duplicateSlotIds = new Set(
+    [...slotIdCounts.entries()].filter(([, count]) => count > 1).map(([slotId]) => slotId),
+  );
+
   async function runAssignments() {
     if (total === 0) return;
     setRunning(true);
-    const working: ExecutionRow[] = plan.proposals.map((p) => ({ ...p, status: 'pending' }));
+    const working: ExecutionRow[] = plan.proposals.map((p) => ({
+      ...withOverride(p).row,
+      status: 'pending',
+    }));
     setRows(working);
 
     for (let i = 0; i < working.length; i += 1) {
@@ -194,7 +269,44 @@ export function AutoAssignDialog({
                         </TableCell>
                         <TableCell className="text-sm">{formatYMD(row.preferredDateYMD)}</TableCell>
                         <TableCell className="text-sm">
-                          {slotLabel(row.slotStartUTC, row.periodName)}
+                          {rows ? (
+                            slotLabel(row.slotStartUTC, row.periodName)
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={row.slotId}
+                                onChange={(e) =>
+                                  setOverrides((prev) => ({
+                                    ...prev,
+                                    [row.prefId]: e.target.value,
+                                  }))
+                                }
+                                className={SELECT_CLASS}
+                              >
+                                {availableSlotsFor(row).map((s) => (
+                                  <option key={s.id} value={s.slotId}>
+                                    {slotLabel(s.startUTC, s.periodName)}
+                                  </option>
+                                ))}
+                              </select>
+                              {staleOverridePrefIds.has(row.prefId) ? (
+                                <span
+                                  className="text-ops-red-dark flex items-center gap-1 text-xs"
+                                  title="Your selected time was booked by someone else — reset to the suggested time."
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                  No longer available
+                                </span>
+                              ) : duplicateSlotIds.has(row.slotId) ? (
+                                <span
+                                  className="text-ops-red-dark flex items-center gap-1 text-xs"
+                                  title="Another row is also pointed at this slot — one of them will fail."
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <RowStatusBadge row={row} />

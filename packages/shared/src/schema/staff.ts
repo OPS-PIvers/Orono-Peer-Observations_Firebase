@@ -49,14 +49,35 @@ export const staff = z.object({
    *  emailTemplate.ts EMAIL_TRIGGER_CATEGORY). Missing/legacy docs parse as
    *  all-true — fully opted in, matching pre-existing behavior. */
   emailPreferences: emailPreferences.default(DEFAULT_EMAIL_PREFERENCES),
+  /**
+   * Denormalized "most recent time this person authenticated into the app",
+   * stamped by the `syncMyClaims` callable (apps/functions/src/auth/
+   * syncMyClaims.ts) — the first thing the web client calls after sign-in.
+   *
+   * `null` (or an absent field, on docs created before this stamp existed)
+   * means "invited but never signed in". The admin rollout-readiness card
+   * (apps/web/src/admin/dashboard/NeverSignedInCard.tsx) deliberately does
+   * NOT rely on an equality filter for this: Firestore's
+   * `where('lastSignInAt','==',null)` only matches documents where the field
+   * is *present and null*, never documents that omit it, which would make
+   * the card fragile to any staff-creation path that forgets to write the
+   * null. Instead the card queries `isActive == true` alone and checks
+   * "null or missing" client-side. `scripts/backfill/backfill-last-sign-in.ts`
+   * stamps real history from Firebase Auth's user records for docs that
+   * predate this field.
+   *
+   * Not part of `staffInput` on purpose — no admin form or CSV import may
+   * write it, so a routine staff edit can never clobber a real sign-in stamp.
+   */
+  lastSignInAt: isoDate.nullable().default(null),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
 export type Staff = z.infer<typeof staff>;
 
 /** Subset accepted from admin UI add/edit forms (ID + audit timestamps
- *  added server-side). */
-export const staffInput = staff.omit({ createdAt: true, updatedAt: true });
+ *  added server-side; `lastSignInAt` is stamped only by the sign-in path). */
+export const staffInput = staff.omit({ createdAt: true, updatedAt: true, lastSignInAt: true });
 export type StaffInput = z.infer<typeof staffInput>;
 
 /**

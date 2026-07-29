@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, slugId } from './common.js';
+import { email, isoDate, slugId } from './common.js';
 
 /**
  * Trigger types — what app event fires this template automatically.
@@ -210,6 +210,36 @@ export const KNOWN_TEMPLATE_VARIABLES = [
 ] as const;
 export type TemplateVariable = (typeof KNOWN_TEMPLATE_VARIABLES)[number];
 
+/**
+ * A prior version of a template's subject/body, captured automatically each
+ * time an admin saves an edit — lets the 'History' panel in
+ * EmailTemplatesPage restore a version if a bad save wipes out a carefully-
+ * worded notification. Kept inline on the template doc (capped array, not a
+ * subcollection) so no firestore.rules change is needed.
+ *
+ * `editedBy`/`editedAt` describe the edit action that *retired* this
+ * snapshot (the doc has no earlier per-save attribution to draw on, so the
+ * acting admin/time of the save that superseded this content is the best
+ * available attribution).
+ */
+export const emailTemplateHistoryEntry = z.object({
+  subject: z.string(),
+  bodyHtml: z.string(),
+  editedAt: isoDate,
+  editedBy: email,
+});
+export type EmailTemplateHistoryEntry = z.infer<typeof emailTemplateHistoryEntry>;
+
+/**
+ * Max prior versions retained in `history`. Single source of truth for the
+ * cap — both this schema's `.max()` below and the write path in
+ * apps/web/src/admin/email-templates/templateHistory.ts (which is what
+ * actually enforces it in practice, since nothing in apps/ calls
+ * parse()/safeParse() against this schema for that write) import this same
+ * constant rather than each hardcoding the number 5.
+ */
+export const MAX_TEMPLATE_HISTORY_ENTRIES = 5;
+
 export const emailTemplate = z.object({
   templateId: slugId,
   name: z.string().trim().min(1).max(80),
@@ -234,6 +264,9 @@ export const emailTemplate = z.object({
   isActive: z.boolean().default(true),
   /** System templates can be edited and toggled but not deleted. */
   isSystem: z.boolean().default(false),
+  /** Prior subject/body versions, most recent first. Capped at
+   *  MAX_TEMPLATE_HISTORY_ENTRIES — see emailTemplateHistoryEntry. */
+  history: z.array(emailTemplateHistoryEntry).max(MAX_TEMPLATE_HISTORY_ENTRIES).default([]),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
