@@ -19,12 +19,14 @@ import {
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
+import { PROFICIENCY_LABELS } from '@/components/rubric/RubricGrid';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useDocument } from '@/hooks/useDocument';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db, functions } from '@/lib/firebase';
 import { beginCalendarConnect } from '@/scheduling/connectCalendar';
+import { computeGrowthTrend, type GrowthTrendSeries } from '@/utils/growthTrend';
 import { roleDisplayName } from '@/utils/roleLookup';
 import {
   schoolYearOf,
@@ -33,6 +35,225 @@ import {
   yearLabel,
   yearStatusLabel,
 } from '@/utils/staffFormatting';
+
+/** Domain-id → chart stroke color, mirroring RubricGridEditor's
+ *  `DOMAIN_ACCENTS` (border-l-ops-blue/red/blue-light/red-light) so a given
+ *  rubric domain reads as the same color everywhere in the app. Falls back
+ *  to cycling through the same four brand tones for rubrics with a
+ *  differently-keyed domain id. Order follows DESIGN.md's chart-sequencing
+ *  convention (blue-700 → red-700 → blue-600 → red-600). */
+const DOMAIN_CHART_COLORS: Record<string, string> = {
+  '1': 'var(--color-ops-blue)',
+  '2': 'var(--color-ops-red)',
+  '3': 'var(--color-ops-blue-light)',
+  '4': 'var(--color-ops-red-light)',
+};
+const FALLBACK_CHART_COLORS = [
+  'var(--color-ops-blue)',
+  'var(--color-ops-red)',
+  'var(--color-ops-blue-light)',
+  'var(--color-ops-red-light)',
+];
+function chartColorForDomain(domainId: string, index: number): string {
+  return (
+    DOMAIN_CHART_COLORS[domainId] ??
+    FALLBACK_CHART_COLORS[index % FALLBACK_CHART_COLORS.length] ??
+    'var(--color-ops-blue)'
+  );
+}
+
+const PROFICIENCY_LEVEL_LABELS = [
+  PROFICIENCY_LABELS.developing,
+  PROFICIENCY_LABELS.basic,
+  PROFICIENCY_LABELS.proficient,
+  PROFICIENCY_LABELS.distinguished,
+];
+
+/**
+ * "My growth" — self-only proficiency trend by rubric domain (STAFF-08).
+ *
+ * Deliberately self-only: no org-aggregate/district-average comparison
+ * line. Adding one would be a new data-exposure surface and would read as
+ * ranking teachers against each other in an evaluation context.
+ *
+ * Hand-rolled inline SVG (no charting dependency), following the
+ * `ProgressRing`/`Timeline` precedent in DashboardView.tsx. The chart
+ * carries an accessible name + description (`<title>`/`<desc>`) plus a
+ * visually-hidden data table with the full underlying values, so the trend
+ * is available to screen-reader users too.
+ */
+function MyGrowthTrendSection({ series }: { series: GrowthTrendSeries[] }) {
+  if (series.length === 0) {
+    return (
+      <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">My growth</h2>
+        <p className="text-ops-gray mt-2 text-sm italic">
+          Your proficiency trend will appear here once a finalized observation includes rubric
+          scoring.
+        </p>
+      </section>
+    );
+  }
+
+  const width = 640;
+  const height = 280;
+  const marginLeft = 100;
+  const marginRight = 16;
+  const marginTop = 16;
+  const marginBottom = 32;
+  const plotWidth = width - marginLeft - marginRight;
+  const plotHeight = height - marginTop - marginBottom;
+
+  const allPoints = series.flatMap((s) => s.points);
+  const times = allPoints.map((p) => p.date.getTime());
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+  const timeRange = maxTime - minTime;
+
+  const xFor = (date: Date) =>
+    marginLeft +
+    (timeRange === 0 ? plotWidth / 2 : ((date.getTime() - minTime) / timeRange) * plotWidth);
+  const yFor = (average: number) => marginTop + (1 - average / 3) * plotHeight;
+
+  const observationCount = new Set(allPoints.map((p) => p.observationId)).size;
+  const startLabel = new Date(minTime).toLocaleDateString();
+  const endLabel = new Date(maxTime).toLocaleDateString();
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="font-heading text-ops-blue-dark text-lg font-semibold">My growth</h2>
+      <p className="text-ops-gray mt-1 text-sm">
+        Your average proficiency rating per rubric domain across your finalized observations.
+      </p>
+
+      <div className="mt-4 overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${String(width)} ${String(height)}`}
+          className="h-auto w-full min-w-[480px]"
+          role="img"
+          aria-labelledby="my-growth-trend-title my-growth-trend-desc"
+        >
+          <title id="my-growth-trend-title">My growth: proficiency trend by rubric domain</title>
+          <desc id="my-growth-trend-desc">
+            Line chart of {series.length} rubric domain{series.length === 1 ? '' : 's'} across{' '}
+            {observationCount} finalized observation{observationCount === 1 ? '' : 's'} from{' '}
+            {startLabel} to {endLabel}, rated from Developing to Distinguished. Full values are
+            listed in the table below the chart.
+          </desc>
+
+          {PROFICIENCY_LEVEL_LABELS.map((label, i) => {
+            const y = yFor(i);
+            return (
+              <g key={label}>
+                <line
+                  x1={marginLeft}
+                  x2={width - marginRight}
+                  y1={y}
+                  y2={y}
+                  stroke="var(--color-ops-gray-lighter)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={marginLeft - 8}
+                  y={y}
+                  textAnchor="end"
+                  dominantBaseline="middle"
+                  fontSize={10}
+                  fill="var(--color-ops-gray)"
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+
+          {series.map((s, i) => {
+            const color = chartColorForDomain(s.domainId, i);
+            const points = s.points
+              .map((p) => `${String(xFor(p.date))},${String(yFor(p.average))}`)
+              .join(' ');
+            return (
+              <g key={s.domainId}>
+                <polyline points={points} fill="none" stroke={color} strokeWidth={2} />
+                {s.points.map((p) => (
+                  <circle
+                    key={p.observationId}
+                    cx={xFor(p.date)}
+                    cy={yFor(p.average)}
+                    r={3.5}
+                    fill={color}
+                  />
+                ))}
+              </g>
+            );
+          })}
+
+          <text
+            x={marginLeft}
+            y={height - 8}
+            textAnchor="start"
+            fontSize={10}
+            fill="var(--color-ops-gray)"
+          >
+            {startLabel}
+          </text>
+          <text
+            x={width - marginRight}
+            y={height - 8}
+            textAnchor="end"
+            fontSize={10}
+            fill="var(--color-ops-gray)"
+          >
+            {endLabel}
+          </text>
+        </svg>
+      </div>
+
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+        {series.map((s, i) => (
+          <li key={s.domainId} className="flex items-center gap-1.5 text-xs text-gray-700">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: chartColorForDomain(s.domainId, i) }}
+              aria-hidden="true"
+            />
+            {s.domainName}
+          </li>
+        ))}
+      </ul>
+
+      {/* Visually-hidden data table — the full text alternative for the
+          hand-rolled SVG chart above (screen-reader users get every value,
+          not just the chart's summary description). */}
+      <table className="sr-only">
+        <caption>My growth: proficiency by rubric domain and observation date</caption>
+        <thead>
+          <tr>
+            <th scope="col">Rubric domain</th>
+            <th scope="col">Observation</th>
+            <th scope="col">Date</th>
+            <th scope="col">Average proficiency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {series.flatMap((s) =>
+            s.points.map((p) => (
+              <tr key={`${s.domainId}-${p.observationId}`}>
+                <td>{s.domainName}</td>
+                <td>{p.observationName}</td>
+                <td>{p.date.toLocaleDateString()}</td>
+                <td>
+                  {PROFICIENCY_LEVEL_LABELS[Math.round(p.average)]} ({p.average.toFixed(2)} of 3
+                  &nbsp;&mdash; {p.scoredCount} of {p.totalCount} components scored)
+                </td>
+              </tr>
+            )),
+          )}
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
 const ADMIN_CONSTRAINTS = [
   where('role', '==', SPECIAL_ROLES.administrator),
@@ -298,6 +519,8 @@ export function ProfilePage() {
     return Array.from(out.entries());
   }, [observations]);
 
+  const growthTrend = useMemo(() => computeGrowthTrend(observations ?? []), [observations]);
+
   if (staffLoading) {
     return (
       <div className="animate-pulse space-y-4">
@@ -462,7 +685,8 @@ export function ProfilePage() {
           )}
         </section>
 
-        {/* Future: rubric-rating data viz vs. org aggregate goes here. */}
+        {/* My growth — self-only proficiency trend by rubric domain (STAFF-08). */}
+        {finalizedByYear.length > 0 ? <MyGrowthTrendSection series={growthTrend} /> : null}
       </div>
     </PageHeader>
   );
