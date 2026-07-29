@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteField, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   APP_SETTINGS_DOC_ID,
@@ -99,6 +99,11 @@ export function SettingsPage() {
         doc(db, SETTINGS_PATH),
         {
           ...form,
+          // replyToEmail is a genuinely optional field (no schema default) —
+          // explicitly delete it on merge when the admin has cleared the
+          // input, since a merge write simply omitting the key would leave
+          // a previously-saved value in place rather than clearing it.
+          replyToEmail: form.replyToEmail ?? deleteField(),
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -170,13 +175,41 @@ export function SettingsPage() {
 
         <Field
           label="Outbound email address"
-          help="Notifications send-as this address via the Trigger Email extension."
+          help="Notifications send-as this address. This address must be authorized to send mail for the district's domain (SPF/DKIM) — an unauthorized address will fail to deliver or land in recipients' spam."
         >
           <Input
             type="email"
             value={form.outboundEmailAddress ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, outboundEmailAddress: e.target.value }))}
             placeholder="observations@orono.k12.mn.us"
+          />
+        </Field>
+
+        <Field
+          label="Reply-to address (optional)"
+          help="When set, replies from recipients go here instead of the outbound address above. Leave blank to use the recipient's mail client default."
+        >
+          <Input
+            type="email"
+            value={form.replyToEmail ?? ''}
+            onChange={(e) => {
+              const value = e.target.value.trim();
+              setForm((f) => {
+                if (value === '') {
+                  // exactOptionalPropertyTypes forbids assigning `undefined`
+                  // to an optional field directly — delete the key instead
+                  // so clearing the input doesn't try to write `undefined`
+                  // into local state (setDoc's own deleteField() sentinel,
+                  // applied in save() below, is what actually clears it in
+                  // Firestore).
+                  const next = { ...f };
+                  delete next.replyToEmail;
+                  return next;
+                }
+                return { ...f, replyToEmail: value };
+              });
+            }}
+            placeholder="frontoffice@orono.k12.mn.us"
           />
         </Field>
 

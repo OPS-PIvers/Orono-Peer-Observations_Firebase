@@ -367,6 +367,100 @@ describe('sendEmail', () => {
     const audit = writes.added.find((w) => w.col === COLLECTIONS.auditLog);
     expect(audit?.data['details']).not.toHaveProperty('rejectedHrefs');
   });
+
+  // -------------------------------------------------------------------------
+  // PLAT-05: outbound "from" address + optional reply-to
+  // -------------------------------------------------------------------------
+
+  it('falls back to the hardcoded FROM_EMAIL constant when outboundEmailAddress is unset', async () => {
+    const { db, writes } = makeDb({ docs: { [appSettingsPath]: {} } });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'from-unset',
+      triggerType: 'staff.created',
+    });
+    expect(writes.mailSets[0]?.data['from']).toBe('observations@orono.k12.mn.us');
+  });
+
+  it('falls back to FROM_EMAIL when outboundEmailAddress is blank/whitespace', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { outboundEmailAddress: '   ' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'from-blank',
+      triggerType: 'staff.created',
+    });
+    expect(writes.mailSets[0]?.data['from']).toBe('observations@orono.k12.mn.us');
+  });
+
+  it('honors a configured outboundEmailAddress as the "from" address', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { outboundEmailAddress: '  frontoffice@orono.k12.mn.us  ' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'from-configured',
+      triggerType: 'staff.created',
+    });
+    expect(writes.mailSets[0]?.data['from']).toBe('frontoffice@orono.k12.mn.us');
+  });
+
+  it('omits message.replyTo when neither a per-send nor a configured default reply-to is set', async () => {
+    const { db, writes } = makeDb({ docs: { [appSettingsPath]: {} } });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-none',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as Record<string, unknown>;
+    expect(msg).not.toHaveProperty('replyTo');
+  });
+
+  it('sets message.replyTo from the configured /appSettings default when no per-send override is given', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: '  frontoffice@orono.k12.mn.us  ' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-default',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('frontoffice@orono.k12.mn.us');
+  });
+
+  it('prefers a per-send replyTo override over the configured default', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: 'default@orono.k12.mn.us' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-override',
+      triggerType: 'staff.created',
+      replyTo: 'override@orono.k12.mn.us',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('override@orono.k12.mn.us');
+  });
 });
 
 // ---------------------------------------------------------------------------
