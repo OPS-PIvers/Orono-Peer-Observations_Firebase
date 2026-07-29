@@ -1,10 +1,90 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { CallableRequest } from 'firebase-functions/v2/https';
 import { emailTemplate, type EmailTemplate } from '@ops/shared';
 
 // Set fake env to satisfy the Firebase Admin/Functions initializers that may
 // run at module scope before the import fires.
 process.env['FIREBASE_CONFIG'] = JSON.stringify({ projectId: 'test' });
 process.env['GCLOUD_PROJECT'] = 'test';
+
+// ---------------------------------------------------------------------------
+// Fakes for the "authorization" describe block near the bottom of this file,
+// which exercises the full onCall handler (not just the exported pure
+// functions above). Hoisted test state keyed by full doc path, mirroring
+// resendStaffInvite.test.ts's pattern.
+// ---------------------------------------------------------------------------
+
+interface TestState {
+  docs: Record<string, Record<string, unknown> | undefined>;
+  /** email -> isActive, for the roster ('in' query) lookup. */
+  roster: Record<string, boolean>;
+  sendEmail: ((...args: unknown[]) => unknown) | undefined;
+}
+
+const state = vi.hoisted<TestState>(() => ({
+  docs: {},
+  roster: {},
+  sendEmail: undefined,
+}));
+
+vi.mock('firebase-admin/app', () => ({
+  getApps: () => [{}],
+  initializeApp: vi.fn(),
+}));
+
+function makeDocRef(path: string) {
+  return {
+    get: () =>
+      Promise.resolve({
+        exists: state.docs[path] !== undefined,
+        data: () => state.docs[path],
+      }),
+  };
+}
+
+let autoIdCounter = 0;
+
+vi.mock('firebase-admin/firestore', () => ({
+  FieldPath: { documentId: () => '__name__' },
+  getFirestore: () => ({
+    doc: (path: string) => makeDocRef(path),
+    collection: (name: string) => ({
+      doc: (id?: string) =>
+        id === undefined
+          ? { id: `auto-${String((autoIdCounter += 1))}` }
+          : makeDocRef(`${name}/${id}`),
+      where: (_field: unknown, _op: string, ids: readonly string[]) => ({
+        get: () =>
+          Promise.resolve({
+            docs: ids
+              .filter((id) => state.roster[id] !== undefined)
+              .map((id) => ({ id, data: () => ({ isActive: state.roster[id] }) })),
+          }),
+      }),
+    }),
+  }),
+}));
+
+vi.mock('../lib/emailUtils.js', () => ({
+  sendEmail: (...args: unknown[]) => state.sendEmail?.(...args),
+  substituteVariables: (template: string) => template,
+}));
+
+// Rate limiting is a separate concern (covered by rateLimit.test.ts); stub it
+// out here so the authorization tests below aren't coupled to its Firestore
+// transaction shape.
+vi.mock('../lib/rateLimit.js', () => ({
+  RATE_LIMIT_KEYS: { manualEmailBroadcast: 'manualEmailBroadcast' },
+  checkRateLimit: () => Promise.resolve({ allowed: true, remaining: 4, resetAtMs: Date.now() }),
+  loadRateLimits: () =>
+    Promise.resolve({
+      saveWritesPerMinute: 60,
+      audioUploadsPerHour: 20,
+      transcriptionsPerDay: 50,
+      pdfRegenerationsPerHour: 10,
+      manualEmailBroadcastsPerHour: 5,
+    }),
+}));
 
 const {
   MAX_BULK_RECIPIENTS,
@@ -16,6 +96,7 @@ const {
   partitionRecipientsByRoster,
   queueBroadcast,
   rejectedRecipientsMessage,
+  sendBulkManualEmail,
 } = await import('./sendBulkManualEmail.js');
 
 describe('normalizeRecipients', () => {
@@ -381,5 +462,135 @@ describe('authorizeBroadcast', () => {
     await expect(
       authorizeBroadcast({ templateId: 'group-message', recipients, guards }),
     ).rejects.toThrow(/Broadcast limit reached \(5\/hour\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Full-callable authorization tests — regression coverage for INTEG-AUTHZ.
+//
+// Before the fix, this callable's "PE or admin" check was computed from the
+// token's `role` claim only (isSpecialRole(role) || isAdminRole(role)),
+// ignoring `hasAdminAccess`. A Teacher-role staff member granted
+// `hasAdminAccess: true` can reach /admin/staff and its "Message a group"
+// action (RequireAuth gates on the `isAdmin` claim, which syncMyClaims
+// computes as `isAdminRole(role) || hasAdminAccess`), so that fully-supported
+// user class got a deterministic permission-denied here — while
+// resendStaffInvite (widened by PR #78) succeeded for the same user right
+// next to it. The fix delegates to the shared `callerMeetsAccessLevel`
+// helper (../lib/callerAccess.ts), which also backs sendManualEmail.ts and
+// resendStaffInvite.ts.
+// ---------------------------------------------------------------------------
+
+const run = (req: Partial<CallableRequest>) =>
+  (sendBulkManualEmail as unknown as { run: (r: unknown) => Promise<unknown> }).run(req);
+
+function authedRequest(
+  callerEmail: string,
+  callerRole: string | undefined,
+  data: Record<string, unknown>,
+): Partial<CallableRequest> {
+  return {
+    auth: { uid: 'uid-1', token: { email: callerEmail, role: callerRole } },
+    data,
+  } as unknown as Partial<CallableRequest>;
+}
+
+describe('sendBulkManualEmail — authorization', () => {
+  const TEMPLATE_ID = 'group-message';
+  const RECIPIENT = 'staffmember@orono.k12.mn.us';
+
+  function resetAuthzFixtures() {
+    state.docs = {
+      [`emailTemplates/${TEMPLATE_ID}`]: {
+        templateId: TEMPLATE_ID,
+        name: 'Group message',
+        subject: 'Hi team',
+        bodyHtml: '<p>Hi team</p>',
+        triggerType: 'manual',
+        isActive: true,
+      },
+    };
+    state.roster = { [RECIPIENT]: true };
+    state.sendEmail = vi.fn().mockResolvedValue({ queued: true });
+  }
+
+  it('rejects an unauthenticated call', async () => {
+    resetAuthzFixtures();
+    await expect(
+      run({ data: { templateId: TEMPLATE_ID, toEmails: [RECIPIENT] } }),
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+  });
+
+  it('allows a caller whose token role is an admin role', async () => {
+    resetAuthzFixtures();
+    const result = await run(
+      authedRequest('admin@orono.k12.mn.us', 'administrator', {
+        templateId: TEMPLATE_ID,
+        toEmails: [RECIPIENT],
+      }),
+    );
+    expect(result).toMatchObject({ requested: 1, sent: 1 });
+    expect(state.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a hasAdminAccess-only caller (non-special role, hasAdminAccess: true)', async () => {
+    resetAuthzFixtures();
+    state.docs['staff/teacher-admin@orono.k12.mn.us'] = {
+      name: 'Teacher Admin',
+      role: 'teacher',
+      hasAdminAccess: true,
+      isActive: true,
+    };
+    const result = await run(
+      authedRequest('teacher-admin@orono.k12.mn.us', 'teacher', {
+        templateId: TEMPLATE_ID,
+        toEmails: [RECIPIENT],
+      }),
+    );
+    expect(result).toMatchObject({ requested: 1, sent: 1 });
+    expect(state.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a hasAdminAccess-only caller whose live staff doc has since been revoked', async () => {
+    resetAuthzFixtures();
+    state.docs['staff/revoked@orono.k12.mn.us'] = {
+      name: 'Revoked Admin',
+      role: 'teacher',
+      hasAdminAccess: false,
+      isActive: true,
+    };
+    await expect(
+      run(
+        authedRequest('revoked@orono.k12.mn.us', 'teacher', {
+          templateId: TEMPLATE_ID,
+          toEmails: [RECIPIENT],
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(state.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('rejects a plain non-admin, non-PE caller with no /staff doc', async () => {
+    resetAuthzFixtures();
+    await expect(
+      run(
+        authedRequest('teacher@orono.k12.mn.us', 'teacher', {
+          templateId: TEMPLATE_ID,
+          toEmails: [RECIPIENT],
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(state.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('allows a caller whose token role is a special (PE) role', async () => {
+    resetAuthzFixtures();
+    const result = await run(
+      authedRequest('pe@orono.k12.mn.us', 'peer-evaluator', {
+        templateId: TEMPLATE_ID,
+        toEmails: [RECIPIENT],
+      }),
+    );
+    expect(result).toMatchObject({ requested: 1, sent: 1 });
   });
 });

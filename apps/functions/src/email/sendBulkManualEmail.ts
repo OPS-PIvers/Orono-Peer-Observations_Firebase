@@ -1,13 +1,8 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldPath, getFirestore, type Firestore } from 'firebase-admin/firestore';
-import {
-  APP_SETTINGS_DOC_ID,
-  COLLECTIONS,
-  isAdminRole,
-  isSpecialRole,
-  type EmailTemplate,
-} from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 
@@ -281,6 +276,15 @@ export async function authorizeBroadcast(args: {
  * configurable per-caller rate limit (rateLimits.manualEmailBroadcastsPerHour)
  * throttles how often any one caller can trigger a broadcast at all.
  *
+ * Auth check: "PE or admin" is resolved via the shared `callerMeetsAccessLevel`
+ * helper (../lib/callerAccess.ts, level: 'special'), which also backs
+ * sendManualEmail.ts and resendStaffInvite.ts. That helper re-reads the live
+ * /staff doc when the token's role claim alone doesn't already qualify, so a
+ * staff member granted (or revoked) `hasAdminAccess: true` — which reaches
+ * this same admin page's "Message a group" action per
+ * packages/shared/src/schema/staff.ts — is authorized (or rejected)
+ * immediately, without waiting for their ID token to refresh. See INTEG-AUTHZ.
+ *
  * Ordering note: everything that can reject the request — argument shape, the
  * recipient cap, the template, the roster allow-list — is validated *before*
  * checkRateLimit runs, so a malformed request never burns one of the caller's
@@ -291,13 +295,20 @@ export const sendBulkManualEmail = onCall(
   { region: 'us-central1', memory: '256MiB', timeoutSeconds: 300 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+    const callerEmail = request.auth.token.email?.toLowerCase();
+    if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
+
+    const db = getFirestore();
+
     const callerRole = request.auth.token['role'] as string | undefined;
-    const hasSpecialAccess = isSpecialRole(callerRole ?? null) || isAdminRole(callerRole ?? null);
+    const hasSpecialAccess = await callerMeetsAccessLevel(db, {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'special',
+    });
     if (!hasSpecialAccess) {
       throw new HttpsError('permission-denied', 'Only PEs and admins can send manual emails');
     }
-    const callerEmail = request.auth.token.email?.toLowerCase();
-    if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
     const { templateId, toEmails, vars } = (request.data ?? {}) as SendBulkManualEmailRequest;
     if (!templateId || !Array.isArray(toEmails) || toEmails.length === 0) {
@@ -317,8 +328,6 @@ export const sendBulkManualEmail = onCall(
         `A broadcast can target at most ${String(MAX_BULK_RECIPIENTS)} recipients (got ${String(recipients.length)}).`,
       );
     }
-
-    const db = getFirestore();
 
     const template = await authorizeBroadcast({
       templateId,
