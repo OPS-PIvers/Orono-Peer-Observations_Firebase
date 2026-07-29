@@ -45,6 +45,7 @@ import { RolloverDialog } from './RolloverDialog';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from './StaffFilterBar';
 import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
+import { MessageGroupDialog } from './MessageGroupDialog';
 import { serializeStaffCsv } from './staffCsv';
 import {
   BuildingsPill,
@@ -108,6 +109,7 @@ export function StaffPage() {
   const [patchError, setPatchError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [showRollover, setShowRollover] = useState(false);
+  const [showMessageGroup, setShowMessageGroup] = useState(false);
 
   const patchStaff = useCallback<PatchStaff>((email, patch) => {
     setPatchError(null);
@@ -295,6 +297,7 @@ export function StaffPage() {
       <BulkEditBar
         count={selected.size}
         onAction={setBulkField}
+        onMessageGroup={() => setShowMessageGroup(true)}
         onClear={() => setSelected(new Set())}
       />
 
@@ -336,6 +339,13 @@ export function StaffPage() {
         field={bulkField}
         selectedRows={selectedRows}
         onApplied={() => setSelected(new Set())}
+      />
+
+      <MessageGroupDialog
+        open={showMessageGroup}
+        onOpenChange={setShowMessageGroup}
+        selectedRows={selectedRows}
+        onSent={() => setSelected(new Set())}
       />
 
       <StaffImportDialog
