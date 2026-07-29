@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Mail, Plus, Trash2 } from 'lucide-react';
-import { deleteDoc, doc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
+import { ChevronDown, ChevronUp, History, Mail, Plus, Trash2 } from 'lucide-react';
+import { Timestamp, deleteDoc, doc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -10,6 +10,7 @@ import {
   renderEmailShell,
   type EmailRecipientType,
   type EmailTemplate,
+  type EmailTemplateHistoryEntry,
   type EmailTriggerType,
   type TemplateVariable,
 } from '@ops/shared';
@@ -31,6 +32,7 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { EmailBodyField } from './EmailBodyField';
+import { withHistoryEntry } from './templateHistory';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -329,6 +331,17 @@ export function EmailTemplatesPage() {
     setSaving(true);
     setSaveError(null);
     try {
+      // Snapshot the pre-edit subject/body from the live doc (not editForm,
+      // which already holds the in-progress edit) into history before
+      // overwriting it, so a bad save can be reverted from the History panel.
+      const current = templates?.find((tpl) => tpl.id === editForm.id);
+      const history = current
+        ? withHistoryEntry(
+            current.history,
+            { subject: current.subject, bodyHtml: current.bodyHtml },
+            user?.email ?? '',
+          )
+        : (editForm.history ?? []);
       await setDoc(
         doc(db, COLLECTIONS.emailTemplates, editForm.id),
         {
@@ -339,6 +352,7 @@ export function EmailTemplatesPage() {
           triggerType: editForm.triggerType,
           recipient: editForm.recipient,
           scheduledDays: editForm.scheduledDays,
+          history,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
@@ -365,6 +379,7 @@ export function EmailTemplatesPage() {
       scheduledDays: 3,
       isActive: false,
       isSystem: false,
+      history: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -597,6 +612,12 @@ function TemplateRow({
     TRIGGER_VARIABLES as Partial<Record<EmailTriggerType, TemplateVariable[]>>
   )[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
   const isScheduled = triggerType.startsWith('scheduled.');
+  // `history` carries a schema default, but a raw Firestore read (this is a
+  // plain client SDK snapshot, not a Zod-parsed doc) bypasses that default —
+  // a template saved before this field existed genuinely has no `history`
+  // key at runtime despite the type saying otherwise, so fall back
+  // explicitly rather than trust the static type.
+  const history = (t.history as EmailTemplateHistoryEntry[] | undefined) ?? [];
 
   return (
     <div>
@@ -743,6 +764,19 @@ function TemplateRow({
             </div>
           ) : null}
 
+          {/* Version history — restore copies a prior version's subject/body
+              back into the form for the admin to review, never a silent
+              overwrite; the admin still has to hit Save. */}
+          {history.length > 0 ? (
+            <TemplateHistoryPanel
+              history={history}
+              substitutePreview={substitutePreview}
+              onRestore={(v) =>
+                onFormChange({ ...editForm, subject: v.subject, bodyHtml: v.bodyHtml })
+              }
+            />
+          ) : null}
+
           {saveError ? <p className="text-destructive text-sm">{saveError}</p> : null}
 
           {/* Action row */}
@@ -770,4 +804,87 @@ function TemplateRow({
       ) : null}
     </div>
   );
+}
+
+// ── TemplateHistoryPanel sub-component ──────────────────────────────────────
+
+interface TemplateHistoryPanelProps {
+  history: EmailTemplateHistoryEntry[];
+  substitutePreview: (html: string) => string;
+  onRestore: (entry: EmailTemplateHistoryEntry) => void;
+}
+
+/** Collapsible 'History' disclosure listing prior versions, mirroring the
+ *  sandboxed-iframe preview pattern used for the live draft above. Each
+ *  version can be individually previewed and restored — restoring only
+ *  copies that version's subject/body into the edit form; the admin still
+ *  has to review and hit Save. */
+function TemplateHistoryPanel({
+  history,
+  substitutePreview,
+  onRestore,
+}: TemplateHistoryPanelProps) {
+  const [open, setOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
+  return (
+    <div className="border-border rounded-md border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium"
+      >
+        <span className="flex items-center gap-1.5">
+          <History className="h-4 w-4" />
+          Version history ({history.length})
+        </span>
+        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+      {open ? (
+        <div className="border-border divide-border divide-y border-t">
+          {history.map((v, i) => (
+            <div key={`${String(i)}-${v.editedAt.toString()}`} className="space-y-2 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{v.subject}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {formatHistoryTimestamp(v.editedAt)} · {v.editedBy}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewIndex(previewIndex === i ? null : i)}
+                  >
+                    {previewIndex === i ? 'Hide' : 'Preview'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => onRestore(v)}>
+                    Restore
+                  </Button>
+                </div>
+              </div>
+              {previewIndex === i ? (
+                <iframe
+                  sandbox=""
+                  srcDoc={substitutePreview(v.bodyHtml)}
+                  className="min-h-[300px] w-full rounded border-0 bg-white"
+                  title={`Version preview ${String(i)}`}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Format a history entry's `editedAt` — a Firestore Timestamp once read
+ *  back from a live snapshot, but a plain Date for an entry just staged
+ *  client-side before the write resolves. */
+function formatHistoryTimestamp(value: EmailTemplateHistoryEntry['editedAt']): string {
+  const date = value instanceof Timestamp ? value.toDate() : value;
+  if (!(date instanceof Date)) return String(value);
+  return date.toLocaleString();
 }

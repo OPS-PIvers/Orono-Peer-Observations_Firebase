@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, slugId } from './common.js';
+import { email, isoDate, slugId } from './common.js';
 
 /**
  * Trigger types — what app event fires this template automatically.
@@ -176,6 +176,26 @@ export const KNOWN_TEMPLATE_VARIABLES = [
 ] as const;
 export type TemplateVariable = (typeof KNOWN_TEMPLATE_VARIABLES)[number];
 
+/**
+ * A prior version of a template's subject/body, captured automatically each
+ * time an admin saves an edit — lets the 'History' panel in
+ * EmailTemplatesPage restore a version if a bad save wipes out a carefully-
+ * worded notification. Kept inline on the template doc (capped array, not a
+ * subcollection) so no firestore.rules change is needed.
+ *
+ * `editedBy`/`editedAt` describe the edit action that *retired* this
+ * snapshot (the doc has no earlier per-save attribution to draw on, so the
+ * acting admin/time of the save that superseded this content is the best
+ * available attribution).
+ */
+export const emailTemplateHistoryEntry = z.object({
+  subject: z.string(),
+  bodyHtml: z.string(),
+  editedAt: isoDate,
+  editedBy: email,
+});
+export type EmailTemplateHistoryEntry = z.infer<typeof emailTemplateHistoryEntry>;
+
 export const emailTemplate = z.object({
   templateId: slugId,
   name: z.string().trim().min(1).max(80),
@@ -198,6 +218,9 @@ export const emailTemplate = z.object({
   isActive: z.boolean().default(true),
   /** System templates can be edited and toggled but not deleted. */
   isSystem: z.boolean().default(false),
+  /** Prior subject/body versions, most recent first. Capped at 5 — see
+   *  emailTemplateHistoryEntry. */
+  history: z.array(emailTemplateHistoryEntry).max(5).default([]),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
