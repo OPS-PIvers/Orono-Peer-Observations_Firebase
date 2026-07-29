@@ -104,12 +104,14 @@ describe('rateLimitsFromSettings', () => {
       observationSavesPerMinute: 60,
       audioUploadsPerHour: 20,
       transcriptionRequestsPerDay: 50,
+      pdfRegenerationsPerHour: 10,
       manualEmailBroadcastsPerHour: 5,
     });
     expect(rateLimitsFromSettings({})).toEqual({
       observationSavesPerMinute: 60,
       audioUploadsPerHour: 20,
       transcriptionRequestsPerDay: 50,
+      pdfRegenerationsPerHour: 10,
       manualEmailBroadcastsPerHour: 5,
     });
   });
@@ -120,12 +122,14 @@ describe('rateLimitsFromSettings', () => {
         observationSavesPerMinute: 10,
         audioUploadsPerHour: 5,
         transcriptionRequestsPerDay: 2,
+        pdfRegenerationsPerHour: 3,
         manualEmailBroadcastsPerHour: 3,
       }),
     ).toEqual({
       observationSavesPerMinute: 10,
       audioUploadsPerHour: 5,
       transcriptionRequestsPerDay: 2,
+      pdfRegenerationsPerHour: 3,
       manualEmailBroadcastsPerHour: 3,
     });
   });
@@ -137,6 +141,7 @@ describe('rateLimitsFromSettings', () => {
       observationSavesPerMinute: 60,
       audioUploadsPerHour: 20,
       transcriptionRequestsPerDay: 50,
+      pdfRegenerationsPerHour: 10,
       manualEmailBroadcastsPerHour: 5,
     });
   });

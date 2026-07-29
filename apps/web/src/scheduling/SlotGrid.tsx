@@ -16,6 +16,11 @@ export interface SlotGridProps {
    *  Calendar (from checkSlotConflicts). Badged, not disabled — the server
    *  enforces the admin's conflict policy at booking time. */
   conflictedSlotIds?: ReadonlySet<string>;
+  /** Slot ids that overlap ANOTHER Draft observation already scheduled for
+   *  this invitee through a different observation window (SCHED-05,
+   *  cross-window double-booking). Badged, not disabled — warn-only, same
+   *  soft-fail spirit as `conflictedSlotIds`. */
+  staffConflictedSlotIds?: ReadonlySet<string>;
 }
 
 /**
@@ -24,7 +29,9 @@ export interface SlotGridProps {
  * 'available' — that single field already reflects FCFS booking and
  * cross-building PE conflicts (both flow through slot status server-side).
  * Real-calendar conflicts (freebusy) arrive via `conflictedSlotIds` and are
- * shown as an "Observer busy" badge.
+ * shown as an "Observer busy" badge. Cross-window double-bookings for the
+ * invitee themselves arrive via `staffConflictedSlotIds` and are shown as a
+ * "You have another observation at this time" badge. Both are warn-only.
  */
 export function SlotGrid({
   slots,
@@ -32,6 +39,7 @@ export function SlotGrid({
   onSelect,
   disabled = false,
   conflictedSlotIds,
+  staffConflictedSlotIds,
 }: SlotGridProps) {
   const byDate = useMemo(() => {
     const groups = new Map<string, Slot[]>();
@@ -68,6 +76,17 @@ export function SlotGrid({
               const isSelected = slot.slotId === selectedSlotId;
               const isConflicted =
                 isAvailable && !isSelected && (conflictedSlotIds?.has(slot.slotId) ?? false);
+              const isStaffConflicted =
+                isAvailable && !isSelected && (staffConflictedSlotIds?.has(slot.slotId) ?? false);
+              const badged = isConflicted || isStaffConflicted;
+              const title =
+                isConflicted && isStaffConflicted
+                  ? "Overlaps an event on your observer's Google Calendar, and you have another observation at this time"
+                  : isConflicted
+                    ? "Overlaps an event on your observer's Google Calendar"
+                    : isStaffConflicted
+                      ? 'You have another observation at this time'
+                      : undefined;
               return (
                 <Button
                   key={slot.id}
@@ -77,21 +96,22 @@ export function SlotGrid({
                   disabled={disabled || !isAvailable}
                   onClick={() => onSelect(slot)}
                   className={
-                    isConflicted
+                    badged
                       ? 'border-ops-red-light text-ops-red-dark flex-col items-start opacity-75'
                       : undefined
                   }
-                  title={
-                    isConflicted
-                      ? "Overlaps an event on your observer's Google Calendar"
-                      : undefined
-                  }
+                  title={title}
                 >
                   <span>
                     {formatLocalTime(slot.startUTC)}
                     {slot.periodName ? ` · ${slot.periodName}` : ''}
                   </span>
                   {isConflicted ? <span className="text-xs opacity-80">Observer busy</span> : null}
+                  {isStaffConflicted ? (
+                    <span className="text-xs opacity-80">
+                      You have another observation at this time
+                    </span>
+                  ) : null}
                 </Button>
               );
             })}

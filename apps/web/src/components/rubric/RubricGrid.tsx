@@ -251,7 +251,10 @@ function MobileDomainCard({
                   data-component-tab={c.id}
                   onClick={() => setActiveId(c.id)}
                   className={cn(
-                    'relative min-w-0 flex-1 px-2 py-2',
+                    // min-h-11 = 44px touch target: this strip is the only
+                    // way to switch components on the mobile accordion,
+                    // which iPad mini (744px logical portrait) renders.
+                    'relative min-h-11 min-w-0 flex-1 px-2 py-2',
                     'border-r border-white/20 last:border-r-0',
                     isActive
                       ? 'bg-ops-red-dark text-white'

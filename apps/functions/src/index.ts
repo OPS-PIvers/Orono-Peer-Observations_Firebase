@@ -26,7 +26,8 @@ export { backfillScriptTagColors } from './observations/backfillScriptTagColors.
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { regenerateObservationPdf } from './observations/regenerateObservationPdf.js';
 export { reopenObservation } from './observations/reopenObservation.js';
-export { geminiTagScript } from './observations/geminiTagScript.js';
+export { suggestScriptTags } from './observations/suggestScriptTags.js';
+export { applyScriptTags } from './observations/applyScriptTags.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';

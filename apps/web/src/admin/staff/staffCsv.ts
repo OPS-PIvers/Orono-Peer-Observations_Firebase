@@ -464,7 +464,10 @@ export async function commitStaffCsvRows(
       const row = byEmail.get(id);
       if (!row) return null;
       const isNew = !existingByEmail.has(id);
-      return { ...row.input, ...(isNew ? { createdAt: serverTimestamp() } : {}) };
+      return {
+        ...row.input,
+        ...(isNew ? { createdAt: serverTimestamp() } : {}),
+      };
     },
     onProgress,
   );

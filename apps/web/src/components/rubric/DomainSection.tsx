@@ -45,9 +45,18 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
         </div>
       </div>
 
-      <div role="rowgroup" className="bg-white">
+      {/*
+        Deliberately no role="rowgroup"/"row"/"columnheader" here. Those
+        roles have a required context role (grid/table/treegrid) that this
+        matrix has no ancestor for, and the matrix isn't a data grid — it's
+        a layout of per-component controls whose rows are interrupted by
+        full-width expanding panels (look-fors/notes/evidence). Asserting
+        table semantics without the context role leaves them unresolvable
+        for assistive tech, so we assert none. Each descriptor cell carries
+        its own proficiency-level label instead (see DescriptorCell).
+      */}
+      <div className="bg-white">
         <div
-          role="row"
           className={cn(
             'sticky top-[calc(var(--page-chrome-h,0px)+48px)] z-[4]',
             'grid',
@@ -55,7 +64,6 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           )}
         >
           <div
-            role="columnheader"
             className={cn(
               'bg-ops-blue-dark',
               'font-heading px-3 py-2',
@@ -67,7 +75,6 @@ export function DomainSection({ domain, children }: DomainSectionProps) {
           {PROFICIENCY_LEVELS.map((level) => (
             <div
               key={level}
-              role="columnheader"
               className={cn(
                 'bg-ops-red-light',
                 'border-r border-white/20 px-3 py-2 last:border-r-0',

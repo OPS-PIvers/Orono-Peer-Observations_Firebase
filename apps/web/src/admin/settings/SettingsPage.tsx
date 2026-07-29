@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteField, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   APP_SETTINGS_DOC_ID,
@@ -83,6 +83,13 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  // Tracks whether *this session* actually edited the reply-to input, as
+  // opposed to it simply never having hydrated a value (e.g. this tab was
+  // open before another admin set it — see useHydratedDraft's hydrate-once
+  // behavior). Only an admin who touched the field in this session may emit
+  // the deleteField() sentinel below; otherwise the key is omitted so
+  // merge:true leaves whatever the remote value is untouched.
+  const [replyToEmailTouched, setReplyToEmailTouched] = useState(false);
 
   // Hydrate once; later snapshots would clobber in-progress edits.
   // Key off the loaded doc's own id rather than a constant so the
@@ -99,6 +106,20 @@ export function SettingsPage() {
         doc(db, SETTINGS_PATH),
         {
           ...form,
+          // replyToEmail is a genuinely optional field (no schema default) —
+          // explicitly delete it on merge when the admin has cleared the
+          // input *in this session*, since a merge write simply omitting the
+          // key would leave a previously-saved value in place rather than
+          // clearing it. Guarded on replyToEmailTouched: without it, a tab
+          // that never hydrated a replyToEmail value (opened before another
+          // admin set one, per useHydratedDraft's hydrate-once behavior)
+          // would have form.replyToEmail === undefined for its whole
+          // session and this line would silently delete the other admin's
+          // saved value on any unrelated save. When untouched, omit the key
+          // entirely so merge:true leaves the remote value alone.
+          ...(replyToEmailTouched && form.replyToEmail === undefined
+            ? { replyToEmail: deleteField() }
+            : {}),
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -170,13 +191,42 @@ export function SettingsPage() {
 
         <Field
           label="Outbound email address"
-          help="Notifications send-as this address via the Trigger Email extension."
+          help="Notifications send-as this address. This address must be authorized to send mail for the district's domain (SPF/DKIM) — an unauthorized address will fail to deliver or land in recipients' spam."
         >
           <Input
             type="email"
             value={form.outboundEmailAddress ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, outboundEmailAddress: e.target.value }))}
             placeholder="observations@orono.k12.mn.us"
+          />
+        </Field>
+
+        <Field
+          label="Reply-to address (optional)"
+          help="When set, replies from recipients go here instead of the outbound address above. Leave blank to use the recipient's mail client default."
+        >
+          <Input
+            type="email"
+            value={form.replyToEmail ?? ''}
+            onChange={(e) => {
+              setReplyToEmailTouched(true);
+              const value = e.target.value.trim();
+              setForm((f) => {
+                if (value === '') {
+                  // exactOptionalPropertyTypes forbids assigning `undefined`
+                  // to an optional field directly — delete the key instead
+                  // so clearing the input doesn't try to write `undefined`
+                  // into local state (setDoc's own deleteField() sentinel,
+                  // applied in save() below, is what actually clears it in
+                  // Firestore).
+                  const next = { ...f };
+                  delete next.replyToEmail;
+                  return next;
+                }
+                return { ...f, replyToEmail: value };
+              });
+            }}
+            placeholder="frontoffice@orono.k12.mn.us"
           />
         </Field>
 
@@ -269,6 +319,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
                     }),
                     observationSavesPerMinute: Number(e.target.value),
@@ -290,6 +341,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
                     }),
                     audioUploadsPerHour: Number(e.target.value),
@@ -311,9 +363,32 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
                     }),
                     transcriptionRequestsPerDay: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
+          <Field label="PDF regenerations per hour (per user)">
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.pdfRegenerationsPerHour ?? 10}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? {
+                      observationSavesPerMinute: 60,
+                      audioUploadsPerHour: 20,
+                      transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
+                      manualEmailBroadcastsPerHour: 5,
+                    }),
+                    pdfRegenerationsPerHour: Number(e.target.value),
                   },
                 }))
               }
@@ -335,6 +410,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
                     }),
                     manualEmailBroadcastsPerHour: Number(e.target.value),

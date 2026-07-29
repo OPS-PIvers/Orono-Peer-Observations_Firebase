@@ -38,6 +38,7 @@ import {
 } from '@/admin/_shared/AdminDataView';
 import { sortRows } from '@/admin/_shared/sortRows';
 import { matchesStatusFilter } from '@/admin/_shared/statusFilter';
+import { NeverSignedInCard } from '@/admin/dashboard/NeverSignedInCard';
 import { StaffDialog } from './StaffDialog';
 import { StaffImportDialog } from './StaffImportDialog';
 import { RolloverDialog } from './RolloverDialog';
@@ -275,6 +276,10 @@ export function StaffPage() {
         </div>
       }
     >
+      {/* Rollout-readiness: /admin redirects here, so this is the admin
+          landing page and the natural home for the "who is stuck" card. */}
+      <NeverSignedInCard />
+
       <StaffFilterBar filters={filters} onChange={setFilters} roles={roles} buildings={buildings} />
 
       {error ? (

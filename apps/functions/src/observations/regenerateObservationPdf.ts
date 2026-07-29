@@ -24,11 +24,15 @@ import {
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
+import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
 
 if (getApps().length === 0) initializeApp();
 
 const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
+
+/** One hour, in milliseconds — the pdfRegenerationsPerHour window. */
+const HOUR_MS = 60 * 60 * 1000;
 
 interface RegenerateRequest {
   observationId?: string;
@@ -82,6 +86,49 @@ export const regenerateObservationPdf = onCall(
       throw new HttpsError(
         'failed-precondition',
         'Only a finalized observation can have its PDF regenerated.',
+      );
+    }
+
+    // Per-user hourly rate limit: reject beyond pdfRegenerationsPerHour before
+    // doing any rendering/Drive work — each call is a full Puppeteer render
+    // plus a Drive upload/share/delete round-trip, bounded only by
+    // maxInstances. Not an auth boundary (the observer-or-admin +
+    // Finalized-only checks above already are); this is pure cost/abuse
+    // control. The counter only increments on an allowed request.
+    //
+    // Fails CLOSED: unlike uploadAudio, this callable does not catch errors
+    // from loadRateLimits/checkRateLimit, so a limiter outage (e.g. the
+    // counter transaction exhausting its retries under contention) throws
+    // and blocks the call instead of letting it through uncounted — this is
+    // the most expensive of the three limited operations (full Puppeteer
+    // render + Drive upload/share/delete), so it's the worst one to fail
+    // open. Matches requestTranscription.ts's handling of the same limiter.
+    const limits = await loadRateLimits(db);
+    const pdfRegenerationsPerHour = limits.pdfRegenerationsPerHour;
+    const rateLimitDecision = await checkRateLimit(db, {
+      userEmail,
+      key: RATE_LIMIT_KEYS.pdfRegeneration,
+      max: pdfRegenerationsPerHour,
+      windowMs: HOUR_MS,
+    });
+    if (!rateLimitDecision.allowed) {
+      try {
+        await db.collection(COLLECTIONS.auditLog).add({
+          timestamp: FieldValue.serverTimestamp(),
+          userEmail,
+          action: AUDIT_ACTIONS.rateLimitTripped,
+          target: `${COLLECTIONS.observations}/${obs.id}`,
+          details: { limitKey: RATE_LIMIT_KEYS.pdfRegeneration, max: pdfRegenerationsPerHour },
+        });
+      } catch (auditErr) {
+        logger.error(
+          'regenerateObservationPdf: rate-limit audit write failed (non-fatal)',
+          auditErr,
+        );
+      }
+      throw new HttpsError(
+        'resource-exhausted',
+        `PDF regeneration limit reached (${String(pdfRegenerationsPerHour)}/hour). Try again later.`,
       );
     }
 

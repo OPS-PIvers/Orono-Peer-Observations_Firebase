@@ -58,6 +58,7 @@ function makeTemplate(id: string, name: string): EmailTemplate & { id: string } 
     scheduledDays: 3,
     isActive: true,
     isSystem: false,
+    history: [],
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
@@ -76,6 +77,7 @@ function makeStaff(email: string): Staff & { id: string } {
     isActive: true,
     hasAdminAccess: false,
     emailPreferences: DEFAULT_EMAIL_PREFERENCES,
+    lastSignInAt: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   };
