@@ -37,6 +37,8 @@ const assignFromPreferenceFn = httpsCallable<AssignObservationFromPreferenceInpu
   'assignObservationFromPreference',
 );
 
+const SELECT_CLASS = 'border-input bg-background h-9 rounded-md border px-2 text-sm';
+
 type RowStatus = 'pending' | 'assigning' | 'done' | 'error';
 
 interface ExecutionRow extends AutoAssignProposal {
@@ -70,6 +72,10 @@ export function AutoAssignDialog({
   // live snapshot updates (e.g. another PE booking a slot concurrently).
   const [rows, setRows] = useState<ExecutionRow[] | null>(null);
   const [running, setRunning] = useState(false);
+  // PE overrides of the algorithm's picked slot, keyed by prefId. Only
+  // consulted while the plan is still being reviewed (before runAssignments
+  // freezes `rows`).
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const plan = useMemo(
     () => buildAutoAssignPlan(preferences, slots, obsWindow),
@@ -81,20 +87,58 @@ export function AutoAssignDialog({
     if (open) {
       setRows(null);
       setRunning(false);
+      setOverrides({});
     }
   }, [open]);
 
+  function withOverride(proposal: AutoAssignProposal): AutoAssignProposal {
+    const overrideSlotId = overrides[proposal.prefId];
+    if (!overrideSlotId || overrideSlotId === proposal.slotId) return proposal;
+    const slot = slots.find((s) => s.slotId === overrideSlotId);
+    if (!slot) return proposal;
+    return {
+      ...proposal,
+      slotId: slot.slotId,
+      slotStartUTC: slot.startUTC,
+      slotEndUTC: slot.endUTC,
+      periodName: slot.periodName,
+    };
+  }
+
+  function availableSlotsFor(proposal: AutoAssignProposal): SlotDoc[] {
+    return slots
+      .filter(
+        (s) =>
+          s.buildingId === proposal.buildingId &&
+          s.dateYMD === proposal.preferredDateYMD &&
+          s.status === 'available',
+      )
+      .sort((a, b) => a.startMinute - b.startMinute);
+  }
+
   const displayRows: ExecutionRow[] =
-    rows ?? plan.proposals.map((p) => ({ ...p, status: 'pending' as const }));
+    rows ?? plan.proposals.map((p) => ({ ...withOverride(p), status: 'pending' as const }));
   const total = displayRows.length;
   const doneCount = displayRows.filter((r) => r.status === 'done').length;
   const errorCount = displayRows.filter((r) => r.status === 'error').length;
   const finished = rows !== null && !running;
 
+  // Two rows can end up pointed at the same slot once the PE overrides the
+  // algorithm's picks. The server transaction rejects the second one, but a
+  // pre-flight warning avoids a wasted round-trip.
+  const slotIdCounts = new Map<string, number>();
+  for (const r of displayRows) slotIdCounts.set(r.slotId, (slotIdCounts.get(r.slotId) ?? 0) + 1);
+  const duplicateSlotIds = new Set(
+    [...slotIdCounts.entries()].filter(([, count]) => count > 1).map(([slotId]) => slotId),
+  );
+
   async function runAssignments() {
     if (total === 0) return;
     setRunning(true);
-    const working: ExecutionRow[] = plan.proposals.map((p) => ({ ...p, status: 'pending' }));
+    const working: ExecutionRow[] = plan.proposals.map((p) => ({
+      ...withOverride(p),
+      status: 'pending',
+    }));
     setRows(working);
 
     for (let i = 0; i < working.length; i += 1) {
@@ -194,7 +238,36 @@ export function AutoAssignDialog({
                         </TableCell>
                         <TableCell className="text-sm">{formatYMD(row.preferredDateYMD)}</TableCell>
                         <TableCell className="text-sm">
-                          {slotLabel(row.slotStartUTC, row.periodName)}
+                          {rows ? (
+                            slotLabel(row.slotStartUTC, row.periodName)
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={row.slotId}
+                                onChange={(e) =>
+                                  setOverrides((prev) => ({
+                                    ...prev,
+                                    [row.prefId]: e.target.value,
+                                  }))
+                                }
+                                className={SELECT_CLASS}
+                              >
+                                {availableSlotsFor(row).map((s) => (
+                                  <option key={s.id} value={s.slotId}>
+                                    {slotLabel(s.startUTC, s.periodName)}
+                                  </option>
+                                ))}
+                              </select>
+                              {duplicateSlotIds.has(row.slotId) ? (
+                                <span
+                                  className="text-ops-red-dark flex items-center gap-1 text-xs"
+                                  title="Another row is also pointed at this slot — one of them will fail."
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <RowStatusBadge row={row} />
