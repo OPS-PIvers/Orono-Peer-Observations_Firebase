@@ -221,10 +221,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           isActive: form.isActive,
           hasAdminAccess: form.hasAdminAccess,
           updatedAt: serverTimestamp(),
-          // `lastSignInAt: null` only on create — it must be present (not
-          // absent) for the admin "never signed in" card's `== null` query to
-          // see this person, and an edit must never clobber a real stamp.
-          ...(mode === 'create' ? { createdAt: serverTimestamp(), lastSignInAt: null } : {}),
+          ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
         },
         { merge: true },
       );

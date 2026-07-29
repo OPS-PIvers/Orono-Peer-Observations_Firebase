@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   staffData: undefined as Record<string, unknown> | undefined,
   setClaims: undefined as ReturnType<typeof vi.fn> | undefined,
   updateStaff: undefined as ((patch: Record<string, unknown>) => Promise<void>) | undefined,
+  addAuditLog: undefined as ((entry: Record<string, unknown>) => Promise<void>) | undefined,
 }));
 
 const SERVER_TIMESTAMP = { __sentinel: 'serverTimestamp' };
@@ -31,6 +32,9 @@ vi.mock('firebase-admin/firestore', () => ({
         Promise.resolve({ exists: state.staffData !== undefined, data: () => state.staffData }),
       update: (patch: Record<string, unknown>) => state.updateStaff?.(patch),
     }),
+    collection: () => ({
+      add: (entry: Record<string, unknown>) => state.addAuditLog?.(entry),
+    }),
   }),
 }));
 
@@ -48,6 +52,7 @@ beforeEach(() => {
   state.staffData = undefined;
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.updateStaff = vi.fn().mockResolvedValue(undefined);
+  state.addAuditLog = vi.fn().mockResolvedValue(undefined);
 });
 
 describe('syncMyClaims', () => {
@@ -118,6 +123,31 @@ describe('syncMyClaims', () => {
   it('still returns claims when the lastSignInAt stamp fails', async () => {
     state.staffData = { role: 'teacher' };
     state.updateStaff = vi.fn().mockRejectedValue(new Error('firestore unavailable'));
+    const result = await run(authedRequest('t@orono.k12.mn.us'));
+    expect(result).toEqual({ role: 'teacher', hasSpecialAccess: false, isAdmin: false });
+  });
+
+  it('writes a sign_in audit log entry alongside the lastSignInAt stamp', async () => {
+    state.staffData = { role: 'teacher' };
+    await run(authedRequest('t@orono.k12.mn.us'));
+    expect(state.addAuditLog).toHaveBeenCalledWith({
+      timestamp: SERVER_TIMESTAMP,
+      userEmail: 't@orono.k12.mn.us',
+      action: 'sign_in',
+      target: 'staff/t@orono.k12.mn.us',
+      details: {},
+    });
+  });
+
+  it('does not write a sign_in audit entry when no staff doc exists', async () => {
+    state.staffData = undefined;
+    await run(authedRequest('nobody@orono.k12.mn.us'));
+    expect(state.addAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('still returns claims when the sign_in audit write fails', async () => {
+    state.staffData = { role: 'teacher' };
+    state.addAuditLog = vi.fn().mockRejectedValue(new Error('firestore unavailable'));
     const result = await run(authedRequest('t@orono.k12.mn.us'));
     expect(result).toEqual({ role: 'teacher', hasSpecialAccess: false, isAdmin: false });
   });

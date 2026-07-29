@@ -54,12 +54,17 @@ export const staff = z.object({
    * stamped by the `syncMyClaims` callable (apps/functions/src/auth/
    * syncMyClaims.ts) — the first thing the web client calls after sign-in.
    *
-   * `null` means "invited but never signed in", which is what the admin
-   * rollout-readiness card queries for. It is deliberately an explicit null
-   * rather than an absent field: Firestore's `where('lastSignInAt','==',null)`
-   * matches documents whose field is *present and null*, never documents that
-   * omit the field. Every staff-creation path therefore writes `null`, and
-   * `scripts/backfill/backfill-last-sign-in.ts` stamps pre-existing docs.
+   * `null` (or an absent field, on docs created before this stamp existed)
+   * means "invited but never signed in". The admin rollout-readiness card
+   * (apps/web/src/admin/dashboard/NeverSignedInCard.tsx) deliberately does
+   * NOT rely on an equality filter for this: Firestore's
+   * `where('lastSignInAt','==',null)` only matches documents where the field
+   * is *present and null*, never documents that omit it, which would make
+   * the card fragile to any staff-creation path that forgets to write the
+   * null. Instead the card queries `isActive == true` alone and checks
+   * "null or missing" client-side. `scripts/backfill/backfill-last-sign-in.ts`
+   * stamps real history from Firebase Auth's user records for docs that
+   * predate this field.
    *
    * Not part of `staffInput` on purpose — no admin form or CSV import may
    * write it, so a routine staff edit can never clobber a real sign-in stamp.

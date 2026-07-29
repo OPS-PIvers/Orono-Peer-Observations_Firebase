@@ -2,9 +2,11 @@
  * NeverSignedInCard — query shape, empty behavior, and resend wiring.
  *
  * The Firestore subscription and the callable are both mocked; what's under
- * test is that the card asks for exactly `isActive == true` +
- * `lastSignInAt == null`, stays out of the way when nobody is outstanding,
- * and reports the two distinct outcomes of `resendStaffInvite`.
+ * test is that the card asks for exactly `isActive == true` (no equality
+ * filter on `lastSignInAt` — see the component header comment on why),
+ * filters client-side for a null-or-missing `lastSignInAt`, stays out of the
+ * way when nobody is outstanding, and reports the two distinct outcomes of
+ * `resendStaffInvite`.
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -73,18 +75,39 @@ beforeEach(() => {
 });
 
 describe('NeverSignedInCard', () => {
-  it('queries active staff with an explicitly null lastSignInAt', () => {
+  it('queries only active staff, with no filter on lastSignInAt', () => {
     render(<NeverSignedInCard />);
-    expect(capturedConstraints[0]).toEqual([
-      { field: 'isActive', op: '==', value: true },
-      { field: 'lastSignInAt', op: '==', value: null },
-    ]);
+    expect(capturedConstraints[0]).toEqual([{ field: 'isActive', op: '==', value: true }]);
   });
 
   it('renders nothing when everyone has signed in', () => {
     collectionState.data = [];
     const { container } = render(<NeverSignedInCard />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('filters out staff who have a real lastSignInAt stamp', () => {
+    collectionState.data = [
+      makeStaff({
+        email: 'signed-in@orono.k12.mn.us',
+        name: 'Signed In',
+        lastSignInAt: new Date(),
+      }),
+    ];
+    const { container } = render(<NeverSignedInCard />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('includes staff whose lastSignInAt field is missing entirely, not just null', () => {
+    // Raw Firestore reads bypass Zod defaults, so a doc that predates this
+    // field can come back with the key absent rather than set to null.
+    const legacyDoc: Record<string, unknown> = {
+      ...makeStaff({ email: 'legacy@orono.k12.mn.us', name: 'Legacy Doc' }),
+    };
+    delete legacyDoc['lastSignInAt'];
+    collectionState.data = [legacyDoc as Staff & { id: string }];
+    render(<NeverSignedInCard />);
+    expect(screen.getByText('Legacy Doc')).toBeInTheDocument();
   });
 
   it('renders nothing while the subscription is still loading', () => {

@@ -14,33 +14,39 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  * roster — and so were sent a `staff.created` invite — but have never signed
  * in, each with a one-click "Resend invite".
  *
- * The query is deliberately plain: `syncMyClaims` denormalizes a
- * `lastSignInAt` stamp onto the staff doc on every sign-in, so "never signed
- * in" is a two-equality-filter query rather than a group-by over /auditLog
- * (which Firestore cannot express). Two equality filters on a single
- * collection are served by merging single-field indexes, so this needs no
- * composite index — same reasoning as StaffPage's other admin queries.
- *
- * Caveat worth remembering: `lastSignInAt == null` matches only documents
- * where the field is *present and null*. Every staff-creation path writes an
- * explicit null, and scripts/backfill/backfill-last-sign-in.ts fills in docs
- * that predate the field. A staff doc that somehow omits the field is
- * invisible here.
+ * The Firestore query only filters `isActive == true` — a single equality
+ * filter needs no composite index, same reasoning as StaffPage's other admin
+ * queries. "Never signed in" (lastSignInAt is null OR the field is absent
+ * entirely, on docs that predate the stamp) is deliberately checked in JS
+ * rather than as a second `where('lastSignInAt', '==', null)` filter:
+ * Firestore equality filters only match documents where the field is
+ * *present*, so a staff doc that simply omits the field would silently never
+ * match that filter and would vanish from this card. Querying the broader
+ * `isActive == true` set and filtering client-side is immune to that trap,
+ * and costs nothing meaningful — StaffPage already loads the entire staff
+ * collection on this same page.
  *
  * Renders nothing while loading or when nobody is outstanding — matching the
  * EmailFailuresCard idiom on the Audit Log page, so a healthy roster costs no
  * vertical space.
  */
 
-const NEVER_SIGNED_IN_CONSTRAINTS = [
-  where('isActive', '==', true),
-  where('lastSignInAt', '==', null),
-];
+const NEVER_SIGNED_IN_CONSTRAINTS = [where('isActive', '==', true)];
 
 /** Disambiguates this subscription from other /staff queries in the cache —
  *  QueryConstraint only exposes its *type*, so two `where`-shaped queries
  *  would otherwise collide on the same key (see useFirestoreCollection). */
 const QUERY_KEY_PARTS = ['never-signed-in'];
+
+/** `lastSignInAt` is `null` on docs the sign-in path hasn't stamped yet, or
+ *  absent entirely on docs created before the field existed. Raw Firestore
+ *  reads bypass Zod defaults, so the value really can be `undefined` at
+ *  runtime even though the `Staff` type says otherwise — widen the type
+ *  before checking so both cases are handled explicitly. */
+function hasNeverSignedIn(s: Staff): boolean {
+  const lastSignInAt = s.lastSignInAt as Date | null | undefined;
+  return lastSignInAt === null || lastSignInAt === undefined;
+}
 
 const resendStaffInviteFn = httpsCallable<{ email: string }, { sent: boolean }>(
   functions,
@@ -60,7 +66,7 @@ export function NeverSignedInCard() {
   const [resendError, setResendError] = useState<string | null>(null);
 
   const rows = useMemo(
-    () => (data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
+    () => (data ?? []).filter(hasNeverSignedIn).sort((a, b) => a.name.localeCompare(b.name)),
     [data],
   );
 

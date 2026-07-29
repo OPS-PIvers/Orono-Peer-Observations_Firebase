@@ -3,7 +3,13 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { ALLOWED_EMAIL_DOMAIN, COLLECTIONS, isAdminRole, isSpecialRole } from '@ops/shared';
+import {
+  ALLOWED_EMAIL_DOMAIN,
+  AUDIT_ACTIONS,
+  COLLECTIONS,
+  isAdminRole,
+  isSpecialRole,
+} from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -23,12 +29,16 @@ if (getApps().length === 0) initializeApp();
  *   4) This function (refuses to issue claims to non-domain accounts)
  *
  * Side effect: this is the app's de-facto sign-in path — AuthProvider calls
- * it once per session as soon as a token appears — so it also stamps
- * `staff/{email}.lastSignInAt`. That denormalized field is what the admin
- * "never signed in" rollout card queries, instead of grouping /auditLog by
- * user (which Firestore can't do). The stamp is best-effort: a failed write
- * is logged but never fails the claim sync, because claims are on the
- * critical path for rendering the app and adoption telemetry is not.
+ * it once per session as soon as a token appears (gated by `syncedUidRef`,
+ * plus at most one more call for the one-time isAdmin-claim migration; see
+ * AuthProvider.tsx) — so it also stamps `staff/{email}.lastSignInAt` and
+ * writes an `AUDIT_ACTIONS.signIn` /auditLog entry. The denormalized stamp
+ * is what the admin "never signed in" rollout card reads (client-side
+ * null-or-missing check, not a Firestore equality filter — see
+ * NeverSignedInCard.tsx); the audit entry gives the `sign_in` action, which
+ * until now was written nowhere, real data. Both writes are best-effort: a
+ * failure is logged but never fails the claim sync, because claims are on
+ * the critical path for rendering the app and this bookkeeping is not.
  */
 export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, async (request) => {
   if (!request.auth) {
@@ -42,7 +52,8 @@ export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, 
     );
   }
 
-  const staffRef = getFirestore().doc(`${COLLECTIONS.staff}/${email}`);
+  const db = getFirestore();
+  const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
   const staffSnap = await staffRef.get();
   const staffData = staffSnap.exists ? staffSnap.data() : null;
   const role = (staffData?.['role'] as string | undefined) ?? null;
@@ -60,8 +71,18 @@ export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, 
   if (staffSnap.exists) {
     try {
       await staffRef.update({ lastSignInAt: FieldValue.serverTimestamp() });
+      await db.collection(COLLECTIONS.auditLog).add({
+        timestamp: FieldValue.serverTimestamp(),
+        userEmail: email,
+        action: AUDIT_ACTIONS.signIn,
+        target: `${COLLECTIONS.staff}/${email}`,
+        details: {},
+      });
     } catch (err) {
-      logger.warn('syncMyClaims: failed to stamp lastSignInAt', { email, err });
+      logger.warn('syncMyClaims: failed to stamp lastSignInAt / write sign_in audit entry', {
+        email,
+        err,
+      });
     }
   }
 

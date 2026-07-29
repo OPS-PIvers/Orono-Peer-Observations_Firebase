@@ -464,12 +464,9 @@ export async function commitStaffCsvRows(
       const row = byEmail.get(id);
       if (!row) return null;
       const isNew = !existingByEmail.has(id);
-      // New rows get an explicit `lastSignInAt: null` so the admin "never
-      // signed in" card's `== null` query can see them; existing rows are
-      // left alone so an import never clobbers a real sign-in stamp.
       return {
         ...row.input,
-        ...(isNew ? { createdAt: serverTimestamp(), lastSignInAt: null } : {}),
+        ...(isNew ? { createdAt: serverTimestamp() } : {}),
       };
     },
     onProgress,
