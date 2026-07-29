@@ -151,4 +151,47 @@ describe('syncMyClaims', () => {
     const result = await run(authedRequest('t@orono.k12.mn.us'));
     expect(result).toEqual({ role: 'teacher', hasSpecialAccess: false, isAdmin: false });
   });
+
+  describe('lastSignInAt staleness gate (repeated-call abuse via refreshClaims)', () => {
+    function timestamp(ms: number) {
+      return { toMillis: () => ms };
+    }
+
+    it('skips the stamp and audit write when the existing stamp is fresh (<10min old)', async () => {
+      state.staffData = { role: 'teacher', lastSignInAt: timestamp(Date.now() - 60_000) };
+      await run(authedRequest('t@orono.k12.mn.us'));
+      expect(state.updateStaff).not.toHaveBeenCalled();
+      expect(state.addAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('writes the stamp and audit entry when the existing stamp is stale (>=10min old)', async () => {
+      state.staffData = { role: 'teacher', lastSignInAt: timestamp(Date.now() - 11 * 60_000) };
+      await run(authedRequest('t@orono.k12.mn.us'));
+      expect(state.updateStaff).toHaveBeenCalledWith({ lastSignInAt: SERVER_TIMESTAMP });
+      expect(state.addAuditLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('a second call inside the staleness window writes neither a stamp nor an audit entry', async () => {
+      // First call: no existing stamp, so it writes one (simulating an actual sign-in).
+      state.staffData = { role: 'teacher' };
+      await run(authedRequest('t@orono.k12.mn.us'));
+      expect(state.updateStaff).toHaveBeenCalledTimes(1);
+      expect(state.addAuditLog).toHaveBeenCalledTimes(1);
+
+      // Simulate the freshly-written stamp being present for the next call
+      // (as it would be against real Firestore), then call again immediately
+      // — e.g. a second "Refresh access" click.
+      state.staffData = { role: 'teacher', lastSignInAt: timestamp(Date.now()) };
+      await run(authedRequest('t@orono.k12.mn.us'));
+      expect(state.updateStaff).toHaveBeenCalledTimes(1);
+      expect(state.addAuditLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('still stamps when the field exists but is explicitly null (never signed in before)', async () => {
+      state.staffData = { role: 'teacher', lastSignInAt: null };
+      await run(authedRequest('t@orono.k12.mn.us'));
+      expect(state.updateStaff).toHaveBeenCalledWith({ lastSignInAt: SERVER_TIMESTAMP });
+      expect(state.addAuditLog).toHaveBeenCalledTimes(1);
+    });
+  });
 });
