@@ -62,6 +62,12 @@ import { AudioPopoverButton } from './AudioPopoverButton';
 import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
 import { computeUnscoredComponents, type ActiveComponent } from './unscoredComponents';
+import {
+  createForcedSignOutFlushCallback,
+  hasPendingEditorWork,
+  type EditorSavingState,
+  type PendingEditorWorkRefs,
+} from './pendingEditorWork';
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -231,7 +237,7 @@ export function ObservationEditorPage() {
   // on debounce. Both fields share the same autosave cycle so we don't
   // have two timers racing against each other.
   const [draft, setDraft] = useState<EditorDraft>(emptyDraft);
-  const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [savingState, setSavingState] = useState<EditorSavingState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const draftRef = useRef<EditorDraft>(emptyDraft);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,6 +257,13 @@ export function ObservationEditorPage() {
   useEffect(() => {
     savingStateRef.current = savingState;
   }, [savingState]);
+  // The single "is there still an unwritten edit?" view onto those two refs.
+  // Both are useRef handles, so this object is stable for the page's lifetime.
+  // See pendingEditorWork.ts — every consumer below asks it, none re-derives it.
+  const pendingWorkRefs = useMemo<PendingEditorWorkRefs>(
+    () => ({ flushTimer, savingState: savingStateRef }),
+    [],
+  );
   const isFirstOnlineRender = useRef(true);
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
@@ -358,19 +371,18 @@ export function ObservationEditorPage() {
 
   // A session-timeout sign-out (PLAT-09) tears this page down by navigating to
   // /sign-in — and the unmount cleanup above would only run *after* auth has
-  // been invalidated, so the write would fail silently and the last debounced
+  // been invalidated, so the write would fail silently and the last unsaved
   // edit (a proficiency toggle, a keystroke, a just-applied set of auto-tags)
   // would be lost. AuthProvider runs this first, while the token is still
-  // valid, and awaits it. Clearing the timer here also means the unmount
-  // cleanup won't fire a second, doomed write.
+  // valid, and awaits it.
+  //
+  // "Unsaved" here means the shared hasPendingEditorWork predicate, NOT just
+  // "a debounce timer is armed": a save that already ran and failed is waiting
+  // in the backoff effect's own local timer, which sign-out cancels on unmount.
+  // See pendingEditorWork.ts.
   useEffect(() => {
-    return registerForcedSignOutFlush(async () => {
-      if (flushTimer.current === null) return;
-      clearTimeout(flushTimer.current);
-      flushTimer.current = null;
-      await flush();
-    });
-  }, [flush]);
+    return registerForcedSignOutFlush(createForcedSignOutFlushCallback(pendingWorkRefs, flush));
+  }, [pendingWorkRefs, flush]);
 
   // Automatic retry with backoff after a save failure. Re-runs whenever
   // savingState changes: entering 'error' schedules the next attempt (and
@@ -408,16 +420,16 @@ export function ObservationEditorPage() {
     // Don't force a second concurrent write if one is still in flight — the
     // Firestore SDK retries internally and will resolve it now that we're
     // back online. Only step in for a debounced-but-unflushed edit or a
-    // save that already failed.
-    const hasPendingWork = flushTimer.current !== null || savingStateRef.current === 'error';
-    if (!hasPendingWork) return;
+    // save that already failed — the same predicate the forced-sign-out
+    // flush uses. See pendingEditorWork.ts.
+    if (!hasPendingEditorWork(pendingWorkRefs)) return;
     if (flushTimer.current) {
       clearTimeout(flushTimer.current);
       flushTimer.current = null;
     }
     autoRetryCountRef.current = 0;
     void flush();
-  }, [isOnline, flush]);
+  }, [isOnline, flush, pendingWorkRefs]);
 
   // Manual retry: force-flush right away, bypassing the debounce and any
   // pending backoff timer (cleared automatically by the effect above once

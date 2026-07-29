@@ -114,7 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [appSettingsData]);
 
   /** Guards against a second deadline check (interval, focus, visibility)
-   *  re-entering while the flush below is still running. */
+   *  re-entering while the flush below is still running. Released again if
+   *  the sign-out attempt itself fails — see forceSignOutForTimeout. */
   const forcedSignOutInFlightRef = useRef(false);
 
   const forceSignOutForTimeout = useCallback(() => {
@@ -136,9 +137,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         await firebaseSignOut(auth);
-      } finally {
-        void navigate('/sign-in', { replace: true, state: { sessionExpired: true } });
+      } catch (err) {
+        // firebaseSignOut can genuinely reject — the documented case being an
+        // IndexedDB/persistence write failure under Safari private browsing,
+        // i.e. exactly the iPads this timeout exists for. If we left the
+        // re-entrancy guard latched here, forceSignOutForTimeout would become
+        // a permanent no-op for the rest of this mount and the deadline would
+        // be silently disabled while the session stayed live. Release it so
+        // the next interval / focus / visibility tick retries.
+        //
+        // This cannot make a SUCCESSFUL sign-out double-fire: once the user
+        // is actually signed out, `check()` bails on `!auth.currentUser` and
+        // the status effect below resets this ref anyway.
+        forcedSignOutInFlightRef.current = false;
+        console.warn('Forced sign-out failed; will retry on the next session check', err);
       }
+      // Navigate either way: on success this is the redirect to /sign-in; on
+      // failure it still gets the observation off the screen of a session
+      // that has already expired.
+      void navigate('/sign-in', { replace: true, state: { sessionExpired: true } });
     })();
   }, [navigate]);
 

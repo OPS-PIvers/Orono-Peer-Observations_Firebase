@@ -19,6 +19,10 @@
  *     sees it and gets the silent sign-out the warn-first design prevents.
  *   - pending editor work must be flushed BEFORE auth is invalidated, and
  *     sign-out must still happen if that flush fails.
+ *
+ * Plus the re-entrancy guard itself: a sign-out attempt that REJECTS must
+ * leave the timeout armed for the next tick, while a successful one still
+ * can't double-fire.
  */
 import type { ReactNode } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
@@ -346,5 +350,76 @@ describe('AuthProvider — flushing pending editor work before a forced sign-out
       unregister();
       warn.mockRestore();
     }
+  });
+
+  it('retries on the next deadline check when firebaseSignOut itself rejects', async () => {
+    // REGRESSION: the re-entrancy guard used to latch true forever, because it
+    // was only ever released when `status` left 'signed-in' — which requires a
+    // SUCCESSFUL sign-out to fire onAuthStateChanged. firebaseSignOut rejecting
+    // (documented failure mode: the IndexedDB/persistence write failing under
+    // Safari private browsing on iPad — the exact device this feature targets)
+    // therefore turned forceSignOutForTimeout into a permanent no-op and
+    // silently disabled the deadline for the rest of the mount.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // Every attempt fails, so the only way the count can move is the guard
+    // actually being released after each failure.
+    mockSignOut.mockImplementation(() => Promise.reject(new Error('Failed to write to IndexedDB')));
+
+    try {
+      renderProvider();
+      await signIn(PAST_DEADLINE_MS);
+
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalled();
+      });
+      // The rejection left the session live, so the deadline is still unmet.
+      expect(screen.getByTestId('status')).toHaveTextContent('signed-in');
+      expect(warn).toHaveBeenCalled();
+
+      // Drain the failing attempt (all microtasks) before measuring, so the
+      // focus tick below isn't merely bouncing off a legitimately-held guard.
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const callsBeforeFocus = mockSignOut.mock.calls.length;
+
+      // A focus tick is one of the three things that re-check the deadline
+      // (interval / focus / visibilitychange). It must reach sign-out again
+      // rather than finding a permanently latched guard.
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(mockSignOut.mock.calls.length).toBeGreaterThan(callsBeforeFocus);
+      });
+    } finally {
+      // Restore the shared mock's baseline — vi.clearAllMocks() only clears
+      // call records, not implementations.
+      mockSignOut.mockImplementation(() => Promise.resolve());
+      warn.mockRestore();
+    }
+  });
+
+  it('does not sign out twice after a successful forced sign-out', async () => {
+    // The other half of the guard: releasing it on failure must not make a
+    // genuinely successful sign-out re-fire on the next focus/interval tick.
+    renderProvider();
+    await signIn(PAST_DEADLINE_MS);
+
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
   });
 });
