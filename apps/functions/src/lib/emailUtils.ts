@@ -129,6 +129,91 @@ export async function loadSecurityAdminEmail(db: Firestore): Promise<string | nu
 }
 
 /**
+ * Reasonable email-address format check for any value that reaches the mail
+ * pipeline as a `from` or `replyTo` address — whether read raw from
+ * Firestore (which bypasses the Zod schema's `z.email()` check entirely, see
+ * the doc comment on loadOutboundEmailSettings below) or passed in as a
+ * per-send override argument by a caller. This is what first gives those
+ * values real send-time effect, so a malformed value — or worse, one
+ * carrying a literal CR/LF (a classic header-injection vector) — must be
+ * rejected here rather than written straight into the `/mail` doc.
+ * Deliberately NOT restricted to the district's domain: any well-formed
+ * address is allowed (PLAT-05 decision).
+ */
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isSendableEmailAddress(value: string): boolean {
+  return !/[\r\n]/.test(value) && EMAIL_FORMAT_RE.test(value);
+}
+
+/**
+ * Trim + format-validate a reply-to candidate from either source that can
+ * supply one — the per-send override argument to `sendEmail`, or the
+ * configured `/appSettings.replyToEmail` default — through the exact same
+ * path, so neither is validated more strictly than the other. An empty or
+ * malformed candidate normalizes to `undefined` ("no reply-to"); it is never
+ * thrown, only logged.
+ */
+function normalizeReplyToCandidate(
+  candidate: string | undefined,
+  source: 'per-send override' | 'configured default',
+): string | undefined {
+  if (typeof candidate !== 'string') return undefined;
+  const trimmed = candidate.trim();
+  if (trimmed === '') return undefined;
+  if (!isSendableEmailAddress(trimmed)) {
+    logger.warn('emailUtils: replyTo address failed format validation, omitting', {
+      source,
+      rejected: trimmed,
+    });
+    return undefined;
+  }
+  return trimmed;
+}
+
+/**
+ * Resolve the outbound "from" address and optional default reply-to address
+ * from /appSettings, in a single read.
+ *
+ * A raw Admin-SDK read bypasses the Zod schema's `.default()` (same caveat as
+ * loadEmailBranding/loadSecurityAdminEmail above), so a missing or blank
+ * `outboundEmailAddress` field falls back explicitly to the hardcoded
+ * FROM_EMAIL constant rather than relying on the schema default kicking in.
+ * A non-blank value that fails `isSendableEmailAddress` (malformed, or
+ * carrying a CR/LF) also falls back to FROM_EMAIL, with the rejection
+ * logged. `replyToEmail` has no schema default (it's genuinely optional) so
+ * a missing or invalid value resolves to `undefined`, meaning "no reply-to
+ * override."
+ */
+async function loadOutboundEmailSettings(
+  db: Firestore,
+): Promise<{ fromEmail: string; replyTo: string | undefined }> {
+  const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+  const data = snap.data();
+
+  const rawFrom = data?.['outboundEmailAddress'] as string | undefined;
+  const trimmedFrom = typeof rawFrom === 'string' ? rawFrom.trim() : '';
+  let fromEmail = FROM_EMAIL;
+  if (trimmedFrom !== '') {
+    if (isSendableEmailAddress(trimmedFrom)) {
+      fromEmail = trimmedFrom;
+    } else {
+      logger.warn(
+        'emailUtils: outboundEmailAddress failed format validation, falling back to FROM_EMAIL',
+        { rejected: trimmedFrom },
+      );
+    }
+  }
+
+  const replyTo = normalizeReplyToCandidate(
+    data?.['replyToEmail'] as string | undefined,
+    'configured default',
+  );
+
+  return { fromEmail, replyTo };
+}
+
+/**
  * Core send: wraps the content HTML in the branded email shell, writes a
  * document to /mail which the Trigger Email extension picks up and sends
  * immediately, and writes an `emailSent` audit log entry. Every templated/
@@ -154,8 +239,12 @@ export async function sendEmail(args: {
   mailDocId: string;
   triggerType: EmailTriggerType;
   auditDetails?: Record<string, unknown>;
+  /** Per-send reply-to override. Falls back to the admin-configured
+   *  /appSettings.replyToEmail default when omitted; omitted entirely from
+   *  the /mail doc when neither is set. */
+  replyTo?: string;
 }): Promise<SendEmailResult> {
-  const { db, to, subject, html, mailDocId, triggerType, auditDetails } = args;
+  const { db, to, subject, html, mailDocId, triggerType, auditDetails, replyTo } = args;
   const requested = (Array.isArray(to) ? to : [to]).filter(Boolean);
 
   const suppressed: string[] = [];
@@ -190,6 +279,10 @@ export async function sendEmail(args: {
   }
 
   const branding = await loadEmailBranding(db);
+  const { fromEmail, replyTo: defaultReplyTo } = await loadOutboundEmailSettings(db);
+  // Both the per-send override and the configured default are routed through
+  // normalizeReplyToCandidate — see its doc comment for why that matters.
+  const resolvedReplyTo = normalizeReplyToCandidate(replyTo, 'per-send override') ?? defaultReplyTo;
 
   // Re-validate every href in the (already variable-substituted) body. Input-
   // time validation via toSafeUrl only governs what the link editor writes, so
@@ -214,12 +307,26 @@ export async function sendEmail(args: {
     preferencesLink: `${APP_URL}/profile#email-preferences`,
   });
 
-  await db.collection(COLLECTIONS.mail).doc(mailDocId).set({
-    to: recipients,
-    from: FROM_EMAIL,
-    message: { subject, html: wrappedHtml },
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  await db
+    .collection(COLLECTIONS.mail)
+    .doc(mailDocId)
+    .set({
+      to: recipients,
+      from: fromEmail,
+      // NOTE: `message.replyTo` is where the Send Email extension adoption
+      // decision (still open, see TODO.md) needs to be re-verified against —
+      // whatever extension config is ultimately deployed may expect the
+      // reply-to on a different field (e.g. a top-level `replyTo`, per the
+      // upstream firestore-send-email extension's own doc-shape convention)
+      // rather than nested under `message`. Confirm the field name once that
+      // decision is made, before assuming this wiring works end-to-end.
+      message: {
+        subject,
+        html: wrappedHtml,
+        ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
+      },
+      createdAt: FieldValue.serverTimestamp(),
+    });
 
   // NOTE: this only confirms the /mail doc was *queued* for the Trigger
   // Email extension — it fires before the extension has attempted SMTP
