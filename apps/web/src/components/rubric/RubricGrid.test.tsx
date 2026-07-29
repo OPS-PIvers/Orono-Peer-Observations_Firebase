@@ -188,8 +188,8 @@ describe('<RubricGrid> edit mode', () => {
         storageScope="test-edit"
       />,
     );
-    const cell = screen.getByRole('gridcell', {
-      name: /proficient — Proficient 1a description/i,
+    const cell = screen.getByRole('radio', {
+      name: /Proficient — Proficient 1a description/i,
     });
     await userEvent.click(cell);
     expect(onProficiency).toHaveBeenCalledWith('1a', 'proficient');
@@ -213,10 +213,10 @@ describe('<RubricGrid> edit mode', () => {
         storageScope="test-edit"
       />,
     );
-    const cell = screen.getByRole('gridcell', {
-      name: /proficient — Proficient 1a description/i,
+    const cell = screen.getByRole('radio', {
+      name: /Proficient — Proficient 1a description/i,
     });
-    expect(cell).toHaveAttribute('aria-selected', 'true');
+    expect(cell).toHaveAttribute('aria-checked', 'true');
     await userEvent.click(cell);
     expect(onProficiency).toHaveBeenCalledWith('1a', null);
   });
@@ -231,9 +231,10 @@ describe('<RubricGrid> edit mode', () => {
         storageScope="test-edit-readonly"
       />,
     );
-    const cell = screen.getByRole('gridcell', {
-      name: /developing — Developing 1a description/i,
+    const cell = screen.getByRole('radio', {
+      name: /Developing — Developing 1a description/i,
     });
+    expect(cell).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(cell);
     expect(onProficiency).not.toHaveBeenCalled();
 
@@ -292,7 +293,7 @@ describe('<RubricGrid> edit mode', () => {
     expect(document.querySelector('[contenteditable]')).toBeNull();
   });
 
-  it('selected proficiency cell renders with selected styling and aria-selected=true', () => {
+  it('selected proficiency cell renders with selected styling and aria-checked=true', () => {
     render(
       <RubricGrid
         rubric={makeRubric()}
@@ -312,10 +313,122 @@ describe('<RubricGrid> edit mode', () => {
       .getByText('Creating an Environment of Respect')
       .closest('[data-component-row]');
     if (!(row instanceof HTMLElement)) throw new Error('expected component row to exist');
-    const selected = within(row).getByRole('gridcell', {
-      name: /distinguished — Distinguished 2a/i,
+    const selected = within(row).getByRole('radio', {
+      name: /Distinguished — Distinguished 2a/i,
     });
-    expect(selected).toHaveAttribute('aria-selected', 'true');
+    expect(selected).toHaveAttribute('aria-checked', 'true');
     expect(selected.className).toMatch(/bg-ops-blue/);
+  });
+
+  it('renders the four descriptors as a radiogroup with an accessible name', () => {
+    render(
+      <RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-radiogroup" />,
+    );
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    expect(within(group).getAllByRole('radio')).toHaveLength(4);
+  });
+
+  it('roving tabindex starts on the first radio when nothing is selected', () => {
+    render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-roving" />);
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios[0]?.tabIndex).toBe(0);
+    expect(radios[1]?.tabIndex).toBe(-1);
+    expect(radios[2]?.tabIndex).toBe(-1);
+    expect(radios[3]?.tabIndex).toBe(-1);
+  });
+
+  it('roving tabindex starts on the selected radio', () => {
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        mode={editMode({
+          entries: {
+            '1a': { proficiency: 'basic', selectedLookForIds: [], scratchNotes: '' },
+          },
+        })}
+        storageScope="test-edit-roving-selected"
+      />,
+    );
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    const radios = within(group).getAllByRole('radio');
+    // developing=0, basic=1, proficient=2, distinguished=3
+    expect(radios[1]?.tabIndex).toBe(0);
+    expect(radios[0]?.tabIndex).toBe(-1);
+  });
+
+  it('arrow keys move focus without selecting; Home/End jump to the ends', async () => {
+    render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-arrows" />);
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    const radios = within(group).getAllByRole('radio');
+    radios[0]?.focus();
+    expect(document.activeElement).toBe(radios[0]);
+
+    await userEvent.keyboard('{ArrowRight}');
+    expect(document.activeElement).toBe(radios[1]);
+    expect(radios[1]?.tabIndex).toBe(0);
+    expect(radios[0]?.tabIndex).toBe(-1);
+
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(radios[2]);
+
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(radios[1]);
+
+    await userEvent.keyboard('{End}');
+    expect(document.activeElement).toBe(radios[3]);
+
+    await userEvent.keyboard('{Home}');
+    expect(document.activeElement).toBe(radios[0]);
+  });
+
+  it('wraps from the first radio to the last on ArrowLeft', async () => {
+    render(<RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-wrap" />);
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    const radios = within(group).getAllByRole('radio');
+    radios[0]?.focus();
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(document.activeElement).toBe(radios[3]);
+  });
+
+  it('Enter selects the radio that currently has focus after arrow navigation', async () => {
+    const onProficiency = vi.fn();
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        mode={editMode({ onProficiency })}
+        storageScope="test-edit-enter-select"
+      />,
+    );
+    const group = screen.getByRole('radiogroup', {
+      name: /Demonstrating Knowledge of Content proficiency rating/i,
+    });
+    const radios = within(group).getAllByRole('radio');
+    radios[0]?.focus();
+    await userEvent.keyboard('{ArrowRight}{Enter}');
+    expect(onProficiency).toHaveBeenCalledWith('1a', 'basic');
+  });
+
+  it('the look-fors checklist is a labeled group of real checkboxes', async () => {
+    render(
+      <RubricGrid rubric={makeRubric()} mode={editMode()} storageScope="test-edit-lf-group" />,
+    );
+    const [firstLookForsChip] = screen.getAllByRole('button', { name: /Look-fors/ });
+    if (!firstLookForsChip) throw new Error('expected a Look-fors chip button');
+    await userEvent.click(firstLookForsChip);
+    const group = screen.getByRole('group', {
+      name: /Look-fors for Demonstrating Knowledge of Content/i,
+    });
+    expect(within(group).getAllByRole('checkbox')).toHaveLength(2);
   });
 });

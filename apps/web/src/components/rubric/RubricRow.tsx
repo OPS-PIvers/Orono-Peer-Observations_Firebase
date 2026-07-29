@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -141,11 +141,58 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   }
 
   const isAssigned = mode.kind === 'view' ? mode.assignedComponentIds.has(component.id) : true;
+  // Editable only in edit mode with the write lock off — same gate as
+  // handleSelectProficiency below. Both edit-mode branches (interactive
+  // and read-only/finalized) render the four descriptors as a
+  // role="radiogroup" of role="radio" cells, since proficiency really is
+  // a single mutually-exclusive choice (observationComponentEntry.proficiency
+  // is one nullable enum, not four booleans) — only pure "view" mode (rubric
+  // definition browsing, no scored entry at all) keeps the plain gridcell
+  // presentation, since nothing is ever "checked" there.
+  const interactive = isEdit && !mode.readOnly;
+  const selectedIndex = entry.proficiency ? PROFICIENCY_LEVELS.indexOf(entry.proficiency) : -1;
+  // Roving tabindex (WAI-ARIA radiogroup, "selection does not follow focus"
+  // variant): exactly one radio is a tab stop at a time — the checked one,
+  // or the first when nothing is checked yet. Arrow keys move this index
+  // and DOM focus without selecting; Enter/Space (native <button> behavior)
+  // is what actually selects the focused radio.
+  const [rovingIndex, setRovingIndex] = useState(selectedIndex >= 0 ? selectedIndex : 0);
+  const radioRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    setRovingIndex(selectedIndex >= 0 ? selectedIndex : 0);
+  }, [selectedIndex]);
 
   function handleSelectProficiency(level: ProficiencyLevel) {
     if (mode.kind !== 'edit' || mode.readOnly) return;
     const next = entry.proficiency === level ? null : level;
     mode.onProficiency(component.id, next);
+  }
+
+  function handleProficiencyGroupKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const count = PROFICIENCY_LEVELS.length;
+    let next: number;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        next = (rovingIndex + 1) % count;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        next = (rovingIndex - 1 + count) % count;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = count - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    setRovingIndex(next);
+    radioRefs.current[next]?.focus();
   }
 
   function handleToggleLookFor(lookForId: string) {
@@ -247,7 +294,10 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   return (
     <div>
       <div
-        className={cn('grid items-stretch', RUBRIC_GRID_COLS)}
+        className={cn(
+          'grid items-stretch',
+          isEdit ? 'grid-cols-[280px_minmax(0,1fr)]' : RUBRIC_GRID_COLS,
+        )}
         role="row"
         data-component-row={component.id}
       >
@@ -277,22 +327,60 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
           </div>
         </div>
 
-        {/* Four descriptor cells */}
-        {PROFICIENCY_LEVELS.map((level) => {
-          const text = component.proficiencyLevels[level];
-          const selected = entry.proficiency === level;
-          const interactive = mode.kind === 'edit' && !mode.readOnly;
-          return (
-            <DescriptorCell
-              key={level}
-              level={level}
-              text={text}
-              selected={selected}
-              interactive={interactive}
-              onClick={() => handleSelectProficiency(level)}
-            />
-          );
-        })}
+        {/* Four descriptor cells. Edit mode (interactive or finalized/
+            read-only) renders these as a single role="radiogroup" of
+            role="radio" cells — proficiency is one mutually-exclusive
+            choice, matching observationComponentEntry.proficiency. Pure
+            "view" mode (rubric definition browsing) has no scored entry
+            at all, so it keeps the plain gridcell presentation below. */}
+        {isEdit ? (
+          <div
+            role="radiogroup"
+            aria-label={`${component.title} proficiency rating`}
+            // Not a tab stop itself (roving tabindex lives on the radio
+            // children below) — present only so the container is
+            // programmatically focusable, per the standard composite-
+            // widget pattern for a group role carrying a keydown handler.
+            tabIndex={-1}
+            className="grid grid-cols-4 items-stretch"
+            onKeyDown={interactive ? handleProficiencyGroupKeyDown : undefined}
+          >
+            {PROFICIENCY_LEVELS.map((level, index) => {
+              const text = component.proficiencyLevels[level];
+              const selected = entry.proficiency === level;
+              return (
+                <DescriptorCell
+                  key={level}
+                  level={level}
+                  text={text}
+                  selected={selected}
+                  asRadio
+                  interactive={interactive}
+                  tabIndex={index === rovingIndex ? 0 : -1}
+                  cellRef={(el) => {
+                    radioRefs.current[index] = el;
+                  }}
+                  onClick={() => handleSelectProficiency(level)}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          PROFICIENCY_LEVELS.map((level) => {
+            const text = component.proficiencyLevels[level];
+            return (
+              <DescriptorCell
+                key={level}
+                level={level}
+                text={text}
+                selected={false}
+                asRadio={false}
+                interactive={false}
+                onClick={() => undefined}
+              />
+            );
+          })
+        )}
       </div>
 
       {combinedPanel}
@@ -354,6 +442,7 @@ function MobileLevelRow({
           // reads clearly. When selected, drop one unit of padding to
           // compensate for the 4px brand-blue left border.
           'flex w-full items-center gap-2 py-2.5 pr-4 pl-10 text-left transition-colors',
+          'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
           !selected && 'hover:bg-ops-blue-lighter/20',
           selected && 'pl-9',
         )}
@@ -393,6 +482,7 @@ function MobileLevelRow({
               aria-pressed={selected}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                'focus-visible:ring-ops-blue-dark focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-none',
                 selected
                   ? 'border-ops-blue text-ops-blue-dark hover:bg-ops-blue-lighter/40 border bg-white'
                   : 'bg-ops-blue hover:bg-ops-blue-dark text-white',
@@ -683,7 +773,11 @@ function LookForsPanel({
   onToggle: (lookForId: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+    <div
+      role="group"
+      aria-label={`Look-fors for ${component.title}`}
+      className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+    >
       {component.lookFors.map((lf) => {
         const checked = selectedIds.includes(lf.id);
         return (
@@ -702,7 +796,10 @@ function LookForsPanel({
               checked={checked}
               disabled={readOnly}
               onChange={() => onToggle(lf.id)}
-              className="accent-ops-blue mt-0.5 h-4 w-4"
+              className={cn(
+                'accent-ops-blue mt-0.5 h-4 w-4 rounded',
+                'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-none',
+              )}
               aria-label={lf.text}
             />
             <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
@@ -811,24 +908,40 @@ function DescriptorCell({
   level,
   text,
   selected,
+  asRadio,
   interactive,
+  tabIndex,
+  cellRef,
   onClick,
 }: {
   level: ProficiencyLevel;
   text: string;
   selected: boolean;
+  /**
+   * True for both edit-mode branches (interactive and finalized/read-only)
+   * — proficiency really is one mutually-exclusive choice there, so these
+   * cells are members of the enclosing role="radiogroup". False for pure
+   * "view" mode (rubric definition browsing), which has no scored entry at
+   * all and keeps the plain gridcell presentation.
+   */
+  asRadio: boolean;
   interactive: boolean;
+  tabIndex?: number;
+  cellRef?: (el: HTMLButtonElement | null) => void;
   onClick: () => void;
 }) {
   const baseClass = 'relative border-l border-gray-100 px-3 py-3 text-sm leading-snug';
+  const accessibleLabel = `${PROFICIENCY_LABELS[level]} — ${text || 'no descriptor'}`;
 
-  if (interactive) {
+  if (asRadio && interactive) {
     return (
       <button
         type="button"
-        role="gridcell"
-        aria-selected={selected}
-        aria-label={`${level} — ${text || 'no descriptor'}`}
+        ref={cellRef}
+        role="radio"
+        aria-checked={selected}
+        aria-label={accessibleLabel}
+        tabIndex={tabIndex}
         data-proficiency={level}
         onClick={onClick}
         className={cn(
@@ -841,7 +954,10 @@ function DescriptorCell({
         )}
       >
         {selected && (
-          <span className="bg-ops-blue absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-white">
+          <span
+            className="bg-ops-blue absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-white"
+            aria-hidden="true"
+          >
             ✓
           </span>
         )}
@@ -850,16 +966,37 @@ function DescriptorCell({
     );
   }
 
+  if (asRadio) {
+    // Finalized / read-only observation: still a real (locked) selection,
+    // so this stays a role="radio" member of the radiogroup — just
+    // non-focusable and non-interactive, matching how the look-fors
+    // checkboxes go `disabled` in the same state.
+    return (
+      <div
+        role="radio"
+        aria-checked={selected}
+        aria-disabled="true"
+        aria-label={accessibleLabel}
+        data-proficiency={level}
+        className={cn(
+          baseClass,
+          selected
+            ? 'bg-ops-blue-lighter text-ops-blue-dark font-medium'
+            : 'bg-white text-gray-700',
+        )}
+      >
+        <CellBody text={text} />
+      </div>
+    );
+  }
+
   return (
     <div
       role="gridcell"
       data-proficiency={level}
       aria-selected={selected}
-      aria-label={`${level} — ${text || 'no descriptor'}`}
-      className={cn(
-        baseClass,
-        selected ? 'bg-ops-blue-lighter text-ops-blue-dark font-medium' : 'bg-white text-gray-700',
-      )}
+      aria-label={accessibleLabel}
+      className={cn(baseClass, 'bg-white text-gray-700')}
     >
       <CellBody text={text} />
     </div>
