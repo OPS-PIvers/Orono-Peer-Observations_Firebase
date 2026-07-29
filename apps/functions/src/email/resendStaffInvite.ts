@@ -2,7 +2,8 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 import { sendTemplatedEmail, staffInviteMailDocId } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -19,10 +20,14 @@ interface ResendStaffInviteRequest {
  *  - Admin-only: any caller whose role is an admin role (isAdminRole), OR
  *    whose live /staff doc has `hasAdminAccess: true`, may trigger this —
  *    mirroring the isAdmin computation in syncMyClaims.ts (`isAdminRole(role)
- *    || hasAdminAccess`). We check the live staff doc rather than trusting
- *    only the `isAdmin` token claim: a hasAdminAccess grant made mid-session
- *    isn't reflected in the caller's current token until they force a
- *    refresh (see reopenObservation.ts / migrateRolesToSlugs.ts for the same
+ *    || hasAdminAccess`) via the shared `callerMeetsAccessLevel` helper
+ *    (../lib/callerAccess.ts), which also backs sendManualEmail.ts and
+ *    sendBulkManualEmail.ts so the three email-sending callables on the
+ *    Staff admin page can't drift out of sync on what "admin" means. That
+ *    helper checks the live staff doc rather than trusting only the
+ *    `isAdmin` token claim: a hasAdminAccess grant made mid-session isn't
+ *    reflected in the caller's current token until they force a refresh
+ *    (see reopenObservation.ts / migrateRolesToSlugs.ts for the same
  *    pattern), so relying on the claim alone would still latent-fail for a
  *    freshly-granted hasAdminAccess admin.
  *  - Reuses the same `sendTemplatedEmail` + `staffInviteMailDocId` helpers as
@@ -46,12 +51,11 @@ export const resendStaffInvite = onCall(
     // claim so hasAdminAccess grants (which rules honor via the isAdmin
     // claim) work here too — see the design note above.
     const callerRole = request.auth.token['role'] as string | undefined;
-    let isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin) {
-      const callerSnap = await db.doc(`${COLLECTIONS.staff}/${callerEmail}`).get();
-      const caller = callerSnap.exists ? (callerSnap.data() as Staff) : null;
-      isAdmin = !!caller && (isAdminRole(caller.role) || caller.hasAdminAccess);
-    }
+    const isAdmin = await callerMeetsAccessLevel(db, {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'admin',
+    });
     if (!isAdmin) {
       throw new HttpsError('permission-denied', 'Only admins can resend invite emails');
     }

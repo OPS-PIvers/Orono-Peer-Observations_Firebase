@@ -1,13 +1,8 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import {
-  APP_SETTINGS_DOC_ID,
-  COLLECTIONS,
-  isAdminRole,
-  isSpecialRole,
-  type EmailTemplate,
-} from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -21,13 +16,30 @@ interface SendManualEmailRequest {
 /**
  * Callable function for PEs to send manual-trigger templates to a
  * specific staff member from the StaffPersonPage.
+ *
+ * Auth check: "PE or admin" is resolved via the shared `callerMeetsAccessLevel`
+ * helper (../lib/callerAccess.ts, level: 'special'), which also backs
+ * sendBulkManualEmail.ts and resendStaffInvite.ts. That helper re-reads the
+ * live /staff doc when the token's role claim alone doesn't already qualify,
+ * so a staff member granted (or revoked) `hasAdminAccess: true` is authorized
+ * (or rejected) immediately rather than waiting for their ID token to
+ * refresh. See INTEG-AUTHZ.
  */
 export const sendManualEmail = onCall(
   { region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+    const callerEmail = request.auth.token.email?.toLowerCase();
+    if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
+
+    const db = getFirestore();
+
     const callerRole = request.auth.token['role'] as string | undefined;
-    const hasSpecialAccess = isSpecialRole(callerRole ?? null) || isAdminRole(callerRole ?? null);
+    const hasSpecialAccess = await callerMeetsAccessLevel(db, {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'special',
+    });
     if (!hasSpecialAccess) {
       throw new HttpsError('permission-denied', 'Only PEs and admins can send manual emails');
     }
@@ -40,7 +52,6 @@ export const sendManualEmail = onCall(
       throw new HttpsError('invalid-argument', 'toEmail is not a valid email address');
     }
 
-    const db = getFirestore();
     const templateSnap = await db.collection(COLLECTIONS.emailTemplates).doc(templateId).get();
     if (!templateSnap.exists) throw new HttpsError('not-found', 'Template not found');
 
