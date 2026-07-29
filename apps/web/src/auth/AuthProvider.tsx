@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -7,20 +8,41 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
+  GoogleAuthProvider,
   onAuthStateChanged,
   onIdTokenChanged,
+  reauthenticateWithPopup,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import { ALLOWED_EMAIL_DOMAIN, isAdminRole, isSpecialRole } from '@ops/shared';
+import {
+  ALLOWED_EMAIL_DOMAIN,
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  isAdminRole,
+  isSpecialRole,
+  type AppSettings,
+} from '@ops/shared';
 import { auth, functions } from '@/lib/firebase';
+import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { Button } from '@/components/ui/button';
+import {
+  DEFAULT_SESSION_DURATION_HOURS,
+  SESSION_CHECK_INTERVAL_MS,
+  computeSessionTimeoutStatus,
+  formatRemaining,
+} from './sessionTimeout';
 
 const syncMyClaimsFn = httpsCallable<
   Record<string, never>,
   { role: string | null; hasSpecialAccess: boolean; isAdmin: boolean }
 >(functions, 'syncMyClaims');
+
+const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
+const HOURS_TO_MS = 60 * 60 * 1000;
 
 export interface AuthClaims {
   role: string | null;
@@ -53,6 +75,132 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *  claim that old tokens (pre-hasAdminAccess) may not carry. */
   const isAdminMigrationDoneRef = useRef(false);
 
+  // --- PLAT-09: enforce appSettings.sessionDurationHours (soft, client-side) ---
+  const navigate = useNavigate();
+  /** The signed-in token's `auth_time` claim, epoch ms. Not user-tamperable
+   *  (unlike a localStorage timestamp) since it's minted server-side, and
+   *  it's the ONLY thing that ever moves the deadline — see
+   *  sessionTimeout.ts and `staySignedIn` below. */
+  const authTimeMsRef = useRef<number | null>(null);
+  const sessionDurationMsRef = useRef<number>(DEFAULT_SESSION_DURATION_HOURS * HOURS_TO_MS);
+  const [sessionWarningRemainingMs, setSessionWarningRemainingMs] = useState<number | null>(null);
+  /** True while a "Stay signed in" re-auth popup is in flight. */
+  const [reauthPending, setReauthPending] = useState(false);
+  /** Set when the re-auth popup was dismissed, blocked, or otherwise
+   *  failed. Cleared on the next attempt or on success. The warning
+   *  banner stays up (and the countdown keeps running against the real
+   *  auth_time-based deadline) — the user can just try again. */
+  const [reauthError, setReauthError] = useState<string | null>(null);
+
+  // Only subscribe once signed in — the doc is Orono-domain-readable, not
+  // public, and there's nothing to enforce before a session exists anyway.
+  const { data: appSettingsData } = useFirestoreDoc<AppSettings>(
+    status === 'signed-in' ? SETTINGS_PATH : '',
+  );
+
+  useEffect(() => {
+    // Firestore reads via the Admin/client SDK bypass Zod defaults, so a doc
+    // predating this field (or the pre-load `null`) surfaces `undefined` —
+    // fall back explicitly to the schema default (24h).
+    const hours = appSettingsData?.sessionDurationHours ?? DEFAULT_SESSION_DURATION_HOURS;
+    sessionDurationMsRef.current = hours * HOURS_TO_MS;
+  }, [appSettingsData]);
+
+  const forceSignOutForTimeout = useCallback(() => {
+    void (async () => {
+      try {
+        await firebaseSignOut(auth);
+      } finally {
+        void navigate('/sign-in', { replace: true, state: { sessionExpired: true } });
+      }
+    })();
+  }, [navigate]);
+
+  const staySignedIn = useCallback(() => {
+    void (async () => {
+      const current = auth.currentUser;
+      if (!current) return;
+      setReauthError(null);
+      setReauthPending(true);
+      try {
+        // OWNER DECISION: genuinely re-authenticate rather than tracking a
+        // client-side "extended until" anchor. A plain ID-token refresh
+        // (`getIdToken(true)`) does NOT change the `auth_time` claim —
+        // Firebase only stamps a new `auth_time` on real re-auth — so this
+        // is the only way "Stay signed in" can actually move the deadline
+        // instead of being a client assertion a shared/lab-device user
+        // could exploit to extend their session forever.
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+        const credential = await reauthenticateWithPopup(current, provider);
+        const result = await credential.user.getIdTokenResult();
+        authTimeMsRef.current = Date.parse(result.authTime);
+        // Optimistic clear: the poll below would pick this up within
+        // SESSION_CHECK_INTERVAL_MS anyway, but there's no reason to make
+        // the user wait to see the banner go away after a successful reauth.
+        setSessionWarningRemainingMs(null);
+      } catch (err) {
+        // Popup dismissed/blocked, or any other reauth failure: leave
+        // authTimeMsRef untouched (there's exactly one source of truth for
+        // the deadline, and none of these paths get to move it) and leave
+        // the warning banner up so the user can retry, or be signed out for
+        // real once the actual deadline arrives.
+        const code = (err as { code?: string } | null)?.code;
+        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+          setReauthError('Sign-in was cancelled. Try again before your session expires.');
+        } else if (code === 'auth/popup-blocked') {
+          setReauthError('Your browser blocked the sign-in popup. Allow popups and try again.');
+        } else {
+          console.warn('Failed to re-authenticate for "Stay signed in"', err);
+          setReauthError('Could not verify your identity. Try again.');
+        }
+      } finally {
+        setReauthPending(false);
+      }
+    })();
+  }, []);
+
+  // Poll for the session deadline. Re-checks immediately on window focus and
+  // tab visibility change (not just the interval) so a backgrounded iPad
+  // tab can't silently sail past the deadline while unattended, and so the
+  // countdown/forced-signout reacts promptly the moment someone comes back.
+  useEffect(() => {
+    if (status !== 'signed-in') {
+      setSessionWarningRemainingMs(null);
+      setReauthError(null);
+      return;
+    }
+    function check() {
+      if (!auth.currentUser) return;
+      const authTimeMs = authTimeMsRef.current;
+      if (authTimeMs == null) return;
+      const result = computeSessionTimeoutStatus({
+        authTimeMs,
+        sessionDurationMs: sessionDurationMsRef.current,
+        nowMs: Date.now(),
+      });
+      if (result.kind === 'expired') {
+        setSessionWarningRemainingMs(null);
+        setReauthError(null);
+        forceSignOutForTimeout();
+        return;
+      }
+      setSessionWarningRemainingMs(result.kind === 'warning' ? result.remainingMs : null);
+    }
+    check();
+    const intervalId = window.setInterval(check, SESSION_CHECK_INTERVAL_MS);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [status, forceSignOutForTimeout]);
+
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (next) => {
       // Defense-in-depth domain check: the GoogleAuthProvider's `hd` param
@@ -75,6 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setClaims(defaultClaims);
         setStatus('signed-out');
         syncedUidRef.current = null;
+        authTimeMsRef.current = null;
       }
     });
     const unsubToken = onIdTokenChanged(auth, (next) => {
@@ -109,6 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const result = await next.getIdTokenResult();
+        // Anchor for the session-duration clock (see sessionTimeout.ts).
+        authTimeMsRef.current = Date.parse(result.authTime);
         const role = (result.claims['role'] as string | undefined) ?? null;
         const hasSpecialAccess =
           (result.claims['hasSpecialAccess'] as boolean | undefined) ?? isSpecialRole(role);
@@ -163,7 +314,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [status, user, claims],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {status === 'signed-in' && sessionWarningRemainingMs != null ? (
+        <SessionTimeoutBanner
+          remainingMs={sessionWarningRemainingMs}
+          onStaySignedIn={staySignedIn}
+          pending={reauthPending}
+          error={reauthError}
+        />
+      ) : null}
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+/**
+ * Fixed, non-dismissible countdown banner shown ~5 minutes before the
+ * configured session duration expires. Deliberately has no close button —
+ * unlike GlobalBanner (an admin announcement), acting on this one actually
+ * matters, so it stays until the user clicks "Stay signed in" or the
+ * deadline passes and they're signed out.
+ */
+function SessionTimeoutBanner({
+  remainingMs,
+  onStaySignedIn,
+  pending,
+  error,
+}: {
+  remainingMs: number;
+  onStaySignedIn: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="border-ops-red bg-ops-red-lighter text-ops-red-dark fixed inset-x-0 top-0 z-50 flex flex-wrap items-center justify-center gap-3 border-b-2 px-4 py-3 text-center text-sm font-medium shadow-sm"
+    >
+      <span>
+        Your session will expire in {formatRemaining(remainingMs)}
+        {error ? `. ${error}` : '.'}
+      </span>
+      <Button size="sm" onClick={onStaySignedIn} disabled={pending}>
+        {pending ? 'Verifying…' : error ? 'Try again' : 'Stay signed in'}
+      </Button>
+    </div>
+  );
 }
 
 export function useAuth(): AuthState {

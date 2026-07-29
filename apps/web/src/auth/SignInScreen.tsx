@@ -1,15 +1,24 @@
 import { useState } from 'react';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
+interface SignInLocationState {
+  /** Set by AuthProvider's PLAT-09 session-timeout enforcement when the
+   *  configured session duration was exceeded and the user was force
+   *  signed-out. */
+  sessionExpired?: boolean;
+}
+
 export function SignInScreen() {
   const { status } = useAuth();
+  const location = useLocation();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const sessionExpired = (location.state as SignInLocationState | null)?.sessionExpired === true;
 
   // If the user already has a session (e.g., a stale tab where
   // AuthProvider just resolved an existing token), bounce off /sign-in.
@@ -86,6 +95,13 @@ export function SignInScreen() {
             className="border-destructive bg-ops-red-lighter text-ops-red-dark mt-6 rounded-md border-l-4 px-4 py-3 text-sm"
           >
             {error}
+          </div>
+        ) : sessionExpired ? (
+          <div
+            role="alert"
+            className="border-destructive bg-ops-red-lighter text-ops-red-dark mt-6 rounded-md border-l-4 px-4 py-3 text-sm"
+          >
+            Your session expired, please sign in again.
           </div>
         ) : null}
 
