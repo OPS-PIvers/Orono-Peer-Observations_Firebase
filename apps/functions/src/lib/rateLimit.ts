@@ -22,6 +22,7 @@ export const RATE_LIMIT_COUNTERS_COLLECTION = 'rateLimitCounters';
 export const RATE_LIMIT_KEYS = {
   audioUpload: 'audioUpload',
   transcription: 'transcription',
+  manualEmailBroadcast: 'manualEmailBroadcast',
 } as const;
 
 export type RateLimitKey = (typeof RATE_LIMIT_KEYS)[keyof typeof RATE_LIMIT_KEYS];
@@ -177,7 +178,8 @@ function readCounter(snap: DocumentSnapshot): RateLimitCounter | null {
  * Read the admin-configured rate limits from /appSettings/global, applying the
  * shared Zod schema defaults. Firestore reads bypass Zod, so a missing doc or a
  * partially-populated `rateLimits` object falls back to the schema defaults
- * (60 saves/min, 20 uploads/hr, 50 transcriptions/day) rather than throwing.
+ * (60 saves/min, 20 uploads/hr, 50 transcriptions/day, 5 broadcasts/hr) rather
+ * than throwing.
  */
 export async function loadRateLimits(db: Firestore): Promise<RateLimits> {
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();

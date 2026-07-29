@@ -269,6 +269,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      manualEmailBroadcastsPerHour: 5,
                     }),
                     observationSavesPerMinute: Number(e.target.value),
                   },
@@ -289,6 +290,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      manualEmailBroadcastsPerHour: 5,
                     }),
                     audioUploadsPerHour: Number(e.target.value),
                   },
@@ -309,8 +311,33 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      manualEmailBroadcastsPerHour: 5,
                     }),
                     transcriptionRequestsPerDay: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
+          <Field
+            label="Manual email broadcasts per hour (per user)"
+            help="Caps how often any one Peer Evaluator or admin can send a 'Message a group' broadcast from the Staff admin page. Independent of the 200-recipient cap on a single broadcast."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.manualEmailBroadcastsPerHour ?? 5}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? {
+                      observationSavesPerMinute: 60,
+                      audioUploadsPerHour: 20,
+                      transcriptionRequestsPerDay: 50,
+                      manualEmailBroadcastsPerHour: 5,
+                    }),
+                    manualEmailBroadcastsPerHour: Number(e.target.value),
                   },
                 }))
               }

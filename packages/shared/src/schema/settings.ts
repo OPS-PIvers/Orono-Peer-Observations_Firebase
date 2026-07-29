@@ -41,6 +41,16 @@ export const rateLimits = z.object({
   observationSavesPerMinute: z.number().int().positive().default(60),
   audioUploadsPerHour: z.number().int().positive().default(20),
   transcriptionRequestsPerDay: z.number().int().positive().default(50),
+  /**
+   * Per-caller cap on PLAT-08 "Message a group" broadcasts (Staff admin
+   * area). This throttles the broadcast *operation* itself, not individual
+   * recipients within one broadcast — that's bounded separately by the
+   * MAX_BULK_RECIPIENTS hard cap in sendBulkManualEmail.ts. Both exist
+   * because the callable is intentionally open to any PE or admin, not just
+   * admins, so an unthrottled/uncapped mass-mail callable is the failure
+   * mode both guards prevent.
+   */
+  manualEmailBroadcastsPerHour: z.number().int().positive().default(5),
 });
 export type RateLimits = z.infer<typeof rateLimits>;
 
@@ -188,6 +198,7 @@ export const appSettings = z.object({
     observationSavesPerMinute: 60,
     audioUploadsPerHour: 20,
     transcriptionRequestsPerDay: 50,
+    manualEmailBroadcastsPerHour: 5,
   }),
   branding: branding.default({
     appName: 'Orono Peer Observations',

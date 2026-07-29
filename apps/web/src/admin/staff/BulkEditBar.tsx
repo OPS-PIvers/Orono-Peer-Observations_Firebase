@@ -4,6 +4,7 @@ import {
   CheckCheck,
   CircleSlash,
   Layers,
+  Mail,
   MoreHorizontal,
   Power,
   ShieldCheck,
@@ -25,6 +26,7 @@ import type { BulkEditField } from './BulkEditDialog';
 interface BulkEditBarProps {
   count: number;
   onAction: (field: BulkEditField) => void;
+  onMessageGroup: () => void;
   onClear: () => void;
 }
 
@@ -43,7 +45,7 @@ const ALL_ACTIONS: { field: BulkEditField; label: string; icon: React.ElementTyp
 /** Actions surfaced in the desktop "More" overflow menu. */
 const DESKTOP_OVERFLOW: BulkEditField[] = ['addModule', 'removeModule', 'hasAdminAccess'];
 
-export function BulkEditBar({ count, onAction, onClear }: BulkEditBarProps) {
+export function BulkEditBar({ count, onAction, onMessageGroup, onClear }: BulkEditBarProps) {
   const isDesktop = useIsDesktop();
   if (count === 0) return null;
   return isDesktop ? (
@@ -52,6 +54,7 @@ export function BulkEditBar({ count, onAction, onClear }: BulkEditBarProps) {
         {count} {count === 1 ? 'staff' : 'staff'} selected
       </span>
       <span className="mx-1 h-5 w-px bg-white/20" aria-hidden="true" />
+      <ActionButton onClick={onMessageGroup} icon={Mail} label="Message group" />
       <ActionButton onClick={() => onAction('year')} icon={CalendarDays} label="Set year" />
       <ActionButton onClick={() => onAction('role')} icon={Star} label="Set role" />
       <ActionButton onClick={() => onAction('addBuilding')} icon={Building2} label="Add building" />
@@ -138,6 +141,11 @@ export function BulkEditBar({ count, onAction, onClear }: BulkEditBarProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="end">
+            <DropdownMenuItem onSelect={onMessageGroup}>
+              <Mail className="h-4 w-4" />
+              Message group
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {ALL_ACTIONS.slice(2).map(({ field, label, icon: Icon }) => (
               <DropdownMenuItem key={field} onSelect={() => onAction(field)}>
                 <Icon className="h-4 w-4" />
