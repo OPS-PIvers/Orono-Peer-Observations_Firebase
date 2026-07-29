@@ -30,6 +30,7 @@ import {
   roleYearMappingDocId,
 } from '@ops/shared';
 import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
+import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
@@ -353,6 +354,22 @@ export function ObservationEditorPage() {
         void flush();
       }
     };
+  }, [flush]);
+
+  // A session-timeout sign-out (PLAT-09) tears this page down by navigating to
+  // /sign-in — and the unmount cleanup above would only run *after* auth has
+  // been invalidated, so the write would fail silently and the last debounced
+  // edit (a proficiency toggle, a keystroke, a just-applied set of auto-tags)
+  // would be lost. AuthProvider runs this first, while the token is still
+  // valid, and awaits it. Clearing the timer here also means the unmount
+  // cleanup won't fire a second, doomed write.
+  useEffect(() => {
+    return registerForcedSignOutFlush(async () => {
+      if (flushTimer.current === null) return;
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+      await flush();
+    });
   }, [flush]);
 
   // Automatic retry with backoff after a save failure. Re-runs whenever

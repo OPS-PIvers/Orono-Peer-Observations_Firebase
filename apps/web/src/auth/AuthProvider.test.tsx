@@ -10,8 +10,18 @@
  *   - the popup-dismissed path: reauth fails, the user stays signed in,
  *     the warning banner stays up (with a retry affordance), and nothing
  *     silently stops the countdown.
+ *
+ * Plus two cross-feature integration regressions, both about the timeout
+ * meeting the observation editor (#77 auto-tag review dialog, #84 rubric
+ * controls):
+ *   - the warning must stay visible, clickable and inside the focus trap
+ *     when a modal dialog is open, or an observer mid-observation never
+ *     sees it and gets the silent sign-out the warn-first design prevents.
+ *   - pending editor work must be flushed BEFORE auth is invalidated, and
+ *     sign-out must still happen if that flush fails.
  */
-import { act, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -72,7 +82,9 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 import { auth } from '@/lib/firebase';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { AuthProvider, useAuth } from './AuthProvider';
+import { registerForcedSignOutFlush } from './forcedSignOutFlush';
 
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
@@ -100,16 +112,30 @@ function StatusProbe() {
   return <div data-testid="status">{status}</div>;
 }
 
-function renderProvider() {
+function renderProvider(children?: ReactNode) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
           <StatusProbe />
+          {children}
         </AuthProvider>
       </MemoryRouter>
     </QueryClientProvider>,
+  );
+}
+
+/** Stand-in for the Auto-tag review dialog (#77) — any app dialog behaves the
+ *  same way, since they all go through components/ui/dialog.tsx. */
+function OpenModalDialog() {
+  return (
+    <Dialog open>
+      <DialogContent aria-describedby={undefined}>
+        <DialogTitle>Review auto-tag suggestions</DialogTitle>
+        <button type="button">Apply 2 tags</button>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -215,5 +241,110 @@ describe('AuthProvider — "Stay signed in" re-authentication', () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByTestId('status')).toHaveTextContent('signed-in');
+  });
+});
+
+describe('AuthProvider — the session warning vs. an open modal dialog', () => {
+  it('keeps "Stay signed in" visible, single, and inside the dialog so it is clickable and tabbable', async () => {
+    renderProvider(<OpenModalDialog />);
+    await signIn(4 * 60 * 1000);
+
+    // Radix portals dialog content to the END of <body> at z-50, locks
+    // `body { pointer-events: none }`, marks the rest of the page
+    // aria-hidden and traps focus inside it. A plain page-level banner is
+    // therefore invisible, unclickable and unreachable — so the warning has
+    // to render inside the dialog while one is open.
+    const dialog = await screen.findByRole('dialog');
+    const stay = await screen.findByRole('button', { name: 'Stay signed in' });
+    expect(dialog).toContainElement(stay);
+    // Exactly one copy: never announced or rendered twice.
+    expect(screen.getAllByRole('button', { name: 'Stay signed in' })).toHaveLength(1);
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/Your session will expire in/);
+
+    // ...and it actually works from there: a real reauth, not a no-op.
+    const freshAuthTime = new Date().toISOString();
+    mockReauthenticateWithPopup.mockResolvedValueOnce({
+      user: { getIdTokenResult: () => Promise.resolve({ authTime: freshAuthTime, claims: {} }) },
+    });
+
+    const user = userEvent.setup();
+    await user.click(stay);
+
+    expect(mockReauthenticateWithPopup).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.queryByText(/Your session will expire in/)).not.toBeInTheDocument();
+    });
+    // The dialog the observer was working in is still open and intact.
+    expect(screen.getByRole('button', { name: 'Apply 2 tags' })).toBeInTheDocument();
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('renders the warning outside the app tree (own portal) when no dialog is open', async () => {
+    const { container } = renderProvider();
+    await signIn(4 * 60 * 1000);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Your session will expire in/);
+    // Not in document order behind the z-50 overlay/header layer.
+    expect(container).not.toContainElement(alert);
+  });
+});
+
+describe('AuthProvider — flushing pending editor work before a forced sign-out', () => {
+  /** Already past the deadline: the next poll must force a sign-out. */
+  const PAST_DEADLINE_MS = -1000;
+
+  it('lands a pending editor save BEFORE auth is invalidated', async () => {
+    const order: string[] = [];
+    mockSignOut.mockImplementationOnce(() => {
+      order.push('signOut');
+      return Promise.resolve();
+    });
+    // Stands in for ObservationEditorPage's debounced autosave flush.
+    const unregister = registerForcedSignOutFlush(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      order.push('flush');
+    });
+
+    try {
+      renderProvider();
+      await signIn(PAST_DEADLINE_MS);
+
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+      });
+      expect(order).toEqual(['flush', 'signOut']);
+    } finally {
+      unregister();
+    }
+  });
+
+  it('still signs out when the flush fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const order: string[] = [];
+    mockSignOut.mockImplementationOnce(() => {
+      order.push('signOut');
+      return Promise.resolve();
+    });
+    const unregister = registerForcedSignOutFlush(() => {
+      order.push('flush');
+      return Promise.reject(new Error('permission-denied'));
+    });
+
+    try {
+      renderProvider();
+      await signIn(PAST_DEADLINE_MS);
+
+      // A failed flush must not swallow the sign-out — the deadline is a
+      // security control, and unsaved work never gets to veto it.
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+      });
+      expect(order).toEqual(['flush', 'signOut']);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      unregister();
+      warn.mockRestore();
+    }
   });
 });

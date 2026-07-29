@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DialogInterruptSlot } from './dialog-interrupt';
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -37,6 +38,10 @@ export const DialogContent = React.forwardRef<
       )}
       {...props}
     >
+      {/* App-level interrupts (the session-timeout warning) render here so they
+          stay visible, clickable and keyboard-reachable above this modal
+          layer — see dialog-interrupt.tsx. Renders nothing when idle. */}
+      <DialogInterruptSlot />
       {children}
       <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
         <X className="h-5 w-5" />
