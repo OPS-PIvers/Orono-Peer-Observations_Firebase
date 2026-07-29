@@ -16,7 +16,15 @@ interface ResendStaffInviteRequest {
  * existing staff member.
  *
  * Design notes:
- *  - Admin-only: only callers with an admin role may trigger this.
+ *  - Admin-only: any caller whose role is an admin role (isAdminRole), OR
+ *    whose live /staff doc has `hasAdminAccess: true`, may trigger this —
+ *    mirroring the isAdmin computation in syncMyClaims.ts (`isAdminRole(role)
+ *    || hasAdminAccess`). We check the live staff doc rather than trusting
+ *    only the `isAdmin` token claim: a hasAdminAccess grant made mid-session
+ *    isn't reflected in the caller's current token until they force a
+ *    refresh (see reopenObservation.ts / migrateRolesToSlugs.ts for the same
+ *    pattern), so relying on the claim alone would still latent-fail for a
+ *    freshly-granted hasAdminAccess admin.
  *  - Reuses the same `sendTemplatedEmail` + `staffInviteMailDocId` helpers as
  *    the `onStaffWritten` trigger so the email template and mail-doc naming
  *    stay in sync.
@@ -29,9 +37,22 @@ export const resendStaffInvite = onCall(
   { region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+    const callerEmail = request.auth.token.email?.toLowerCase();
+    if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
+    const db = getFirestore();
+
+    // Admin-only. Check the live staff doc rather than only the token role
+    // claim so hasAdminAccess grants (which rules honor via the isAdmin
+    // claim) work here too — see the design note above.
     const callerRole = request.auth.token['role'] as string | undefined;
-    if (!isAdminRole(callerRole ?? null)) {
+    let isAdmin = isAdminRole(callerRole ?? null);
+    if (!isAdmin) {
+      const callerSnap = await db.doc(`${COLLECTIONS.staff}/${callerEmail}`).get();
+      const caller = callerSnap.exists ? (callerSnap.data() as Staff) : null;
+      isAdmin = !!caller && (isAdminRole(caller.role) || caller.hasAdminAccess);
+    }
+    if (!isAdmin) {
       throw new HttpsError('permission-denied', 'Only admins can resend invite emails');
     }
 
@@ -43,8 +64,6 @@ export const resendStaffInvite = onCall(
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       throw new HttpsError('invalid-argument', 'email is not a valid email address');
     }
-
-    const db = getFirestore();
 
     // Load the staff doc to build template vars.
     const staffSnap = await db.collection(COLLECTIONS.staff).doc(normalizedEmail).get();
