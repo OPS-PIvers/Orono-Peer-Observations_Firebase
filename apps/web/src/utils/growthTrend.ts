@@ -33,8 +33,22 @@ export interface GrowthTrendPoint {
 }
 
 /** A rubric domain's proficiency trend across the signed-in staff member's
- *  own finalized observations, in chronological order. */
+ *  own finalized observations, in chronological order.
+ *
+ *  Keyed by *rubric* + domain, not domain id alone: `rubricId` is
+ *  deliberately decoupled from `roleId` (see `packages/shared/src/schema/
+ *  role.ts`) so multiple roles can share one rubric, and the framework
+ *  convention numbers domains '1'-'4' in *every* rubric. Keying by
+ *  `domainId` alone would silently average two incommensurable measures
+ *  into one line for a staff member observed under two different rubrics
+ *  (e.g. after a role change) — this is a personal evaluation trend, and a
+ *  misleading line here is worse than no line. */
 export interface GrowthTrendSeries {
+  rubricId: string;
+  /** Most recent snapshot's display name for this rubric — rubric names
+   *  are stable in practice but this avoids trusting the very first
+   *  sighting. */
+  rubricName: string;
   domainId: string;
   /** Most recent snapshot's name for this domain id — domain names are
    *  stable in practice but this avoids trusting the very first sighting. */
@@ -42,15 +56,32 @@ export interface GrowthTrendSeries {
   points: GrowthTrendPoint[];
 }
 
+/** Series key: rubric identity + domain id, never domain id alone — see
+ *  `GrowthTrendSeries` doc comment. */
+function seriesKey(rubricId: string, domainId: string): string {
+  return `${rubricId} ${domainId}`;
+}
+
+/** Type guard rejecting any proficiency value that isn't exactly one of the
+ *  four canonical literals. Guards `PROFICIENCY_LEVELS.indexOf(...)`, which
+ *  reads a value straight off a raw, Zod-bypassing Firestore snapshot (see
+ *  `RawGrowthObservation` above) — an unrecognized string would otherwise
+ *  yield `indexOf` === -1 and silently corrupt the average. */
+function isKnownProficiency(value: unknown): value is (typeof PROFICIENCY_LEVELS)[number] {
+  return typeof value === 'string' && (PROFICIENCY_LEVELS as readonly string[]).includes(value);
+}
+
 /**
  * Self-only proficiency trend, broken out by rubric domain.
  *
  * For each finalized observation with a frozen `rubricSnapshot`, averages
  * the `PROFICIENCY_LEVELS` index (developing=0 ... distinguished=3) of the
- * domain's components that have a non-null proficiency in
+ * domain's components that have a recognized, non-null proficiency in
  * `observation.observationData`. Domains with nothing scored in a given
  * observation are omitted from that observation's contribution (never
- * plotted as a false 0).
+ * plotted as a false 0). A component whose recorded proficiency isn't one
+ * of the four canonical levels (e.g. corrupted or pre-migration data) is
+ * likewise skipped rather than scored as -1.
  *
  * Reads raw Firestore snapshot data (via `useFirestoreCollection`, which
  * bypasses Zod parsing), so every field is treated as possibly-missing on
@@ -70,7 +101,7 @@ export function computeGrowthTrend(
   }
   dated.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const seriesByDomain = new Map<string, GrowthTrendSeries>();
+  const seriesByKey = new Map<string, GrowthTrendSeries>();
   for (const { obs, date } of dated) {
     const snapshot = obs.rubricSnapshot;
     if (!snapshot) continue;
@@ -80,17 +111,25 @@ export function computeGrowthTrend(
       let scoredCount = 0;
       for (const component of domain.components) {
         const proficiency = observationData[component.id]?.proficiency;
-        if (!proficiency) continue;
+        if (!isKnownProficiency(proficiency)) continue;
         sum += PROFICIENCY_LEVELS.indexOf(proficiency);
         scoredCount += 1;
       }
       if (scoredCount === 0) continue;
 
-      let series = seriesByDomain.get(domain.id);
+      const key = seriesKey(snapshot.rubricId, domain.id);
+      let series = seriesByKey.get(key);
       if (!series) {
-        series = { domainId: domain.id, domainName: domain.name, points: [] };
-        seriesByDomain.set(domain.id, series);
+        series = {
+          rubricId: snapshot.rubricId,
+          rubricName: snapshot.displayName,
+          domainId: domain.id,
+          domainName: domain.name,
+          points: [],
+        };
+        seriesByKey.set(key, series);
       }
+      series.rubricName = snapshot.displayName;
       series.domainName = domain.name;
       series.points.push({
         observationId: obs.id,
@@ -103,5 +142,5 @@ export function computeGrowthTrend(
     }
   }
 
-  return Array.from(seriesByDomain.values());
+  return Array.from(seriesByKey.values());
 }

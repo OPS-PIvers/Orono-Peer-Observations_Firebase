@@ -28,13 +28,17 @@ const DOMAIN_1 = domain('1', 'Planning and Preparation', [
 ]);
 const DOMAIN_2 = domain('2', 'Classroom Environment', [component('2c', 'Managing Procedures')]);
 
-function snapshot(domains: RubricDomain[]): ObservationRubricSnapshot {
+function snapshot(
+  domains: RubricDomain[],
+  overrides: Partial<Pick<ObservationRubricSnapshot, 'rubricId' | 'displayName'>> = {},
+): ObservationRubricSnapshot {
   return {
     rubricId: 'teacher',
     displayName: 'Teacher Rubric',
     domains,
     assignedComponentIds: domains.flatMap((d) => d.components.map((c) => c.id)),
     capturedAt: new Date('2025-09-01'),
+    ...overrides,
   };
 }
 
@@ -233,5 +237,103 @@ describe('computeGrowthTrend', () => {
     expect(result[0]?.points).toHaveLength(2);
     // Latest snapshot's name wins for display.
     expect(result[0]?.domainName).toBe('Planning and Prep (renamed)');
+  });
+
+  it('keeps two rubrics that share a domain id as separate series, never averaged together', () => {
+    // Reproduces a staff member observed under two different rubrics (e.g.
+    // after a role change) where both rubrics number their first domain
+    // '1' per the framework convention, but the domains measure completely
+    // different things. Without a rubric-aware key these would silently
+    // merge into one misleading trend line.
+    const rubricADomain1 = domain('1', 'Planning and Preparation', [
+      component('1a', 'Demonstrating Knowledge'),
+    ]);
+    const rubricBDomain1 = domain('1', 'Support Service Delivery', [
+      component('1a', 'Delivering Services'),
+    ]);
+
+    const underRubricA = makeObservation({
+      id: 'o1',
+      status: 'Finalized',
+      rubricSnapshot: snapshot([rubricADomain1], {
+        rubricId: 'teacher',
+        displayName: 'Teacher Rubric',
+      }),
+      observationDate: new Date('2025-09-01'),
+      observationData: {
+        '1a': { proficiency: 'developing', selectedLookForIds: [], scratchNotes: '' },
+      },
+    });
+    const underRubricB = makeObservation({
+      id: 'o2',
+      status: 'Finalized',
+      rubricSnapshot: snapshot([rubricBDomain1], {
+        rubricId: 'school-counselor',
+        displayName: 'School Counselor Rubric',
+      }),
+      observationDate: new Date('2026-01-15'),
+      observationData: {
+        '1a': { proficiency: 'distinguished', selectedLookForIds: [], scratchNotes: '' },
+      },
+    });
+
+    const result = computeGrowthTrend([underRubricA, underRubricB]);
+
+    // Two independent series, not one merged/averaged series.
+    expect(result).toHaveLength(2);
+    const seriesA = result.find((s) => s.rubricId === 'teacher');
+    const seriesB = result.find((s) => s.rubricId === 'school-counselor');
+    expect(seriesA?.domainId).toBe('1');
+    expect(seriesA?.domainName).toBe('Planning and Preparation');
+    expect(seriesA?.points).toHaveLength(1);
+    expect(seriesA?.points[0]?.average).toBe(0);
+    expect(seriesB?.domainId).toBe('1');
+    expect(seriesB?.domainName).toBe('Support Service Delivery');
+    expect(seriesB?.points).toHaveLength(1);
+    expect(seriesB?.points[0]?.average).toBe(3);
+  });
+
+  it('skips a component whose recorded proficiency is not one of the four canonical levels, instead of corrupting the average with indexOf === -1', () => {
+    const obs = makeObservation({
+      id: 'o1',
+      status: 'Finalized',
+      rubricSnapshot: snapshot([DOMAIN_1]),
+      observationData: {
+        // Simulates corrupted / pre-migration raw Firestore data that
+        // bypassed Zod validation on write.
+        '1a': {
+          proficiency: 'expert' as unknown as null,
+          selectedLookForIds: [],
+          scratchNotes: '',
+        },
+        '1b': { proficiency: 'basic', selectedLookForIds: [], scratchNotes: '' },
+      },
+    });
+
+    const result = computeGrowthTrend([obs]);
+
+    expect(result).toHaveLength(1);
+    // Only '1b' (basic = 1) is scored; '1a' is skipped entirely rather than
+    // contributing indexOf(-1) to the sum.
+    expect(result[0]?.points[0]).toMatchObject({ average: 1, scoredCount: 1, totalCount: 2 });
+  });
+
+  it('omits a domain whose only recorded proficiency is unrecognized, and never emits NaN', () => {
+    const obs = makeObservation({
+      id: 'o1',
+      status: 'Finalized',
+      rubricSnapshot: snapshot([DOMAIN_1]),
+      observationData: {
+        '1a': {
+          proficiency: 'expert' as unknown as null,
+          selectedLookForIds: [],
+          scratchNotes: '',
+        },
+      },
+    });
+
+    const result = computeGrowthTrend([obs]);
+
+    expect(result).toEqual([]);
   });
 });
