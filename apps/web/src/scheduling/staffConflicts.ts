@@ -1,4 +1,5 @@
-import type { Observation, ObservationSlot } from '@ops/shared';
+import { limit, where, type QueryConstraint } from 'firebase/firestore';
+import { OBSERVATION_STATUS, type Observation, type ObservationSlot } from '@ops/shared';
 import { toDate } from './slotTime';
 
 /**
@@ -13,6 +14,47 @@ import { toDate } from './slotTime';
  * caller (BookingPage) badges the slot the same way it already badges
  * observer-calendar conflicts via `conflictedSlotIds`.
  */
+
+/**
+ * Cap on the staff-conflict listener query — mirrors the `PAGE_LIMIT`
+ * convention every other Observation-collection query in this repo already
+ * follows (see MyObservationsPage.tsx, StaffDashboardPage.tsx,
+ * RecentObservationsStrip.tsx, ObservationsListPage.tsx, StaffPersonPage.tsx).
+ * Without it this listener would read and stream an unbounded number of
+ * Draft observations on every booking-page load — the more Draft
+ * observations a staff member accumulates over a school year, the larger
+ * the read and the realtime payload, hitting hardest on the iPad target
+ * over school wifi.
+ */
+export const STAFF_CONFLICT_QUERY_LIMIT = 100;
+
+/**
+ * Build the Firestore constraints for the staff-conflict listener: the
+ * invitee's OTHER Draft observations, capped at STAFF_CONFLICT_QUERY_LIMIT.
+ * Returns `[]` when there's no signed-in email — nothing to query yet.
+ */
+export function buildStaffObservationConstraints(email: string): QueryConstraint[] {
+  if (!email) return [];
+  return [
+    where('observedEmail', '==', email),
+    where('status', '==', OBSERVATION_STATUS.draft),
+    limit(STAFF_CONFLICT_QUERY_LIMIT),
+  ];
+}
+
+/**
+ * True when the staff-conflict query may have been truncated by
+ * STAFF_CONFLICT_QUERY_LIMIT (it returned exactly the cap, so there could be
+ * more Draft observations beyond what was fetched).
+ *
+ * This is a warn-only, best-effort badge — it must never let truncation
+ * masquerade as a confirmed "no conflict". When this returns true, the
+ * caller must not present an un-badged slot as cleared; it only means "no
+ * conflict found among the Draft observations we could see".
+ */
+export function isStaffConflictCheckTruncated(observationCount: number): boolean {
+  return observationCount >= STAFF_CONFLICT_QUERY_LIMIT;
+}
 
 export interface BusyInterval {
   startMs: number;
@@ -47,7 +89,14 @@ export function staffBusyIntervalsFromObservations(
   return out;
 }
 
-type SlotForConflictCheck = Pick<ObservationSlot, 'slotId' | 'startUTC' | 'endUTC'>;
+// `startUTC`/`endUTC` are typed as `unknown`, not `Date`, deliberately: a
+// slot read straight off a Firestore snapshot (useFirestoreCollection does
+// no Zod parsing) can arrive as a Timestamp, not a Date — that's exactly why
+// every field is routed through `toDate()` below rather than used directly.
+type SlotForConflictCheck = Pick<ObservationSlot, 'slotId'> & {
+  startUTC: unknown;
+  endUTC: unknown;
+};
 
 /**
  * Return the set of slot ids whose `[startUTC, endUTC)` overlaps any of the

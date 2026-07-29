@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { where } from 'firebase/firestore';
 import { CheckCircle2 } from 'lucide-react';
 import {
   COLLECTIONS,
-  OBSERVATION_STATUS,
   WINDOW_SUBCOLLECTIONS,
   type BookObservationSlotInput,
   type CancelBookingInput,
@@ -32,7 +30,9 @@ import { functions } from '@/lib/firebase';
 import { SlotGrid } from './SlotGrid';
 import { SignupDetailFields, buildDetailAnswers, signupFieldsComplete } from './SignupDetailFields';
 import {
+  buildStaffObservationConstraints,
   computeStaffConflictedSlotIds,
+  isStaffConflictCheckTruncated,
   staffBusyIntervalsFromObservations,
 } from './staffConflicts';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
@@ -158,12 +158,11 @@ export function BookingPage() {
   // query, which adds an orderBy and therefore needs its own composite
   // index). Scoped to 'direct' mode only, same as the checkSlotConflicts
   // effect below — day-preference mode never renders SlotGrid.
+  // Capped via STAFF_CONFLICT_QUERY_LIMIT (see staffConflicts.ts) — same
+  // convention as every other Observation-collection query in this repo.
   const staffObservationsPath = myEmail && mode === 'direct' ? COLLECTIONS.observations : '';
   const staffObservationConstraints = useMemo(
-    () =>
-      myEmail
-        ? [where('observedEmail', '==', myEmail), where('status', '==', OBSERVATION_STATUS.draft)]
-        : [],
+    () => buildStaffObservationConstraints(myEmail),
     [myEmail],
   );
   const { data: myOtherObservations } = useFirestoreCollection<Observation>(
@@ -177,6 +176,11 @@ export function BookingPage() {
   const staffBusyIntervals = useMemo(
     () => staffBusyIntervalsFromObservations(myOtherObservations ?? [], windowId ?? null),
     [myOtherObservations, windowId],
+  );
+  // True when the query above may have been truncated by the limit — the
+  // badge below must stay honest about that (see isStaffConflictCheckTruncated).
+  const staffConflictCheckTruncated = isStaffConflictCheckTruncated(
+    myOtherObservations?.length ?? 0,
   );
 
   // Seed the day picker from an existing (unassigned) preference.
@@ -286,6 +290,12 @@ export function BookingPage() {
                 <p className="text-muted-foreground text-xs">
                   Times marked &ldquo;You have another observation at this time&rdquo; overlap
                   another observation already scheduled for you.
+                </p>
+              ) : null}
+              {staffConflictCheckTruncated ? (
+                <p className="text-muted-foreground text-xs">
+                  You have a large number of draft observations, so this check may not catch every
+                  conflict — an unmarked time isn&apos;t a guarantee you&apos;re free.
                 </p>
               ) : null}
             </div>
@@ -433,6 +443,12 @@ export function BookingPage() {
             <p className="text-muted-foreground text-xs">
               Times marked &ldquo;You have another observation at this time&rdquo; overlap another
               observation already scheduled for you. You can still pick one.
+            </p>
+          ) : null}
+          {staffConflictCheckTruncated ? (
+            <p className="text-muted-foreground text-xs">
+              You have a large number of draft observations, so this check may not catch every
+              conflict — an unmarked time isn&apos;t a guarantee you&apos;re free.
             </p>
           ) : null}
         </div>

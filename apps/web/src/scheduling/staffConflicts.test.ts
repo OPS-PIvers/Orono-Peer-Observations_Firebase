@@ -1,8 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
+  STAFF_CONFLICT_QUERY_LIMIT,
+  buildStaffObservationConstraints,
   computeStaffConflictedSlotIds,
+  isStaffConflictCheckTruncated,
   staffBusyIntervalsFromObservations,
 } from './staffConflicts';
+
+describe('buildStaffObservationConstraints', () => {
+  it('returns no constraints when there is no email', () => {
+    expect(buildStaffObservationConstraints('')).toEqual([]);
+  });
+
+  it('builds the two equality filters plus a bounding limit()', () => {
+    const constraints = buildStaffObservationConstraints('staff@example.com');
+    // Regression guard for the SCHED-05 review finding: an unbounded
+    // listener on the Observation collection reads/streams every Draft
+    // observation a staff member has ever accumulated. Every other
+    // Observation query in this repo bounds itself with limit() — this one
+    // must too, and the assertion on `.type` (not just array length) makes
+    // sure it's specifically a limit() constraint, not e.g. a 3rd where().
+    expect(constraints).toHaveLength(3);
+    expect(constraints.map((c) => c.type)).toEqual(['where', 'where', 'limit']);
+  });
+});
+
+describe('isStaffConflictCheckTruncated', () => {
+  it('is false when the observation count is below the cap', () => {
+    expect(isStaffConflictCheckTruncated(STAFF_CONFLICT_QUERY_LIMIT - 1)).toBe(false);
+  });
+
+  it('is true once the observation count reaches the cap — the badge must not claim completeness', () => {
+    expect(isStaffConflictCheckTruncated(STAFF_CONFLICT_QUERY_LIMIT)).toBe(true);
+  });
+});
 
 describe('staffBusyIntervalsFromObservations', () => {
   it('builds an interval for each other-window Draft observation', () => {
