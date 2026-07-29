@@ -27,13 +27,45 @@ import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { Divider, ToolbarButton, useLinkDialog } from '@/components/ui/tiptap-toolbar';
 import { ComponentTagMark } from './component-tag-mark';
 import { colorFor } from './component-colors';
+import {
+  AutoTagReviewDialog,
+  type AutoTagColor,
+  type AutoTagSuggestion,
+} from './AutoTagReviewDialog';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
-const geminiTagScriptFn = httpsCallable<
+/**
+ * Auto-tag is a two-step flow so the observer reviews Gemini's proposals
+ * before anything touches the script: `suggestScriptTags` reads and proposes,
+ * `applyScriptTags` writes only the subset the observer kept.
+ */
+const suggestScriptTagsFn = httpsCallable<
   { observationId: string },
-  { taggedCount: number; skippedCount: number }
->(functions, 'geminiTagScript');
+  {
+    suggestions: AutoTagSuggestion[];
+    componentColors: { componentId: string; bg: string; fg: string }[];
+    skippedCount: number;
+  }
+>(functions, 'suggestScriptTags');
+
+const applyScriptTagsFn = httpsCallable<
+  {
+    observationId: string;
+    suggestions: { paragraphIndex: number; text: string; componentId: string }[];
+  },
+  { appliedCount: number; rejectedCount: number; scriptDoc: TiptapDoc }
+>(functions, 'applyScriptTags');
+
+interface PendingReview {
+  suggestions: AutoTagSuggestion[];
+  colorById: Map<string, AutoTagColor>;
+  skippedCount: number;
+}
+
+type AutoTagNotice =
+  | { kind: 'no-suggestions'; skippedCount: number }
+  | { kind: 'applied'; appliedCount: number; rejectedCount: number };
 
 export interface ScriptEditorProps {
   value: TiptapDoc | undefined;
@@ -116,10 +148,10 @@ export function ScriptEditor({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoTagBusy, setAutoTagBusy] = useState(false);
   const [autoTagError, setAutoTagError] = useState<string | null>(null);
-  const [autoTagResult, setAutoTagResult] = useState<{
-    taggedCount: number;
-    skippedCount: number;
-  } | null>(null);
+  const [autoTagNotice, setAutoTagNotice] = useState<AutoTagNotice | null>(null);
+  const [review, setReview] = useState<PendingReview | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const activeTagId = editor.getAttributes('componentTag')['componentId'] as string | null;
 
@@ -151,14 +183,55 @@ export function ScriptEditor({
     if (!observationId) return;
     setAutoTagBusy(true);
     setAutoTagError(null);
-    setAutoTagResult(null);
+    setAutoTagNotice(null);
     try {
-      const res = await geminiTagScriptFn({ observationId });
-      setAutoTagResult(res.data);
+      const res = await suggestScriptTagsFn({ observationId });
+      const { suggestions, componentColors, skippedCount } = res.data;
+      if (suggestions.length === 0) {
+        setAutoTagNotice({ kind: 'no-suggestions', skippedCount });
+        return;
+      }
+      setApplyError(null);
+      setReview({
+        suggestions,
+        colorById: new Map(componentColors.map((c) => [c.componentId, { bg: c.bg, fg: c.fg }])),
+        skippedCount,
+      });
     } catch (err) {
       setAutoTagError(err instanceof Error ? err.message : 'Auto-tag failed');
     } finally {
       setAutoTagBusy(false);
+    }
+  }
+
+  async function applyReviewedTags(kept: AutoTagSuggestion[]) {
+    if (!observationId || kept.length === 0) return;
+    setApplyBusy(true);
+    setApplyError(null);
+    try {
+      const res = await applyScriptTagsFn({
+        observationId,
+        suggestions: kept.map(({ paragraphIndex, text, componentId }) => ({
+          paragraphIndex,
+          text,
+          componentId,
+        })),
+      });
+      // Adopt the server's result as the local draft. The editor hydrates its
+      // draft once per observation, so without this the freshly-written tags
+      // wouldn't show until a reload — and the next autosave would overwrite
+      // them with the untagged copy still held on the client.
+      onChange(res.data.scriptDoc);
+      setReview(null);
+      setAutoTagNotice({
+        kind: 'applied',
+        appliedCount: res.data.appliedCount,
+        rejectedCount: res.data.rejectedCount,
+      });
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Applying tags failed');
+    } finally {
+      setApplyBusy(false);
     }
   }
 
@@ -184,14 +257,21 @@ export function ScriptEditor({
           Auto-tag failed: {autoTagError}
         </div>
       ) : null}
-      {autoTagResult ? (
+      {autoTagNotice ? (
         <div className="bg-accent text-accent-foreground border-b px-3 py-1.5 text-xs">
-          Gemini tagged {autoTagResult.taggedCount} span
-          {autoTagResult.taggedCount === 1 ? '' : 's'}
-          {autoTagResult.skippedCount > 0
-            ? ` (${String(autoTagResult.skippedCount)} skipped — couldn't locate verbatim text)`
-            : ''}
-          .
+          {autoTagNotice.kind === 'no-suggestions'
+            ? `Gemini didn't find any taggable evidence in this script${
+                autoTagNotice.skippedCount > 0
+                  ? ` (${String(autoTagNotice.skippedCount)} suggestion${autoTagNotice.skippedCount === 1 ? '' : 's'} discarded — couldn't locate verbatim text)`
+                  : ''
+              }.`
+            : `Applied ${String(autoTagNotice.appliedCount)} tag${
+                autoTagNotice.appliedCount === 1 ? '' : 's'
+              }${
+                autoTagNotice.rejectedCount > 0
+                  ? ` (${String(autoTagNotice.rejectedCount)} skipped — the script changed since they were suggested)`
+                  : ''
+              }.`}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
@@ -211,6 +291,21 @@ export function ScriptEditor({
           />
         ) : null}
       </div>
+      {review ? (
+        <AutoTagReviewDialog
+          open
+          suggestions={review.suggestions}
+          colorById={review.colorById}
+          skippedCount={review.skippedCount}
+          applying={applyBusy}
+          error={applyError}
+          onCancel={() => {
+            setReview(null);
+            setApplyError(null);
+          }}
+          onApply={(kept) => void applyReviewedTags(kept)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -307,14 +402,14 @@ function ScriptToolbar({
           type="button"
           onClick={onAutoTag}
           disabled={autoTagBusy}
-          title="Auto-tag the script with Gemini"
+          title="Suggest component tags for this script with Gemini — you review them before anything is written"
           className={cn(
             'hover:bg-accent hover:text-accent-foreground inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors',
             autoTagBusy && 'cursor-not-allowed opacity-50',
           )}
         >
           <Sparkles className={cn('h-4 w-4', autoTagBusy && 'animate-pulse')} />
-          <span>{autoTagBusy ? 'Tagging…' : 'Auto-tag'}</span>
+          <span>{autoTagBusy ? 'Reviewing…' : 'Auto-tag'}</span>
         </button>
       ) : null}
       <div className="ml-auto flex items-center gap-1">
