@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
@@ -141,11 +141,70 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   }
 
   const isAssigned = mode.kind === 'view' ? mode.assignedComponentIds.has(component.id) : true;
+  // Editable only in edit mode with the write lock off — same gate as
+  // handleSelectProficiency below.
+  //
+  // ARIA pattern: WAI-ARIA APG **Toolbar** containing a set of **toggle
+  // buttons** (`aria-pressed`), NOT a radiogroup. Radio semantics forbid
+  // de-selecting the checked radio, but this product deliberately keeps
+  // "click the selected cell again to clear it" so an observer who
+  // mis-taps during a live observation can return a component to
+  // unscored. A toggle button is the ARIA control that is allowed to go
+  // back to `aria-pressed="false"`, and the Toolbar pattern is the one
+  // that defines the roving-tabindex + arrow-key behavior implemented
+  // below. "At most one pressed at a time" is enforced by app logic
+  // (`observationComponentEntry.proficiency` is one nullable enum).
+  const interactive = isEdit && !mode.readOnly;
+  const selectedIndex = entry.proficiency ? PROFICIENCY_LEVELS.indexOf(entry.proficiency) : -1;
+  // Roving tabindex (APG Toolbar): the whole toolbar is a single Tab stop
+  // — the pressed button, or the first one when nothing is pressed yet.
+  // Arrow keys move this index and DOM focus without activating;
+  // Enter/Space (native <button> behavior) is what actually toggles.
+  const [rovingIndex, setRovingIndex] = useState(selectedIndex >= 0 ? selectedIndex : 0);
+  const toggleRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    // Only follow a real selection. When the rating is cleared
+    // (selectedIndex === -1) the Tab stop stays on the button the user
+    // just pressed rather than jumping back to "Developing".
+    if (selectedIndex >= 0) setRovingIndex(selectedIndex);
+  }, [selectedIndex]);
 
   function handleSelectProficiency(level: ProficiencyLevel) {
     if (mode.kind !== 'edit' || mode.readOnly) return;
     const next = entry.proficiency === level ? null : level;
     mode.onProficiency(component.id, next);
+  }
+
+  /**
+   * APG Toolbar keyboard behavior for a **horizontal** toolbar: Left/Right
+   * Arrow move focus between the toggle buttons (wrapping at the ends),
+   * Home/End jump to the first/last. Up/Down Arrow are deliberately NOT
+   * handled — APG defines those for vertical toolbars only, and swallowing
+   * them here would block page scrolling while focus sits in the rubric.
+   */
+  function handleProficiencyToolbarKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const count = PROFICIENCY_LEVELS.length;
+    let next: number;
+    switch (e.key) {
+      case 'ArrowRight':
+        next = (rovingIndex + 1) % count;
+        break;
+      case 'ArrowLeft':
+        next = (rovingIndex - 1 + count) % count;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = count - 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    setRovingIndex(next);
+    toggleRefs.current[next]?.focus();
   }
 
   function handleToggleLookFor(lookForId: string) {
@@ -246,17 +305,23 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
 
   return (
     <div>
+      {/*
+        No role="row"/"rowheader"/"gridcell" here (and none in
+        DomainSection): the rubric matrix is a *layout* of per-component
+        controls, not a data grid — see the block comment on
+        DescriptorCell. Asserting row semantics without a role="grid" /
+        role="table" ancestor leaves the required context role
+        unsatisfied, so we assert nothing instead of something invalid.
+      */}
       <div
-        className={cn('grid items-stretch', RUBRIC_GRID_COLS)}
-        role="row"
+        className={cn(
+          'grid items-stretch',
+          isEdit ? 'grid-cols-[280px_minmax(0,1fr)]' : RUBRIC_GRID_COLS,
+        )}
         data-component-row={component.id}
       >
         {/* Component label cell (dark) — id, title, Assigned (view), chip strip. */}
-        <div
-          role="rowheader"
-          aria-label={component.title}
-          className="bg-ops-blue-dark flex flex-col gap-2 px-3 py-3"
-        >
+        <div className="bg-ops-blue-dark flex flex-col gap-2 px-3 py-3">
           <div>
             <span className="font-mono text-[11px] font-semibold text-white/50">
               {component.id}
@@ -277,22 +342,73 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
           </div>
         </div>
 
-        {/* Four descriptor cells */}
-        {PROFICIENCY_LEVELS.map((level) => {
-          const text = component.proficiencyLevels[level];
-          const selected = entry.proficiency === level;
-          const interactive = mode.kind === 'edit' && !mode.readOnly;
-          return (
+        {/* Four descriptor cells.
+
+            Interactive edit mode → an APG *toolbar* of *toggle buttons*
+            (see the block comment above `interactive`).
+
+            Finalized / read-only edit mode → the same four cells as
+            plain static content wrapped in a labelled role="group", so
+            nothing advertises interactive semantics for a rating that
+            cannot be changed; the saved rating is carried in the group's
+            accessible name and by a per-cell visually-hidden marker.
+
+            Pure "view" mode (rubric definition browsing) has no scored
+            entry at all — four plain static cells, no wrapper. */}
+        {isEdit ? (
+          interactive ? (
+            <div
+              role="toolbar"
+              aria-orientation="horizontal"
+              aria-label={`${component.title} proficiency rating`}
+              className="grid grid-cols-4 items-stretch"
+              onKeyDown={handleProficiencyToolbarKeyDown}
+            >
+              {PROFICIENCY_LEVELS.map((level, index) => (
+                <DescriptorCell
+                  key={level}
+                  level={level}
+                  text={component.proficiencyLevels[level]}
+                  selected={entry.proficiency === level}
+                  variant="toggle"
+                  tabIndex={index === rovingIndex ? 0 : -1}
+                  cellRef={(el) => {
+                    toggleRefs.current[index] = el;
+                  }}
+                  onClick={() => handleSelectProficiency(level)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div
+              role="group"
+              aria-label={`${component.title} proficiency rating: ${
+                entry.proficiency ? PROFICIENCY_LABELS[entry.proficiency] : 'Not rated'
+              }`}
+              className="grid grid-cols-4 items-stretch"
+            >
+              {PROFICIENCY_LEVELS.map((level) => (
+                <DescriptorCell
+                  key={level}
+                  level={level}
+                  text={component.proficiencyLevels[level]}
+                  selected={entry.proficiency === level}
+                  variant="static"
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          PROFICIENCY_LEVELS.map((level) => (
             <DescriptorCell
               key={level}
               level={level}
-              text={text}
-              selected={selected}
-              interactive={interactive}
-              onClick={() => handleSelectProficiency(level)}
+              text={component.proficiencyLevels[level]}
+              selected={false}
+              variant="static"
             />
-          );
-        })}
+          ))
+        )}
       </div>
 
       {combinedPanel}
@@ -353,7 +469,11 @@ function MobileLevelRow({
           // Indent under the Ratings parent (pl-10) so the hierarchy
           // reads clearly. When selected, drop one unit of padding to
           // compensate for the 4px brand-blue left border.
-          'flex w-full items-center gap-2 py-2.5 pr-4 pl-10 text-left transition-colors',
+          // min-h-11 = 44px: this row is a primary touch target on the
+          // mobile accordion, which iPad mini (744px logical portrait
+          // width, below useIsDesktop's 768px breakpoint) renders.
+          'flex min-h-11 w-full items-center gap-2 py-2.5 pr-4 pl-10 text-left transition-colors',
+          'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset',
           !selected && 'hover:bg-ops-blue-lighter/20',
           selected && 'pl-9',
         )}
@@ -392,7 +512,9 @@ function MobileLevelRow({
               onClick={onSelect}
               aria-pressed={selected}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                // min-h-11/min-w-11 = 44px touch target (mobile accordion).
+                'inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                'focus-visible:ring-ops-blue-dark focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-none',
                 selected
                   ? 'border-ops-blue text-ops-blue-dark hover:bg-ops-blue-lighter/40 border bg-white'
                   : 'bg-ops-blue hover:bg-ops-blue-dark text-white',
@@ -457,7 +579,8 @@ function MobileSectionRow({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="hover:bg-ops-blue-lighter/20 flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors"
+        // min-h-11 = 44px touch target (mobile accordion section header).
+        className="hover:bg-ops-blue-lighter/20 flex min-h-11 w-full items-center gap-2 px-4 py-2.5 text-left transition-colors"
       >
         <ChevronDown
           className={cn(
@@ -683,14 +806,20 @@ function LookForsPanel({
   onToggle: (lookForId: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+    <div
+      role="group"
+      aria-label={`Look-fors for ${component.title}`}
+      className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
+    >
       {component.lookFors.map((lf) => {
         const checked = selectedIds.includes(lf.id);
         return (
           <label
             key={lf.id}
             className={cn(
-              'flex items-start gap-2 rounded-md border p-2 text-sm transition-colors',
+              // The <label> is the whole click/tap target for its nested
+              // 16px checkbox, so it carries the 44px minimum.
+              'flex min-h-11 items-start gap-2 rounded-md border p-2 text-sm transition-colors',
               readOnly ? 'cursor-default' : 'cursor-pointer',
               checked
                 ? 'border-ops-blue bg-ops-blue/5 text-ops-blue-dark'
@@ -702,7 +831,10 @@ function LookForsPanel({
               checked={checked}
               disabled={readOnly}
               onChange={() => onToggle(lf.id)}
-              className="accent-ops-blue mt-0.5 h-4 w-4"
+              className={cn(
+                'accent-ops-blue mt-0.5 h-4 w-4 rounded',
+                'focus-visible:ring-ops-blue focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:outline-none',
+              )}
               aria-label={lf.text}
             />
             <span className={cn(readOnly && 'text-muted-foreground')}>{lf.text}</span>
@@ -750,7 +882,7 @@ function EvidencePanel({
             type="button"
             onClick={onPickFile}
             disabled={uploading}
-            className="bg-ops-blue hover:bg-ops-blue-dark inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
+            className="bg-ops-blue hover:bg-ops-blue-dark inline-flex min-h-11 min-w-11 items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
           >
             {uploading ? 'Uploading…' : '+ Add file'}
           </button>
@@ -807,28 +939,55 @@ function EvidenceChip({
 
 // ─── DescriptorCell ───────────────────────────────────────────────────────────
 
+/**
+ * One proficiency descriptor cell of the desktop matrix.
+ *
+ * `variant="toggle"` — a native `<button>` carrying `aria-pressed`, i.e. an
+ * APG **toggle button**, and a member of the enclosing `role="toolbar"`.
+ * This is deliberately *not* `role="radio"`: ARIA radios cannot be
+ * un-checked by activating the checked one, but the product requires
+ * exactly that (click/press the selected cell again to return the
+ * component to unscored). Mutual exclusion — at most one pressed per
+ * component — is enforced in `handleSelectProficiency`, since
+ * `observationComponentEntry.proficiency` is a single nullable enum.
+ *
+ * `variant="static"` — no role, no interactive semantics at all. Used for
+ * a finalized/read-only observation (a rating that cannot be changed must
+ * not look actionable to assistive tech) and for pure rubric-definition
+ * browsing. Because a role-less element takes no `aria-label`, the
+ * proficiency level (and, when set, the fact that this is the saved
+ * rating) is carried by visually-hidden text inside the cell instead.
+ */
 function DescriptorCell({
   level,
   text,
   selected,
-  interactive,
+  variant,
+  tabIndex,
+  cellRef,
   onClick,
 }: {
   level: ProficiencyLevel;
   text: string;
   selected: boolean;
-  interactive: boolean;
-  onClick: () => void;
+  variant: 'toggle' | 'static';
+  tabIndex?: number;
+  cellRef?: (el: HTMLButtonElement | null) => void;
+  onClick?: () => void;
 }) {
-  const baseClass = 'relative border-l border-gray-100 px-3 py-3 text-sm leading-snug';
+  // min-h-11 = 44px, the repo-wide minimum touch target (see button.tsx /
+  // input.tsx). The cell normally stretches far taller than that inside the
+  // matrix row; the floor matters for short/empty descriptors.
+  const baseClass = 'relative min-h-11 border-l border-gray-100 px-3 py-3 text-sm leading-snug';
 
-  if (interactive) {
+  if (variant === 'toggle') {
     return (
       <button
         type="button"
-        role="gridcell"
-        aria-selected={selected}
-        aria-label={`${level} — ${text || 'no descriptor'}`}
+        ref={cellRef}
+        aria-pressed={selected}
+        aria-label={`${PROFICIENCY_LABELS[level]} — ${text || 'no descriptor'}`}
+        tabIndex={tabIndex}
         data-proficiency={level}
         onClick={onClick}
         className={cn(
@@ -841,7 +1000,10 @@ function DescriptorCell({
         )}
       >
         {selected && (
-          <span className="bg-ops-blue absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-white">
+          <span
+            className="bg-ops-blue absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] text-white"
+            aria-hidden="true"
+          >
             ✓
           </span>
         )}
@@ -852,15 +1014,16 @@ function DescriptorCell({
 
   return (
     <div
-      role="gridcell"
       data-proficiency={level}
-      aria-selected={selected}
-      aria-label={`${level} — ${text || 'no descriptor'}`}
       className={cn(
         baseClass,
         selected ? 'bg-ops-blue-lighter text-ops-blue-dark font-medium' : 'bg-white text-gray-700',
       )}
     >
+      <span className="sr-only">
+        {PROFICIENCY_LABELS[level]}
+        {selected ? ' (saved rating)' : ''}:{' '}
+      </span>
       <CellBody text={text} />
     </div>
   );
