@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, History, Mail, Plus, Trash2 } from 'lucide-react';
-import { Timestamp, deleteDoc, doc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
+import {
+  Timestamp,
+  deleteDoc,
+  doc,
+  orderBy,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+} from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
@@ -32,7 +40,7 @@ import { Label } from '@/components/ui/label';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { EmailBodyField } from './EmailBodyField';
-import { withHistoryEntry } from './templateHistory';
+import { fitHistoryToByteBudget, historyEntryKey, withHistoryEntry } from './templateHistory';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -331,32 +339,53 @@ export function EmailTemplatesPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      // Snapshot the pre-edit subject/body from the live doc (not editForm,
-      // which already holds the in-progress edit) into history before
-      // overwriting it, so a bad save can be reverted from the History panel.
-      const current = templates?.find((tpl) => tpl.id === editForm.id);
-      const history = current
-        ? withHistoryEntry(
-            current.history,
-            { subject: current.subject, bodyHtml: current.bodyHtml },
-            user?.email ?? '',
-          )
-        : (editForm.history ?? []);
-      await setDoc(
-        doc(db, COLLECTIONS.emailTemplates, editForm.id),
-        {
-          name: editForm.name,
-          description: editForm.description,
-          subject: editForm.subject,
-          bodyHtml: editForm.bodyHtml,
-          triggerType: editForm.triggerType,
-          recipient: editForm.recipient,
-          scheduledDays: editForm.scheduledDays,
-          history,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
+      const templateRef = doc(db, COLLECTIONS.emailTemplates, editForm.id);
+      const edits = {
+        name: editForm.name,
+        description: editForm.description,
+        subject: editForm.subject,
+        bodyHtml: editForm.bodyHtml,
+        triggerType: editForm.triggerType,
+        recipient: editForm.recipient,
+        scheduledDays: editForm.scheduledDays,
+      };
+      await runTransaction(db, async (tx) => {
+        // Read the doc transactionally rather than trusting the local
+        // `templates` snapshot (from useFirestoreCollection's onSnapshot
+        // listener). That listener can lag a concurrent save from another
+        // admin by a full round trip — building the archived "previous
+        // version" from stale local state would erase that other admin's
+        // edit from both the live doc and history, with no trace.
+        const snap = await tx.get(templateRef);
+        const currentData = snap.exists() ? (snap.data() as Partial<EmailTemplate>) : undefined;
+        // Raw Firestore reads bypass the schema's `.default([])` — a
+        // template saved before `history` existed genuinely has no key at
+        // runtime despite the type saying otherwise.
+        const currentHistory =
+          (currentData?.history as EmailTemplateHistoryEntry[] | undefined) ?? [];
+        const history = currentData
+          ? withHistoryEntry(
+              currentHistory,
+              { subject: currentData.subject ?? '', bodyHtml: currentData.bodyHtml ?? '' },
+              user?.email ?? '',
+            )
+          : ((editForm.history as EmailTemplateHistoryEntry[] | undefined) ?? []);
+        // Trim-to-fit safety net: an oversized template (pasted-in base64
+        // images, etc.) could otherwise push the document over Firestore's
+        // 1 MiB limit and permanently block every future save on it. This
+        // is also what genuinely enforces the version cap in the write
+        // path — the schema's `.max()` is never invoked for this write.
+        const trimmedHistory = fitHistoryToByteBudget(edits, history);
+        tx.set(
+          templateRef,
+          {
+            ...edits,
+            history: trimmedHistory,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
       setExpandedId(null);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
@@ -819,13 +848,20 @@ interface TemplateHistoryPanelProps {
  *  version can be individually previewed and restored — restoring only
  *  copies that version's subject/body into the edit form; the admin still
  *  has to review and hit Save. */
-function TemplateHistoryPanel({
+export function TemplateHistoryPanel({
   history,
   substitutePreview,
   onRestore,
 }: TemplateHistoryPanelProps) {
   const [open, setOpen] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  // Keyed by a stable identity (editedAt + subject), not array position:
+  // `history` is a live-updating prop, and another admin's save prepends a
+  // new entry that shifts every existing entry's index. If the previewed
+  // entry's key no longer appears in `history` (e.g. it fell off the
+  // MAX_TEMPLATE_HISTORY cap), no row matches `previewKey` and the preview
+  // simply — and correctly — shows nothing, rather than silently swapping
+  // to whatever unrelated version now sits at the old index.
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
 
   return (
     <div className="border-border rounded-md border">
@@ -842,38 +878,42 @@ function TemplateHistoryPanel({
       </button>
       {open ? (
         <div className="border-border divide-border divide-y border-t">
-          {history.map((v, i) => (
-            <div key={`${String(i)}-${v.editedAt.toString()}`} className="space-y-2 px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{v.subject}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {formatHistoryTimestamp(v.editedAt)} · {v.editedBy}
-                  </p>
+          {history.map((v) => {
+            const key = historyEntryKey(v);
+            const isPreviewing = previewKey === key;
+            return (
+              <div key={key} className="space-y-2 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{v.subject}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {formatHistoryTimestamp(v.editedAt)} · {v.editedBy}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPreviewKey(isPreviewing ? null : key)}
+                    >
+                      {isPreviewing ? 'Hide' : 'Preview'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => onRestore(v)}>
+                      Restore
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setPreviewIndex(previewIndex === i ? null : i)}
-                  >
-                    {previewIndex === i ? 'Hide' : 'Preview'}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => onRestore(v)}>
-                    Restore
-                  </Button>
-                </div>
+                {isPreviewing ? (
+                  <iframe
+                    sandbox=""
+                    srcDoc={substitutePreview(v.bodyHtml)}
+                    className="min-h-[300px] w-full rounded border-0 bg-white"
+                    title={`Version preview ${key}`}
+                  />
+                ) : null}
               </div>
-              {previewIndex === i ? (
-                <iframe
-                  sandbox=""
-                  srcDoc={substitutePreview(v.bodyHtml)}
-                  className="min-h-[300px] w-full rounded border-0 bg-white"
-                  title={`Version preview ${String(i)}`}
-                />
-              ) : null}
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : null}
     </div>

@@ -196,6 +196,16 @@ export const emailTemplateHistoryEntry = z.object({
 });
 export type EmailTemplateHistoryEntry = z.infer<typeof emailTemplateHistoryEntry>;
 
+/**
+ * Max prior versions retained in `history`. Single source of truth for the
+ * cap — both this schema's `.max()` below and the write path in
+ * apps/web/src/admin/email-templates/templateHistory.ts (which is what
+ * actually enforces it in practice, since nothing in apps/ calls
+ * parse()/safeParse() against this schema for that write) import this same
+ * constant rather than each hardcoding the number 5.
+ */
+export const MAX_TEMPLATE_HISTORY_ENTRIES = 5;
+
 export const emailTemplate = z.object({
   templateId: slugId,
   name: z.string().trim().min(1).max(80),
@@ -218,9 +228,9 @@ export const emailTemplate = z.object({
   isActive: z.boolean().default(true),
   /** System templates can be edited and toggled but not deleted. */
   isSystem: z.boolean().default(false),
-  /** Prior subject/body versions, most recent first. Capped at 5 — see
-   *  emailTemplateHistoryEntry. */
-  history: z.array(emailTemplateHistoryEntry).max(5).default([]),
+  /** Prior subject/body versions, most recent first. Capped at
+   *  MAX_TEMPLATE_HISTORY_ENTRIES — see emailTemplateHistoryEntry. */
+  history: z.array(emailTemplateHistoryEntry).max(MAX_TEMPLATE_HISTORY_ENTRIES).default([]),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
