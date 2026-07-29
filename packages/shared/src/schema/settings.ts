@@ -41,6 +41,7 @@ export const rateLimits = z.object({
   observationSavesPerMinute: z.number().int().positive().default(60),
   audioUploadsPerHour: z.number().int().positive().default(20),
   transcriptionRequestsPerDay: z.number().int().positive().default(50),
+  pdfRegenerationsPerHour: z.number().int().positive().default(10),
 });
 export type RateLimits = z.infer<typeof rateLimits>;
 
@@ -188,6 +189,7 @@ export const appSettings = z.object({
     observationSavesPerMinute: 60,
     audioUploadsPerHour: 20,
     transcriptionRequestsPerDay: 50,
+    pdfRegenerationsPerHour: 10,
   }),
   branding: branding.default({
     appName: 'Orono Peer Observations',
