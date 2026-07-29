@@ -83,6 +83,13 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  // Tracks whether *this session* actually edited the reply-to input, as
+  // opposed to it simply never having hydrated a value (e.g. this tab was
+  // open before another admin set it — see useHydratedDraft's hydrate-once
+  // behavior). Only an admin who touched the field in this session may emit
+  // the deleteField() sentinel below; otherwise the key is omitted so
+  // merge:true leaves whatever the remote value is untouched.
+  const [replyToEmailTouched, setReplyToEmailTouched] = useState(false);
 
   // Hydrate once; later snapshots would clobber in-progress edits.
   // Key off the loaded doc's own id rather than a constant so the
@@ -101,9 +108,18 @@ export function SettingsPage() {
           ...form,
           // replyToEmail is a genuinely optional field (no schema default) —
           // explicitly delete it on merge when the admin has cleared the
-          // input, since a merge write simply omitting the key would leave
-          // a previously-saved value in place rather than clearing it.
-          replyToEmail: form.replyToEmail ?? deleteField(),
+          // input *in this session*, since a merge write simply omitting the
+          // key would leave a previously-saved value in place rather than
+          // clearing it. Guarded on replyToEmailTouched: without it, a tab
+          // that never hydrated a replyToEmail value (opened before another
+          // admin set one, per useHydratedDraft's hydrate-once behavior)
+          // would have form.replyToEmail === undefined for its whole
+          // session and this line would silently delete the other admin's
+          // saved value on any unrelated save. When untouched, omit the key
+          // entirely so merge:true leaves the remote value alone.
+          ...(replyToEmailTouched && form.replyToEmail === undefined
+            ? { replyToEmail: deleteField() }
+            : {}),
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -193,6 +209,7 @@ export function SettingsPage() {
             type="email"
             value={form.replyToEmail ?? ''}
             onChange={(e) => {
+              setReplyToEmailTouched(true);
               const value = e.target.value.trim();
               setForm((f) => {
                 if (value === '') {

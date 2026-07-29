@@ -129,6 +129,49 @@ export async function loadSecurityAdminEmail(db: Firestore): Promise<string | nu
 }
 
 /**
+ * Reasonable email-address format check for any value that reaches the mail
+ * pipeline as a `from` or `replyTo` address — whether read raw from
+ * Firestore (which bypasses the Zod schema's `z.email()` check entirely, see
+ * the doc comment on loadOutboundEmailSettings below) or passed in as a
+ * per-send override argument by a caller. This is what first gives those
+ * values real send-time effect, so a malformed value — or worse, one
+ * carrying a literal CR/LF (a classic header-injection vector) — must be
+ * rejected here rather than written straight into the `/mail` doc.
+ * Deliberately NOT restricted to the district's domain: any well-formed
+ * address is allowed (PLAT-05 decision).
+ */
+const EMAIL_FORMAT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isSendableEmailAddress(value: string): boolean {
+  return !/[\r\n]/.test(value) && EMAIL_FORMAT_RE.test(value);
+}
+
+/**
+ * Trim + format-validate a reply-to candidate from either source that can
+ * supply one — the per-send override argument to `sendEmail`, or the
+ * configured `/appSettings.replyToEmail` default — through the exact same
+ * path, so neither is validated more strictly than the other. An empty or
+ * malformed candidate normalizes to `undefined` ("no reply-to"); it is never
+ * thrown, only logged.
+ */
+function normalizeReplyToCandidate(
+  candidate: string | undefined,
+  source: 'per-send override' | 'configured default',
+): string | undefined {
+  if (typeof candidate !== 'string') return undefined;
+  const trimmed = candidate.trim();
+  if (trimmed === '') return undefined;
+  if (!isSendableEmailAddress(trimmed)) {
+    logger.warn('emailUtils: replyTo address failed format validation, omitting', {
+      source,
+      rejected: trimmed,
+    });
+    return undefined;
+  }
+  return trimmed;
+}
+
+/**
  * Resolve the outbound "from" address and optional default reply-to address
  * from /appSettings, in a single read.
  *
@@ -136,8 +179,11 @@ export async function loadSecurityAdminEmail(db: Firestore): Promise<string | nu
  * loadEmailBranding/loadSecurityAdminEmail above), so a missing or blank
  * `outboundEmailAddress` field falls back explicitly to the hardcoded
  * FROM_EMAIL constant rather than relying on the schema default kicking in.
- * `replyToEmail` has no schema default (it's genuinely optional) so a missing
- * value resolves to `undefined`, meaning "no reply-to override."
+ * A non-blank value that fails `isSendableEmailAddress` (malformed, or
+ * carrying a CR/LF) also falls back to FROM_EMAIL, with the rejection
+ * logged. `replyToEmail` has no schema default (it's genuinely optional) so
+ * a missing or invalid value resolves to `undefined`, meaning "no reply-to
+ * override."
  */
 async function loadOutboundEmailSettings(
   db: Firestore,
@@ -146,11 +192,23 @@ async function loadOutboundEmailSettings(
   const data = snap.data();
 
   const rawFrom = data?.['outboundEmailAddress'] as string | undefined;
-  const fromEmail = typeof rawFrom === 'string' && rawFrom.trim() !== '' ? rawFrom.trim() : FROM_EMAIL;
+  const trimmedFrom = typeof rawFrom === 'string' ? rawFrom.trim() : '';
+  let fromEmail = FROM_EMAIL;
+  if (trimmedFrom !== '') {
+    if (isSendableEmailAddress(trimmedFrom)) {
+      fromEmail = trimmedFrom;
+    } else {
+      logger.warn(
+        'emailUtils: outboundEmailAddress failed format validation, falling back to FROM_EMAIL',
+        { rejected: trimmedFrom },
+      );
+    }
+  }
 
-  const rawReplyTo = data?.['replyToEmail'] as string | undefined;
-  const replyTo =
-    typeof rawReplyTo === 'string' && rawReplyTo.trim() !== '' ? rawReplyTo.trim() : undefined;
+  const replyTo = normalizeReplyToCandidate(
+    data?.['replyToEmail'] as string | undefined,
+    'configured default',
+  );
 
   return { fromEmail, replyTo };
 }
@@ -222,7 +280,9 @@ export async function sendEmail(args: {
 
   const branding = await loadEmailBranding(db);
   const { fromEmail, replyTo: defaultReplyTo } = await loadOutboundEmailSettings(db);
-  const resolvedReplyTo = replyTo ?? defaultReplyTo;
+  // Both the per-send override and the configured default are routed through
+  // normalizeReplyToCandidate — see its doc comment for why that matters.
+  const resolvedReplyTo = normalizeReplyToCandidate(replyTo, 'per-send override') ?? defaultReplyTo;
 
   // Re-validate every href in the (already variable-substituted) body. Input-
   // time validation via toSafeUrl only governs what the link editor writes, so

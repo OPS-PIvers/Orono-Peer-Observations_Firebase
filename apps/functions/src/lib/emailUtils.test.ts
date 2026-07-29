@@ -461,6 +461,147 @@ describe('sendEmail', () => {
     const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
     expect(msg.replyTo).toBe('override@orono.k12.mn.us');
   });
+
+  // -------------------------------------------------------------------------
+  // Adversarial-review fixes: symmetric validation + send-time format checks
+  // -------------------------------------------------------------------------
+
+  it('trims a per-send replyTo override the same way the configured default is trimmed', async () => {
+    // Regression for the asymmetric-validation finding: before the fix, the
+    // configured default went through a trim/blank-check but the per-send
+    // override was written to message.replyTo completely raw.
+    const { db, writes } = makeDb({ docs: { [appSettingsPath]: {} } });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-override-untrimmed',
+      triggerType: 'staff.created',
+      replyTo: '  override@orono.k12.mn.us  ',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('override@orono.k12.mn.us');
+  });
+
+  it('treats a blank per-send replyTo override as absent, falling back to the configured default', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: 'default@orono.k12.mn.us' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-override-blank',
+      triggerType: 'staff.created',
+      replyTo: '   ',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('default@orono.k12.mn.us');
+  });
+
+  it('rejects a malformed per-send replyTo override and falls back to the configured default', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: 'default@orono.k12.mn.us' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-override-malformed',
+      triggerType: 'staff.created',
+      replyTo: 'not-an-email',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('default@orono.k12.mn.us');
+  });
+
+  it('rejects a CR/LF-bearing per-send replyTo override (header injection) and falls back to the default', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: 'default@orono.k12.mn.us' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-override-injection',
+      triggerType: 'staff.created',
+      replyTo: 'evil@orono.k12.mn.us\r\nBcc: attacker@evil.com',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as { replyTo?: string };
+    expect(msg.replyTo).toBe('default@orono.k12.mn.us');
+  });
+
+  it('rejects a malformed configured replyToEmail default, omitting message.replyTo', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { replyToEmail: 'not-an-email' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-default-malformed',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as Record<string, unknown>;
+    expect(msg).not.toHaveProperty('replyTo');
+  });
+
+  it('rejects a CR/LF-bearing configured replyToEmail default (header injection), omitting message.replyTo', async () => {
+    const { db, writes } = makeDb({
+      docs: {
+        [appSettingsPath]: { replyToEmail: 'evil@orono.k12.mn.us\r\nBcc: attacker@evil.com' },
+      },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'replyto-default-injection',
+      triggerType: 'staff.created',
+    });
+    const msg = writes.mailSets[0]?.data['message'] as Record<string, unknown>;
+    expect(msg).not.toHaveProperty('replyTo');
+  });
+
+  it('rejects a malformed configured outboundEmailAddress, falling back to FROM_EMAIL', async () => {
+    const { db, writes } = makeDb({
+      docs: { [appSettingsPath]: { outboundEmailAddress: 'not-an-email' } },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'from-malformed',
+      triggerType: 'staff.created',
+    });
+    expect(writes.mailSets[0]?.data['from']).toBe('observations@orono.k12.mn.us');
+  });
+
+  it('rejects a CR/LF-bearing configured outboundEmailAddress (header injection), falling back to FROM_EMAIL', async () => {
+    const { db, writes } = makeDb({
+      docs: {
+        [appSettingsPath]: {
+          outboundEmailAddress: 'evil@orono.k12.mn.us\r\nBcc: attacker@evil.com',
+        },
+      },
+    });
+    await sendEmail({
+      db,
+      to: 'a@orono.k12.mn.us',
+      subject: 'Hi',
+      html: '<p>x</p>',
+      mailDocId: 'from-injection',
+      triggerType: 'staff.created',
+    });
+    expect(writes.mailSets[0]?.data['from']).toBe('observations@orono.k12.mn.us');
+  });
 });
 
 // ---------------------------------------------------------------------------
