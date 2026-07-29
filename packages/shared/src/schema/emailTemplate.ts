@@ -16,6 +16,7 @@ export const EMAIL_TRIGGER_TYPES = [
   'roleYearMapping.updated',
   'scheduled.preObservation',
   'scheduled.reminderIncomplete',
+  'scheduled.reminderOverdueFinalize',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
   'scheduling.assignmentNotice',
@@ -51,7 +52,7 @@ export const EMAIL_PREFERENCE_CATEGORY_LABELS: Record<
   },
   reminders: {
     label: 'Reminders',
-    description: 'Pre-observation and incomplete work-product reminders.',
+    description: 'Pre-observation, incomplete work-product, and overdue-finalize reminders.',
   },
   schedulingUpdates: {
     label: 'Scheduling updates',
@@ -75,6 +76,7 @@ export const EMAIL_TRIGGER_CATEGORY: Partial<Record<EmailTriggerType, EmailPrefe
   'observation.finalized': 'observationNotices',
   'scheduled.preObservation': 'reminders',
   'scheduled.reminderIncomplete': 'reminders',
+  'scheduled.reminderOverdueFinalize': 'reminders',
   'scheduling.windowInvite': 'schedulingUpdates',
   'scheduling.assignmentNotice': 'schedulingUpdates',
   'scheduling.windowExpired': 'schedulingUpdates',
@@ -129,6 +131,38 @@ export const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
  */
 export const EMAIL_RECIPIENT_TYPES = ['observed', 'observer', 'both', 'admin'] as const;
 export type EmailRecipientType = (typeof EMAIL_RECIPIENT_TYPES)[number];
+
+/**
+ * Trigger types whose send path (scheduledEmailReminders.ts) hardcodes the
+ * recipient and never reads the template's `recipient` field. The admin
+ * Email Templates UI must not present the Recipient selector as an editable
+ * control for these — changing it there would save successfully but have no
+ * effect on the next scheduled run, which is worse than not offering the
+ * control at all.
+ *
+ * Keep this in sync with scheduledEmailReminders.ts: a trigger belongs here
+ * only if its block in that file ignores `template.recipient` entirely.
+ *   - scheduled.reminderIncomplete   → always sends to obs.observedEmail
+ *   - scheduled.reminderOverdueFinalize → always sends to obs.observerEmail
+ */
+export const FIXED_RECIPIENT_TRIGGER_TYPES = [
+  'scheduled.reminderIncomplete',
+  'scheduled.reminderOverdueFinalize',
+] as const satisfies readonly EmailTriggerType[];
+
+/** True for trigger types whose recipient the admin cannot actually change
+ *  (see FIXED_RECIPIENT_TRIGGER_TYPES above). */
+export function hasFixedRecipient(triggerType: EmailTriggerType): boolean {
+  return (FIXED_RECIPIENT_TRIGGER_TYPES as readonly string[]).includes(triggerType);
+}
+
+/** Human-readable description of the actual (non-editable) recipient for
+ *  each fixed-recipient trigger, for helper text next to the disabled
+ *  Recipient control. */
+export const FIXED_RECIPIENT_DESCRIPTION: Partial<Record<EmailTriggerType, string>> = {
+  'scheduled.reminderIncomplete': 'the observed staff member',
+  'scheduled.reminderOverdueFinalize': 'the observing peer evaluator',
+};
 
 /**
  * Variables available in all templates. Populated at send time;
@@ -222,6 +256,8 @@ export const emailTemplate = z.object({
   /**
    * For scheduled.preObservation: days before observationDate to send.
    * For scheduled.reminderIncomplete: days after WP/IR creation to send.
+   * For scheduled.reminderOverdueFinalize: days after observationDate (with
+   * the observation still Draft) to start the weekly nudge.
    */
   scheduledDays: z.number().int().positive().default(3),
   /** When false, the trigger is suppressed and nothing is sent. */

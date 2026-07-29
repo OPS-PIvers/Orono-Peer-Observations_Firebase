@@ -1,20 +1,29 @@
 /**
- * EmailTemplatesPage — regression tests for the concurrent-save history bug
- * (PR #80 review finding #1) and the trim-to-fit safety net (finding #2).
+ * EmailTemplatesPage — combined test suite.
  *
- * saveTemplate() must build the archived "previous version" from a
- * transactional read of the doc at write time, not from the local
- * `templates` snapshot (which lags a concurrent save from another admin by
- * a full onSnapshot round trip). These tests simulate that lag directly by
- * making the mocked transaction's `get()` return server-side content that
- * differs from what `useFirestoreCollection` (the stale local snapshot)
- * reports.
+ * Covers two independent feature areas that both touch this page:
+ *
+ * 1. Recipient control regression tests (OBS-08): scheduledEmailReminders.ts
+ *    hardcodes the recipient for scheduled.reminderIncomplete and
+ *    scheduled.reminderOverdueFinalize, ignoring the template's `recipient`
+ *    field entirely. The admin editor must disable the Recipient selector
+ *    (and explain why) for those trigger types, while leaving it fully
+ *    editable for triggers whose send path actually branches on it.
+ *
+ * 2. The concurrent-save history bug (PR #80 review finding #1) and the
+ *    trim-to-fit safety net (finding #2). saveTemplate() must build the
+ *    archived "previous version" from a transactional read of the doc at
+ *    write time, not from the local `templates` snapshot (which lags a
+ *    concurrent save from another admin by a full onSnapshot round trip).
+ *    These tests simulate that lag directly by making the mocked
+ *    transaction's `get()` return server-side content that differs from
+ *    what `useFirestoreCollection` (the stale local snapshot) reports.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EmailTemplate } from '@ops/shared';
+import type { EmailTemplate, EmailTemplateHistoryEntry } from '@ops/shared';
 
 // ─── Hoisted mocks ────────────────────────────────────────────────────────
 
@@ -80,6 +89,15 @@ vi.mock('@/auth/AuthProvider', () => ({
   useAuth: () => ({ user: { email: 'admin.b@orono.k12.mn.us' } }),
 }));
 
+vi.mock('@/hooks/useBranding', () => ({
+  useBranding: () => ({
+    appName: 'Orono Peer Observations',
+    primaryColor: '#2d3f89',
+    logoUrl: null,
+    iconUrl: null,
+  }),
+}));
+
 vi.mock('@/hooks/useFirestoreCollection', () => ({
   useFirestoreCollection: () => ({
     data: templatesHolder.current,
@@ -104,7 +122,6 @@ vi.mock('./EmailBodyField', () => ({
   ),
 }));
 
-import type { EmailTemplateHistoryEntry } from '@ops/shared';
 import { historyEntryKey } from './templateHistory';
 import { EmailTemplatesPage, TemplateHistoryPanel } from './EmailTemplatesPage';
 
@@ -155,6 +172,12 @@ function renderPage() {
   );
 }
 
+async function openEditor() {
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(await screen.findByRole('button', { name: /Edit/i }));
+}
+
 async function openEditorAndChangeSubject(user: ReturnType<typeof userEvent.setup>) {
   renderPage();
   const editBtn = await screen.findByRole('button', { name: /edit/i });
@@ -171,6 +194,7 @@ async function openEditorAndChangeSubject(user: ReturnType<typeof userEvent.setu
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  templatesHolder.current = [];
   txSetMock.mockClear();
   setDocMock.mockClear();
   deleteDocMock.mockClear();
@@ -190,6 +214,81 @@ beforeEach(() => {
       return updateFn(tx);
     },
   );
+});
+
+describe('Recipient control — fixed-recipient triggers', () => {
+  it('disables the Recipient selector for scheduled.reminderOverdueFinalize', async () => {
+    templatesHolder.current = [
+      makeTemplate({
+        id: 'overdue',
+        templateId: 'overdue',
+        name: 'Overdue Finalize Reminder',
+        triggerType: 'scheduled.reminderOverdueFinalize',
+        recipient: 'observer',
+      }),
+    ];
+    await openEditor();
+
+    const select = screen.getByLabelText('Recipient');
+    expect(select).toBeDisabled();
+    expect(
+      screen.getByText(/Recipient is fixed for this trigger/i, { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/the observing peer evaluator/i)).toBeInTheDocument();
+  });
+
+  it('disables the Recipient selector for scheduled.reminderIncomplete', async () => {
+    templatesHolder.current = [
+      makeTemplate({
+        id: 'incomplete',
+        templateId: 'incomplete',
+        name: 'Incomplete Reminder',
+        triggerType: 'scheduled.reminderIncomplete',
+        recipient: 'observed',
+      }),
+    ];
+    await openEditor();
+
+    const select = screen.getByLabelText('Recipient');
+    expect(select).toBeDisabled();
+    expect(screen.getByText(/the observed staff member/i)).toBeInTheDocument();
+  });
+});
+
+describe('Recipient control — non-fixed triggers', () => {
+  it('leaves the Recipient selector enabled for scheduled.preObservation', async () => {
+    templatesHolder.current = [
+      makeTemplate({
+        id: 'preobs',
+        templateId: 'preobs',
+        name: 'Pre-Observation Reminder',
+        triggerType: 'scheduled.preObservation',
+        recipient: 'observed',
+      }),
+    ];
+    await openEditor();
+
+    const select = screen.getByLabelText('Recipient');
+    expect(select).not.toBeDisabled();
+    expect(screen.queryByText(/Recipient is fixed for this trigger/i)).not.toBeInTheDocument();
+  });
+
+  it('leaves the Recipient selector enabled for manual templates', async () => {
+    templatesHolder.current = [
+      makeTemplate({
+        id: 'manual-1',
+        templateId: 'manual-1',
+        name: 'Manual Template',
+        triggerType: 'manual',
+        recipient: 'observed',
+        isSystem: false,
+      }),
+    ];
+    await openEditor();
+
+    const select = screen.getByLabelText('Recipient');
+    expect(select).not.toBeDisabled();
+  });
 });
 
 describe('concurrent save (PR #80 review finding #1)', () => {

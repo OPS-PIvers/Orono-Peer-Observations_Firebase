@@ -369,6 +369,69 @@ describe('sendEmail', () => {
   });
 
   // -------------------------------------------------------------------------
+  // OBS-08 — overdue-finalize reminder is sent `to` the *observer*, so
+  // suppression must gate on the observer's own /staff doc, not the observed
+  // staff member's. This is the subtle bit the brief flagged: it's easy to
+  // accidentally reuse the observed person's preferences (or their doc path)
+  // when wiring a new "to the PE" reminder. Verify sendEmail resolves the
+  // right person purely from `to`, regardless of what the observed party's
+  // preferences say.
+  // -------------------------------------------------------------------------
+  it('OBS-08: suppresses the overdue-finalize reminder when the observer (recipient) opted out, even though the observed staff member opted in', async () => {
+    const { db, writes } = makeDb({
+      docs: {
+        [appSettingsPath]: {},
+        [`${COLLECTIONS.staff}/observer@orono.k12.mn.us`]: {
+          emailPreferences: { reminders: false },
+        },
+        [`${COLLECTIONS.staff}/observed@orono.k12.mn.us`]: {
+          emailPreferences: { reminders: true },
+        },
+      },
+    });
+    const result = await sendEmail({
+      db,
+      to: 'observer@orono.k12.mn.us', // recipient is the observer, per OBS-08 owner decision
+      subject: 'Please finalize',
+      html: '<p>x</p>',
+      mailDocId: 'overdue-obs1-2026-W31',
+      triggerType: 'scheduled.reminderOverdueFinalize',
+    });
+    expect(result).toEqual({
+      queued: false,
+      to: [],
+      suppressed: ['observer@orono.k12.mn.us'],
+    });
+    expect(writes.mailSets).toHaveLength(0);
+  });
+
+  it('OBS-08: sends the overdue-finalize reminder when the observer (recipient) opted in, even though the observed staff member opted out', async () => {
+    const { db, writes } = makeDb({
+      docs: {
+        [appSettingsPath]: {},
+        [`${COLLECTIONS.staff}/observer@orono.k12.mn.us`]: {
+          emailPreferences: { reminders: true },
+        },
+        [`${COLLECTIONS.staff}/observed@orono.k12.mn.us`]: {
+          emailPreferences: { reminders: false },
+        },
+      },
+    });
+    const result = await sendEmail({
+      db,
+      to: 'observer@orono.k12.mn.us',
+      subject: 'Please finalize',
+      html: '<p>x</p>',
+      mailDocId: 'overdue-obs2-2026-W31',
+      triggerType: 'scheduled.reminderOverdueFinalize',
+    });
+    expect(result.queued).toBe(true);
+    expect(result.to).toEqual(['observer@orono.k12.mn.us']);
+    expect(result.suppressed).toEqual([]);
+    expect(writes.mailSets).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
   // PLAT-05: outbound "from" address + optional reply-to
   // -------------------------------------------------------------------------
 
