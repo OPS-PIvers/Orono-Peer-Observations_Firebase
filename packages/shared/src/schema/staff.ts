@@ -49,14 +49,30 @@ export const staff = z.object({
    *  emailTemplate.ts EMAIL_TRIGGER_CATEGORY). Missing/legacy docs parse as
    *  all-true — fully opted in, matching pre-existing behavior. */
   emailPreferences: emailPreferences.default(DEFAULT_EMAIL_PREFERENCES),
+  /**
+   * Denormalized "most recent time this person authenticated into the app",
+   * stamped by the `syncMyClaims` callable (apps/functions/src/auth/
+   * syncMyClaims.ts) — the first thing the web client calls after sign-in.
+   *
+   * `null` means "invited but never signed in", which is what the admin
+   * rollout-readiness card queries for. It is deliberately an explicit null
+   * rather than an absent field: Firestore's `where('lastSignInAt','==',null)`
+   * matches documents whose field is *present and null*, never documents that
+   * omit the field. Every staff-creation path therefore writes `null`, and
+   * `scripts/backfill/backfill-last-sign-in.ts` stamps pre-existing docs.
+   *
+   * Not part of `staffInput` on purpose — no admin form or CSV import may
+   * write it, so a routine staff edit can never clobber a real sign-in stamp.
+   */
+  lastSignInAt: isoDate.nullable().default(null),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
 export type Staff = z.infer<typeof staff>;
 
 /** Subset accepted from admin UI add/edit forms (ID + audit timestamps
- *  added server-side). */
-export const staffInput = staff.omit({ createdAt: true, updatedAt: true });
+ *  added server-side; `lastSignInAt` is stamped only by the sign-in path). */
+export const staffInput = staff.omit({ createdAt: true, updatedAt: true, lastSignInAt: true });
 export type StaffInput = z.infer<typeof staffInput>;
 
 /**

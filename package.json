@@ -37,6 +37,9 @@
     "seed:dev": "tsx scripts/seed-dev.ts",
     "export:emulator": "tsx scripts/export/export.ts --target=emulator",
     "export:prod": "tsx scripts/export/export.ts --target=prod",
+    "backfill:last-sign-in:dry-run": "tsx scripts/backfill/backfill-last-sign-in.ts --target=prod --dry-run",
+    "backfill:last-sign-in:emulator": "tsx scripts/backfill/backfill-last-sign-in.ts --target=emulator",
+    "backfill:last-sign-in:prod": "tsx scripts/backfill/backfill-last-sign-in.ts --target=prod",
     "prepare": "husky"
   },
   "devDependencies": {

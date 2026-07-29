@@ -174,6 +174,10 @@ async function run(args: CliArgs): Promise<ImportSummary> {
   for (const s of staffParsed.staff) {
     await setDocAt(`${COLLECTIONS.staff}/${s.email}`, {
       ...s,
+      // Explicit null, not an absent field: the admin "never signed in" card
+      // queries `lastSignInAt == null`, which in Firestore only matches docs
+      // where the field is present. syncMyClaims overwrites it on first login.
+      lastSignInAt: null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

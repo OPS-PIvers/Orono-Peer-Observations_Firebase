@@ -33,6 +33,7 @@ export const SAMPLE_STAFF: Staff = {
   isActive: true,
   hasAdminAccess: false,
   emailPreferences: DEFAULT_EMAIL_PREFERENCES,
+  lastSignInAt: PAST,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -443,6 +443,9 @@ async function main(): Promise<void> {
         .doc(s.email)
         .set({
           ...s,
+          // See the note in scripts/import/import.ts — the admin "never signed
+          // in" card needs the field present, not merely absent.
+          lastSignInAt: null,
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
