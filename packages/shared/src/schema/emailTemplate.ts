@@ -133,6 +133,38 @@ export const EMAIL_RECIPIENT_TYPES = ['observed', 'observer', 'both', 'admin'] a
 export type EmailRecipientType = (typeof EMAIL_RECIPIENT_TYPES)[number];
 
 /**
+ * Trigger types whose send path (scheduledEmailReminders.ts) hardcodes the
+ * recipient and never reads the template's `recipient` field. The admin
+ * Email Templates UI must not present the Recipient selector as an editable
+ * control for these — changing it there would save successfully but have no
+ * effect on the next scheduled run, which is worse than not offering the
+ * control at all.
+ *
+ * Keep this in sync with scheduledEmailReminders.ts: a trigger belongs here
+ * only if its block in that file ignores `template.recipient` entirely.
+ *   - scheduled.reminderIncomplete   → always sends to obs.observedEmail
+ *   - scheduled.reminderOverdueFinalize → always sends to obs.observerEmail
+ */
+export const FIXED_RECIPIENT_TRIGGER_TYPES = [
+  'scheduled.reminderIncomplete',
+  'scheduled.reminderOverdueFinalize',
+] as const satisfies readonly EmailTriggerType[];
+
+/** True for trigger types whose recipient the admin cannot actually change
+ *  (see FIXED_RECIPIENT_TRIGGER_TYPES above). */
+export function hasFixedRecipient(triggerType: EmailTriggerType): boolean {
+  return (FIXED_RECIPIENT_TRIGGER_TYPES as readonly string[]).includes(triggerType);
+}
+
+/** Human-readable description of the actual (non-editable) recipient for
+ *  each fixed-recipient trigger, for helper text next to the disabled
+ *  Recipient control. */
+export const FIXED_RECIPIENT_DESCRIPTION: Partial<Record<EmailTriggerType, string>> = {
+  'scheduled.reminderIncomplete': 'the observed staff member',
+  'scheduled.reminderOverdueFinalize': 'the observing peer evaluator',
+};
+
+/**
  * Variables available in all templates. Populated at send time;
  * unavailable variables for a given trigger are substituted with ''.
  */

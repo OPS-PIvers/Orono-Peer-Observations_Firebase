@@ -6,6 +6,8 @@ import {
   COLLECTIONS,
   EMAIL_RECIPIENT_TYPES,
   EMAIL_TRIGGER_TYPES,
+  FIXED_RECIPIENT_DESCRIPTION,
+  hasFixedRecipient,
   KNOWN_TEMPLATE_VARIABLES,
   renderEmailShell,
   type EmailRecipientType,
@@ -609,6 +611,11 @@ function TemplateRow({
     TRIGGER_VARIABLES as Partial<Record<EmailTriggerType, TemplateVariable[]>>
   )[triggerType] ?? [...KNOWN_TEMPLATE_VARIABLES];
   const isScheduled = triggerType.startsWith('scheduled.');
+  // Some scheduled triggers hardcode their recipient in
+  // scheduledEmailReminders.ts and ignore this field entirely — the
+  // selector must not imply the choice does anything for them.
+  const recipientFixed = hasFixedRecipient(triggerType);
+  const fixedRecipientDescription = FIXED_RECIPIENT_DESCRIPTION[triggerType];
 
   return (
     <div>
@@ -703,9 +710,12 @@ function TemplateRow({
               </select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Recipient</Label>
+              <Label htmlFor={`recipient-${t.id}`}>Recipient</Label>
               <select
-                className="border-input bg-background rounded-md border px-3 py-2 text-sm"
+                id={`recipient-${t.id}`}
+                disabled={recipientFixed}
+                aria-disabled={recipientFixed}
+                className="border-input bg-background disabled:bg-muted disabled:text-muted-foreground rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed"
                 value={editForm.recipient ?? t.recipient}
                 onChange={(e) =>
                   onFormChange({ ...editForm, recipient: e.target.value as EmailRecipientType })
@@ -717,6 +727,12 @@ function TemplateRow({
                   </option>
                 ))}
               </select>
+              {recipientFixed ? (
+                <p className="text-muted-foreground text-xs">
+                  Recipient is fixed for this trigger — always sent to{' '}
+                  {fixedRecipientDescription ?? 'a fixed recipient'}. This setting has no effect.
+                </p>
+              ) : null}
             </div>
             {isScheduled ? (
               <div className="grid gap-1.5">
