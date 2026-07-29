@@ -2,7 +2,7 @@
 
 _88 feature briefs, generated 2026-07-24 by a multi-agent discovery pass over the codebase (6 domain explore→ideate pairs plus a cross-cutting critic)._
 
-_**8 shipped 2026-07-25** — see [Shipped](#shipped) below. 80 remain open._
+_**19 shipped** — 8 on 2026-07-25, 11 on 2026-07-29. See [Shipped](#shipped) below. 69 remain open._
 
 ## How to use this document
 
@@ -58,7 +58,35 @@ Counts in the table above are as-generated and are **not** decremented as items 
 - `STAFF-04` also moved `downloadTextFile` out of `admin/staff/staffCsv.ts` into `apps/web/src/lib/download.ts`. Use that.
 - `ADMIN-01` extracted `FilterChip`, `StatusFilterChip`, and `statusFilter` into `apps/web/src/admin/_shared/`, and `StaffPage` now consumes them. Any new admin list page should reuse those instead of duplicating the idiom. Note that `AdminSearchInput` collapses if placed as a flex-row sibling — keep search on its own row, as `StaffFilterBar` does.
 - `STAFF-01` made the app-wide strip the single source of truth for "you are offline"; `GlobalToolsBar` now shows only save/retry state. Don't reintroduce a second offline assertion on any screen.
-- `OBS-03` left one gap open: `regenerateObservationPdf` is still not rate-limited. Tracked in [`TODO.md`](TODO.md) under "Ready code work".
+- `OBS-03` left one gap open: `regenerateObservationPdf` is still not rate-limited. **Closed 2026-07-29** by [#73](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/73).
+
+**2026-07-29 — tier A sweep (11 items).** The highest impact-per-effort slice of the remaining backlog, implemented in parallel worktrees. Every PR was reviewed by 2 adversarial reviewers, fixed, and re-verified before merge; the merged whole then got a cross-feature integration review.
+
+| ID         | Feature                                                    | Size   | PR                                                                            |
+| ---------- | ---------------------------------------------------------- | ------ | ----------------------------------------------------------------------------- |
+| `OBS-08`   | Overdue-finalize reminder email                            | medium | [#74](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/74) |
+| `PLAT-05`  | Honor outbound email address setting + reply-to            | small  | [#75](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/75) |
+| `PLAT-06`  | Email template version history with one-click revert       | medium | [#80](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/80) |
+| `PLAT-08`  | Broadcast a manual email to a filtered staff group         | medium | [#76](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/76) |
+| `PLAT-09`  | Enforce the configured session duration                    | medium | [#81](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/81) |
+| `PLAT-10`  | Admin dashboard card for staff who haven't signed in yet   | medium | [#78](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/78) |
+| `AI-07`    | Auto-tag review before applying to script                  | medium | [#77](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/77) |
+| `SCHED-04` | Manual slot override in the auto-assign review dialog      | medium | [#83](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/83) |
+| `SCHED-05` | Cross-window double-booking warning for invitees           | medium | [#82](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/82) |
+| `STAFF-08` | "My Growth" — personal rubric-rating trend view on Profile | medium | [#79](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/79) |
+| `XCUT-07`  | Keyboard-navigable, screen-reader-labeled rubric grid      | medium | [#84](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/84) |
+
+**Notes for anyone picking up an adjacent brief:**
+
+- **Three briefs in this sweep rested on stale premises.** Treat the "why this fits" sections as hypotheses, not facts. `PLAT-10` claimed `sign_in` "is a real AUDIT_ACTIONS entry written on every successful login" — nothing wrote it; the action was defined and unused. The rate-limit brief assumed `rate_limit_tripped` was written by existing limiters — it wasn't. `AI-07`'s area turned out to contain a silent production bug nobody had reported. **Re-verify a brief's claims against the code before building on them.**
+- `PLAT-09` is a SOFT client-side timeout. `getIdToken(true)` does **not** reset the `auth_time` claim — only real re-authentication does, so "Stay signed in" uses `reauthenticateWithPopup`. A hard server-side cutoff would additionally need Identity Platform session-duration configuration, outside this app's deploy surface.
+- `PLAT-10` writes `lastSignInAt` in `syncMyClaims` behind a **10-minute staleness gate**, which also gates a new `sign_in` audit write — `refreshClaims()` is reachable from the Unauthorized page's "Refresh access" button with no throttle, so an ungated write there is unbounded. The backfill reads Firebase Auth's `metadata.lastSignInTime` via `listUsers()`, not the audit log. The card filters null-or-missing **client-side**: Firestore equality filters skip documents where the field is absent, so a `where('lastSignInAt','==',null)` query would silently omit anyone whose doc predates the field.
+- `PLAT-06` history is inline and capped, with a byte-budget trim, because a template that crosses Firestore's 1 MiB limit becomes permanently unsaveable with no UI recovery path. Note the Zod `.max()` never runs — nothing calls `parse`/`safeParse` on this schema, so caps must be enforced in the write path.
+- `PLAT-08` is deliberately callable by any PE, not just admins. The safeguards that make that acceptable are server-side: a 200-recipient cap, an hourly per-caller rate limit, and a **/staff roster allow-list** — without the allow-list the callable is an open mass-mailer to arbitrary external addresses.
+- `XCUT-07` models proficiency as a group of `aria-pressed` **toggle buttons**, not a radiogroup, because click-the-selected-cell-to-clear is a deliberate interaction and radio semantics forbid deselection. That also makes the roving-tabindex/arrows-move-focus keyboard pattern correct.
+- Caller authorization for admin-console actions lives in `apps/functions/src/lib/callerAccess.ts`. `hasAdminAccess` grants console access independent of professional role, so a role-claim-only check will reject users the UI lets in — use the shared helper.
+- **The cross-feature integration pass earned its keep — run one after any parallel sweep.** Each of the 11 PRs passed two adversarial reviewers individually, and the merged result still contained three blocking defects that existed only because the features coexist, fixed in [#85](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/85) and [#86](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/86): the session-expiry warning was rendered behind (and `aria-hidden` from, and unclickable under) any open Radix dialog, so it could never be seen or actioned during an auto-tag review; forced sign-out ran `firebaseSignOut` before the editor's unmount flush, silently discarding up to 800ms of edits; and `sendBulkManualEmail` checked only the role claim while its neighbour button on the same page had been widened to accept `hasAdminAccess`. None were visible in any single diff.
+- **Still open in this area:** `reminderIncomplete` shares OBS-08's fixed-recipient limitation; the rubric's `role="row"`/`rowheader` elements still lack a `grid`/`table` ancestor; `CellChip`/`EvidenceChip` controls remain under the 24px WCAG 2.5.8 minimum. Caller authorization enforces `hasAdminAccess` and `isActive` revocation immediately but a **role demotion** only takes effect once the caller's ID token refreshes — a deliberate tradeoff documented in `callerAccess.ts` to avoid a Firestore read on every authorized call.
 
 ## Index
 

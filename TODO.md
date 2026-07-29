@@ -2,9 +2,9 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
-**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, of which 8 shipped in the 2026-07-25 tier-1/tier-2 sweep and 80 remain open.
+**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, of which 19 have shipped (8 in the 2026-07-25 tier-1/tier-2 sweep, 11 in the 2026-07-29 tier A sweep) and 69 remain open.
 
-Last updated 2026-07-25, after the tier-1/tier-2 `FEATURES_ROADMAP.md` sweep (PRs #65–#72) added one new item to "Ready code work". Before that: the 2026-07-24 parallel implementation sweep that cleared "Ready code work" (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
+Last updated 2026-07-29, after the tier A `FEATURES_ROADMAP.md` sweep (PRs #73–#84, plus #85–#86 fixing cross-feature defects the per-PR reviews missed). That sweep cleared the one existing "Ready code work" item and added seven new follow-ups, most of them pre-existing gaps that only became visible once the surrounding code was touched. Before that: the 2026-07-25 sweep (PRs #65–#72). Before that: the 2026-07-24 parallel implementation sweep that cleared "Ready code work" (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
 
 ## Human-gated (needs a decision, secret, or deploy)
 
@@ -16,9 +16,15 @@ Last updated 2026-07-25, after the tier-1/tier-2 `FEATURES_ROADMAP.md` sweep (PR
 
 ## Ready code work (no blockers)
 
-- [ ] **Rate-limit `regenerateObservationPdf`** — #46 added the fixed-window limiter in `apps/functions/src/lib/rateLimit.ts` and wired it into the two abuse-prone entry points (`uploadAudio`, `requestTranscription`); `regenerateObservationPdf` was left out because it had zero callers. #66 gave it a one-click UI trigger, so the gap is now live: each call is a full Puppeteer render on Cloud Run plus a Drive upload/share/delete round-trip plus Firestore and audit writes, bounded only by `maxInstances: 10`. The confirm dialog is not a boundary — an observer or admin can drive the callable directly with a valid ID token. Not an auth hole (the callable still enforces observer-or-admin and Finalized-only), a cost/abuse surface. Apply the same wrapper with a per-user hourly limit. (S) _Raised by the security lens during the 2026-07-25 roadmap sweep; deferred because implementers were barred from touching `apps/functions`._
+- [ ] **Backfill the `rate_limit_tripped` audit write into `uploadAudio` and `requestTranscription`** — discovered during the 2026-07-29 sweep: `AUDIT_ACTIONS.rateLimitTripped` was defined in `packages/shared/src/schema/auditLog.ts` but written by **nothing**, so neither of the two callables rate-limited since #46 has ever produced an audit trail when a limit trips. #73 is the first real caller. Bring the other two in line. (S)
+- [ ] **Re-check the `gemini.scriptAutoTag.enabled` kill switch inside `applyScriptTags`'s transaction** — it is currently read only on the pre-transaction load, so an admin disabling auto-tag mid-review does not block an in-flight apply. Same shape as the finalized-status race #77 closed, but narrower. (S) _Non-blocking finding from the #77 adversarial review._
+- [ ] **Bring `CellChip` and `EvidenceChip` up to the 24px WCAG 2.5.8 minimum** — they sit at roughly 17–24px in `apps/web/src/components/rubric/RubricRow.tsx` and do render on iPad (iPad mini's 744 CSS px portrait width is below the app's 768px `useIsDesktop` breakpoint, so iPad users get the mobile accordion). Pre-existing; disclosed and deliberately deferred by #84 to keep that PR's diff reviewable. (S)
+- [ ] **Give the rubric matrix a valid `role="grid"`/`role="table"` ancestor, or drop the row roles** — `DomainSection.tsx` and `RubricRow.tsx` assert `role="row"`/`rowheader`/`columnheader` with no grid/table ancestor, so their required context role is unsatisfied and assistive tech may not expose them as intended. Pre-existing and independent of #84's toggle-button fix. (M)
+- [ ] **Test coverage for `ProfilePage`'s growth-chart rendering** — `computeGrowthTrend` is unit-tested but the rubric-grouping and dash/marker series-differentiation logic (the actual WCAG 1.4.1 fix from #79) is not, because `ProfilePage.tsx` has no test harness. Standing one up is its own task. (M)
+- [ ] **End-to-end test for the forced-sign-out flush glue in `ObservationEditorPage`** — both sides of the contract are tested (ordering in `AuthProvider.test.tsx`, registry semantics in `forcedSignOutFlush.test.ts`) but the six lines of registration in the editor are not, since the page has never had a render test. (M)
+- [ ] **Add `.claude/worktrees/` to `.gitignore`** — agent worktrees are created inside the repo and are neither tracked nor ignored, so `eslint .` lints entire duplicate copies of the codebase and a stray `git add -A` could commit gigabytes. (S)
 
-## Follow-ups from the sweep
+## Follow-ups from the 2026-07-24 sweep
 
 - [ ] **Verify the WebKit Firestore stall on a real iPad.** The `tablet-ipad` Playwright project runs the iPad viewport on Chromium because under WebKit the Firestore _collection_ listeners never advance past their first cached snapshot against the emulator suite (the staff picker sits at "0 of 1 match" past a 30s wait; single-document listeners are fine, so sign-in and dashboard chrome pass). Unknown whether this is emulator-transport-specific or reproduces on iPad Safari against production Firestore — needs a device, not CI. See the comment in `apps/web/playwright.config.ts`. (M)
 - [ ] **Adopt the shared Tiptap toolbar in `EmailBodyField`** — #50 deduped `tiptap-editor.tsx` and `ScriptEditor.tsx` into `components/ui/tiptap-toolbar.tsx`; `EmailBodyField` still carries its own copy. (S)
@@ -27,6 +33,12 @@ Last updated 2026-07-25, after the tier-1/tier-2 `FEATURES_ROADMAP.md` sweep (PR
 ## Future feature (needs its own brainstorm → spec → plan)
 
 - [ ] **Module assignments (Google-Doc workflow)** — per-staff Doc copy + embed, submission + notification flow, Drive auth model (per-user OAuth vs. service account). Never implemented; stub spec explicitly says "do not implement from this document." Once built, register `assignmentSubmitted` in the dashboard step-builder's `EVENT_EVALUATORS` (trivial, purely additive). (L)
+
+## Shipped (2026-07-29 tier A sweep)
+
+- [x] **Rate-limit `regenerateObservationPdf`** — 10/user/hour, configurable via the `rateLimits` settings block. Fails **closed** on limiter error, matching `requestTranscription` (the first implementation failed open, which meant inducing Firestore transaction contention could bypass the limit on the most expensive callable in the app). ([#73](https://github.com/OPS-PIvers/Orono-Peer-Observations_Firebase/pull/73))
+
+The 11 feature items from that sweep are recorded in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md#shipped).
 
 ## Shipped (2026-07-24 sweep)
 
