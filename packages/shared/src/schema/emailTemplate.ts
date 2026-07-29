@@ -16,6 +16,7 @@ export const EMAIL_TRIGGER_TYPES = [
   'roleYearMapping.updated',
   'scheduled.preObservation',
   'scheduled.reminderIncomplete',
+  'scheduled.reminderOverdueFinalize',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
   'scheduling.assignmentNotice',
@@ -51,7 +52,7 @@ export const EMAIL_PREFERENCE_CATEGORY_LABELS: Record<
   },
   reminders: {
     label: 'Reminders',
-    description: 'Pre-observation and incomplete work-product reminders.',
+    description: 'Pre-observation, incomplete work-product, and overdue-finalize reminders.',
   },
   schedulingUpdates: {
     label: 'Scheduling updates',
@@ -75,6 +76,7 @@ export const EMAIL_TRIGGER_CATEGORY: Partial<Record<EmailTriggerType, EmailPrefe
   'observation.finalized': 'observationNotices',
   'scheduled.preObservation': 'reminders',
   'scheduled.reminderIncomplete': 'reminders',
+  'scheduled.reminderOverdueFinalize': 'reminders',
   'scheduling.windowInvite': 'schedulingUpdates',
   'scheduling.assignmentNotice': 'schedulingUpdates',
   'scheduling.windowExpired': 'schedulingUpdates',
@@ -192,6 +194,8 @@ export const emailTemplate = z.object({
   /**
    * For scheduled.preObservation: days before observationDate to send.
    * For scheduled.reminderIncomplete: days after WP/IR creation to send.
+   * For scheduled.reminderOverdueFinalize: days after observationDate (with
+   * the observation still Draft) to start the weekly nudge.
    */
   scheduledDays: z.number().int().positive().default(3),
   /** When false, the trigger is suppressed and nothing is sent. */

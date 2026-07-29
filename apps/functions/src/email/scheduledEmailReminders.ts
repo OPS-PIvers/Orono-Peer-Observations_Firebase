@@ -66,9 +66,39 @@ function chicagoMidnight(utcNow: Date, offsetDays: number): { start: Date; end: 
 }
 
 /**
- * Daily scheduled job that sends two types of reminder emails:
+ * ISO 8601 year-week label (e.g. `2026-W31`) for the Chicago calendar date of
+ * `utcNow`. Used to key the overdue-finalize reminder's `/mail` doc id so the
+ * weekly nudge is idempotent per calendar week rather than per-day or
+ * one-and-done: re-running the job on the same ISO week for the same
+ * observation is a no-op (the doc id already exists), while the next week
+ * produces a new id and a fresh reminder.
+ */
+export function isoYearWeek(utcNow: Date): string {
+  // Anchor on the Chicago calendar date (not raw UTC) so the week boundary
+  // matches the calendar day the reminder logic otherwise reasons about.
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+  }).format(utcNow);
+  const [y, m, d] = todayStr.split('-').map(Number) as [number, number, number];
+
+  // Standard ISO week algorithm: shift to the Thursday of this date's week
+  // (ISO weeks belong to the year containing their Thursday), then count
+  // whole weeks from that ISO year's own week-1 Thursday.
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mon=0 .. Sun=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3);
+  const isoYear = date.getUTCFullYear();
+  const yearStart = Date.UTC(isoYear, 0, 1);
+  const weekNum = Math.ceil(((date.getTime() - yearStart) / 86_400_000 + 1) / 7);
+  return `${String(isoYear)}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/**
+ * Daily scheduled job that sends three types of reminder emails:
  *   1. Pre-observation reminders N days before a Draft observation's date.
  *   2. Incomplete WP/IR reminders N days after creation with no responses.
+ *   3. Overdue-finalize reminders N+ days after a Draft observation's date
+ *      has passed, repeating weekly to the *observer* until finalized.
  *
  * Runs at 07:00 America/Chicago. The N values come from each template's
  * scheduledDays field so admins can tune them without a deploy.
@@ -209,6 +239,69 @@ export const scheduledEmailReminders = onSchedule(
         );
       }
       logger.info('scheduledEmailReminders: incomplete processed', { count: wpIrSnap.size });
+    }
+
+    // ── 3. Overdue-finalize reminders ─────────────────────────────────
+    // Targets the *observer* (PE), not the observed staff member — the gap
+    // this reminder covers is the PE's follow-through on finalizing, not the
+    // observed staff's participation. Recipient is obs.observerEmail, which
+    // means sendEmail's preference-suppression check (see isEmailSuppressed
+    // in ../lib/emailUtils.js) looks up the observer's own /staff doc, not
+    // the observed person's — exactly the gate the owner sign-off called for.
+    const overdueTemplate = await loadActiveTemplate(db, 'scheduled.reminderOverdueFinalize');
+    if (overdueTemplate) {
+      const daysPast = overdueTemplate.scheduledDays;
+      const { start: cutoff } = chicagoMidnight(today, -daysPast);
+      // Weekly cadence: this label is stable for an entire ISO week, so the
+      // mailDocId below is idempotent per week (re-running the same day only
+      // sends once) but produces a fresh id — and a fresh send — every
+      // following week the observation is still Draft.
+      const week = isoYearWeek(today);
+
+      const overdueSnap = await db
+        .collection(COLLECTIONS.observations)
+        .where('status', '==', OBSERVATION_STATUS.draft)
+        .where('observationDate', '<=', Timestamp.fromDate(cutoff))
+        .get();
+
+      for (const docSnap of overdueSnap.docs) {
+        const obs = docSnap.data();
+        const observerEmail = (obs['observerEmail'] as string | undefined) ?? '';
+        if (!observerEmail) continue;
+
+        const vars = {
+          observerName: observerEmail.split('@')[0] ?? '',
+          observerEmail,
+          observedName: (obs['observedName'] as string | undefined) ?? '',
+          observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
+          observedRole: resolveRoleLabel(
+            rolesLookup,
+            (obs['observedRole'] as string | undefined) ?? '',
+          ),
+          observationDate: formatDate(obs['observationDate']),
+          observationName: (obs['observationName'] as string | undefined) ?? '',
+          observationType: (obs['type'] as string | undefined) ?? '',
+        };
+
+        await sendEmail({
+          db,
+          to: observerEmail,
+          subject: substituteVariables(overdueTemplate.subject, vars),
+          html: substituteVariables(overdueTemplate.bodyHtml, vars),
+          mailDocId: `overdue-${docSnap.id}-${week}`,
+          triggerType: 'scheduled.reminderOverdueFinalize',
+          auditDetails: {
+            observationId: docSnap.id,
+            triggerType: 'scheduled.reminderOverdueFinalize',
+          },
+        }).catch((err: unknown) =>
+          logger.error('scheduledEmailReminders: overdue send failed', err),
+        );
+      }
+      logger.info('scheduledEmailReminders: overdue processed', {
+        count: overdueSnap.size,
+        daysPast,
+      });
     }
   },
 );

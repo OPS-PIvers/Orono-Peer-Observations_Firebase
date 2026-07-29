@@ -199,6 +199,31 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'overdue-finalize-reminder',
+    name: 'Reminder: Overdue Observation Finalization',
+    description:
+      'Sent automatically (weekly, while overdue) to the observer once a Draft observation is N+ days past its observation date.',
+    subject: 'Reminder: Please Finalize Your Observation — {{appName}}',
+    bodyHtml: `<p>Hi {{observerName}},</p>
+<p>Your <strong>{{observationType}}</strong> observation of {{observedName}}, scheduled for {{observationDate}}, is still in Draft and hasn't been finalized.</p>
+<p>Sign in to {{appName}} to review and finalize it:</p>
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observerName',
+      'observedName',
+      'observationDate',
+      'observationType',
+      'signInLink',
+      'appName',
+    ],
+    triggerType: 'scheduled.reminderOverdueFinalize',
+    recipient: 'observer',
+    scheduledDays: 7,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'staff-invite',
     name: 'New Staff System Invitation',
     description: 'Sent to newly added staff members, welcoming them to the system.',
