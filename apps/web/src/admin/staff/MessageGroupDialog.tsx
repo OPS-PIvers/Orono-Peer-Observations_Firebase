@@ -32,7 +32,7 @@ const SELECT_CLASSNAME =
  */
 const MAX_BULK_RECIPIENTS = 200;
 
-interface SendBulkManualEmailResult {
+export interface SendBulkManualEmailResult {
   requested: number;
   sent: number;
   suppressed: string[];
@@ -52,6 +52,35 @@ interface MessageGroupDialogProps {
 }
 
 type Step = 'compose' | 'confirm';
+
+type ManualTemplate = EmailTemplate & { id: string };
+
+/**
+ * What the dialog is showing right now. Body and footer both render from this
+ * single value — and the data each state needs travels with it — so they can
+ * never disagree. A previous version derived them from two different
+ * conditions, and when the chosen template disappeared from the live template
+ * list while the user sat on the confirm screen, the body fell back to the
+ * compose form while the footer still offered a Send button that silently did
+ * nothing.
+ */
+export type MessageGroupView =
+  | { kind: 'result'; result: SendBulkManualEmailResult }
+  | { kind: 'confirm'; template: ManualTemplate }
+  | { kind: 'template-missing' }
+  | { kind: 'compose' };
+
+export function resolveMessageGroupView(args: {
+  result: SendBulkManualEmailResult | null;
+  step: Step;
+  selectedTemplate: ManualTemplate | null;
+}): MessageGroupView {
+  if (args.result) return { kind: 'result', result: args.result };
+  if (args.step !== 'confirm') return { kind: 'compose' };
+  return args.selectedTemplate
+    ? { kind: 'confirm', template: args.selectedTemplate }
+    : { kind: 'template-missing' };
+}
 
 /**
  * "Message a group" bulk action — broadcasts a manual-trigger email template
@@ -106,14 +135,17 @@ export function MessageGroupDialog({
 
   const overCap = recipients.length > MAX_BULK_RECIPIENTS;
   const selectedTemplate = templates.find((t) => t.id === templateId) ?? null;
+  const view = resolveMessageGroupView({ result, step, selectedTemplate });
 
-  async function handleSend() {
-    if (!selectedTemplate || recipients.length === 0) return;
+  // Takes the template from the confirm view rather than re-deriving it, so
+  // "Send" can only ever be rendered together with the template it will send.
+  async function handleSend(template: ManualTemplate) {
+    if (recipients.length === 0) return;
     setSending(true);
     setError(null);
     try {
       const res = await sendBulkManualEmailFn({
-        templateId: selectedTemplate.id,
+        templateId: template.id,
         toEmails: recipients,
       });
       setResult(res.data);
@@ -143,26 +175,37 @@ export function MessageGroupDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          {result ? (
+          {view.kind === 'result' ? (
             <div className="rounded-md border-l-4 border-green-600 bg-green-50 px-3 py-2 text-sm text-green-900">
               <p className="font-medium">
-                Sent to {result.sent} of {result.requested} staff member
-                {result.requested === 1 ? '' : 's'}.
+                Sent to {view.result.sent} of {view.result.requested} staff member
+                {view.result.requested === 1 ? '' : 's'}.
               </p>
-              {result.suppressed.length > 0 ? (
+              {view.result.suppressed.length > 0 ? (
                 <p className="mt-1">
-                  {result.suppressed.length} opted out of manual messages (Profile → email
-                  preferences) and did not receive it: {result.suppressed.join(', ')}
+                  {view.result.suppressed.length} opted out of manual messages (Profile → email
+                  preferences) and did not receive it: {view.result.suppressed.join(', ')}
                 </p>
               ) : null}
             </div>
-          ) : step === 'confirm' && selectedTemplate ? (
+          ) : view.kind === 'confirm' ? (
             <div className="border-ops-blue bg-ops-blue-lighter/40 rounded-md border-l-4 px-3 py-2 text-sm">
               <p className="font-medium">
-                Send “{selectedTemplate.name}” to {recipients.length} staff member
+                Send “{view.template.name}” to {recipients.length} staff member
                 {recipients.length === 1 ? '' : 's'}?
               </p>
               <p className="text-muted-foreground mt-1">This cannot be undone.</p>
+            </div>
+          ) : view.kind === 'template-missing' ? (
+            <div
+              role="alert"
+              className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
+              <p className="font-medium">This template is no longer available.</p>
+              <p className="mt-1">
+                It was deactivated or deleted while you were confirming. Go back and choose another
+                template.
+              </p>
             </div>
           ) : (
             <>
@@ -212,11 +255,11 @@ export function MessageGroupDialog({
         </div>
 
         <DialogFooter>
-          {result ? (
+          {view.kind === 'result' ? (
             <Button type="button" onClick={() => onOpenChange(false)}>
               Done
             </Button>
-          ) : step === 'confirm' ? (
+          ) : view.kind === 'confirm' ? (
             <>
               <Button
                 variant="outline"
@@ -226,10 +269,14 @@ export function MessageGroupDialog({
               >
                 Back
               </Button>
-              <Button onClick={() => void handleSend()} disabled={sending}>
+              <Button onClick={() => void handleSend(view.template)} disabled={sending}>
                 {sending ? 'Sending…' : `Send to ${String(recipients.length)}`}
               </Button>
             </>
+          ) : view.kind === 'template-missing' ? (
+            <Button variant="outline" type="button" onClick={() => setStep('compose')}>
+              Back
+            </Button>
           ) : (
             <>
               <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
