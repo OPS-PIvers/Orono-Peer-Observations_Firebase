@@ -269,6 +269,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                     }),
                     observationSavesPerMinute: Number(e.target.value),
                   },
@@ -289,6 +290,7 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                     }),
                     audioUploadsPerHour: Number(e.target.value),
                   },
@@ -309,8 +311,30 @@ export function SettingsPage() {
                       observationSavesPerMinute: 60,
                       audioUploadsPerHour: 20,
                       transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
                     }),
                     transcriptionRequestsPerDay: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
+          <Field label="PDF regenerations per hour (per user)">
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.pdfRegenerationsPerHour ?? 10}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? {
+                      observationSavesPerMinute: 60,
+                      audioUploadsPerHour: 20,
+                      transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
+                    }),
+                    pdfRegenerationsPerHour: Number(e.target.value),
                   },
                 }))
               }
