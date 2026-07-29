@@ -2,9 +2,44 @@
 
 Extracted 2026-07-24 from a verified sweep of all planning docs (`docs/superpowers/`, audits, integration report). Every item below was confirmed genuinely unshipped by checking the code and git history — a doc's own "done" claims were not trusted. Fully shipped plans were removed; see git history for their contents.
 
-**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, of which 19 have shipped (8 in the 2026-07-25 tier-1/tier-2 sweep, 11 in the 2026-07-29 tier A sweep) and 69 remain open.
+**Scope:** this file holds bugs, ops work, and committed follow-ups. Feature and product opportunities live in [`FEATURES_ROADMAP.md`](FEATURES_ROADMAP.md) — 88 code-grounded briefs from a 2026-07-24 discovery pass, of which 19 have shipped (8 in the 2026-07-25 tier-1/tier-2 sweep, 11 in the 2026-07-29 tier A sweep) and 69 remain open. Admin-console defects live in [`docs/ADMIN_CONSOLE_AUDIT.md`](docs/ADMIN_CONSOLE_AUDIT.md) — 54 briefs (AC-01 … AC-62) from the 2026-07-29 three-axis audit, all open.
 
-Last updated 2026-07-29, after the tier A `FEATURES_ROADMAP.md` sweep (PRs #73–#84, plus #85–#86 fixing cross-feature defects the per-PR reviews missed). That sweep cleared the one existing "Ready code work" item and added seven new follow-ups, most of them pre-existing gaps that only became visible once the surrounding code was touched. Before that: the 2026-07-25 sweep (PRs #65–#72). Before that: the 2026-07-24 parallel implementation sweep that cleared "Ready code work" (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
+Last updated 2026-07-29, after the admin-console audit (54 new items, see below) and before that the tier A `FEATURES_ROADMAP.md` sweep (PRs #73–#84, plus #85–#86 fixing cross-feature defects the per-PR reviews missed). That sweep cleared the one existing "Ready code work" item and added seven new follow-ups, most of them pre-existing gaps that only became visible once the surrounding code was touched. Before that: the 2026-07-25 sweep (PRs #65–#72). Before that: the 2026-07-24 parallel implementation sweep that cleared "Ready code work" (PRs #48, #50–#58, plus #59/#60 as fallout fixes), the doc cleanup that archived the audits under `docs/archive/` and deleted the six fully-shipped `docs/superpowers/plans/` documents, and the send-time href sanitization + ESLint ignore narrowing that closed two of the sweep follow-ups.
+
+## Admin console audit (2026-07-29) — 54 open items
+
+A three-axis audit (wiring / staff-surface coverage / non-dev usability) of the whole admin console.
+Full self-contained briefs, themes, and suggested implementation slices are in
+[`docs/ADMIN_CONSOLE_AUDIT.md`](docs/ADMIN_CONSOLE_AUDIT.md). **Point the `mass-plan-implementation`
+skill at that document**, not at this section — the briefs there are written to be implementable
+without conversation context, and the doc's "Suggested implementation slices" table (S1–S9) is a
+ready-made batching plan.
+
+Method: 8 parallel area passes + 4 adversarial verifiers instructed to refute every blocking/high
+claim. 96 raw findings → 54 unique defects. Verifiers returned 32 CONFIRMED / 3 PARTIAL / 0 REFUTED
+with 6 severity corrections. Code-reading only — **no agent ran the app**, so visual polish is
+unaudited.
+
+**Cutover blockers — fix before a district uses this in production:**
+
+- [ ] **AC-01** Archiving a staff member never revokes their admin/PE claims — `onStaffWritten.ts:44` and `syncMyClaims.ts:78` both ignore `isActive`. (M) _Overlaps the deferred dev-paul `computeClaims.ts` triage item below; that item is the fix for this._
+- [ ] **AC-02** Deleting a middle rubric component then adding one reuses the ID, merging two components — `RubricEditorPage.tsx:86-118`. (S)
+- [ ] **AC-03** Rubric component color "Reset" always crashes Save (`color: undefined` own-property) — `RubricGridEditor.tsx:236`. (S)
+- [ ] **AC-04** Deactivating a Work Product / Instructional Round question hides already-recorded answers, including on finalized observations — contradicts that page's own copy. `QuestionAnswerViewer.tsx:36`. (M)
+- [ ] **AC-05** Creating a Role/Building/Module with a colliding ID silently overwrites an archived (invisible) doc — `RolesPage.tsx:355` + Buildings/Modules. (S)
+- [ ] **AC-06** Role "Special access" checkbox has zero effect — real check is a hardcoded 3-slug allowlist. `RolesPage.tsx:396`. (M) _Needs a product decision; see the brief._
+- [ ] **AC-07** Two hardcoded school-year boundaries (July vs August) disagree for a full month every year — dashboard hero vs Profile archive. (S)
+
+**Remaining 47 items** are grouped in the audit doc by tier:
+
+- **Tier 2 — dead controls and broken admin actions** (AC-08 … AC-16, 9 items): two callables deny `hasAdminAccess`-only admins; the email "Recipient" selector is cosmetic for 14 of 17 triggers; "Send Test…" works for 1 of 17; "Schedule active" is dead; the observation-saves rate limit is enforced nowhere.
+- **Tier 3 — missing error handling on inline writes** (AC-17 … AC-22, 6 items): one pattern across six files. Inputs bind directly to the live Firestore snapshot, so a rejected write silently reverts the admin's typing with no message.
+- **Tier 4 — data integrity and validation** (AC-23 … AC-31, 9 items).
+- **Tier 5 — coverage gaps** (AC-32 … AC-47, 16 items): the cutover-risk group — branding not reaching email or the sign-in screen, hardcoded district name and support contact, proficiency-scale labels, no way to create a rubric from scratch, audit log declaring far more actions than it writes.
+- **Tier 6 — usability and polish** (AC-48 … AC-62, 15 items): chiefly save-state ambiguity, including an unsaved-changes guard that already exists in the codebase and is wired up nowhere.
+
+**Needs your decision before implementation:** AC-42 (observation types as a fixed enum — may be a
+legitimate engineering boundary) and the full version of AC-27 (rubric draft/publish states).
 
 ## Human-gated (needs a decision, secret, or deploy)
 
@@ -12,11 +47,11 @@ Last updated 2026-07-29, after the tier A `FEATURES_ROADMAP.md` sweep (PRs #73�
 - [ ] **Firestore backup completion monitoring** — Cloud Scheduler function to alert admins if the daily backup misses its window. Flagged as future work in `docs/operations.md:148`; post-cutover enhancement. (M)
 - [ ] **Adopt (or reject) the Firestore Send Email extension** — add `extensions/firestore-send-email.env` + extensions block to `firebase.json` and deploy, vs. keeping the existing email flow. (S)
 - [ ] **Review the CLAUDE.md preserved in tag `dev-paul-snapshot-2026-07-21`** — `main` has no CLAUDE.md at all, so this is an adopt-or-drop decision, not a merge. (S)
-- [ ] **Triage the 18 DUPLICATE refactors from dev-paul** — per-file adopt/skip decision against tag `dev-paul-snapshot-2026-07-21`; `computeClaims.ts` specifically carries a genuinely new `elevatedAccessRevoked` revoke-on-demotion behavior worth a deliberate look. PR #23 is already closed (unmerged, 2026-07-21), so the tag is the only source. (M)
+- [ ] **Triage the 18 DUPLICATE refactors from dev-paul** — per-file adopt/skip decision against tag `dev-paul-snapshot-2026-07-21`; `computeClaims.ts` specifically carries a genuinely new `elevatedAccessRevoked` revoke-on-demotion behavior worth a deliberate look. PR #23 is already closed (unmerged, 2026-07-21), so the tag is the only source. (M) **⚠ No longer optional: this is the fix for AC-01** (archiving a staff member never revokes their access). Read `computeClaims.ts` from the tag before implementing AC-01.
 
 ## Ready code work (no blockers)
 
-- [ ] **Backfill the `rate_limit_tripped` audit write into `uploadAudio` and `requestTranscription`** — discovered during the 2026-07-29 sweep: `AUDIT_ACTIONS.rateLimitTripped` was defined in `packages/shared/src/schema/auditLog.ts` but written by **nothing**, so neither of the two callables rate-limited since #46 has ever produced an audit trail when a limit trips. #73 is the first real caller. Bring the other two in line. (S)
+- [ ] **Backfill the `rate_limit_tripped` audit write into `uploadAudio` and `requestTranscription`** — discovered during the 2026-07-29 sweep: `AUDIT_ACTIONS.rateLimitTripped` was defined in `packages/shared/src/schema/auditLog.ts` but written by **nothing**, so neither of the two callables rate-limited since #46 has ever produced an audit trail when a limit trips. #73 is the first real caller. Bring the other two in line. (S) _Subsumed by **AC-38** — the audit found this is the narrow case of a much broader gap: most declared `AUDIT_ACTIONS` are written by nothing. Ship them together._
 - [ ] **Re-check the `gemini.scriptAutoTag.enabled` kill switch inside `applyScriptTags`'s transaction** — it is currently read only on the pre-transaction load, so an admin disabling auto-tag mid-review does not block an in-flight apply. Same shape as the finalized-status race #77 closed, but narrower. (S) _Non-blocking finding from the #77 adversarial review._
 - [ ] **Bring `CellChip` and `EvidenceChip` up to the 24px WCAG 2.5.8 minimum** — they sit at roughly 17–24px in `apps/web/src/components/rubric/RubricRow.tsx` and do render on iPad (iPad mini's 744 CSS px portrait width is below the app's 768px `useIsDesktop` breakpoint, so iPad users get the mobile accordion). Pre-existing; disclosed and deliberately deferred by #84 to keep that PR's diff reviewable. (S)
 - [ ] **Give the rubric matrix a valid `role="grid"`/`role="table"` ancestor, or drop the row roles** — `DomainSection.tsx` and `RubricRow.tsx` assert `role="row"`/`rowheader`/`columnheader` with no grid/table ancestor, so their required context role is unsatisfied and assistive tech may not expose them as intended. Pre-existing and independent of #84's toggle-button fix. (M)
