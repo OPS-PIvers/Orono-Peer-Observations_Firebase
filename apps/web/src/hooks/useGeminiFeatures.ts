@@ -2,7 +2,9 @@ import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   DEFAULT_GEMINI_MODEL,
+  resolveGeminiModel,
   type AppSettings,
+  type GeminiFeature,
   type GeminiFeatures,
 } from '@ops/shared';
 import { useFirestoreDoc } from './useFirestoreDoc';
@@ -13,6 +15,12 @@ const DEFAULT_FEATURES: GeminiFeatures = {
   audioTranscription: { enabled: true, model: DEFAULT_GEMINI_MODEL },
   scriptAutoTag: { enabled: true, model: DEFAULT_GEMINI_MODEL },
 };
+
+/** Fill in anything the stored doc omits, and map a retired model forward. */
+function normalize(stored: GeminiFeature | undefined, fallback: GeminiFeature): GeminiFeature {
+  if (!stored) return fallback;
+  return { ...stored, model: resolveGeminiModel(stored.model) };
+}
 
 /**
  * Reads `/appSettings/global` and returns the Gemini feature config.
@@ -30,7 +38,7 @@ export function useGeminiFeatures(): GeminiFeatures {
   const features = data?.gemini as Partial<GeminiFeatures> | undefined;
   if (!features) return DEFAULT_FEATURES;
   return {
-    audioTranscription: features.audioTranscription ?? DEFAULT_FEATURES.audioTranscription,
-    scriptAutoTag: features.scriptAutoTag ?? DEFAULT_FEATURES.scriptAutoTag,
+    audioTranscription: normalize(features.audioTranscription, DEFAULT_FEATURES.audioTranscription),
+    scriptAutoTag: normalize(features.scriptAutoTag, DEFAULT_FEATURES.scriptAutoTag),
   };
 }

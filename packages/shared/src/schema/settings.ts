@@ -77,44 +77,51 @@ export type Branding = z.infer<typeof branding>;
 /**
  * Gemini API models we expose in the admin UI. The `id` is the exact
  * string passed to `generativelanguage.googleapis.com/v1beta/models/{id}`.
- * Keep the list ordered with the recommended default (3.1 Flash-Lite) first.
+ *
+ * Deliberately a single entry. Every Gemini feature here is short-context
+ * classification — verbatim transcription, and tagging spans against a
+ * rubric — which Flash-Lite handles at the lowest cost and latency Google
+ * offers. The wider menu we used to show mostly invited admins to pay more
+ * per observation for no measurable gain on these two tasks.
  */
 export const GEMINI_MODEL_OPTIONS = [
   {
-    id: 'gemini-3.1-flash-lite-preview',
-    label: 'Gemini 3.1 Flash-Lite (preview)',
-    note: 'Cheapest, fastest. Default.',
-  },
-  {
-    id: 'gemini-3-flash-preview',
-    label: 'Gemini 3 Flash (preview)',
-    note: 'Stronger reasoning at higher cost.',
-  },
-  {
-    id: 'gemini-3.1-pro-preview',
-    label: 'Gemini 3.1 Pro (preview)',
-    note: 'Highest quality 3.x; slower, most expensive.',
-  },
-  {
-    id: 'gemini-2.5-flash-lite',
-    label: 'Gemini 2.5 Flash-Lite',
-    note: 'GA 2.5 alternative to the 3.x preview.',
-  },
-  {
-    id: 'gemini-2.5-flash',
-    label: 'Gemini 2.5 Flash',
-    note: 'GA 2.5 mid-tier.',
-  },
-  {
-    id: 'gemini-2.5-pro',
-    label: 'Gemini 2.5 Pro',
-    note: 'GA 2.5 top-tier.',
+    id: 'gemini-3.5-flash-lite',
+    label: 'Gemini 3.5 Flash-Lite',
+    note: 'Cheapest and fastest. Used by every Gemini feature.',
   },
 ] as const;
 
 export type GeminiModelId = (typeof GEMINI_MODEL_OPTIONS)[number]['id'];
 
-export const DEFAULT_GEMINI_MODEL: GeminiModelId = 'gemini-3.1-flash-lite-preview';
+export const DEFAULT_GEMINI_MODEL: GeminiModelId = 'gemini-3.5-flash-lite';
+
+/**
+ * Model ids this app used to offer. A tenant who saved Settings while one
+ * of these was selected still has it sitting in `/appSettings/global`, and
+ * nothing would ever move them off it on its own — a stored value beats the
+ * schema default every time. Resolve them at each read instead, so shrinking
+ * the menu actually changes which model gets billed.
+ */
+const RETIRED_GEMINI_MODELS: ReadonlySet<string> = new Set([
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+]);
+
+/**
+ * The model id to actually call, given whatever is stored in settings.
+ * Retired and empty values resolve to the current default; an unrecognized
+ * id passes through untouched, which is what lets an admin point at a newly
+ * released model without waiting on a release of this app.
+ */
+export function resolveGeminiModel(stored: string | null | undefined): string {
+  if (!stored || RETIRED_GEMINI_MODELS.has(stored)) return DEFAULT_GEMINI_MODEL;
+  return stored;
+}
 
 export const geminiFeature = z.object({
   enabled: z.boolean().default(true),

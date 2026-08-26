@@ -6,6 +6,7 @@ import {
   COLLECTIONS,
   DEFAULT_GEMINI_MODEL,
   GEMINI_MODEL_OPTIONS,
+  resolveGeminiModel,
   type AppSettings,
   type GeminiFeature,
   type GeminiFeatures,
@@ -275,13 +276,19 @@ export function SettingsPage() {
         <fieldset className="border-border space-y-4 rounded-md border p-4">
           <legend className="px-2 text-sm font-medium">Gemini features</legend>
           <p className="text-muted-foreground text-xs">
-            Toggle individual Gemini-powered features and pick the model each one uses. Default is{' '}
-            <code className="font-mono">{DEFAULT_GEMINI_MODEL}</code>. Disabled features are hidden
+            Toggle individual Gemini-powered features. Both run on{' '}
+            <code className="font-mono">{DEFAULT_GEMINI_MODEL}</code> — the cheapest and fastest
+            model for the short classification work these features do. Disabled features are hidden
             from the UI for everyone.
           </p>
           {GEMINI_FEATURE_META.map((meta) => {
-            const current: GeminiFeature =
-              form.gemini?.[meta.key] ?? DEFAULT_GEMINI_FEATURES[meta.key];
+            const stored = form.gemini?.[meta.key] ?? DEFAULT_GEMINI_FEATURES[meta.key];
+            // Show (and therefore save) the model we would actually call —
+            // a doc still naming a retired model shouldn't display it.
+            const current: GeminiFeature = {
+              ...stored,
+              model: resolveGeminiModel(stored.model),
+            };
             return (
               <GeminiFeatureRow
                 key={meta.key}
@@ -658,8 +665,7 @@ function GeminiFeatureRow({
   value: GeminiFeature;
   onChange: (next: GeminiFeature) => void;
 }) {
-  const knownIds = new Set(GEMINI_MODEL_OPTIONS.map((m) => m.id));
-  const isCustomModel = !knownIds.has(value.model as (typeof GEMINI_MODEL_OPTIONS)[number]['id']);
+  const isCustomModel = !GEMINI_MODEL_OPTIONS.some((m) => m.id === value.model);
   return (
     <div className="border-border bg-muted/20 space-y-2 rounded-md border p-3">
       <label className="flex items-start gap-2 text-sm">

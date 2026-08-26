@@ -13,6 +13,7 @@ import {
   OBSERVATION_STATUS,
   geminiFeature,
   isAdminRole,
+  resolveGeminiModel,
   roleYearMappingDocId,
   type ComponentColor,
   type GeminiFeature,
@@ -95,7 +96,10 @@ export async function loadScriptAutoTagFeature(db: Firestore): Promise<GeminiFea
     ? (snap.data()?.['gemini'] as { scriptAutoTag?: unknown } | undefined)?.scriptAutoTag
     : undefined;
   const parsed = geminiFeature.safeParse(raw ?? {});
-  return parsed.success ? parsed.data : geminiFeature.parse({});
+  const feature = parsed.success ? parsed.data : geminiFeature.parse({});
+  // A doc saved against an older menu still names a model we no longer
+  // offer; resolveGeminiModel maps those forward.
+  return { ...feature, model: resolveGeminiModel(feature.model) };
 }
 
 /** Throw the shared "admin turned this off" error unless auto-tag is enabled. */

@@ -3,7 +3,12 @@ import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, DEFAULT_GEMINI_MODEL } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  DEFAULT_GEMINI_MODEL,
+  resolveGeminiModel,
+} from '@ops/shared';
 import { downloadFile, getDriveClient } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
@@ -28,8 +33,7 @@ async function resolveTranscriptionModel(): Promise<string> {
     if (!snap.exists) return DEFAULT_GEMINI_MODEL;
     // Raw Firestore reads don't apply Zod defaults; partial-shape the tree.
     const settings = snap.data() as { gemini?: { audioTranscription?: { model?: string } } };
-    const model = settings.gemini?.audioTranscription?.model;
-    return model && model.length > 0 ? model : DEFAULT_GEMINI_MODEL;
+    return resolveGeminiModel(settings.gemini?.audioTranscription?.model);
   } catch (err) {
     logger.warn('resolveTranscriptionModel: settings fetch failed; using default', {
       error: err instanceof Error ? err.message : String(err),
