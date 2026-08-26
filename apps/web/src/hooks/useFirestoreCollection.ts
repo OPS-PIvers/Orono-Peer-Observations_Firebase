@@ -7,7 +7,9 @@ import {
   onSnapshot,
   query,
 } from 'firebase/firestore';
+import { hydrateFirestoreDoc } from '@ops/shared';
 import { db } from '@/lib/firebase';
+import { reportDocRepair } from '@/lib/firestoreDiagnostics';
 
 export interface UseFirestoreCollectionResult<T> {
   data: (T & { id: string })[] | null;
@@ -19,6 +21,10 @@ export interface UseFirestoreCollectionResult<T> {
  * Subscribe to a Firestore collection and return the live snapshot as an
  * array. Caller passes constraints (where/orderBy/limit) — no opinion on
  * filtering.
+ *
+ * Every document is run through `hydrateFirestoreDoc`, which fills in the
+ * schema defaults for fields the stored document omits, so `T` describes
+ * what call sites actually receive.
  *
  * Subscription lifecycle is tied to the component mount (useEffect cleanup
  * unsubs on unmount). The TanStack Query cache is used solely to share
@@ -67,7 +73,9 @@ export function useFirestoreCollection<T = DocumentData>(
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        const next = snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
+        const next = snap.docs.map((d) =>
+          hydrateFirestoreDoc<T>(collectionPath, d.data(), d.id, reportDocRepair),
+        );
         queryClient.setQueryData(queryKey, next);
         setData(next);
         setLoading(false);

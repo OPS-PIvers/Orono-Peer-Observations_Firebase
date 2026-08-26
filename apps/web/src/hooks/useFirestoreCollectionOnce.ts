@@ -7,7 +7,9 @@ import {
   getDocs,
   query,
 } from 'firebase/firestore';
+import { hydrateFirestoreDoc } from '@ops/shared';
 import { db } from '@/lib/firebase';
+import { reportDocRepair } from '@/lib/firestoreDiagnostics';
 
 export interface UseFirestoreCollectionOnceResult<T> {
   data: (T & { id: string })[] | null;
@@ -32,6 +34,9 @@ export interface UseFirestoreCollectionOnceResult<T> {
  * re-render the page on every unrelated write; call `refresh()` to re-fetch,
  * or `mutate()` to fold a local write into the cached rows without one.
  *
+ * Documents are hydrated with their schema defaults, exactly as in
+ * `useFirestoreCollection`.
+ *
  * Mirrors `useFirestoreCollection`'s constraint/keyParts contract: the cache
  * key keys on constraint *types* plus `keyParts`, so callers whose constraint
  * *values* vary must pass those values via `keyParts` to disambiguate.
@@ -50,7 +55,9 @@ export function useFirestoreCollectionOnce<T = DocumentData>(
       const ref = collection(db, collectionPath);
       const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
       const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T & { id: string });
+      return snap.docs.map((d) =>
+        hydrateFirestoreDoc<T>(collectionPath, d.data(), d.id, reportDocRepair),
+      );
     },
   });
 

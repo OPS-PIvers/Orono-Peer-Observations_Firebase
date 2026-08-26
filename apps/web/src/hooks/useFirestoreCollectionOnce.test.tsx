@@ -35,7 +35,7 @@ describe('useFirestoreCollectionOnce', () => {
   it('fetches once via getDocs and maps docs to { ...data, id }', async () => {
     mockGetDocs.mockResolvedValue(snapshotOf([{ id: 's1', data: { name: 'Ada' } }]));
 
-    const { result } = renderHook(() => useFirestoreCollectionOnce('staff'), { wrapper });
+    const { result } = renderHook(() => useFirestoreCollectionOnce('mail'), { wrapper });
 
     expect(result.current.loading).toBe(true);
     await waitFor(() => {
@@ -53,7 +53,7 @@ describe('useFirestoreCollectionOnce', () => {
   it('re-fetches when refresh() is called (no live listener)', async () => {
     mockGetDocs.mockResolvedValue(snapshotOf([{ id: 's1', data: { name: 'Ada' } }]));
 
-    const { result } = renderHook(() => useFirestoreCollectionOnce('staff'), { wrapper });
+    const { result } = renderHook(() => useFirestoreCollectionOnce('mail'), { wrapper });
     await waitFor(() => {
       expect(result.current.data).not.toBeNull();
     });
@@ -73,7 +73,7 @@ describe('useFirestoreCollectionOnce', () => {
       ]),
     );
 
-    const { result } = renderHook(() => useFirestoreCollectionOnce<{ name: string }>('staff'), {
+    const { result } = renderHook(() => useFirestoreCollectionOnce<{ name: string }>('mail'), {
       wrapper,
     });
     await waitFor(() => {
@@ -104,7 +104,7 @@ describe('useFirestoreCollectionOnce', () => {
       }),
     );
 
-    const { result } = renderHook(() => useFirestoreCollectionOnce<{ name: string }>('staff'), {
+    const { result } = renderHook(() => useFirestoreCollectionOnce<{ name: string }>('mail'), {
       wrapper,
     });
     const updater = vi.fn((rows: { name: string; id: string }[]) => rows);
@@ -123,7 +123,7 @@ describe('useFirestoreCollectionOnce', () => {
   it('mutate() identity is stable across renders (safe useCallback dep)', async () => {
     mockGetDocs.mockResolvedValue(snapshotOf([{ id: 's1', data: { name: 'Ada' } }]));
 
-    const { result, rerender } = renderHook(() => useFirestoreCollectionOnce('staff'), {
+    const { result, rerender } = renderHook(() => useFirestoreCollectionOnce('mail'), {
       wrapper,
     });
     await waitFor(() => {
@@ -133,5 +133,21 @@ describe('useFirestoreCollectionOnce', () => {
     const firstMutate = result.current.mutate;
     rerender();
     expect(result.current.mutate).toBe(firstMutate);
+  });
+
+  it('fills in schema defaults for the collection it is reading', async () => {
+    // `roles` documents predate several fields the Role schema now defaults;
+    // the hook must hand call sites the shape their types promise.
+    mockGetDocs.mockResolvedValue(
+      snapshotOf([{ id: 'teacher', data: { displayName: 'Teacher' } }]),
+    );
+
+    const { result } = renderHook(() => useFirestoreCollectionOnce('roles'), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.data).not.toBeNull();
+    });
+    expect(result.current.data?.[0]).toMatchObject({ id: 'teacher', displayName: 'Teacher' });
+    expect(Object.keys(result.current.data?.[0] ?? {}).length).toBeGreaterThan(2);
   });
 });

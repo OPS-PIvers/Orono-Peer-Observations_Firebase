@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppSidebar, useSidebar } from '@/components/AppSidebar';
 import { AppHeader } from '@/components/AppHeader';
+import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { GlobalBanner } from '@/components/GlobalBanner';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { TopLoadingBar } from '@/components/TopLoadingBar';
@@ -23,6 +24,10 @@ export function Layout() {
   // The header spans the entire viewport (above the sidebar) so we never
   // leave a dead rectangle in the top-left of the desktop layout.
   //
+  // A PageErrorBoundary sits directly around the routed page so a page
+  // that throws leaves the header and sidebar intact — the user can still
+  // navigate away instead of being dropped on a bare error screen.
+  //
   // The Suspense boundary lives INSIDE the shell so when a lazy child
   // route's chunk is still loading, only the main content area shows the
   // fallback (a thin top progress bar). Combined with React Router v7's
@@ -42,9 +47,11 @@ export function Layout() {
           )}
         >
           <main className="relative flex-1 overflow-y-auto">
-            <Suspense fallback={<TopLoadingBar />}>
-              <Outlet />
-            </Suspense>
+            <PageErrorBoundary>
+              <Suspense fallback={<TopLoadingBar />}>
+                <Outlet />
+              </Suspense>
+            </PageErrorBoundary>
             {!isEditorRoute ? (
               <footer className="border-border text-muted-foreground mt-8 border-t px-4 py-4 text-center text-xs">
                 Orono Public Schools · Peer Observations

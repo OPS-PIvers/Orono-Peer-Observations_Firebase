@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { type DocumentReference, onSnapshot } from 'firebase/firestore';
+import { hydrateFirestoreDoc } from '@ops/shared';
+import { reportDocRepair } from '@/lib/firestoreDiagnostics';
 
 /**
  * Subscribe to a single Firestore document by reference. Like
  * `useFirestoreDoc` but takes a `DocumentReference` so the caller can
- * pass a typed ref (e.g. one built from `withConverter`).
+ * pass a typed ref (e.g. one built from `withConverter`). Documents are
+ * hydrated with their schema defaults, as in `useFirestoreDoc`.
  *
  * Subscription lifecycle is tied to the component mount; the TanStack
  * Query cache is used to share the last-known snapshot across mounts so
@@ -45,7 +48,9 @@ export function useDocument<T>(ref: DocumentReference | null): {
     const unsubscribe = onSnapshot(
       ref,
       (snap) => {
-        const next = snap.exists() ? ({ id: snap.id, ...snap.data() } as T & { id: string }) : null;
+        const next = snap.exists()
+          ? hydrateFirestoreDoc<T>(snap.ref.path, snap.data(), snap.id, reportDocRepair)
+          : null;
         queryClient.setQueryData(queryKey, next);
         setData(next);
         setLoading(false);

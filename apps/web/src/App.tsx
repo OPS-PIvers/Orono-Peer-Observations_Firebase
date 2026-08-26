@@ -1,9 +1,10 @@
-import { Component, lazy, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { lazy } from 'react';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { RequireAuth } from '@/auth/RequireAuth';
 import { SignInScreen } from '@/auth/SignInScreen';
 import { BrandingProvider } from '@/components/BrandingProvider';
+import { AppErrorBoundary } from '@/components/ErrorBoundary';
 import { Layout } from '@/components/Layout';
 import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
@@ -19,34 +20,6 @@ const DevSignIn =
   import.meta.env.MODE === 'development'
     ? lazy(() => import('@/auth/DevSignIn').then((m) => ({ default: m.DevSignIn })))
     : null;
-
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(error: unknown) {
-    console.error('[RouteErrorBoundary] Failed to load route:', error);
-    return { hasError: true };
-  }
-  override render() {
-    if (this.state.hasError) {
-      return (
-        <p className="text-muted-foreground py-12 text-center text-sm">
-          Failed to load page. Try refreshing.
-        </p>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// Resets the error boundary on every navigation so users can recover from
-// transient chunk-load failures without a full page reload.
-function KeyedErrorBoundary({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  return <RouteErrorBoundary key={pathname}>{children}</RouteErrorBoundary>;
-}
 
 // Forces StaffPersonPage to remount when :email changes so the Firestore
 // subscription (keyed on constraint types, not values) is always fresh.
@@ -77,7 +50,7 @@ export function App() {
     <AuthProvider>
       <BrandingProvider>
         <DevModeProvider>
-          <KeyedErrorBoundary>
+          <AppErrorBoundary>
             <Routes>
               {/* Public */}
               <Route path="/sign-in" element={<SignInScreen />} />
@@ -144,7 +117,7 @@ export function App() {
 
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </KeyedErrorBoundary>
+          </AppErrorBoundary>
           <Toaster />
         </DevModeProvider>
       </BrandingProvider>

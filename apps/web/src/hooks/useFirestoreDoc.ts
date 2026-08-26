@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { type DocumentData, doc, onSnapshot } from 'firebase/firestore';
+import { hydrateFirestoreDoc } from '@ops/shared';
 import { db } from '@/lib/firebase';
+import { reportDocRepair } from '@/lib/firestoreDiagnostics';
 
 export interface UseFirestoreDocResult<T> {
   data: (T & { id: string }) | null;
@@ -13,6 +15,11 @@ export interface UseFirestoreDocResult<T> {
  * Subscribe to a single Firestore document. Returns null if the document
  * doesn't exist (vs. an undefined "not loaded yet" state — `loading`
  * tracks that separately).
+ *
+ * The snapshot is run through `hydrateFirestoreDoc`, which fills in the
+ * schema defaults for any field the stored document omits. Without that,
+ * `T` lies: `z.infer` counts a `.default()` field as always-present while
+ * the raw document may never have had it written.
  *
  * Subscription lifecycle is tied to the component mount; the TanStack
  * Query cache is used to share the last-known snapshot across mounts so
@@ -50,7 +57,7 @@ export function useFirestoreDoc<T = DocumentData>(docPath: string): UseFirestore
       doc(db, docPath),
       (snap) => {
         const next = snap.exists()
-          ? ({ ...(snap.data() as T), id: snap.id } as T & { id: string })
+          ? hydrateFirestoreDoc<T>(docPath, snap.data(), snap.id, reportDocRepair)
           : null;
         queryClient.setQueryData(queryKey, next);
         setData(next);
