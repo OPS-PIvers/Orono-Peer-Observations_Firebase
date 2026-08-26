@@ -13,7 +13,7 @@ at commit `ae71236`.
   administrator?
 
 **Method.** Eight parallel area passes (five admin areas on axes A+C, three staff-facing surfaces on
-axis B), then four adversarial verifier agents instructed to *refute* every blocking/high claim by
+axis B), then four adversarial verifier agents instructed to _refute_ every blocking/high claim by
 re-reading the code, then orchestrator dedupe and ranking. 96 raw findings → **54 unique defects**.
 
 **Verification status.** Verifiers returned 32 CONFIRMED, 3 PARTIAL, 0 REFUTED across 35 blocking/high
@@ -36,7 +36,7 @@ specifies the fix, so it can be implemented without this conversation's context.
 the `mass-plan-implementation` skill expects.
 
 Items are grouped into tiers by impact. Within a tier, items are independent of each other unless a
-`Depends on:` line says otherwise. Several tiers are deliberately *thematic* — Tier 3 in particular is
+`Depends on:` line says otherwise. Several tiers are deliberately _thematic_ — Tier 3 in particular is
 one repeated pattern across six files and is best shipped as a small number of PRs, not six.
 
 **Protected files** (orchestrator-owned, implementers must not touch): `firestore.rules`,
@@ -48,14 +48,14 @@ one repeated pattern across six files and is best shipped as a small number of P
 
 Fixing the theme clears the group. These are worth more than the individual findings.
 
-| # | Theme | Items | Root cause |
-|---|---|---|---|
-| **T1** | Authorization re-derived differently at each call site | AC-01, AC-06, AC-08, AC-09 | There is no single source of truth for "is this caller an admin". `callerAccess.ts` was introduced for the email callables but never adopted elsewhere, and the claim-minting functions ignore `isActive` entirely. |
-| **T2** | Inline/quick-action writes have no error handling | AC-17 … AC-22 | The full-form Save flows do this correctly (try/catch + banner + saved-at). The per-row editors bind inputs **directly to the live Firestore snapshot** with no local state, so a rejected write silently reverts the admin's typing. |
-| **T3** | Controls that write fields nothing reads | AC-06, AC-11, AC-12, AC-13, AC-14 | Five admin controls are decorative. Each implies a capability the system does not have. |
-| **T4** | The rubric editor can corrupt the instrument | AC-02, AC-03, AC-27, AC-37 | The evaluation instrument — the thing the product exists to run — has the least defended editor in the console. |
-| **T5** | District-specific values hardcoded across the stack | AC-07, AC-32 … AC-36, AC-40, AC-41, AC-45 | Anything a district changes per year or per rebrand. Highest-risk category for an Aug/Sept 2026 cutover. |
-| **T6** | "Deactivate" does not mean what the admin is told | AC-04, AC-05, AC-29, AC-53, AC-54 | Deactivation semantics differ per collection and none match the UI copy. |
+| #      | Theme                                                  | Items                                     | Root cause                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **T1** | Authorization re-derived differently at each call site | AC-01, AC-06, AC-08, AC-09                | There is no single source of truth for "is this caller an admin". `callerAccess.ts` was introduced for the email callables but never adopted elsewhere, and the claim-minting functions ignore `isActive` entirely.                   |
+| **T2** | Inline/quick-action writes have no error handling      | AC-17 … AC-22                             | The full-form Save flows do this correctly (try/catch + banner + saved-at). The per-row editors bind inputs **directly to the live Firestore snapshot** with no local state, so a rejected write silently reverts the admin's typing. |
+| **T3** | Controls that write fields nothing reads               | AC-06, AC-11, AC-12, AC-13, AC-14         | Five admin controls are decorative. Each implies a capability the system does not have.                                                                                                                                               |
+| **T4** | The rubric editor can corrupt the instrument           | AC-02, AC-03, AC-27, AC-37                | The evaluation instrument — the thing the product exists to run — has the least defended editor in the console.                                                                                                                       |
+| **T5** | District-specific values hardcoded across the stack    | AC-07, AC-32 … AC-36, AC-40, AC-41, AC-45 | Anything a district changes per year or per rebrand. Highest-risk category for an Aug/Sept 2026 cutover.                                                                                                                              |
+| **T6** | "Deactivate" does not mean what the admin is told      | AC-04, AC-05, AC-29, AC-53, AC-54         | Deactivation semantics differ per collection and none match the UI copy.                                                                                                                                                              |
 
 ---
 
@@ -83,9 +83,9 @@ equivalent for `hasSpecialAccess`. Note `isActive` may be **absent** on real doc
 bypass Zod defaults), hence `!== false` rather than `=== true`. Consider also force-revoking refresh
 tokens on archive, since claims otherwise only take effect on next token refresh.
 
-**Related prior work.** `TODO.md` carries *"Triage the 18 DUPLICATE refactors from dev-paul —
+**Related prior work.** `TODO.md` carries _"Triage the 18 DUPLICATE refactors from dev-paul —
 `computeClaims.ts` carries a genuinely new `elevatedAccessRevoked` revoke-on-demotion behavior worth a
-deliberate look."* That deferred item is addressing this exact defect. Read
+deliberate look."_ That deferred item is addressing this exact defect. Read
 `computeClaims.ts` at tag `dev-paul-snapshot-2026-07-21` before implementing.
 
 **Verify.** Regression test: archive a staff member with an admin role → assert `setCustomUserClaims`
@@ -146,8 +146,8 @@ persisted component has no `color` key.
 **Problem.** `QuestionAnswerViewer` queries `workProductQuestions` filtered to `isActive == true`, then
 renders only those. Answers to deactivated questions are dropped from the view.
 
-**Failure scenario.** The Work Product admin page's own subtitle reads *"deactivate to hide a question
-without deleting its history."* An admin deactivates a question several teachers already answered. The
+**Failure scenario.** The Work Product admin page's own subtitle reads _"deactivate to hide a question
+without deleting its history."_ An admin deactivates a question several teachers already answered. The
 recorded answers vanish from the observation view — **including on already-Finalized observations**,
 which are supposed to be immutable records. The data is still in Firestore, but the permanent
 evaluation record now displays incompletely, directly contradicting the promise the admin was given.
@@ -199,10 +199,11 @@ edits is never read.
 **Failure scenario.** An admin creates a "Department Chair" role, checks Special access, and assigns
 staff to it — reasonably believing they have granted view-all-observations rights, because the dialog
 copy says roles "drive who sees the filter UI (special access)". Nothing happens. Conversely, an admin
-who *unchecks* it on `peer-evaluator` believes they have revoked access that is in fact still granted.
+who _unchecks_ it on `peer-evaluator` believes they have revoked access that is in fact still granted.
 This is a permissions control that silently lies in both directions.
 
 **Fix.** Pick one, deliberately — this is a product decision:
+
 - **(a)** Make `onStaffWritten`/`syncMyClaims` look up the role doc's `isSpecialAccess` field instead
   of the hardcoded allowlist. Correct but adds a Firestore read to claim minting.
 - **(b)** Make the checkbox read-only/display-only for the three built-in roles and remove it for
@@ -332,7 +333,7 @@ for any non-`manual` trigger type. The button is shown on all 17 templates.
 
 **Failure scenario.** An admin editing "Scheduling: Window Invite" clicks **Send Test…**, types their
 address, clicks Send Test, and gets the raw callable error. 16 of 17 templates fail 100% of the time,
-and only *after* the admin has filled in the dialog — for the one feature whose entire purpose is
+and only _after_ the admin has filled in the dialog — for the one feature whose entire purpose is
 "let me check what this looks like before it goes out."
 
 **Fix.** Hide or disable **Send Test…** for non-`manual` templates with a short explanation. Better,
@@ -434,14 +435,14 @@ laptop drops off school wifi mid-edit.
 **Recommended shape:** ship as 2–3 PRs, not six. Extract the pattern once (a small
 `useGuardedWrite`-style helper or a shared inline-error affordance), then apply it.
 
-| ID | File | Controls affected | Sev |
-|---|---|---|---|
-| **AC-17** | `admin/work-product/WorkProductPage.tsx:86-101,212-246` | Inline question text (writes **per keystroke**, bound to live doc), type select, Active toggle, and `confirmDelete()` — a failed delete leaves the dialog open forever because `setDeleting(null)` never runs | high |
-| **AC-18** | `admin/signup-fields/SignupFieldsPage.tsx:100-112` | Label input (bound to live snapshot, no local state), type, Required/Active checkboxes, options editor, `confirmDelete()` | high |
-| **AC-19** | `admin/email-templates/EmailTemplatesPage.tsx:343-349,434-438` | Row **Active** toggle and `deleteTemplate()` — both `void`-ed at the call site, so rejections are unhandled promise rejections only | high |
-| **AC-20** | `admin/modules/ModuleBuilderPage.tsx:47-53` | **Every write on the page.** `patchModule` is `void setDoc(...)` with no `.catch`, no loading state, no success/failure indicator: staff-page toggle, sidebar icon, section add/reorder/delete/retitle | high |
-| **AC-21** | `admin/modules/ModulesPage.tsx:138-142` | Row-menu Delete — same stuck-dialog failure as AC-17 | high |
-| **AC-22** | `admin/role-year-mappings/RoleYearMappingsPage.tsx:178-185` | Year pill color swatches — selected state is derived from the read-back doc, so a failed write is **indistinguishable from not having clicked** | medium |
+| ID        | File                                                           | Controls affected                                                                                                                                                                                             | Sev    |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| **AC-17** | `admin/work-product/WorkProductPage.tsx:86-101,212-246`        | Inline question text (writes **per keystroke**, bound to live doc), type select, Active toggle, and `confirmDelete()` — a failed delete leaves the dialog open forever because `setDeleting(null)` never runs | high   |
+| **AC-18** | `admin/signup-fields/SignupFieldsPage.tsx:100-112`             | Label input (bound to live snapshot, no local state), type, Required/Active checkboxes, options editor, `confirmDelete()`                                                                                     | high   |
+| **AC-19** | `admin/email-templates/EmailTemplatesPage.tsx:343-349,434-438` | Row **Active** toggle and `deleteTemplate()` — both `void`-ed at the call site, so rejections are unhandled promise rejections only                                                                           | high   |
+| **AC-20** | `admin/modules/ModuleBuilderPage.tsx:47-53`                    | **Every write on the page.** `patchModule` is `void setDoc(...)` with no `.catch`, no loading state, no success/failure indicator: staff-page toggle, sidebar icon, section add/reorder/delete/retitle        | high   |
+| **AC-21** | `admin/modules/ModulesPage.tsx:138-142`                        | Row-menu Delete — same stuck-dialog failure as AC-17                                                                                                                                                          | high   |
+| **AC-22** | `admin/role-year-mappings/RoleYearMappingsPage.tsx:178-185`    | Year pill color swatches — selected state is derived from the read-back doc, so a failed write is **indistinguishable from not having clicked**                                                               | medium |
 
 **Fix for all.** Wrap in try/catch, surface via the inline error pattern already used on each page
 (`saveError` / `itemError`). For the two per-keystroke inputs (AC-17, AC-18), additionally give the
@@ -540,9 +541,10 @@ cleared on reopen). Every Draft observation reads the live `/rubrics/{id}` doc d
 admin, unaware anyone has it open, rewords that descriptor — or deletes the component — and clicks
 **Save rubric**. There is no confirmation, no count, no message of any kind on the whole-rubric save
 path. The evaluator's next reload shows different criteria mid-evaluation. The per-component delete
-flow *does* warn (`RubricGridEditor.tsx:336-351`); the whole-rubric save does not.
+flow _does_ warn (`RubricGridEditor.tsx:336-351`); the whole-rubric save does not.
 
 **Fix (staged).**
+
 1. **S, do first:** before saving, query for non-finalized observations referencing this rubric and
    show a count warning — "N in-progress observations are using this rubric; saving changes what
    evaluators see immediately."
@@ -677,7 +679,7 @@ from branding/settings alongside `appName`.
 
 ### AC-36 — Rubric proficiency-scale labels are hardcoded
 
-**Severity:** medium *(downgraded from high by verifier)* · **Axis:** B · **Effort:** M · **Confidence:** CONFIRMED
+**Severity:** medium _(downgraded from high by verifier)_ · **Axis:** B · **Effort:** M · **Confidence:** CONFIRMED
 **Files:** `apps/web/src/components/rubric/RubricGrid.tsx:18-23`
 
 An admin can rewrite every domain name, component title, descriptor paragraph, and look-for — but not
@@ -728,6 +730,7 @@ to `settings_updated` and gets zero rows — forever. The filter dropdown advert
 does not have, so an empty result reads as "it didn't happen" rather than "we don't record that."
 
 **Fix.** Decide per action, then do one of:
+
 - **(a)** Add `writeAuditLog` calls at the relevant server paths. For Settings and Dashboard this
   requires routing those saves through a callable, since client `setDoc` cannot write a trustworthy
   audit entry — a real M/L change.
@@ -783,14 +786,14 @@ explicit year-label) setting once AC-07 has unified the two implementations.
 
 ### AC-42 … AC-47 — Remaining coverage gaps
 
-| ID | Gap | File | Sev | Note |
-|---|---|---|---|---|
-| **AC-42** | Observation types are a fixed 3-element enum with no admin page to add/rename/retire one | `packages/shared/src/constants.ts:97-103` | medium | **Judgment call.** Each type is architecturally bespoke (own answer-form component, own question wiring), so this may be a legitimate engineering boundary rather than a district-tunable list. Flagged for your decision, not recommended as-is. Effort L. |
-| **AC-43** | Evidence upload size limit (20 MB) hardcoded on client **and** server | `components/rubric/RubricRow.tsx:100-101`, `functions/src/observations/uploadEvidenceFile.ts:106` | medium | Both must change together. |
-| **AC-44** | Dashboard urgency thresholds hardcoded: `DEADLINE_URGENCY_DAYS=3`, `SOON_WINDOW_DAYS=7` | `dashboard/deriveCheckpoints.ts:152`, `dashboard/deriveModuleTasks.ts:4` | medium | Add optional fields to `DashboardConfig`, editable on the Layout tab, defaulting to today's values. |
-| **AC-45** | Calendar-conflict warning copy shown to staff is a hardcoded string | `scheduling/BookingPage.tsx:68-69` | medium | The *policy* that triggers it is admin-tunable; the wording is not. |
-| **AC-46** | "Your peer evaluator" card hardcodes the literal label `'Peer Evaluator'` | `dashboard/StaffDashboardPage.tsx:309` | medium | Roles are explicitly renameable. Every other label in this same file resolves via `roleDisplayName` (line 262-265). **Fix:** `roles?.find(r => r.roleId === SPECIAL_ROLES.peerEvaluator)?.displayName ?? 'Peer Evaluator'`, reusing the `roles` data the component already loads. |
-| **AC-47** | Profile's "My Administrator" list matches only `role === 'administrator'`, missing the other two admin paths (`full-access`, `hasAdminAccess`) | `routes/ProfilePage.tsx:473-477` | medium | Firestore cannot OR across fields in one query, so this needs an extra query or client-side merge. **If the narrow scoping is deliberate** (site admins only, excluding district-office accounts), just document it — but it currently contradicts `AuthProvider.tsx:54-55`. |
+| ID        | Gap                                                                                                                                            | File                                                                                              | Sev    | Note                                                                                                                                                                                                                                                                              |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **AC-42** | Observation types are a fixed 3-element enum with no admin page to add/rename/retire one                                                       | `packages/shared/src/constants.ts:97-103`                                                         | medium | **Judgment call.** Each type is architecturally bespoke (own answer-form component, own question wiring), so this may be a legitimate engineering boundary rather than a district-tunable list. Flagged for your decision, not recommended as-is. Effort L.                       |
+| **AC-43** | Evidence upload size limit (20 MB) hardcoded on client **and** server                                                                          | `components/rubric/RubricRow.tsx:100-101`, `functions/src/observations/uploadEvidenceFile.ts:106` | medium | Both must change together.                                                                                                                                                                                                                                                        |
+| **AC-44** | Dashboard urgency thresholds hardcoded: `DEADLINE_URGENCY_DAYS=3`, `SOON_WINDOW_DAYS=7`                                                        | `dashboard/deriveCheckpoints.ts:152`, `dashboard/deriveModuleTasks.ts:4`                          | medium | Add optional fields to `DashboardConfig`, editable on the Layout tab, defaulting to today's values.                                                                                                                                                                               |
+| **AC-45** | Calendar-conflict warning copy shown to staff is a hardcoded string                                                                            | `scheduling/BookingPage.tsx:68-69`                                                                | medium | The _policy_ that triggers it is admin-tunable; the wording is not.                                                                                                                                                                                                               |
+| **AC-46** | "Your peer evaluator" card hardcodes the literal label `'Peer Evaluator'`                                                                      | `dashboard/StaffDashboardPage.tsx:309`                                                            | medium | Roles are explicitly renameable. Every other label in this same file resolves via `roleDisplayName` (line 262-265). **Fix:** `roles?.find(r => r.roleId === SPECIAL_ROLES.peerEvaluator)?.displayName ?? 'Peer Evaluator'`, reusing the `roles` data the component already loads. |
+| **AC-47** | Profile's "My Administrator" list matches only `role === 'administrator'`, missing the other two admin paths (`full-access`, `hasAdminAccess`) | `routes/ProfilePage.tsx:473-477`                                                                  | medium | Firestore cannot OR across fields in one query, so this needs an extra query or client-side merge. **If the narrow scoping is deliberate** (site admins only, excluding district-office accounts), just document it — but it currently contradicts `AuthProvider.tsx:54-55`.      |
 
 ---
 
@@ -820,22 +823,22 @@ should be disabled when clean, matching `DashboardSettingsPage`.
 
 ### AC-49 … AC-62 — Remaining polish
 
-| ID | Issue | File | Sev |
-|---|---|---|---|
-| **AC-49** | Audit Log shows raw machine strings (`observation.finalize`, `calendar.eventCreateFailed`, `rate_limit_tripped`) in both the table and the filter dropdown, on a page aimed at non-technical admins. **Fix:** a label map mirroring the `*_LABELS` pattern in `copyStrings.ts`. | `admin/audit-log/AuditLogPage.tsx:285-296,69-74` | medium |
-| **AC-50** | Sidebar icon picker lists raw lucide slugs (`shapes`, `book-open`, `graduation-cap`) as plain text with no glyph and no preview. **Fix:** render each option with its actual icon, matching the color-swatch picker pattern already used for role/building/module color. | `admin/modules/ModuleBuilderPage.tsx:115-129` | medium |
-| **AC-51** | Bulk-edit's destructive toggles (deactivate staff, revoke admin access) apply immediately from a single dialog with no confirm step and no count warning — inconsistent with Rollover and Message-group on the *same page*, both of which do this well. | `admin/staff/BulkEditDialog.tsx:238-411` | medium |
-| **AC-52** | StaffDialog's **Archive** button only flips local form state and requires a second Save, while the identically-labeled row-menu action writes immediately. An admin who used the row action first will reasonably assume the dialog button already took effect, hit Cancel, and never archive the person. | `admin/staff/StaffDialog.tsx:477-487` vs `StaffPage.tsx:399-405` | medium |
-| **AC-53** | Deactivating a Role or Building states no count of currently-assigned staff, even though it immediately removes the option from assignment dropdowns and flags every holder with an "⚠ (unmapped)" pill. Delete *does* disclose this; Deactivate does not. | `admin/roles/RolesPage.tsx:471-489` | medium |
-| **AC-54** | Deleting a module leaves a dangling reference on staff docs with **no "unmapped" chip**, unlike `RolePill` and `BuildingsPill` which both detect and flag this. **Fix:** add the same fallback branch to `ModuleAccessPill`. | `admin/staff/StaffInlineEditors.tsx:168-223` | medium |
-| **AC-55** | "Rubric ID" on the Role editor is bare free text — no picker, no existence check. A typo saves fine and surfaces far downstream as "No rubric is set up for the role X" on the teacher's My Rubric page. | `admin/roles/RolesPage.tsx:428` | medium |
-| **AC-56** | Role/Year Mappings mixes two save semantics on one screen: the matrix requires an explicit Save, the pill-color swatches write instantly on click. An admin who learned "nothing saves until I click Save" from the top of the page will be wrong about the bottom. | `admin/role-year-mappings/RoleYearMappingsPage.tsx:178-185,260-295` | medium |
-| **AC-57** | Scheduling Settings subtitle claims PE window overrides stay "within the bounds you set here". They don't — the settings are pre-fill defaults only, and `CreateObservationWindowDialog` lets a PE exceed every one. **Fix:** correct the copy (or enforce the bounds, which is the larger change and overlaps AC-31). | `admin/scheduling/SchedulingSettingsPage.tsx:116` | medium |
-| **AC-58** | The transcription failure banner tells admins to "check the Gemini model and API key in Settings", but the API key is a deployment secret with no field in the console. **Fix:** reword to reference only what is admin-configurable. | `admin/transcription/TranscriptionJobsPage.tsx:221-233` | medium |
-| **AC-59** | Cycle Steps and Quick Materials reordering is **drag-only** — `useSensors` registers `PointerSensor` with no `KeyboardSensor`, and there is no up/down fallback, so keyboard and screen-reader admins cannot reorder at all. **Fix:** add `useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })` (dnd-kit ships this) or add explicit move buttons. | `admin/dashboard/CycleStepsEditor.tsx:73` | medium |
-| **AC-60** | Module resource items can only be links, but `moduleItem.ts` defines `fileUrl` and `functions/src/modules/uploadModuleFile.ts` is a **fully implemented callable** with a size cap — an entire built backend feature with no admin UI. **Fix:** add the upload control, or remove the dead field and callable. | `admin/modules/ModuleSectionEditor.tsx:201-210` | medium |
-| **AC-61** | Branding help text says the primary color applies "on next page load"; it is actually live (`useFirestoreDoc` uses `onSnapshot` and `BrandingProvider` re-applies CSS vars on change). Admins refresh, or tell staff to, for no reason. | `admin/branding/BrandingPage.tsx:111-113` | nit |
-| **AC-62** | The rubric-duplicate dialog's validation says the ID "must be lower-kebab-case" — unexplained programmer vocabulary for a school administrator. | `admin/rubrics/RubricsListPage.tsx:213` | nit |
+| ID        | Issue                                                                                                                                                                                                                                                                                                                                                                       | File                                                                | Sev    |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------ |
+| **AC-49** | Audit Log shows raw machine strings (`observation.finalize`, `calendar.eventCreateFailed`, `rate_limit_tripped`) in both the table and the filter dropdown, on a page aimed at non-technical admins. **Fix:** a label map mirroring the `*_LABELS` pattern in `copyStrings.ts`.                                                                                             | `admin/audit-log/AuditLogPage.tsx:285-296,69-74`                    | medium |
+| **AC-50** | Sidebar icon picker lists raw lucide slugs (`shapes`, `book-open`, `graduation-cap`) as plain text with no glyph and no preview. **Fix:** render each option with its actual icon, matching the color-swatch picker pattern already used for role/building/module color.                                                                                                    | `admin/modules/ModuleBuilderPage.tsx:115-129`                       | medium |
+| **AC-51** | Bulk-edit's destructive toggles (deactivate staff, revoke admin access) apply immediately from a single dialog with no confirm step and no count warning — inconsistent with Rollover and Message-group on the _same page_, both of which do this well.                                                                                                                     | `admin/staff/BulkEditDialog.tsx:238-411`                            | medium |
+| **AC-52** | StaffDialog's **Archive** button only flips local form state and requires a second Save, while the identically-labeled row-menu action writes immediately. An admin who used the row action first will reasonably assume the dialog button already took effect, hit Cancel, and never archive the person.                                                                   | `admin/staff/StaffDialog.tsx:477-487` vs `StaffPage.tsx:399-405`    | medium |
+| **AC-53** | Deactivating a Role or Building states no count of currently-assigned staff, even though it immediately removes the option from assignment dropdowns and flags every holder with an "⚠ (unmapped)" pill. Delete _does_ disclose this; Deactivate does not.                                                                                                                  | `admin/roles/RolesPage.tsx:471-489`                                 | medium |
+| **AC-54** | Deleting a module leaves a dangling reference on staff docs with **no "unmapped" chip**, unlike `RolePill` and `BuildingsPill` which both detect and flag this. **Fix:** add the same fallback branch to `ModuleAccessPill`.                                                                                                                                                | `admin/staff/StaffInlineEditors.tsx:168-223`                        | medium |
+| **AC-55** | "Rubric ID" on the Role editor is bare free text — no picker, no existence check. A typo saves fine and surfaces far downstream as "No rubric is set up for the role X" on the teacher's My Rubric page.                                                                                                                                                                    | `admin/roles/RolesPage.tsx:428`                                     | medium |
+| **AC-56** | Role/Year Mappings mixes two save semantics on one screen: the matrix requires an explicit Save, the pill-color swatches write instantly on click. An admin who learned "nothing saves until I click Save" from the top of the page will be wrong about the bottom.                                                                                                         | `admin/role-year-mappings/RoleYearMappingsPage.tsx:178-185,260-295` | medium |
+| **AC-57** | Scheduling Settings subtitle claims PE window overrides stay "within the bounds you set here". They don't — the settings are pre-fill defaults only, and `CreateObservationWindowDialog` lets a PE exceed every one. **Fix:** correct the copy (or enforce the bounds, which is the larger change and overlaps AC-31).                                                      | `admin/scheduling/SchedulingSettingsPage.tsx:116`                   | medium |
+| **AC-58** | The transcription failure banner tells admins to "check the Gemini model and API key in Settings", but the API key is a deployment secret with no field in the console. **Fix:** reword to reference only what is admin-configurable.                                                                                                                                       | `admin/transcription/TranscriptionJobsPage.tsx:221-233`             | medium |
+| **AC-59** | Cycle Steps and Quick Materials reordering is **drag-only** — `useSensors` registers `PointerSensor` with no `KeyboardSensor`, and there is no up/down fallback, so keyboard and screen-reader admins cannot reorder at all. **Fix:** add `useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })` (dnd-kit ships this) or add explicit move buttons. | `admin/dashboard/CycleStepsEditor.tsx:73`                           | medium |
+| **AC-60** | Module resource items can only be links, but `moduleItem.ts` defines `fileUrl` and `functions/src/modules/uploadModuleFile.ts` is a **fully implemented callable** with a size cap — an entire built backend feature with no admin UI. **Fix:** add the upload control, or remove the dead field and callable.                                                              | `admin/modules/ModuleSectionEditor.tsx:201-210`                     | medium |
+| **AC-61** | Branding help text says the primary color applies "on next page load"; it is actually live (`useFirestoreDoc` uses `onSnapshot` and `BrandingProvider` re-applies CSS vars on change). Admins refresh, or tell staff to, for no reason.                                                                                                                                     | `admin/branding/BrandingPage.tsx:111-113`                           | nit    |
+| **AC-62** | The rubric-duplicate dialog's validation says the ID "must be lower-kebab-case" — unexplained programmer vocabulary for a school administrator.                                                                                                                                                                                                                             | `admin/rubrics/RubricsListPage.tsx:213`                             | nit    |
 
 ---
 
@@ -857,7 +860,7 @@ Recorded so future work doesn't re-audit it.
   time, so historical PDFs don't shift under later rubric edits. (The gap is Draft observations — AC-27.)
 - **Building-schedule draft lifecycle** (prepare-next-year / activate / discard) is real, its batched
   writes are correct, and the Activate dialog's claims about booking reconciliation are **accurate** —
-  verified against `onBuildingScheduleWritten.ts`. (The gap is the *undisclosed* live-save path — AC-26.)
+  verified against `onBuildingScheduleWritten.ts`. (The gap is the _undisclosed_ live-save path — AC-26.)
 - **Firestore rules** for `/rubrics`, `/roleYearMappings`, and `/workProductQuestions` all gate writes
   on `isAdmin()` consistently with the route guard — no permission-mismatch bug in this area.
 - **Role-year mappings** genuinely drive `/my-rubric` and `finalizeObservation`'s snapshot — not a
@@ -878,17 +881,17 @@ Recorded so future work doesn't re-audit it.
 Sized for the `mass-plan-implementation` skill. Each slice is internally parallelizable; slices are
 ordered by risk, not dependency (only AC-10 and AC-41 have stated dependencies).
 
-| Slice | Items | Why together |
-|---|---|---|
-| **S1 — Authorization** | AC-01, AC-06, AC-08, AC-09 | One theme (T1), one helper, security-critical. AC-01 first; read `computeClaims.ts` from the dev-paul tag before starting. |
-| **S2 — Rubric editor** | AC-02, AC-03, AC-27 (part 1 only), AC-37 | One file cluster, blocking data-integrity, high conflict risk if split across agents. |
-| **S3 — Dead controls** | AC-11, AC-12, AC-13, AC-14, AC-15, AC-16 | All "the control lies"; each is independently small. |
-| **S4 — Error handling** | AC-17 … AC-22 | One pattern, six files. Extract the shared affordance in the first PR. |
-| **S5 — Validation** | AC-05, AC-23, AC-24, AC-25, AC-30, AC-31 | All "reject bad input before it persists". |
-| **S6 — District values** | AC-07, AC-32, AC-33, AC-34, AC-35, AC-41, AC-46 | The cutover-risk group. AC-33/AC-34 share the pre-auth constraint. |
-| **S7 — Deactivation semantics** | AC-04, AC-29, AC-53, AC-54 | One theme (T6). |
-| **S8 — Audit log** | AC-38, AC-39, AC-49, plus the existing `rate_limit_tripped` TODO item | Decide prune-vs-implement once, then apply. |
-| **S9 — Polish** | AC-48, AC-50 … AC-62 | Independent, low-risk, good parallel fan-out. |
+| Slice                           | Items                                                                 | Why together                                                                                                               |
+| ------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **S1 — Authorization**          | AC-01, AC-06, AC-08, AC-09                                            | One theme (T1), one helper, security-critical. AC-01 first; read `computeClaims.ts` from the dev-paul tag before starting. |
+| **S2 — Rubric editor**          | AC-02, AC-03, AC-27 (part 1 only), AC-37                              | One file cluster, blocking data-integrity, high conflict risk if split across agents.                                      |
+| **S3 — Dead controls**          | AC-11, AC-12, AC-13, AC-14, AC-15, AC-16                              | All "the control lies"; each is independently small.                                                                       |
+| **S4 — Error handling**         | AC-17 … AC-22                                                         | One pattern, six files. Extract the shared affordance in the first PR.                                                     |
+| **S5 — Validation**             | AC-05, AC-23, AC-24, AC-25, AC-30, AC-31                              | All "reject bad input before it persists".                                                                                 |
+| **S6 — District values**        | AC-07, AC-32, AC-33, AC-34, AC-35, AC-41, AC-46                       | The cutover-risk group. AC-33/AC-34 share the pre-auth constraint.                                                         |
+| **S7 — Deactivation semantics** | AC-04, AC-29, AC-53, AC-54                                            | One theme (T6).                                                                                                            |
+| **S8 — Audit log**              | AC-38, AC-39, AC-49, plus the existing `rate_limit_tripped` TODO item | Decide prune-vs-implement once, then apply.                                                                                |
+| **S9 — Polish**                 | AC-48, AC-50 … AC-62                                                  | Independent, low-risk, good parallel fan-out.                                                                              |
 
 **Not recommended without a decision from you:** AC-42 (observation types) and the full version of
 AC-27 (rubric draft/publish states) — both are architectural and deserve their own design pass.
