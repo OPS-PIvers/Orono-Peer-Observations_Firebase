@@ -40,6 +40,10 @@ Set `VITE_USE_EMULATORS=true` in `apps/web/.env.local` for emulator-pointed dev
 (see `apps/web/.env.example`). Most dev should happen here, not against live
 Firebase.
 
+On Windows the emulators need Java 21+ on `PATH` and an AF_UNIX temp directory
+outside the user profile — without the latter the Firestore emulator exits 1
+before it starts. See docs/local-dev-windows.md.
+
 ## Useful scripts
 
 | Command                      | What it does                                                             |
@@ -63,3 +67,4 @@ Firebase.
 - TODO.md — backlog: bugs, ops work, committed follow-ups
 - FEATURES_ROADMAP.md — 88 feature briefs from a codebase discovery pass; a menu of opportunities, not a plan
 - docs/dependency-overrides.md — why each `pnpm.overrides` entry in package.json exists and when it can be removed
+- docs/local-dev-windows.md — why the Firestore emulator fails to start on Windows, and the one-line fix
