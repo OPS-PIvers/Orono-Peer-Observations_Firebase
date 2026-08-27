@@ -40,6 +40,11 @@ vi.mock('@/hooks/useFirestoreCollection', () => ({
 
 import { NeverSignedInCard } from './NeverSignedInCard';
 
+/** The card renders collapsed; the whole header is the expand control. */
+async function expandCard() {
+  await userEvent.click(screen.getByRole('button', { name: /Invited but never signed in/ }));
+}
+
 function makeStaff(overrides: Partial<Staff> = {}): Staff & { id: string } {
   return {
     id: overrides.email ?? 'jane.doe@orono.k12.mn.us',
@@ -98,7 +103,7 @@ describe('NeverSignedInCard', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('includes staff whose lastSignInAt field is missing entirely, not just null', () => {
+  it('includes staff whose lastSignInAt field is missing entirely, not just null', async () => {
     // Raw Firestore reads bypass Zod defaults, so a doc that predates this
     // field can come back with the key absent rather than set to null.
     const legacyDoc: Record<string, unknown> = {
@@ -107,6 +112,7 @@ describe('NeverSignedInCard', () => {
     delete legacyDoc['lastSignInAt'];
     collectionState.data = [legacyDoc as Staff & { id: string }];
     render(<NeverSignedInCard />);
+    await expandCard();
     expect(screen.getByText('Legacy Doc')).toBeInTheDocument();
   });
 
@@ -116,35 +122,39 @@ describe('NeverSignedInCard', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('lists outstanding staff sorted by name', () => {
+  it('lists outstanding staff sorted by name', async () => {
     collectionState.data = [
       makeStaff({ email: 'zed@orono.k12.mn.us', name: 'Zed Zebra' }),
       makeStaff({ email: 'amy@orono.k12.mn.us', name: 'Amy Apple' }),
     ];
     render(<NeverSignedInCard />);
+    await expandCard();
     const names = screen.getAllByText(/Apple|Zebra/).map((el) => el.textContent);
     expect(names).toEqual(['Amy Apple', 'Zed Zebra']);
   });
 
-  it('caps the collapsed list and expands via "Show all"', async () => {
+  it('starts collapsed to a header summary and expands on click', async () => {
     collectionState.data = Array.from({ length: 8 }, (_, i) =>
       makeStaff({ email: `person${String(i)}@orono.k12.mn.us`, name: `Person ${String(i)}` }),
     );
     render(<NeverSignedInCard />);
-    expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    await userEvent.click(screen.getByRole('button', { name: 'Show all 8' }));
+    // Collapsed: the count is visible but no rows or search box render.
+    expect(screen.getByText(/8 of your active staff/)).toBeInTheDocument();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await expandCard();
     expect(screen.getAllByRole('listitem')).toHaveLength(8);
-    await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }));
-    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    await expandCard();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
-  it('searches by name or email across the full list, ignoring the preview cap', async () => {
+  it('searches by name or email once expanded', async () => {
     collectionState.data = Array.from({ length: 8 }, (_, i) =>
       makeStaff({ email: `person${String(i)}@orono.k12.mn.us`, name: `Person ${String(i)}` }),
     );
     render(<NeverSignedInCard />);
+    await expandCard();
     const search = screen.getByRole('textbox', { name: 'Search by name or email…' });
-    // "Person 7" sits past the 5-row preview cap; search must still find them.
     await userEvent.type(search, 'person7@');
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(screen.getByText('Person 7')).toBeInTheDocument();
@@ -160,6 +170,7 @@ describe('NeverSignedInCard', () => {
       makeStaff({ email: 'zed@orono.k12.mn.us', name: 'Zed Zebra' }),
     ];
     render(<NeverSignedInCard />);
+    await expandCard();
     await userEvent.click(screen.getByRole('button', { name: 'Resend invite to Zed Zebra' }));
     await waitFor(() => {
       expect(mockCallable).toHaveBeenCalledWith({ email: 'zed@orono.k12.mn.us' });
@@ -172,6 +183,7 @@ describe('NeverSignedInCard', () => {
     collectionState.data = [makeStaff()];
     mockCallable.mockResolvedValue({ data: { sent: false } });
     render(<NeverSignedInCard />);
+    await expandCard();
     await userEvent.click(screen.getByRole('button', { name: 'Resend invite to Jane Doe' }));
     expect(await screen.findByText(/No active .*email template/)).toBeInTheDocument();
   });

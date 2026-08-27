@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { MailPlus, UserRoundX } from 'lucide-react';
+import { ChevronDown, ChevronRight, MailPlus, UserRoundX } from 'lucide-react';
 import { COLLECTIONS, type Staff } from '@ops/shared';
 import { functions } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -56,11 +56,6 @@ const resendStaffInviteFn = httpsCallable<{ email: string }, { sent: boolean }>(
 
 type ResendState = 'sending' | 'sent' | 'no-template' | 'error';
 
-/** Collapsed row cap. During rollout this card can hold most of the roster
- *  (200+ rows) — rendering them all would push the staff table itself below
- *  the fold, so anything past the cap sits behind a "Show all" toggle. */
-const PREVIEW_COUNT = 5;
-
 export function NeverSignedInCard() {
   const { data, loading, error } = useFirestoreCollection<Staff>(
     COLLECTIONS.staff,
@@ -78,13 +73,10 @@ export function NeverSignedInCard() {
     [data],
   );
 
-  // An active search shows every match — collapsing search results behind
-  // "Show all" would just hide the person being looked for.
   const q = query.trim().toLowerCase();
-  const filtered = q
+  const visible = q
     ? rows.filter((s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q))
     : rows;
-  const visible = q || expanded ? filtered : filtered.slice(0, PREVIEW_COUNT);
 
   const handleResend = useCallback(async (email: string) => {
     setResendError(null);
@@ -112,76 +104,83 @@ export function NeverSignedInCard() {
 
   return (
     <Card className="mb-4">
-      <CardHeader className="flex-row items-center justify-between gap-2">
-        <CardTitle className="flex items-center gap-2">
-          <UserRoundX className="text-ops-blue size-4" aria-hidden="true" />
-          Invited but never signed in
-        </CardTitle>
-        <span className="text-muted-foreground text-xs">
-          {rows.length} of your active staff {rows.length === 1 ? 'has' : 'have'} not signed in yet
-        </span>
+      {/* The whole header is the expand/collapse control. Collapsed by
+          default: during rollout this card can hold most of the roster, and
+          an open card that long buries the staff table (and its search bar)
+          below the fold. */}
+      <CardHeader className="p-0">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          className="flex w-full flex-row flex-wrap items-center justify-between gap-2 px-6 py-4 text-left"
+        >
+          <CardTitle className="flex items-center gap-2">
+            {expanded ? (
+              <ChevronDown className="text-muted-foreground size-4" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="text-muted-foreground size-4" aria-hidden="true" />
+            )}
+            <UserRoundX className="text-ops-blue size-4" aria-hidden="true" />
+            Invited but never signed in
+          </CardTitle>
+          <span className="text-muted-foreground text-xs">
+            {rows.length} of your active staff {rows.length === 1 ? 'has' : 'have'} not signed in
+            yet
+          </span>
+        </button>
       </CardHeader>
-      <CardContent className="pt-3">
-        {resendError ? <p className="text-ops-red-dark mb-3 text-sm">{resendError}</p> : null}
-        {rows.length > PREVIEW_COUNT ? (
+      {expanded ? (
+        <CardContent className="pt-0">
+          {resendError ? <p className="text-ops-red-dark mb-3 text-sm">{resendError}</p> : null}
           <AdminSearchInput
             value={query}
             onChange={setQuery}
             placeholder="Search by name or email…"
             className="mb-3"
           />
-        ) : null}
-        {q && filtered.length === 0 ? (
-          <p className="text-muted-foreground py-2 text-sm">No staff match that search.</p>
-        ) : null}
-        <ul className="divide-border divide-y text-sm">
-          {visible.map((s) => {
-            const state = resend[s.email];
-            const invitedAt = toJsDate(s.createdAt);
-            return (
-              <li key={s.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <span className="font-medium">{s.name}</span>
-                <span className="text-muted-foreground text-xs">{s.email}</span>
-                {invitedAt ? (
-                  <span className="text-muted-foreground text-xs">
-                    added {invitedAt.toLocaleDateString()}
-                  </span>
-                ) : null}
-                <span className="ml-auto flex items-center gap-2">
-                  {state === 'sent' ? (
-                    <span className="text-ops-blue text-xs">Invite re-sent</span>
-                  ) : null}
-                  {state === 'no-template' ? (
-                    <span className="text-ops-red-dark text-xs">
-                      No active “staff created” email template
+          {q && visible.length === 0 ? (
+            <p className="text-muted-foreground py-2 text-sm">No staff match that search.</p>
+          ) : null}
+          <ul className="divide-border divide-y text-sm">
+            {visible.map((s) => {
+              const state = resend[s.email];
+              const invitedAt = toJsDate(s.createdAt);
+              return (
+                <li key={s.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                  <span className="font-medium">{s.name}</span>
+                  <span className="text-muted-foreground text-xs">{s.email}</span>
+                  {invitedAt ? (
+                    <span className="text-muted-foreground text-xs">
+                      added {invitedAt.toLocaleDateString()}
                     </span>
                   ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={state === 'sending'}
-                    onClick={() => void handleResend(s.email)}
-                    aria-label={`Resend invite to ${s.name}`}
-                  >
-                    <MailPlus />
-                    {state === 'sending' ? 'Sending…' : 'Resend invite'}
-                  </Button>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-        {!q && rows.length > PREVIEW_COUNT ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2"
-            onClick={() => setExpanded((e) => !e)}
-          >
-            {expanded ? 'Show fewer' : `Show all ${String(rows.length)}`}
-          </Button>
-        ) : null}
-      </CardContent>
+                  <span className="ml-auto flex items-center gap-2">
+                    {state === 'sent' ? (
+                      <span className="text-ops-blue text-xs">Invite re-sent</span>
+                    ) : null}
+                    {state === 'no-template' ? (
+                      <span className="text-ops-red-dark text-xs">
+                        No active “staff created” email template
+                      </span>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={state === 'sending'}
+                      onClick={() => void handleResend(s.email)}
+                      aria-label={`Resend invite to ${s.name}`}
+                    >
+                      <MailPlus />
+                      {state === 'sending' ? 'Sending…' : 'Resend invite'}
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      ) : null}
     </Card>
   );
 }
