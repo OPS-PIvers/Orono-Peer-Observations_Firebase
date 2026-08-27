@@ -109,22 +109,39 @@ function evalDone(
   return EVENT_EVALUATORS[doneWhen](ctx, obs, now).satisfied;
 }
 
+/**
+ * The observation's document id. `observationId` is required by the schema,
+ * but Firestore reads bypass Zod and a handful of production docs were
+ * written without it — those produced a `/observations/undefined` link and an
+ * Acknowledge that wrote to an undefined doc id. `hydrateFirestoreDoc`
+ * always attaches the real doc `id`, so fall back to that.
+ */
+function observationDocId(obs: Observation): string {
+  const withId = obs as Observation & { id?: string };
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod; the type says observationId is required but stored docs may omit it
+  return withId.observationId ?? withId.id ?? '';
+}
+
 function resolveButton(
   step: DashboardStep,
   ctx: DeriveContext,
   obs: Observation | null,
 ): { ctaUrl: string; ackObservationId?: string } {
   switch (step.buttonTarget) {
-    case 'observation':
-      return { ctaUrl: obs ? `/observations/${obs.observationId}` : '' };
+    case 'observation': {
+      const id = obs ? observationDocId(obs) : '';
+      return { ctaUrl: id ? `/observations/${id}` : '' };
+    }
     case 'booking': {
       const booking = ctx.openBooking
         ? `/book/${ctx.openBooking.windowId}?token=${ctx.openBooking.token}`
         : '';
       return { ctaUrl: booking || (ctx.appSettings?.signupLink ?? '') };
     }
-    case 'acknowledge':
-      return obs ? { ctaUrl: '', ackObservationId: obs.observationId } : { ctaUrl: '' };
+    case 'acknowledge': {
+      const id = obs ? observationDocId(obs) : '';
+      return id ? { ctaUrl: '', ackObservationId: id } : { ctaUrl: '' };
+    }
     case 'fixedUrl':
       return { ctaUrl: step.buttonUrl };
     case 'none':
