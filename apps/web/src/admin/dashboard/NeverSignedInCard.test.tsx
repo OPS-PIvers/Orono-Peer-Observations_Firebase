@@ -126,6 +126,18 @@ describe('NeverSignedInCard', () => {
     expect(names).toEqual(['Amy Apple', 'Zed Zebra']);
   });
 
+  it('caps the collapsed list and expands via "Show all"', async () => {
+    collectionState.data = Array.from({ length: 8 }, (_, i) =>
+      makeStaff({ email: `person${String(i)}@orono.k12.mn.us`, name: `Person ${String(i)}` }),
+    );
+    render(<NeverSignedInCard />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 8' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
+    await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+  });
+
   it('resends the invite for the clicked person only', async () => {
     collectionState.data = [
       makeStaff({ email: 'amy@orono.k12.mn.us', name: 'Amy Apple' }),

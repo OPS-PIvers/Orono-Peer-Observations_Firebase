@@ -55,6 +55,11 @@ const resendStaffInviteFn = httpsCallable<{ email: string }, { sent: boolean }>(
 
 type ResendState = 'sending' | 'sent' | 'no-template' | 'error';
 
+/** Collapsed row cap. During rollout this card can hold most of the roster
+ *  (200+ rows) — rendering them all would push the staff table itself below
+ *  the fold, so anything past the cap sits behind a "Show all" toggle. */
+const PREVIEW_COUNT = 5;
+
 export function NeverSignedInCard() {
   const { data, loading, error } = useFirestoreCollection<Staff>(
     COLLECTIONS.staff,
@@ -64,6 +69,7 @@ export function NeverSignedInCard() {
 
   const [resend, setResend] = useState<Record<string, ResendState>>({});
   const [resendError, setResendError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const rows = useMemo(
     () => (data ?? []).filter(hasNeverSignedIn).sort((a, b) => a.name.localeCompare(b.name)),
@@ -108,7 +114,7 @@ export function NeverSignedInCard() {
       <CardContent className="pt-3">
         {resendError ? <p className="text-ops-red-dark mb-3 text-sm">{resendError}</p> : null}
         <ul className="divide-border divide-y text-sm">
-          {rows.map((s) => {
+          {(expanded ? rows : rows.slice(0, PREVIEW_COUNT)).map((s) => {
             const state = resend[s.email];
             const invitedAt = toJsDate(s.createdAt);
             return (
@@ -144,6 +150,16 @@ export function NeverSignedInCard() {
             );
           })}
         </ul>
+        {rows.length > PREVIEW_COUNT ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2"
+            onClick={() => setExpanded((e) => !e)}
+          >
+            {expanded ? 'Show fewer' : `Show all ${String(rows.length)}`}
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   );
