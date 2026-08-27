@@ -47,6 +47,50 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(deriveCheckpoints(DEFAULT_STEPS, ctx({}), NOW)).toEqual([]);
   });
 
+  it('does not show signup when an observation exists but no window ever did', () => {
+    // Regression, found against production: /observationWindows was empty and
+    // the signup step's doneWhen was `observationCreated`, so a manually
+    // created observation marked "Sign up for an observation window" complete.
+    // The card then rendered permanently, with no date and no button —
+    // dateFrom `windowEndDate` and buttonTarget `booking` both resolve through
+    // `openBooking`, which is null with no window.
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ finalizedStandard: [obs({ status: 'Finalized', finalizedAt: PAST })] }),
+      NOW,
+    );
+    expect(cards.find((c) => c.id === 'signup')).toBeUndefined();
+  });
+
+  it('marks signup done once the slot is booked', () => {
+    const signup = deriveCheckpoints(DEFAULT_STEPS, ctx({ hasBookedSlot: true }), NOW).find(
+      (c) => c.id === 'signup',
+    );
+    expect(signup?.status).toBe('done');
+  });
+
+  it('links a draft whose observationId field is missing via its doc id', () => {
+    // 3 of 236 production observation docs were written without the
+    // `observationId` field the schema marks required; those cards linked to
+    // /observations/undefined. hydrateFirestoreDoc always attaches `id`.
+    const draft = obs({ lastModifiedAt: PAST });
+    delete (draft as unknown as { observationId?: string }).observationId;
+    (draft as unknown as { id: string }).id = 'doc-abc';
+    const review = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: draft }), NOW).find(
+      (c) => c.id === 'reviewDraft',
+    );
+    expect(review?.ctaUrl).toBe('/observations/doc-abc');
+  });
+
+  it('does not offer Acknowledge when neither id is present', () => {
+    const finalized = obs({ status: 'Finalized', finalizedAt: PAST });
+    delete (finalized as unknown as { observationId?: string }).observationId;
+    const ack = deriveCheckpoints(DEFAULT_STEPS, ctx({ finalizedStandard: [finalized] }), NOW).find(
+      (c) => c.id === 'acknowledge',
+    );
+    expect(ack?.ackObservationId).toBeUndefined();
+  });
+
   it('shows signup as soon when a window is open', () => {
     const cards = deriveCheckpoints(
       DEFAULT_STEPS,

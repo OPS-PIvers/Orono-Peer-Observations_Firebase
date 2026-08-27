@@ -512,6 +512,10 @@ function FilterBar({
  *  - Status color (done/inprogress/soon/upcoming) comes from `is-…`
  *    class — same vars the old `.task__check` used.
  */
+/** Tooltip on a checkpoint's button when the step resolves to no
+ *  destination — see the `task.cta` branch in TaskRow. */
+const CTA_NO_TARGET_TITLE = 'Not available yet — nothing to open for this step.';
+
 function TaskRow({
   task,
   staffEmail,
@@ -643,16 +647,23 @@ function TaskRow({
                   {task.cta}
                   <DashboardIcon name="arrow-right" size={12} />
                 </a>
-              ) : (
+              ) : task.cta ? (
+                // Nothing to link to: a `booking` button with no open window
+                // invite, an `observation` button before any observation
+                // exists, or a step whose target is None / an empty fixed URL.
+                // Render it visibly inert. It used to render enabled with no
+                // href and no onClick, so the click was silently swallowed and
+                // the card looked broken.
                 <button
                   type="button"
-                  disabled={readOnly}
+                  disabled
+                  title={CTA_NO_TARGET_TITLE}
                   className={`ot-btn ${featured ? 'ot-btn--primary' : 'ot-btn--secondary'} ot-btn--sm task-row__cta`}
                 >
                   {task.cta}
                   <DashboardIcon name="arrow-right" size={12} />
                 </button>
-              )}
+              ) : null}
             </div>
           ) : icsButton || (task.ctaUrl && !readOnly) ? (
             <div className="task-row__actions">

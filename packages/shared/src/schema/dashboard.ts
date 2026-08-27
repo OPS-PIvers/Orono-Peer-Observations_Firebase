@@ -249,7 +249,14 @@ export const DEFAULT_STEPS: DashboardStep[] = [
       'Pick a window that works for your class. Your peer evaluator confirms within 2 school days.',
     buttonLabel: 'Choose a window',
     showWhen: 'signupWindowOpened',
-    doneWhen: 'observationCreated',
+    // Booking a slot is what completes this step — NOT the mere existence of
+    // an observation. `observationCreated` was wrong: a peer evaluator can
+    // create an observation by hand, with no window and no sign-up involved,
+    // and that used to mark this step complete. The card then sat on the
+    // dashboard as a done step with no date and no button, because
+    // `windowEndDate` and the booking URL both resolve through `openBooking`,
+    // which is null when there is no window.
+    doneWhen: 'signupSlotBooked',
     dateFrom: 'windowEndDate',
     buttonTarget: 'booking',
   }),
