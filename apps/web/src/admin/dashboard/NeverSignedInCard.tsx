@@ -8,6 +8,7 @@ import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { toJsDate } from '@/utils/staffFormatting';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AdminSearchInput } from '@/admin/_shared/AdminSearchInput';
 
 /**
  * Admin rollout-readiness card (PLAT-10): active staff who were added to the
@@ -70,11 +71,20 @@ export function NeverSignedInCard() {
   const [resend, setResend] = useState<Record<string, ResendState>>({});
   const [resendError, setResendError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState('');
 
   const rows = useMemo(
     () => (data ?? []).filter(hasNeverSignedIn).sort((a, b) => a.name.localeCompare(b.name)),
     [data],
   );
+
+  // An active search shows every match — collapsing search results behind
+  // "Show all" would just hide the person being looked for.
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter((s) => s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q))
+    : rows;
+  const visible = q || expanded ? filtered : filtered.slice(0, PREVIEW_COUNT);
 
   const handleResend = useCallback(async (email: string) => {
     setResendError(null);
@@ -113,8 +123,19 @@ export function NeverSignedInCard() {
       </CardHeader>
       <CardContent className="pt-3">
         {resendError ? <p className="text-ops-red-dark mb-3 text-sm">{resendError}</p> : null}
+        {rows.length > PREVIEW_COUNT ? (
+          <AdminSearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search by name or email…"
+            className="mb-3"
+          />
+        ) : null}
+        {q && filtered.length === 0 ? (
+          <p className="text-muted-foreground py-2 text-sm">No staff match that search.</p>
+        ) : null}
         <ul className="divide-border divide-y text-sm">
-          {(expanded ? rows : rows.slice(0, PREVIEW_COUNT)).map((s) => {
+          {visible.map((s) => {
             const state = resend[s.email];
             const invitedAt = toJsDate(s.createdAt);
             return (
@@ -150,7 +171,7 @@ export function NeverSignedInCard() {
             );
           })}
         </ul>
-        {rows.length > PREVIEW_COUNT ? (
+        {!q && rows.length > PREVIEW_COUNT ? (
           <Button
             variant="ghost"
             size="sm"

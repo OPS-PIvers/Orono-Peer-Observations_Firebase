@@ -138,6 +138,22 @@ describe('NeverSignedInCard', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
   });
 
+  it('searches by name or email across the full list, ignoring the preview cap', async () => {
+    collectionState.data = Array.from({ length: 8 }, (_, i) =>
+      makeStaff({ email: `person${String(i)}@orono.k12.mn.us`, name: `Person ${String(i)}` }),
+    );
+    render(<NeverSignedInCard />);
+    const search = screen.getByRole('textbox', { name: 'Search by name or email…' });
+    // "Person 7" sits past the 5-row preview cap; search must still find them.
+    await userEvent.type(search, 'person7@');
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByText('Person 7')).toBeInTheDocument();
+    await userEvent.clear(search);
+    await userEvent.type(search, 'no such person');
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.getByText('No staff match that search.')).toBeInTheDocument();
+  });
+
   it('resends the invite for the clicked person only', async () => {
     collectionState.data = [
       makeStaff({ email: 'amy@orono.k12.mn.us', name: 'Amy Apple' }),
