@@ -142,15 +142,16 @@ function buildNavItems(
   }
 
   if (role === SPECIAL_ROLES.peerEvaluator) {
-    return {
-      main: [
-        dashboardItem,
-        myRubricItem,
-        { icon: Users, label: 'Staff', href: '/staff' },
-        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
-      ],
-      meta: metaItems,
-    };
+    const main: NavItem[] = [
+      dashboardItem,
+      myRubricItem,
+      { icon: Users, label: 'Staff', href: '/staff' },
+      { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+    ];
+    if (flags.isAdmin) {
+      main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
+    }
+    return { main, meta: metaItems };
   }
 
   // Full Access role, or a non-special role with `hasAdminAccess: true`
