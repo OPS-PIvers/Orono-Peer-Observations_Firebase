@@ -120,12 +120,20 @@ function DesktopTable<T>({
   return (
     <div
       className={cn(
-        'border-border bg-background overflow-hidden rounded-lg border shadow-[var(--shadow-card)]',
+        // `overflow-clip` (not `overflow-hidden`) keeps the rounded-corner
+        // clipping without creating a scroll container, so the sticky header
+        // below sticks against the page's <main> scrollport.
+        'border-border bg-background overflow-clip rounded-lg border shadow-[var(--shadow-card)]',
         className,
       )}
     >
-      <Table>
-        <TableHeader>
+      <Table containerClassName="overflow-visible">
+        {/* Sticky header: `top-0` is the top of the <main> scroll area. The
+            cells need an opaque background while stuck; sticky lives on the
+            <th>s rather than <thead> for consistent browser behavior, and the
+            row divider is an inset shadow because a collapsed-border <tr>
+            border stays behind when its cells stick. */}
+        <TableHeader className="[&_th]:bg-background [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_0_var(--color-border)]">
           <TableRow>
             {selection ? (
               <TableHead className="w-10">
