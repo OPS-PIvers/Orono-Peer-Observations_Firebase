@@ -128,12 +128,15 @@ function DesktopTable<T>({
       )}
     >
       <Table containerClassName="overflow-visible">
-        {/* Sticky header: `top-0` is the top of the <main> scroll area. The
+        {/* Sticky header: offset below the sticky page chrome (PageHeader
+            publishes `--page-chrome-h`; a plain `top-0` would stick but be
+            hidden underneath it) plus any active bulk-action bar
+            (`--bulk-bar-h`, published by BulkEditBar while shown). The
             cells need an opaque background while stuck; sticky lives on the
             <th>s rather than <thead> for consistent browser behavior, and the
             row divider is an inset shadow because a collapsed-border <tr>
             border stays behind when its cells stick. */}
-        <TableHeader className="[&_th]:bg-background [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_0_var(--color-border)]">
+        <TableHeader className="[&_th]:bg-background [&_th]:sticky [&_th]:top-[calc(var(--page-chrome-h,0px)_+_var(--bulk-bar-h,0px))] [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_0_var(--color-border)]">
           <TableRow>
             {selection ? (
               <TableHead className="w-10">
