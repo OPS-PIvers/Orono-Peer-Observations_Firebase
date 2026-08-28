@@ -155,6 +155,10 @@ export const WATCHED_KINDS = [
    *  Use for "review the draft"-style cards that should re-show when a new
    *  draft is opened even if a prior cycle's observation has been finalized. */
   'anyDraft',
+  /** Most recent finalized Standard observation, ignoring drafts. Use for
+   *  post-finalize steps (e.g. acknowledge) that must keep pointing at the
+   *  finalized record even after a new cycle's draft is opened. */
+  'standardFinalized',
 ] as const;
 export type WatchedKind = (typeof WATCHED_KINDS)[number];
 
@@ -270,7 +274,11 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     description:
       '20-minute conversation with your peer evaluator. Lesson plan, focus components, context.',
     buttonLabel: 'View meeting',
-    showWhen: 'observationCreated',
+    // Only surface once the evaluator has actually scheduled the meeting.
+    // `observationCreated` put a permanent "Awaiting date" card on every
+    // staff dashboard the moment a draft (or a prior year's finalized
+    // observation) existed, with nothing the staff member could do about it.
+    showWhen: 'preObsDateSet',
     doneWhen: 'preObsDatePassed',
     dateFrom: 'preObsDate',
     buttonTarget: 'observation',
@@ -301,7 +309,7 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     title: 'Classroom observation',
     description: 'Your peer evaluator joins your room during the window you selected.',
     buttonLabel: 'View details',
-    showWhen: 'observationCreated',
+    showWhen: 'observationDateSet',
     doneWhen: 'observationDatePassed',
     dateFrom: 'observationDate',
     buttonTarget: 'observation',
@@ -333,7 +341,7 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     title: 'Post-observation conversation',
     description: '30 minutes to talk through proficiency ratings and where to focus next.',
     buttonLabel: 'View meeting',
-    showWhen: 'observationCreated',
+    showWhen: 'postObsDateSet',
     doneWhen: 'postObsDatePassed',
     dateFrom: 'postObsDate',
     buttonTarget: 'observation',
@@ -341,7 +349,9 @@ export const DEFAULT_STEPS: DashboardStep[] = [
   dashboardStep.parse({
     id: 'acknowledge',
     order: 6,
-    watchedKind: 'standard',
+    // standardFinalized, not standard: `standard` resolves draft-first, so a
+    // newly opened draft would hide an as-yet-unacknowledged finalized record.
+    watchedKind: 'standardFinalized',
     chipStyle: 'review',
     chipLabel: 'Sign-off',
     title: 'Acknowledge the finalized observation',

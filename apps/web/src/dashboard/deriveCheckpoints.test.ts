@@ -283,9 +283,26 @@ describe('deriveCheckpoints (generic slots)', () => {
     expect(deriveCheckpoints([a, b, c], ctx({}), NOW).map((x) => x.id)).toEqual(['b', 'a']);
   });
 
-  it('falls back to "Awaiting date" when shown with no concrete date', () => {
-    // pre-obs is shown (observation created) but has no pre-obs date yet
+  it('hides date-gated meeting cards until their date is actually set', () => {
+    // A bare draft (no meeting dates) must not emit preObs/observation/postObs
+    // "Awaiting date" cards — there is nothing the staff member can act on.
     const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW);
+    const ids = cards.map((c) => c.id);
+    expect(ids).not.toContain('preObs');
+    expect(ids).not.toContain('observation');
+    expect(ids).not.toContain('postObs');
+  });
+
+  it('falls back to "Awaiting date" when shown with no concrete date', () => {
+    // A step configured to show on creation but dated from a field that is
+    // still unset renders the placeholder label.
+    const step = dashboardStep.parse({
+      id: 'preObs',
+      showWhen: 'observationCreated',
+      doneWhen: 'preObsDatePassed',
+      dateFrom: 'preObsDate',
+    });
+    const cards = deriveCheckpoints([step], ctx({ standardDraft: obs({}) }), NOW);
     const preObs = cards.find((c) => c.id === 'preObs');
     expect(preObs?.dateLabel).toBe('Awaiting date');
     expect(preObs?.rawDate).toBeNull();
