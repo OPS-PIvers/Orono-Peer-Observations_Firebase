@@ -109,7 +109,9 @@ export function PromptDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form onSubmit={handleSubmit}>
+        {/* Mirror DialogContent's own grid so header/fields/footer keep the
+            same rhythm they'd have as direct children. */}
+        <form className="grid gap-4" onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description ? <DialogDescription>{description}</DialogDescription> : null}

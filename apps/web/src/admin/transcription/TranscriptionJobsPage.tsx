@@ -296,7 +296,7 @@ function PreviewButton({ preview }: { preview: string | null }) {
           Preview
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80">
+      <PopoverContent className="w-80 p-3">
         <p className="text-xs leading-relaxed whitespace-pre-wrap">{preview}</p>
       </PopoverContent>
     </Popover>

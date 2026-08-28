@@ -1,0 +1,22 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["apps/web/src/components/PromptDialog.tsx"],
+        "createdAt": "2026-08-27T22:11:19.031Z",
+        "reason": "pre-existing repo convention: identical border-l-4 error banner ships in 10+ dialogs (StaffDialog, CreateObservationDialog, etc.); not introduced by this change"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["apps/web/src/admin/transcription/TranscriptionJobsPage.tsx"],
+        "createdAt": "2026-08-27T22:11:19.120Z",
+        "reason": "pre-existing repo convention: same border-l-4 error banner pattern; not introduced by this change"
+      }
+    ]
+  }
+}
