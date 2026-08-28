@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Building2,
   CalendarDays,
@@ -47,9 +48,36 @@ const DESKTOP_OVERFLOW: BulkEditField[] = ['addModule', 'removeModule', 'hasAdmi
 
 export function BulkEditBar({ count, onAction, onMessageGroup, onClear }: BulkEditBarProps) {
   const isDesktop = useIsDesktop();
+  const barRef = useRef<HTMLDivElement>(null);
+  const active = isDesktop && count > 0;
+
+  // While the desktop bar is shown it sticks below the page chrome, so the
+  // table header (AdminDataView) must stick below the bar in turn. Publish
+  // the bar's height as `--bulk-bar-h` (same pattern as `--page-chrome-h`),
+  // keyed on `active` because this component renders null — not unmounts —
+  // when the selection clears, and a stale height would leave a gap.
+  useEffect(() => {
+    if (!active) return;
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const update = () => {
+      document.documentElement.style.setProperty('--bulk-bar-h', `${String(el.offsetHeight)}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty('--bulk-bar-h');
+    };
+  }, [active]);
+
   if (count === 0) return null;
   return isDesktop ? (
-    <div className="bg-ops-blue-dark mb-4 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-white shadow-md">
+    <div
+      ref={barRef}
+      className="bg-ops-blue-dark sticky top-[var(--page-chrome-h,0px)] z-20 mb-4 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-white shadow-md"
+    >
       <span className="font-medium">
         {count} {count === 1 ? 'staff' : 'staff'} selected
       </span>
