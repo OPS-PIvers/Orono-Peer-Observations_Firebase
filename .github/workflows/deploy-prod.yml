@@ -1,10 +1,14 @@
 name: Deploy — production
 
-# Manual trigger only. Push-to-main runs CI; merging to main does NOT auto-deploy.
-# To deploy: GitHub → Actions tab → "Deploy — production" → Run workflow.
-# This is our manual gate (GitHub Free plan doesn't support required-reviewers
-# environment protections on private repos).
+# Deploys automatically after the CI workflow succeeds on main (pushes and
+# merged PRs), so a commit that fails CI never ships. The workflow_dispatch
+# path remains as a manual fallback: GitHub → Actions → "Deploy — production"
+# → Run workflow, typing DEPLOY to confirm.
 on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       confirm:
@@ -36,15 +40,17 @@ jobs:
     name: Hosting + Functions + Firestore + Storage (prod)
     runs-on: ubuntu-latest
     environment: prod
-    if: ${{ github.event.inputs.confirm == 'DEPLOY' }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event.inputs.confirm == 'DEPLOY' }}
     steps:
       - name: Refuse if confirmation token is wrong
-        if: ${{ github.event.inputs.confirm != 'DEPLOY' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'DEPLOY' }}
         run: |
           echo "Confirmation token did not match. Aborting."
           exit 1
 
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -104,9 +110,11 @@ jobs:
     name: pdf-renderer (Cloud Run)
     runs-on: ubuntu-latest
     environment: prod
-    if: ${{ github.event.inputs.confirm == 'DEPLOY' && github.event.inputs.skip_renderer != 'true' }}
+    if: ${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event.inputs.confirm == 'DEPLOY') && github.event.inputs.skip_renderer != 'true' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Auth to Google Cloud
         uses: google-github-actions/auth@v3
@@ -122,13 +130,13 @@ jobs:
         run: |
           gcloud builds submit \
             --config apps/pdf-renderer/cloudbuild.yaml \
-            --substitutions=_TAG=${{ github.sha }} \
+            --substitutions=_TAG=${{ github.event.workflow_run.head_sha || github.sha }} \
             .
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy pdf-renderer \
-            --image us-central1-docker.pkg.dev/${{ env.FIREBASE_PROJECT }}/cloud-run-source-deploy/pdf-renderer:${{ github.sha }} \
+            --image us-central1-docker.pkg.dev/${{ env.FIREBASE_PROJECT }}/cloud-run-source-deploy/pdf-renderer:${{ github.event.workflow_run.head_sha || github.sha }} \
             --region us-central1 \
             --no-allow-unauthenticated \
             --memory 1Gi \
