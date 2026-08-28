@@ -54,11 +54,17 @@ export function toDate(value: Date | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/** Pick the observation a step tracks: finalized first, else draft. */
+/** Pick the observation a step tracks. */
 export function resolveObservation(ctx: DeriveContext, kind: WatchedKind): Observation | null {
   switch (kind) {
     case 'standard':
-      return ctx.finalizedStandard[0] ?? ctx.standardDraft ?? null;
+      // Draft first: the meeting/date steps must track the LIVE cycle. A
+      // prior cycle's finalized observation would otherwise shadow the new
+      // draft forever — its preObs/observation/postObs dates are frozen (or
+      // null), so those cards could never show or complete again.
+      return ctx.standardDraft ?? ctx.finalizedStandard[0] ?? null;
+    case 'standardFinalized':
+      return ctx.finalizedStandard[0] ?? null;
     case 'workProduct':
       return ctx.finalizedWorkProduct ?? ctx.workProductDraft ?? null;
     case 'instructionalRound':
@@ -85,6 +91,28 @@ function dateSetResult(d: Date | null, now: Date, mustBePast: boolean): EventRes
   return { satisfied: mustBePast ? d.getTime() < now.getTime() : true, date: d };
 }
 
+/**
+ * The observation's date, but only when it was genuinely scheduled.
+ * `observationDate` is schema-required, and CreateObservationDialog fills it
+ * with `new Date()` at record creation — the same clock instant as
+ * `createdAt`. That placeholder is not a scheduled visit, and treating it as
+ * one made the "Classroom observation" card appear (and instantly complete)
+ * the moment a draft was created. A real schedule signal is either a booked
+ * slot (`scheduledStartAt`) or an evaluator-edited date, which the editor's
+ * date input writes as a date-only value that no longer matches `createdAt`.
+ */
+const CREATION_DEFAULT_EPSILON_MS = 60_000;
+function scheduledObservationDate(obs: Observation | null): Date | null {
+  const d = toDate(obs?.observationDate);
+  if (!d) return null;
+  if (obs?.scheduledStartAt != null) return d;
+  const created = toDate(obs?.createdAt);
+  if (created && Math.abs(d.getTime() - created.getTime()) < CREATION_DEFAULT_EPSILON_MS) {
+    return null;
+  }
+  return d;
+}
+
 type Evaluator = (ctx: DeriveContext, obs: Observation | null, now: Date) => EventResult;
 
 export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
@@ -96,8 +124,9 @@ export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
   signupSlotBooked: (ctx) => ({ satisfied: ctx.hasBookedSlot, date: null }),
   preObsDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, false),
   preObsDatePassed: (_ctx, obs, now) => dateSetResult(toDate(obs?.preObsDate), now, true),
-  observationDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.observationDate), now, false),
-  observationDatePassed: (_ctx, obs, now) => dateSetResult(toDate(obs?.observationDate), now, true),
+  observationDateSet: (_ctx, obs, now) => dateSetResult(scheduledObservationDate(obs), now, false),
+  observationDatePassed: (_ctx, obs, now) =>
+    dateSetResult(scheduledObservationDate(obs), now, true),
   postObsDateSet: (_ctx, obs, now) => dateSetResult(toDate(obs?.postObsDate), now, false),
   postObsDatePassed: (_ctx, obs, now) => dateSetResult(toDate(obs?.postObsDate), now, true),
   finalized: (_ctx, obs) => ({
@@ -116,7 +145,7 @@ export const DATE_SOURCE_FN: Record<
 > = {
   none: () => null,
   preObsDate: (obs) => toDate(obs?.preObsDate),
-  observationDate: (obs) => toDate(obs?.observationDate),
+  observationDate: (obs) => scheduledObservationDate(obs),
   postObsDate: (obs) => toDate(obs?.postObsDate),
   finalizedAt: (obs) => toDate(obs?.finalizedAt),
   createdAt: (obs) => toDate(obs?.createdAt),

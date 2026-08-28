@@ -38,14 +38,45 @@ function ctx(partial: Partial<DeriveContext>): DeriveContext {
 }
 
 describe('resolveObservation', () => {
-  it('prefers finalized standard then draft', () => {
+  it("'standard' prefers the live draft, falling back to finalized", () => {
     const f = obs({ observationId: 'fin' });
     const d = obs({ observationId: 'draft' });
     expect(
       resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standard')
         ?.observationId,
-    ).toBe('fin');
+    ).toBe('draft');
+    expect(resolveObservation(ctx({ finalizedStandard: [f] }), 'standard')?.observationId).toBe(
+      'fin',
+    );
     expect(resolveObservation(ctx({ standardDraft: d }), 'standard')?.observationId).toBe('draft');
+  });
+
+  it("'standardFinalized' ignores drafts entirely", () => {
+    const f = obs({ observationId: 'fin', status: 'Finalized', finalizedAt: PAST });
+    const d = obs({ observationId: 'draft' });
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [f], standardDraft: d }), 'standardFinalized')
+        ?.observationId,
+    ).toBe('fin');
+    expect(resolveObservation(ctx({ standardDraft: d }), 'standardFinalized')).toBeNull();
+  });
+
+  it('ignores the creation-default observationDate until genuinely scheduled', () => {
+    const created = new Date('2026-03-01T10:00:00');
+    // observationDate === createdAt is the CreateObservationDialog placeholder.
+    const placeholder = obs({ createdAt: created, observationDate: new Date(created) });
+    expect(EVENT_EVALUATORS.observationDateSet(ctx({}), placeholder, NOW).satisfied).toBe(false);
+    expect(EVENT_EVALUATORS.observationDatePassed(ctx({}), placeholder, NOW).satisfied).toBe(false);
+    // Evaluator-edited date (differs from createdAt) counts.
+    const scheduled = obs({ createdAt: created, observationDate: new Date('2026-03-10T00:00:00') });
+    expect(EVENT_EVALUATORS.observationDateSet(ctx({}), scheduled, NOW).satisfied).toBe(true);
+    // A booked slot counts even if the instants happen to coincide.
+    const booked = obs({
+      createdAt: created,
+      observationDate: new Date(created),
+      scheduledStartAt: new Date(created),
+    });
+    expect(EVENT_EVALUATORS.observationDateSet(ctx({}), booked, NOW).satisfied).toBe(true);
   });
 
   it("'anyDraft' prefers any active draft and ignores finalized observations", () => {
