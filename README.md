@@ -59,7 +59,7 @@ before it starts. See docs/local-dev-windows.md.
 ## Branches
 
 - `dev-paul` — work-in-progress; auto-deploys to a Hosting preview channel against live Firestore
-- `main` — production; deploys to live with manual approval gate
+- `main` — production; auto-deploys to live once CI passes on main (manual re-run available via the "Deploy — production" workflow)
 
 ## See also
 
