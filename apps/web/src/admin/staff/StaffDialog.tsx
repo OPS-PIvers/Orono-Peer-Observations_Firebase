@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, X } from 'lucide-react';
-import { doc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { doc, getDoc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   isStaffYear,
@@ -208,6 +208,25 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
     setSubmitting(true);
     const email = form.email.trim().toLowerCase();
     try {
+      // Staff docs are keyed by email and written with `merge: true`, so
+      // "creating" someone who already exists silently overwrites their
+      // record — and because the Staff list hides archived people by
+      // default, the usual way to reach this is an admin who could not find
+      // them and typed them in again. Refuse, and say where they went.
+      if (mode === 'create') {
+        const clash = await getDoc(doc(db, COLLECTIONS.staff, email));
+        if (clash.exists()) {
+          const prior = clash.data() as Partial<Staff>;
+          const who = prior.name ?? email;
+          setError(
+            prior.isActive === false
+              ? `${who} is already on the roster but archived. Set the Status filter to Archived to find and restore them — creating them here would overwrite their record.`
+              : `${who} is already on the roster. Open their row to edit them instead.`,
+          );
+          return;
+        }
+      }
+
       await setDoc(
         doc(db, COLLECTIONS.staff, email),
         {

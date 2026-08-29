@@ -79,6 +79,32 @@ interface AdminDataViewProps<T> {
   skeletonRows?: number;
   /** Extra className on the desktop wrapper. */
   className?: string;
+  /** Accessible name for the table. Without it a screen reader announces an
+   *  unnamed table, which is indistinguishable from any other on the page. */
+  label?: string;
+  /** Human name for a row, used as the selection checkbox's accessible name
+   *  ("Select Jane Doe"). Falls back to a generic "Select row". */
+  rowLabel?: (row: T) => string;
+}
+
+/**
+ * 24x24 hit area around the 18px checkbox. The checkbox itself stays small
+ * enough to sit inside a table cell, and the wrapping <label> gives it the
+ * target size WCAG 2.2 (2.5.8) asks for without changing how it looks.
+ */
+/** "Select Jane Doe" beats "Select row" when a screen reader is reading the
+ *  225th checkbox in a list and the row it belongs to is not announced. */
+function selectionLabel(isSelected: boolean, name: string | undefined): string {
+  const verb = isSelected ? 'Deselect' : 'Select';
+  return name ? `${verb} ${name}` : `${verb} row`;
+}
+
+function CheckboxTarget({ children }: { children: ReactNode }) {
+  return (
+    <label className="inline-flex h-6 w-6 cursor-pointer items-center justify-center">
+      {children}
+    </label>
+  );
 }
 
 /**
@@ -106,6 +132,8 @@ function DesktopTable<T>({
   editing = false,
   skeletonRows = 6,
   className,
+  label,
+  rowLabel,
 }: AdminDataViewProps<T>) {
   const visibleIds = (rows ?? []).map(rowKey);
   const allSelected = selection
@@ -127,7 +155,7 @@ function DesktopTable<T>({
         className,
       )}
     >
-      <Table containerClassName="overflow-visible">
+      <Table containerClassName="overflow-visible" aria-label={label}>
         {/* Sticky header: offset below the sticky page chrome (PageHeader
             publishes `--page-chrome-h`; a plain `top-0` would stick but be
             hidden underneath it) plus any active bulk-action bar
@@ -139,17 +167,34 @@ function DesktopTable<T>({
         <TableHeader className="[&_th]:bg-background [&_th]:sticky [&_th]:top-[calc(var(--page-chrome-h,0px)_+_var(--bulk-bar-h,0px))] [&_th]:z-10 [&_th]:shadow-[inset_0_-1px_0_0_var(--color-border)]">
           <TableRow>
             {selection ? (
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onChange={() => selection.onToggleAll(visibleIds)}
-                  aria-label={allSelected ? 'Clear selection' : 'Select all visible'}
-                />
+              <TableHead scope="col" className="w-10">
+                <CheckboxTarget>
+                  <Checkbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={() => selection.onToggleAll(visibleIds)}
+                    aria-label={allSelected ? 'Clear selection' : 'Select all visible'}
+                  />
+                </CheckboxTarget>
               </TableHead>
             ) : null}
             {columns.map((col) => (
-              <TableHead key={col.key} className={col.headClassName}>
+              <TableHead
+                key={col.key}
+                scope="col"
+                // Screen readers announce the sort state from `aria-sort`; the
+                // arrow icon is the sighted equivalent.
+                aria-sort={
+                  sort?.key === col.key
+                    ? sort.direction === 'asc'
+                      ? 'ascending'
+                      : 'descending'
+                    : col.sortAccessor && onSortChange
+                      ? 'none'
+                      : undefined
+                }
+                className={col.headClassName}
+              >
                 {col.sortAccessor && onSortChange ? (
                   <SortableHeader
                     label={col.header}
@@ -221,11 +266,13 @@ function DesktopTable<T>({
                 >
                   {selection ? (
                     <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected}
-                        onChange={() => selection.onToggleRow(id)}
-                        aria-label={isSelected ? 'Deselect row' : 'Select row'}
-                      />
+                      <CheckboxTarget>
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => selection.onToggleRow(id)}
+                          aria-label={selectionLabel(isSelected, rowLabel?.(row))}
+                        />
+                      </CheckboxTarget>
                     </TableCell>
                   ) : null}
                   {columns.map((col) => (
@@ -265,8 +312,14 @@ function SortableHeader({
     <button
       type="button"
       onClick={onClick}
+      aria-label={
+        typeof label === 'string'
+          ? `Sort by ${label}${direction === null ? '' : direction === 'asc' ? ', currently ascending' : ', currently descending'}`
+          : undefined
+      }
       className={cn(
-        'flex items-center gap-1 text-left font-medium transition-colors',
+        'flex items-center gap-1 rounded-sm text-left font-medium transition-colors',
+        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
         'hover:text-foreground',
         active && 'text-foreground',
       )}
@@ -297,6 +350,7 @@ function MobileCards<T>({
   editing = false,
   skeletonRows = 5,
   className,
+  rowLabel,
 }: AdminDataViewProps<T>) {
   const renderCell = (c: ColumnDef<T>, row: T) =>
     editing && c.editCell ? c.editCell(row) : c.cell(row);
@@ -400,13 +454,14 @@ function MobileCards<T>({
             >
               <div className="flex items-start gap-3">
                 {selection ? (
-                  <Checkbox
-                    checked={isSelected}
-                    onChange={() => selection.onToggleRow(id)}
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={isSelected ? 'Deselect row' : 'Select row'}
-                    className="mt-0.5"
-                  />
+                  <CheckboxTarget>
+                    <Checkbox
+                      checked={isSelected}
+                      onChange={() => selection.onToggleRow(id)}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={selectionLabel(isSelected, rowLabel?.(row))}
+                    />
+                  </CheckboxTarget>
                 ) : null}
                 <div className="min-w-0 flex-1">
                   {primaryCol ? (
@@ -473,6 +528,9 @@ function SelectAllStrip({
         checked={allSelected}
         indeterminate={someSelected}
         onChange={() => selection.onToggleAll(visibleIds)}
+        // The wrapping <label>'s text is a state ("Some selected"), not a
+        // control name, so name the control explicitly.
+        aria-label={allSelected ? 'Clear selection' : 'Select all visible'}
       />
       <span className="text-muted-foreground">
         {allSelected

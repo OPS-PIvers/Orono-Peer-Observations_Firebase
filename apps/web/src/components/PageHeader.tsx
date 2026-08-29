@@ -76,7 +76,10 @@ export function PageHeader({
               </h1>
               {subtitle ? <p className="text-muted-foreground mt-1 text-sm">{subtitle}</p> : null}
             </div>
-            {actions ? <div className="shrink-0">{actions}</div> : null}
+            {/* `max-w-full` matters on a narrow window: `shrink-0` alone lets
+                a wide action cluster keep its max-content width and overflow
+                the strip instead of letting its own `flex-wrap` wrap it. */}
+            {actions ? <div className="max-w-full shrink-0">{actions}</div> : null}
           </div>
           {belowBar ? <div className="w-full">{belowBar}</div> : null}
         </div>

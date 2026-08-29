@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FilterChip } from './FilterChip';
-import { DEFAULT_STATUS_FILTER, type StatusFilter } from './statusFilter';
+import { type StatusFilter } from './statusFilter';
 
 const STATUS_OPTIONS = ['active', 'archived', 'all'] as const satisfies readonly StatusFilter[];
 
@@ -32,10 +32,15 @@ export function StatusFilterChip({ value, onChange }: StatusFilterChipProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* The chip always names the status it is showing, and reads as
+            filtering whenever it hides rows — including at its 'active'
+            default. A blank-looking chip that silently suppresses every
+            archived person is the same bug as no chip at all. */}
         <FilterChip
           label="Status"
-          count={value !== DEFAULT_STATUS_FILTER ? 1 : 0}
-          activeSummary={value === DEFAULT_STATUS_FILTER ? null : STATUS_LABELS[value]}
+          count={0}
+          active={value !== 'all'}
+          activeSummary={STATUS_LABELS[value]}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">

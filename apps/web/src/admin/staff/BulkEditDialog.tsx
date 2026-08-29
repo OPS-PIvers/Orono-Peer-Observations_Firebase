@@ -23,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { bulkMerge, bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { yearLabel } from '@/utils/staffFormatting';
+import { describeBulkEditRisk, type BulkEditField } from './bulkEditRisk';
 
 // Equality-only filters (no wire orderBy) so these small collections don't
 // need composite indexes; sorted client-side below.
@@ -33,16 +34,7 @@ const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
 
-export type BulkEditField =
-  | 'year'
-  | 'role'
-  | 'addBuilding'
-  | 'removeBuilding'
-  | 'addModule'
-  | 'removeModule'
-  | 'hasAdminAccess'
-  | 'isActive'
-  | 'summativeYear';
+export type { BulkEditField };
 
 interface BulkEditDialogProps {
   open: boolean;
@@ -71,6 +63,7 @@ export function BulkEditDialog({
   const [building, setBuilding] = useState('');
   const [moduleId, setModuleId] = useState('');
   const [boolValue, setBoolValue] = useState(true);
+  const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,6 +93,7 @@ export function BulkEditDialog({
     setBuilding('');
     setModuleId('');
     setBoolValue(true);
+    setConfirming(false);
     setProgress(null);
     setError(null);
   }, [open, field]);
@@ -223,6 +217,9 @@ export function BulkEditDialog({
   }
 
   const submitting = progress !== null && progress.done < progress.total;
+  // Non-null only for the edits that can take down the roster or hand out the
+  // admin console; those get a second step before anything is written.
+  const risk = describeBulkEditRisk(field, boolValue, ids.length);
   const titles: Record<BulkEditField, string> = {
     year: 'Set year',
     role: 'Set role',
@@ -246,142 +243,154 @@ export function BulkEditDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          {field === 'year' ? (
-            <div className="grid gap-2">
-              <Label htmlFor="bulk-year">Year</Label>
-              <select
-                id="bulk-year"
-                value={year}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (isStaffYear(n)) setYear(n);
-                }}
-                className={SELECT_CLASSNAME}
-              >
-                {OBSERVATION_YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y < 4
-                      ? `Year ${String(y)} (${yearLabel(y)})`
-                      : `Probationary ${String(y - 3)}`}
-                  </option>
-                ))}
-              </select>
+          {confirming && risk ? (
+            <div
+              role="alert"
+              className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
+              <p className="font-medium">{risk.title}</p>
+              <p className="mt-1">{risk.detail}</p>
             </div>
-          ) : null}
+          ) : (
+            <>
+              {field === 'year' ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="bulk-year">Year</Label>
+                  <select
+                    id="bulk-year"
+                    value={year}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (isStaffYear(n)) setYear(n);
+                    }}
+                    className={SELECT_CLASSNAME}
+                  >
+                    {OBSERVATION_YEARS.map((y) => (
+                      <option key={y} value={y}>
+                        {y < 4
+                          ? `Year ${String(y)} (${yearLabel(y)})`
+                          : `Probationary ${String(y - 3)}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
-          {field === 'role' ? (
-            <div className="grid gap-2">
-              <Label htmlFor="bulk-role">Role</Label>
-              <select
-                id="bulk-role"
-                value={roleId}
-                onChange={(e) => setRoleId(e.target.value)}
-                className={SELECT_CLASSNAME}
-                disabled={rolesLoading}
-              >
-                <option value="" disabled>
-                  {rolesLoading ? 'Loading…' : 'Choose a role…'}
-                </option>
-                {roles.map((r) => (
-                  <option key={r.roleId} value={r.roleId}>
-                    {r.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
+              {field === 'role' ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="bulk-role">Role</Label>
+                  <select
+                    id="bulk-role"
+                    value={roleId}
+                    onChange={(e) => setRoleId(e.target.value)}
+                    className={SELECT_CLASSNAME}
+                    disabled={rolesLoading}
+                  >
+                    <option value="" disabled>
+                      {rolesLoading ? 'Loading…' : 'Choose a role…'}
+                    </option>
+                    {roles.map((r) => (
+                      <option key={r.roleId} value={r.roleId}>
+                        {r.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
-          {field === 'addBuilding' || field === 'removeBuilding' ? (
-            <div className="grid gap-2">
-              <Label htmlFor="bulk-building">Building</Label>
-              <select
-                id="bulk-building"
-                value={building}
-                onChange={(e) => setBuilding(e.target.value)}
-                className={SELECT_CLASSNAME}
-                disabled={buildingsLoading}
-              >
-                <option value="" disabled>
-                  {buildingsLoading ? 'Loading…' : 'Choose a building…'}
-                </option>
-                {buildings.map((b) => (
-                  <option key={b.buildingId} value={b.displayName}>
-                    {b.displayName}
-                  </option>
-                ))}
-              </select>
-              <p className="text-muted-foreground text-xs">
-                {field === 'addBuilding'
-                  ? 'Adds the building to each selected staff member who doesn’t already have it.'
-                  : 'Removes the building from each selected staff member who has it.'}
-              </p>
-            </div>
-          ) : null}
+              {field === 'addBuilding' || field === 'removeBuilding' ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="bulk-building">Building</Label>
+                  <select
+                    id="bulk-building"
+                    value={building}
+                    onChange={(e) => setBuilding(e.target.value)}
+                    className={SELECT_CLASSNAME}
+                    disabled={buildingsLoading}
+                  >
+                    <option value="" disabled>
+                      {buildingsLoading ? 'Loading…' : 'Choose a building…'}
+                    </option>
+                    {buildings.map((b) => (
+                      <option key={b.buildingId} value={b.displayName}>
+                        {b.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    {field === 'addBuilding'
+                      ? 'Adds the building to each selected staff member who doesn’t already have it.'
+                      : 'Removes the building from each selected staff member who has it.'}
+                  </p>
+                </div>
+              ) : null}
 
-          {field === 'addModule' || field === 'removeModule' ? (
-            <div className="grid gap-2">
-              <Label htmlFor="bulk-module">Module</Label>
-              <select
-                id="bulk-module"
-                value={moduleId}
-                onChange={(e) => setModuleId(e.target.value)}
-                className={SELECT_CLASSNAME}
-                disabled={modulesLoading}
-              >
-                <option value="" disabled>
-                  {modulesLoading ? 'Loading…' : 'Choose a module…'}
-                </option>
-                {modules.map((m) => (
-                  <option key={m.moduleId} value={m.moduleId}>
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
-              <p className="text-muted-foreground text-xs">
-                {field === 'addModule'
-                  ? 'Adds the module to each selected staff member who doesn’t already have it.'
-                  : 'Removes the module from each selected staff member who has it.'}
-              </p>
-            </div>
-          ) : null}
+              {field === 'addModule' || field === 'removeModule' ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="bulk-module">Module</Label>
+                  <select
+                    id="bulk-module"
+                    value={moduleId}
+                    onChange={(e) => setModuleId(e.target.value)}
+                    className={SELECT_CLASSNAME}
+                    disabled={modulesLoading}
+                  >
+                    <option value="" disabled>
+                      {modulesLoading ? 'Loading…' : 'Choose a module…'}
+                    </option>
+                    {modules.map((m) => (
+                      <option key={m.moduleId} value={m.moduleId}>
+                        {m.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    {field === 'addModule'
+                      ? 'Adds the module to each selected staff member who doesn’t already have it.'
+                      : 'Removes the module from each selected staff member who has it.'}
+                  </p>
+                </div>
+              ) : null}
 
-          {field === 'isActive' || field === 'summativeYear' || field === 'hasAdminAccess' ? (
-            <div className="flex flex-col gap-2">
-              <Label>
-                {field === 'isActive'
-                  ? 'Active status'
-                  : field === 'summativeYear'
-                    ? 'Summative year'
-                    : 'Admin access'}
-              </Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={boolValue ? 'default' : 'outline'}
-                  onClick={() => setBoolValue(true)}
-                  className="flex-1"
-                >
-                  {field === 'isActive'
-                    ? 'Active'
-                    : field === 'summativeYear'
-                      ? 'Summative'
-                      : 'Grant'}
-                </Button>
-                <Button
-                  type="button"
-                  variant={!boolValue ? 'default' : 'outline'}
-                  onClick={() => setBoolValue(false)}
-                  className="flex-1"
-                >
-                  {field === 'isActive'
-                    ? 'Inactive'
-                    : field === 'summativeYear'
-                      ? 'Not summative'
-                      : 'Revoke'}
-                </Button>
-              </div>
-            </div>
-          ) : null}
+              {field === 'isActive' || field === 'summativeYear' || field === 'hasAdminAccess' ? (
+                <div className="flex flex-col gap-2">
+                  <Label>
+                    {field === 'isActive'
+                      ? 'Active status'
+                      : field === 'summativeYear'
+                        ? 'Summative year'
+                        : 'Admin access'}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={boolValue ? 'default' : 'outline'}
+                      onClick={() => setBoolValue(true)}
+                      className="flex-1"
+                    >
+                      {field === 'isActive'
+                        ? 'Active'
+                        : field === 'summativeYear'
+                          ? 'Summative'
+                          : 'Grant'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!boolValue ? 'default' : 'outline'}
+                      onClick={() => setBoolValue(false)}
+                      className="flex-1"
+                    >
+                      {field === 'isActive'
+                        ? 'Inactive'
+                        : field === 'summativeYear'
+                          ? 'Not summative'
+                          : 'Revoke'}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
 
           {progress ? (
             <div className="bg-muted text-muted-foreground rounded-md px-3 py-2 text-sm">
@@ -397,17 +406,44 @@ export function BulkEditDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            type="button"
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <Button onClick={() => void apply()} disabled={submitting}>
-            {submitting ? 'Applying…' : `Apply to ${String(ids.length)}`}
-          </Button>
+          {confirming && risk ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setConfirming(false)}
+                type="button"
+                disabled={submitting}
+              >
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => void apply()}
+                disabled={submitting}
+                type="button"
+              >
+                {submitting ? 'Applying…' : risk.confirmLabel}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                type="button"
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={risk ? () => setConfirming(true) : () => void apply()}
+                disabled={submitting || ids.length === 0}
+              >
+                {submitting ? 'Applying…' : risk ? 'Continue' : `Apply to ${String(ids.length)}`}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

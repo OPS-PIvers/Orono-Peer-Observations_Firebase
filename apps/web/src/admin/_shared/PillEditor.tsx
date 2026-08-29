@@ -37,8 +37,13 @@ export function PillChip({
   );
 }
 
+// `ring-offset-2` is load-bearing, not decoration: without an offset the ring
+// renders at zero spread past the element and composites to fully transparent,
+// so every pill trigger in an admin table looks unfocused while focused. Every
+// other ringed control in the system (FilterChip, the dialog inputs) carries
+// the same offset.
 const TRIGGER =
-  'focus-visible:ring-ring inline-flex max-w-full items-center gap-1 rounded-full text-left transition hover:opacity-80 focus-visible:ring-2 focus-visible:outline-hidden';
+  'focus-visible:ring-ring inline-flex max-w-full items-center gap-1 rounded-full text-left transition hover:opacity-80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
 
 /**
  * Single-select: the trigger is the selected option's colored chip; the popover
