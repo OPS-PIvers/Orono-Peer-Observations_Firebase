@@ -2,31 +2,32 @@
 target: admin Staff page
 total_score: 22
 max_score: 40
-na_heuristics: 
+na_heuristics:
 p0_count: 1
 p1_count: 3
 timestamp: 2026-08-29T01-11-11Z
 slug: apps-web-src-admin-staff-staffpage-tsx
 ---
+
 Method: dual-agent (A: a5df2da27107987f3 · B: a26d201d8eeb088f8)
 Target: apps/web/src/admin/staff/StaffPage.tsx — Admin → Staff. Mode: Operate.
 Measured live at http://localhost:5173/admin/staff, 242 real records (224 active / 18 archived), at 1440x900 and 390x844.
 
 ## Design Health Score — 22/40 (Needs work)
 
-| # | Heuristic | Score | Key issue |
-|---|-----------|-------|-----------|
-| 1 | Visibility of System Status | 2 | No success feedback anywhere: sonner ships in App.tsx but Staff never calls it; archive writes silently; zero aria-live on the page (grep across admin/staff + admin/_shared returns 0 hits). Counters and the bulk-dialog progress line are the only status. |
-| 2 | Match System / Real World | 3 | Domain vocabulary is genuinely correct (tenure, probationary, summative, cycle). Mobile sort labels every column "(A-Z)" including numeric Year and Module Access. |
-| 3 | User Control and Freedom | 1 | No undo anywhere. No confirm on a 224-record bulk write or on row-menu Archive. Filters/sort/selection are useState with no URL sync — one refresh discards all of it. |
-| 4 | Consistency and Standards | 2 | Three sibling flows, three safety models (rollover: full preview; message: two-step confirm; bulk edit: none). StaffFilterBar hand-rolls the search input instead of the shared AdminSearchInput, losing its clear button and aria-label. Desktop bulk bar omits the role="toolbar" + aria-label its mobile twin has. |
-| 5 | Error Prevention | 1 | StaffDialog.save() does no duplicate-email check and writes setDoc(..., {merge:true}) keyed on email — re-creating an archived person silently overwrites the record and flips isActive back to true. The 200-recipient email cap is only discovered after selecting 224. |
-| 6 | Recognition Rather Than Recall | 3 | Filter chips carry active summaries and counts; row pills are directly editable. But nothing recalls why 18 rows are missing. |
-| 7 | Flexibility and Efficiency | 2 | Inline pill editing is a real fast path. Zero keyboard shortcuts, no "select first 200", no saved views, no deep links. |
-| 8 | Aesthetic and Minimalist Design | 2 | At 1440px the bulk bar wraps to two rows (measured 104px); with 109px of page chrome that is 213px — 25% of the 848px scrollport — permanently sticky. |
-| 9 | Error Recovery | 2 | bulkMerge commits in 500-doc chunks; a mid-run throw sets error and clears progress, so a partial write is never reported. MessageGroupDialog's template-missing state is exemplary by contrast. |
-| 10 | Help and Documentation | 4 | Genuinely excellent. RolloverDialog teaches the cycle rules in plain language; bulk add/remove explain their set semantics; unmapped roles/modules get inline "(unmapped)" affordances with a Remove link. |
-| **Total** | | **22/40** | **Needs work** |
+| #         | Heuristic                       | Score     | Key issue                                                                                                                                                                                                                                                                                                             |
+| --------- | ------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1         | Visibility of System Status     | 2         | No success feedback anywhere: sonner ships in App.tsx but Staff never calls it; archive writes silently; zero aria-live on the page (grep across admin/staff + admin/\_shared returns 0 hits). Counters and the bulk-dialog progress line are the only status.                                                        |
+| 2         | Match System / Real World       | 3         | Domain vocabulary is genuinely correct (tenure, probationary, summative, cycle). Mobile sort labels every column "(A-Z)" including numeric Year and Module Access.                                                                                                                                                    |
+| 3         | User Control and Freedom        | 1         | No undo anywhere. No confirm on a 224-record bulk write or on row-menu Archive. Filters/sort/selection are useState with no URL sync — one refresh discards all of it.                                                                                                                                                |
+| 4         | Consistency and Standards       | 2         | Three sibling flows, three safety models (rollover: full preview; message: two-step confirm; bulk edit: none). StaffFilterBar hand-rolls the search input instead of the shared AdminSearchInput, losing its clear button and aria-label. Desktop bulk bar omits the role="toolbar" + aria-label its mobile twin has. |
+| 5         | Error Prevention                | 1         | StaffDialog.save() does no duplicate-email check and writes setDoc(..., {merge:true}) keyed on email — re-creating an archived person silently overwrites the record and flips isActive back to true. The 200-recipient email cap is only discovered after selecting 224.                                             |
+| 6         | Recognition Rather Than Recall  | 3         | Filter chips carry active summaries and counts; row pills are directly editable. But nothing recalls why 18 rows are missing.                                                                                                                                                                                         |
+| 7         | Flexibility and Efficiency      | 2         | Inline pill editing is a real fast path. Zero keyboard shortcuts, no "select first 200", no saved views, no deep links.                                                                                                                                                                                               |
+| 8         | Aesthetic and Minimalist Design | 2         | At 1440px the bulk bar wraps to two rows (measured 104px); with 109px of page chrome that is 213px — 25% of the 848px scrollport — permanently sticky.                                                                                                                                                                |
+| 9         | Error Recovery                  | 2         | bulkMerge commits in 500-doc chunks; a mid-run throw sets error and clears progress, so a partial write is never reported. MessageGroupDialog's template-missing state is exemplary by contrast.                                                                                                                      |
+| 10        | Help and Documentation          | 4         | Genuinely excellent. RolloverDialog teaches the cycle rules in plain language; bulk add/remove explain their set semantics; unmapped roles/modules get inline "(unmapped)" affordances with a Remove link.                                                                                                            |
+| **Total** |                                 | **22/40** | **Needs work**                                                                                                                                                                                                                                                                                                        |
 
 ## Design Specificity Verdict
 
@@ -114,7 +115,7 @@ Riley (stress tester): mid-flow refresh loses all filters, sort, and selection (
 - BulkEditDialog claims "Applying to N staff members" even for add/remove building, where bulkMergePerRow skips no-op rows; the stated count is not the number changed.
 - AdminDataView hardcodes "(A-Z)"/"(Z-A)" for numeric sorts, so mobile offers "Year (A-Z)".
 - StatusPill's sortAccessor sorts on `summativeYear ? 1 : 0` — a boolean — so sorting by Status yields two indistinguishable blocks, not the three-way Low/High/Probationary order the column displays.
-- RolloverDialog and MessageGroupDialog use raw green-600/green-50 rather than the ops-* token family; the app's only success color is off-system.
+- RolloverDialog and MessageGroupDialog use raw green-600/green-50 rather than the ops-\* token family; the app's only success color is off-system.
 - The 16 border-l-4 callouts should be one Callout component with three variants.
 - Console and network are clean: zero errors, zero warnings, all requests 200.
 - Sticky headers verified correct in both states: chrome 109px, bulk bar 104px, th top computes 109px then 213px, rect lands at 161 then 265 with no gap or overlap. The recent fix works exactly as designed; its cost is that 25% of the scrollport is now chrome when the 9-button bar wraps.
