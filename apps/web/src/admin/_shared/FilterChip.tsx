@@ -6,6 +6,13 @@ interface FilterChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
   count: number;
   activeSummary: string | null;
+  /**
+   * Whether the chip renders in its filtering (blue) state. Defaults to
+   * `count > 0`. Single-select chips that always constrain the list — the
+   * status chip's default hides archived rows — pass `true` with a count of
+   * 0 so they look like what they are without inventing a "1" badge.
+   */
+  active?: boolean;
 }
 
 /**
@@ -15,10 +22,10 @@ interface FilterChipProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  * filter) render identically without re-deriving the markup.
  */
 export const FilterChip = forwardRef<HTMLButtonElement, FilterChipProps>(function FilterChip(
-  { label, count, activeSummary, ...rest },
+  { label, count, activeSummary, active, ...rest },
   ref,
 ) {
-  const isActive = count > 0;
+  const isActive = active ?? count > 0;
   return (
     <button
       ref={ref}

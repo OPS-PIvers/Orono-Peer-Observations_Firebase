@@ -128,10 +128,14 @@ export function StaffPage() {
     return map;
   }, [roles]);
 
-  const filtered = useMemo(() => {
-    if (!staff) return [];
+  // Split the filter in two so the page can say how many people the status
+  // chip is holding back. The Staff list hides archived staff by default, and
+  // a search that quietly returns nothing because the only match is archived
+  // is how an admin ends up re-creating someone who already exists.
+  const { filtered, hiddenByStatus } = useMemo(() => {
+    if (!staff) return { filtered: [] as StaffRow[], hiddenByStatus: 0 };
     const q = filters.search.trim().toLowerCase();
-    return staff.filter((s) => {
+    const matched = staff.filter((s) => {
       if (q) {
         const matches =
           s.name.toLowerCase().includes(q) ||
@@ -146,10 +150,15 @@ export function StaffPage() {
         const overlap = s.buildings.some((b) => filters.buildings.has(b));
         if (!overlap) return false;
       }
-      if (!matchesStatusFilter(s.isActive, filters.status)) return false;
       return true;
     });
+    const visible = matched.filter((s) => matchesStatusFilter(s.isActive, filters.status));
+    return { filtered: visible, hiddenByStatus: matched.length - visible.length };
   }, [staff, filters]);
+
+  /** "archived" when the Active default is hiding them, "active" when the
+   *  admin has flipped to Archived. */
+  const hiddenWord = filters.status === 'active' ? 'archived' : 'active';
 
   const columns: ColumnDef<StaffRow>[] = useMemo(
     () => [
@@ -243,7 +252,26 @@ export function StaffPage() {
       variant="light"
       breadcrumb={['Admin', 'Staff']}
       subtitle={
-        staff ? `${String(sortedRows.length)} of ${String(staff.length)} staff` : 'Loading…'
+        staff ? (
+          <>
+            {sortedRows.length} of {staff.length} staff
+            {hiddenByStatus > 0 ? (
+              <>
+                {' · '}
+                {hiddenByStatus} {hiddenWord} hidden{' '}
+                <button
+                  type="button"
+                  onClick={() => setFilters({ ...filters, status: 'all' })}
+                  className="text-ops-blue hover:text-ops-blue-dark focus-visible:ring-ring rounded-sm underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden"
+                >
+                  Show all
+                </button>
+              </>
+            ) : null}
+          </>
+        ) : (
+          'Loading…'
+        )
       }
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -280,6 +308,16 @@ export function StaffPage() {
           landing page and the natural home for the "who is stuck" card. */}
       <NeverSignedInCard />
 
+      {/* The result and selection counts are the page's main feedback, and
+          both change without any announcement otherwise. */}
+      <div aria-live="polite" className="sr-only">
+        {staff
+          ? `${String(sortedRows.length)} of ${String(staff.length)} staff shown${
+              selected.size > 0 ? `, ${String(selected.size)} selected` : ''
+            }`
+          : 'Loading staff'}
+      </div>
+
       <StaffFilterBar filters={filters} onChange={setFilters} roles={roles} buildings={buildings} />
 
       {error ? (
@@ -309,7 +347,15 @@ export function StaffPage() {
           rows={loading && !staff ? null : sortedRows}
           loading={loading}
           rowKey={(r) => r.email}
-          empty={filters.search ? 'No staff match that search.' : 'No staff yet.'}
+          label="Staff"
+          rowLabel={(r) => r.name}
+          empty={
+            hiddenByStatus > 0
+              ? `Nothing to show here — ${String(hiddenByStatus)} ${hiddenWord} ${hiddenByStatus === 1 ? 'match is' : 'matches are'} hidden by the Status filter.`
+              : filters.search
+                ? 'No staff match that search.'
+                : 'No staff yet.'
+          }
           {...(selectMode
             ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
             : { onRowClick: (r: StaffRow) => setEditing(r) })}

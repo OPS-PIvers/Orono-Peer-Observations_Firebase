@@ -68,3 +68,7 @@ secrets/
 
 # Vite
 *.local
+
+# Impeccable design-skill transient state (detector cache, live-server handle)
+**/.impeccable/hook.cache.json
+**/.impeccable/live/
