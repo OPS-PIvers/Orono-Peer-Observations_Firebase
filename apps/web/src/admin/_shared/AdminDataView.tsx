@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, memo, useMemo, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, MoreVertical } from 'lucide-react';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { Skeleton } from '@/components/Skeleton';
@@ -65,11 +65,11 @@ interface AdminDataViewProps<T> {
   rows: T[] | null;
   loading: boolean;
   rowKey: (row: T) => string;
-  onRowClick?: (row: T) => void;
+  onRowClick?: ((row: T) => void) | undefined;
   /** Empty-state content rendered when not loading and rows.length === 0. */
   empty?: ReactNode;
   /** Trailing per-row content (e.g. a DropdownMenu kebab). */
-  rowActions?: (row: T) => ReactNode;
+  rowActions?: ((row: T) => ReactNode) | undefined;
   selection?: AdminDataViewSelection;
   sort?: AdminDataViewSort | null;
   onSortChange?: (next: AdminDataViewSort | null) => void;
@@ -84,14 +84,9 @@ interface AdminDataViewProps<T> {
   label?: string;
   /** Human name for a row, used as the selection checkbox's accessible name
    *  ("Select Jane Doe"). Falls back to a generic "Select row". */
-  rowLabel?: (row: T) => string;
+  rowLabel?: ((row: T) => string) | undefined;
 }
 
-/**
- * 24x24 hit area around the 18px checkbox. The checkbox itself stays small
- * enough to sit inside a table cell, and the wrapping <label> gives it the
- * target size WCAG 2.2 (2.5.8) asks for without changing how it looks.
- */
 /** "Select Jane Doe" beats "Select row" when a screen reader is reading the
  *  225th checkbox in a list and the row it belongs to is not announced. */
 function selectionLabel(isSelected: boolean, name: string | undefined): string {
@@ -99,6 +94,11 @@ function selectionLabel(isSelected: boolean, name: string | undefined): string {
   return name ? `${verb} ${name}` : `${verb} row`;
 }
 
+/**
+ * 24x24 hit area around the 18px checkbox. The checkbox itself stays small
+ * enough to sit inside a table cell, and the wrapping <label> gives it the
+ * target size WCAG 2.2 (2.5.8) asks for without changing how it looks.
+ */
 function CheckboxTarget({ children }: { children: ReactNode }) {
   return (
     <label className="inline-flex h-6 w-6 cursor-pointer items-center justify-center">
@@ -113,10 +113,25 @@ function CheckboxTarget({ children }: { children: ReactNode }) {
  * stacked cards with the same data + actions. Both branches share the
  * same `columns` definition so a single page-level config drives both.
  */
-export function AdminDataView<T>(props: AdminDataViewProps<T>) {
+function AdminDataViewImpl<T>(props: AdminDataViewProps<T>) {
   const isDesktop = useIsDesktop();
   return isDesktop ? <DesktopTable {...props} /> : <MobileCards {...props} />;
 }
+
+/**
+ * Memo boundary. A few hundred rows of inline pill editors is enough work
+ * that re-rendering the list on every unrelated page state change (a
+ * keystroke in a search box, a dialog opening) drops frames, and React has
+ * no way to know the list didn't change. It only pays off when the caller
+ * keeps every prop referentially stable — `columns`, `rowKey`, `rowLabel`,
+ * `rowActions`, `onRowClick`, and the `selection` object all need
+ * `useMemo`/`useCallback` on the page side, or this compares unequal every
+ * render and costs a wasted shallow compare instead.
+ *
+ * `memo` erases the generic, so the cast restores the original call
+ * signature; the runtime value is unchanged.
+ */
+export const AdminDataView = memo(AdminDataViewImpl) as typeof AdminDataViewImpl;
 
 function DesktopTable<T>({
   columns,
@@ -252,42 +267,19 @@ function DesktopTable<T>({
           ) : (
             (rows ?? []).map((row) => {
               const id = rowKey(row);
-              const isSelected = selection?.selected.has(id) ?? false;
               return (
-                <TableRow
+                <DesktopRow
                   key={id}
-                  className={cn(
-                    // Zebra striping + a softer divider between rows.
-                    'odd:bg-muted/60 border-b-black/[0.04]',
-                    onRowClick && 'cursor-pointer',
-                  )}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  data-state={isSelected ? 'selected' : undefined}
-                >
-                  {selection ? (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <CheckboxTarget>
-                        <Checkbox
-                          checked={isSelected}
-                          onChange={() => selection.onToggleRow(id)}
-                          aria-label={selectionLabel(isSelected, rowLabel?.(row))}
-                        />
-                      </CheckboxTarget>
-                    </TableCell>
-                  ) : null}
-                  {columns.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      className={col.cellClassName}
-                      onClick={editing && col.editCell ? (e) => e.stopPropagation() : undefined}
-                    >
-                      {editing && col.editCell ? col.editCell(row) : col.cell(row)}
-                    </TableCell>
-                  ))}
-                  {rowActions ? (
-                    <TableCell onClick={(e) => e.stopPropagation()}>{rowActions(row)}</TableCell>
-                  ) : null}
-                </TableRow>
+                  id={id}
+                  row={row}
+                  columns={columns}
+                  editing={editing}
+                  isSelected={selection?.selected.has(id) ?? false}
+                  rowLabel={rowLabel}
+                  onRowClick={onRowClick}
+                  onToggleRow={selection?.onToggleRow}
+                  rowActions={rowActions}
+                />
               );
             })
           )}
@@ -296,6 +288,75 @@ function DesktopTable<T>({
     </div>
   );
 }
+
+interface DesktopRowProps<T> {
+  id: string;
+  row: T;
+  columns: ColumnDef<T>[];
+  editing: boolean;
+  isSelected: boolean;
+  rowLabel?: ((row: T) => string) | undefined;
+  onRowClick?: ((row: T) => void) | undefined;
+  /** Presence of this callback is what puts the selection checkbox cell in
+   *  the row — the `selection` object itself is deliberately not passed,
+   *  because its identity changes on every selection change and would defeat
+   *  the memo for every row instead of just the one that toggled. */
+  onToggleRow?: ((id: string) => void) | undefined;
+  rowActions?: ((row: T) => ReactNode) | undefined;
+}
+
+function DesktopRowImpl<T>({
+  id,
+  row,
+  columns,
+  editing,
+  isSelected,
+  rowLabel,
+  onRowClick,
+  onToggleRow,
+  rowActions,
+}: DesktopRowProps<T>) {
+  return (
+    <TableRow
+      className={cn(
+        // Zebra striping + a softer divider between rows.
+        'odd:bg-muted/60 border-b-black/[0.04]',
+        onRowClick && 'cursor-pointer',
+      )}
+      onClick={onRowClick ? () => onRowClick(row) : undefined}
+      data-state={isSelected ? 'selected' : undefined}
+    >
+      {onToggleRow ? (
+        <TableCell onClick={(e) => e.stopPropagation()}>
+          <CheckboxTarget>
+            <Checkbox
+              checked={isSelected}
+              onChange={() => onToggleRow(id)}
+              aria-label={selectionLabel(isSelected, rowLabel?.(row))}
+            />
+          </CheckboxTarget>
+        </TableCell>
+      ) : null}
+      {columns.map((col) => (
+        <TableCell
+          key={col.key}
+          className={col.cellClassName}
+          onClick={editing && col.editCell ? (e) => e.stopPropagation() : undefined}
+        >
+          {editing && col.editCell ? col.editCell(row) : col.cell(row)}
+        </TableCell>
+      ))}
+      {rowActions ? (
+        <TableCell onClick={(e) => e.stopPropagation()}>{rowActions(row)}</TableCell>
+      ) : null}
+    </TableRow>
+  );
+}
+
+/** Selecting a row, re-sorting, or narrowing a search must not re-run the
+ *  inline editors of every other row: each one mounts several Radix popover
+ *  triggers, so a 200-row list is thousands of components. */
+const DesktopRow = memo(DesktopRowImpl) as typeof DesktopRowImpl;
 
 function SortableHeader({
   label,
@@ -352,15 +413,18 @@ function MobileCards<T>({
   className,
   rowLabel,
 }: AdminDataViewProps<T>) {
-  const renderCell = (c: ColumnDef<T>, row: T) =>
-    editing && c.editCell ? c.editCell(row) : c.cell(row);
   const sortableColumns = columns.filter((c) => c.sortAccessor && onSortChange);
 
-  const primaryCol = columns.find((c) => c.mobile?.primary) ?? columns[0];
-  const detailCols = columns.filter(
-    (c) => c !== primaryCol && !c.mobile?.hide && !c.mobile?.footer,
-  );
-  const footerCols = columns.filter((c) => c.mobile?.footer);
+  // Memoized because these arrays are props of the memoized card below;
+  // recomputing them per render would give every card a fresh identity.
+  const { primaryCol, detailCols, footerCols } = useMemo(() => {
+    const primary = columns.find((c) => c.mobile?.primary) ?? columns[0];
+    return {
+      primaryCol: primary,
+      detailCols: columns.filter((c) => c !== primary && !c.mobile?.hide && !c.mobile?.footer),
+      footerCols: columns.filter((c) => c.mobile?.footer),
+    };
+  }, [columns]);
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
@@ -428,90 +492,138 @@ function MobileCards<T>({
       ) : (
         (rows ?? []).map((row) => {
           const id = rowKey(row);
-          const isSelected = selection?.selected.has(id) ?? false;
-          const interactiveProps = onRowClick
-            ? {
-                role: 'button' as const,
-                tabIndex: 0,
-                onClick: () => onRowClick(row),
-                onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onRowClick(row);
-                  }
-                },
-              }
-            : {};
           return (
-            <article
+            <MobileCard
               key={id}
-              className={cn(
-                'bg-background border-border rounded-lg border p-4 transition-colors',
-                onRowClick && 'hover:border-ops-blue-light cursor-pointer',
-                isSelected && 'border-ops-blue ring-ops-blue/20 ring-2',
-              )}
-              {...interactiveProps}
-            >
-              <div className="flex items-start gap-3">
-                {selection ? (
-                  <CheckboxTarget>
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={() => selection.onToggleRow(id)}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={selectionLabel(isSelected, rowLabel?.(row))}
-                    />
-                  </CheckboxTarget>
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  {primaryCol ? (
-                    <div className="text-base leading-tight font-medium break-words">
-                      {renderCell(primaryCol, row)}
-                    </div>
-                  ) : null}
-                  {detailCols.length > 0 ? (
-                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
-                      {detailCols.map((c) => {
-                        const labelText =
-                          c.mobile?.label ?? (typeof c.header === 'string' ? c.header : c.key);
-                        return (
-                          <Fragment key={c.key}>
-                            <dt className="text-muted-foreground">{labelText}</dt>
-                            <dd className="min-w-0 break-words">{renderCell(c, row)}</dd>
-                          </Fragment>
-                        );
-                      })}
-                    </dl>
-                  ) : null}
-                  {footerCols.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {footerCols.map((c) => (
-                        <Fragment key={c.key}>{renderCell(c, row)}</Fragment>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                {rowActions ? (
-                  // The row-actions slot renders interactive children
-                  // (a kebab button); the wrapper just stops the click
-                  // from bubbling to the card's row-click handler.
-                  <div
-                    role="presentation"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    className="-mr-1"
-                  >
-                    {rowActions(row)}
-                  </div>
-                ) : null}
-              </div>
-            </article>
+              id={id}
+              row={row}
+              primaryCol={primaryCol}
+              detailCols={detailCols}
+              footerCols={footerCols}
+              editing={editing}
+              isSelected={selection?.selected.has(id) ?? false}
+              rowLabel={rowLabel}
+              onRowClick={onRowClick}
+              onToggleRow={selection?.onToggleRow}
+              rowActions={rowActions}
+            />
           );
         })
       )}
     </div>
   );
 }
+
+interface MobileCardProps<T> {
+  id: string;
+  row: T;
+  primaryCol: ColumnDef<T> | undefined;
+  detailCols: ColumnDef<T>[];
+  footerCols: ColumnDef<T>[];
+  editing: boolean;
+  isSelected: boolean;
+  rowLabel?: ((row: T) => string) | undefined;
+  onRowClick?: ((row: T) => void) | undefined;
+  /** See `DesktopRowProps.onToggleRow` — passing the selection object here
+   *  would re-render every card whenever any one of them is selected. */
+  onToggleRow?: ((id: string) => void) | undefined;
+  rowActions?: ((row: T) => ReactNode) | undefined;
+}
+
+function MobileCardImpl<T>({
+  id,
+  row,
+  primaryCol,
+  detailCols,
+  footerCols,
+  editing,
+  isSelected,
+  rowLabel,
+  onRowClick,
+  onToggleRow,
+  rowActions,
+}: MobileCardProps<T>) {
+  const renderCell = (c: ColumnDef<T>) => (editing && c.editCell ? c.editCell(row) : c.cell(row));
+  const interactiveProps = onRowClick
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: () => onRowClick(row),
+        onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onRowClick(row);
+          }
+        },
+      }
+    : {};
+  return (
+    <article
+      className={cn(
+        'bg-background border-border rounded-lg border p-4 transition-colors',
+        onRowClick && 'hover:border-ops-blue-light cursor-pointer',
+        isSelected && 'border-ops-blue ring-ops-blue/20 ring-2',
+      )}
+      {...interactiveProps}
+    >
+      <div className="flex items-start gap-3">
+        {onToggleRow ? (
+          <CheckboxTarget>
+            <Checkbox
+              checked={isSelected}
+              onChange={() => onToggleRow(id)}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={selectionLabel(isSelected, rowLabel?.(row))}
+            />
+          </CheckboxTarget>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          {primaryCol ? (
+            <div className="text-base leading-tight font-medium break-words">
+              {renderCell(primaryCol)}
+            </div>
+          ) : null}
+          {detailCols.length > 0 ? (
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+              {detailCols.map((c) => {
+                const labelText =
+                  c.mobile?.label ?? (typeof c.header === 'string' ? c.header : c.key);
+                return (
+                  <Fragment key={c.key}>
+                    <dt className="text-muted-foreground">{labelText}</dt>
+                    <dd className="min-w-0 break-words">{renderCell(c)}</dd>
+                  </Fragment>
+                );
+              })}
+            </dl>
+          ) : null}
+          {footerCols.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {footerCols.map((c) => (
+                <Fragment key={c.key}>{renderCell(c)}</Fragment>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {rowActions ? (
+          // The row-actions slot renders interactive children
+          // (a kebab button); the wrapper just stops the click
+          // from bubbling to the card's row-click handler.
+          <div
+            role="presentation"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="-mr-1"
+          >
+            {rowActions(row)}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+const MobileCard = memo(MobileCardImpl) as typeof MobileCardImpl;
 
 function SelectAllStrip({
   selection,

@@ -21,9 +21,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { bulkMerge, bulkMergePerRow } from '@/admin/_shared/bulkWrite';
+import { BulkWriteError, bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { yearLabel } from '@/utils/staffFormatting';
 import { describeBulkEditRisk, type BulkEditField } from './bulkEditRisk';
+import { buildBulkEditPlan, describeBulkEditPlan } from './bulkEditPlan';
+
+export type { BulkEditPlan, BulkEditValues } from './bulkEditPlan';
 
 // Equality-only filters (no wire orderBy) so these small collections don't
 // need composite indexes; sorted client-side below.
@@ -51,6 +54,14 @@ interface ProgressState {
   total: number;
 }
 
+/** How a bulk write ended when it did not finish. `written` is the number of
+ *  records that are already durable and cannot be rolled back. */
+interface FailureState {
+  written: number;
+  planned: number;
+  message: string;
+}
+
 export function BulkEditDialog({
   open,
   onOpenChange,
@@ -65,7 +76,8 @@ export function BulkEditDialog({
   const [boolValue, setBoolValue] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [failure, setFailure] = useState<FailureState | null>(null);
 
   const { data: rolesRaw, loading: rolesLoading } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
@@ -95,131 +107,72 @@ export function BulkEditDialog({
     setBoolValue(true);
     setConfirming(false);
     setProgress(null);
-    setError(null);
+    setSubmitting(false);
+    setFailure(null);
   }, [open, field]);
 
-  if (!field) return null;
+  const plan = useMemo(
+    () =>
+      field
+        ? buildBulkEditPlan(field, { year, roleId, building, moduleId, boolValue }, selectedRows)
+        : null,
+    [field, year, roleId, building, moduleId, boolValue, selectedRows],
+  );
 
-  const ids = selectedRows.map((r) => r.email);
+  if (!field || !plan) return null;
+
+  const selectedCount = selectedRows.length;
+  // Every field routes through bulkMergePerRow against the planned rows only,
+  // so the progress total and the failure count are the same number the
+  // subtitle promised, whichever field is being edited.
+  const targets = plan.kind === 'ready' ? [...plan.patches.keys()] : [];
 
   async function apply() {
-    setError(null);
-    setProgress({ done: 0, total: ids.length });
+    // `plan` is narrowed non-null above, but a hoisted function declaration
+    // does not inherit that narrowing — re-check here rather than widening
+    // the guard that keeps the closed dialog from rendering.
+    const current = plan;
+    if (current === null || current.kind === 'incomplete') {
+      setFailure({
+        written: 0,
+        planned: 0,
+        message: current === null ? 'Pick a value first.' : current.message,
+      });
+      return;
+    }
+    const patches = current.patches;
+    setFailure(null);
+    setSubmitting(true);
+    setProgress({ done: 0, total: targets.length });
     try {
-      switch (field) {
-        case 'year': {
-          if (!isStaffYear(year)) throw new Error('Pick a year.');
-          await bulkMerge(COLLECTIONS.staff, ids, { year }, (done, total) =>
-            setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'role': {
-          if (!roleId) throw new Error('Pick a role.');
-          await bulkMerge(COLLECTIONS.staff, ids, { role: roleId }, (done, total) =>
-            setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'addBuilding': {
-          if (!building) throw new Error('Pick a building.');
-          const byId = new Map(selectedRows.map((r) => [r.email, r]));
-          await bulkMergePerRow(
-            COLLECTIONS.staff,
-            ids,
-            (id) => {
-              const row = byId.get(id);
-              if (!row) return null;
-              if (row.buildings.includes(building)) return null;
-              return { buildings: [...row.buildings, building] };
-            },
-            (done, total) => setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'removeBuilding': {
-          if (!building) throw new Error('Pick a building.');
-          const byId = new Map(selectedRows.map((r) => [r.email, r]));
-          await bulkMergePerRow(
-            COLLECTIONS.staff,
-            ids,
-            (id) => {
-              const row = byId.get(id);
-              if (!row) return null;
-              if (!row.buildings.includes(building)) return null;
-              return { buildings: row.buildings.filter((b) => b !== building) };
-            },
-            (done, total) => setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'addModule': {
-          if (!moduleId) throw new Error('Pick a module.');
-          const byId = new Map(selectedRows.map((r) => [r.email, r]));
-          await bulkMergePerRow(
-            COLLECTIONS.staff,
-            ids,
-            (id) => {
-              const row = byId.get(id);
-              if (!row) return null;
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-              const current = row.modules ?? [];
-              if (current.includes(moduleId)) return null;
-              return { modules: [...current, moduleId] };
-            },
-            (done, total) => setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'removeModule': {
-          if (!moduleId) throw new Error('Pick a module.');
-          const byId = new Map(selectedRows.map((r) => [r.email, r]));
-          await bulkMergePerRow(
-            COLLECTIONS.staff,
-            ids,
-            (id) => {
-              const row = byId.get(id);
-              if (!row) return null;
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-              const current = row.modules ?? [];
-              if (!current.includes(moduleId)) return null;
-              return { modules: current.filter((m) => m !== moduleId) };
-            },
-            (done, total) => setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'hasAdminAccess': {
-          await bulkMerge(COLLECTIONS.staff, ids, { hasAdminAccess: boolValue }, (done, total) =>
-            setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'isActive': {
-          await bulkMerge(COLLECTIONS.staff, ids, { isActive: boolValue }, (done, total) =>
-            setProgress({ done, total }),
-          );
-          break;
-        }
-        case 'summativeYear': {
-          await bulkMerge(COLLECTIONS.staff, ids, { summativeYear: boolValue }, (done, total) =>
-            setProgress({ done, total }),
-          );
-          break;
-        }
-      }
+      await bulkMergePerRow(
+        COLLECTIONS.staff,
+        targets,
+        (id) => patches.get(id) ?? null,
+        (done, total) => setProgress({ done, total }),
+      );
       onApplied();
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Bulk update failed.');
       setProgress(null);
+      // A BulkWriteError knows how many records are already durable. Anything
+      // else failed before the first commit, so nothing was written.
+      setFailure({
+        written: err instanceof BulkWriteError ? err.written : 0,
+        planned: targets.length,
+        message: err instanceof Error ? err.message : 'Bulk update failed.',
+      });
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  const submitting = progress !== null && progress.done < progress.total;
+  // Writes that landed before a failure cannot be undone, so the dialog stays
+  // open on this state and reports them instead of closing on the count.
+  const partial = failure && failure.written > 0 ? failure : null;
   // Non-null only for the edits that can take down the roster or hand out the
   // admin console; those get a second step before anything is written.
-  const risk = describeBulkEditRisk(field, boolValue, ids.length);
+  const risk = describeBulkEditRisk(field, boolValue, targets.length);
   const titles: Record<BulkEditField, string> = {
     year: 'Set year',
     role: 'Set role',
@@ -237,13 +190,30 @@ export function BulkEditDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{titles[field]}</DialogTitle>
-          <DialogDescription>
-            Applying to {ids.length} staff {ids.length === 1 ? 'member' : 'members'}.
-          </DialogDescription>
+          <DialogDescription>{describeBulkEditPlan(plan, selectedCount)}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          {confirming && risk ? (
+          {partial ? (
+            <div
+              role="alert"
+              className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
+              <p className="font-medium">
+                Stopped partway — {partial.written} of {partial.planned} records were updated.
+              </p>
+              <p className="mt-1">
+                Those {partial.written} {partial.written === 1 ? 'change is' : 'changes are'} saved
+                and will not be rolled back. The remaining {partial.planned - partial.written} were
+                not written.
+              </p>
+              <p className="mt-1">
+                Applying this edit again is safe: it sets the same value, so records that already
+                changed are left as they are.
+              </p>
+              <p className="text-muted-foreground mt-2 text-xs">{partial.message}</p>
+            </div>
+          ) : confirming && risk ? (
             <div
               role="alert"
               className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
@@ -398,15 +368,33 @@ export function BulkEditDialog({
             </div>
           ) : null}
 
-          {error ? (
-            <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
-              {error}
+          {failure && !partial ? (
+            <div
+              role="alert"
+              className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+            >
+              {failure.message}
+              {failure.planned > 0 ? ' No records were changed.' : null}
             </div>
           ) : null}
         </div>
 
         <DialogFooter>
-          {confirming && risk ? (
+          {partial ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                type="button"
+                disabled={submitting}
+              >
+                Close
+              </Button>
+              <Button type="button" onClick={() => void apply()} disabled={submitting}>
+                {submitting ? 'Applying…' : 'Try again'}
+              </Button>
+            </>
+          ) : confirming && risk ? (
             <>
               <Button
                 variant="outline"
@@ -438,9 +426,15 @@ export function BulkEditDialog({
               <Button
                 type="button"
                 onClick={risk ? () => setConfirming(true) : () => void apply()}
-                disabled={submitting || ids.length === 0}
+                disabled={submitting || targets.length === 0}
               >
-                {submitting ? 'Applying…' : risk ? 'Continue' : `Apply to ${String(ids.length)}`}
+                {submitting
+                  ? 'Applying…'
+                  : risk
+                    ? 'Continue'
+                    : // `targets` is the planned write set, not the selection, so the
+                      // button promises the same number the subtitle does.
+                      `Apply to ${String(targets.length)}`}
               </Button>
             </>
           )}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useMemo, useState } from 'react';
 import {
   CalendarClock,
   Check,
@@ -59,6 +59,10 @@ import {
 
 type StaffRow = Staff & { id: string };
 
+// Module scope so AdminDataView's memo sees the same function every render.
+const staffRowKey = (r: StaffRow) => r.email;
+const staffRowLabel = (r: StaffRow) => r.name;
+
 // Equality-only filters (no orderBy on the wire) so these small admin
 // collections don't need composite indexes; sorted client-side below.
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true)];
@@ -100,6 +104,17 @@ export function StaffPage() {
   const yearColors = useMemo(() => appSettings?.yearColors ?? {}, [appSettings]);
 
   const [filters, setFilters] = useState<StaffFilters>(EMPTY_FILTERS);
+
+  // The filter bar renders from `filters` so the search box and chips respond
+  // to the keystroke that caused them; everything downstream of the roster
+  // (filtering, sorting, the table itself) renders from `deferredFilters` at
+  // transition priority. Rebuilding a few hundred rows of inline pill editors
+  // takes hundreds of milliseconds, and at high priority that lands inside the
+  // input's own event dispatch and drops keystrokes. React keeps showing the
+  // previous list until the new one is ready and abandons that work whenever
+  // another keystroke arrives.
+  const deferredFilters = useDeferredValue(filters);
+
   const [sort, setSort] = useState<AdminDataViewSort | null>({ key: 'name', direction: 'asc' });
   const [editing, setEditing] = useState<StaffRow | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -134,7 +149,7 @@ export function StaffPage() {
   // is how an admin ends up re-creating someone who already exists.
   const { filtered, hiddenByStatus } = useMemo(() => {
     if (!staff) return { filtered: [] as StaffRow[], hiddenByStatus: 0 };
-    const q = filters.search.trim().toLowerCase();
+    const q = deferredFilters.search.trim().toLowerCase();
     const matched = staff.filter((s) => {
       if (q) {
         const matches =
@@ -144,21 +159,22 @@ export function StaffPage() {
           s.buildings.some((b) => b.toLowerCase().includes(q));
         if (!matches) return false;
       }
-      if (filters.roles.size > 0 && !filters.roles.has(s.role)) return false;
-      if (filters.years.size > 0 && !filters.years.has(s.year)) return false;
-      if (filters.buildings.size > 0) {
-        const overlap = s.buildings.some((b) => filters.buildings.has(b));
+      if (deferredFilters.roles.size > 0 && !deferredFilters.roles.has(s.role)) return false;
+      if (deferredFilters.years.size > 0 && !deferredFilters.years.has(s.year)) return false;
+      if (deferredFilters.buildings.size > 0) {
+        const overlap = s.buildings.some((b) => deferredFilters.buildings.has(b));
         if (!overlap) return false;
       }
       return true;
     });
-    const visible = matched.filter((s) => matchesStatusFilter(s.isActive, filters.status));
+    const visible = matched.filter((s) => matchesStatusFilter(s.isActive, deferredFilters.status));
     return { filtered: visible, hiddenByStatus: matched.length - visible.length };
-  }, [staff, filters]);
+  }, [staff, deferredFilters]);
 
   /** "archived" when the Active default is hiding them, "active" when the
-   *  admin has flipped to Archived. */
-  const hiddenWord = filters.status === 'active' ? 'archived' : 'active';
+   *  admin has flipped to Archived. Reads the deferred filters so the count
+   *  and the list it describes can never disagree. */
+  const hiddenWord = deferredFilters.status === 'active' ? 'archived' : 'active';
 
   const columns: ColumnDef<StaffRow>[] = useMemo(
     () => [
@@ -211,16 +227,19 @@ export function StaffPage() {
 
   const sortedRows = useMemo(() => sortRows(filtered, columns, sort), [filtered, columns, sort]);
 
-  function toggleRow(id: string) {
+  // The callbacks below are all referentially stable so AdminDataView's memo
+  // boundary actually holds — an inline arrow here re-renders every row on
+  // any page state change and makes the memo a wasted compare.
+  const toggleRow = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
-  function toggleAll(visibleIds: string[]) {
+  const toggleAll = useCallback((visibleIds: string[]) => {
     setSelected((prev) => {
       const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
       if (allSelected) {
@@ -232,7 +251,25 @@ export function StaffPage() {
       for (const id of visibleIds) next.add(id);
       return next;
     });
-  }
+  }, []);
+
+  const handleRowClick = useCallback((r: StaffRow) => {
+    setEditing(r);
+  }, []);
+
+  const renderRowActions = useCallback(
+    (r: StaffRow) => <RowActions row={r} onEdit={() => setEditing(r)} onPatch={patchStaff} />,
+    [patchStaff],
+  );
+
+  // `selected` is in the deps by necessity: the checkbox states have to
+  // change when it does. Individual rows are shielded from that by
+  // AdminDataView, which passes each row a stable `onToggleRow` rather than
+  // this object.
+  const selection = useMemo(
+    () => ({ selected, onToggleRow: toggleRow, onToggleAll: toggleAll }),
+    [selected, toggleRow, toggleAll],
+  );
 
   const selectedRows = useMemo(
     () => (staff ?? []).filter((r) => selected.has(r.email)),
@@ -346,24 +383,20 @@ export function StaffPage() {
           columns={columns}
           rows={loading && !staff ? null : sortedRows}
           loading={loading}
-          rowKey={(r) => r.email}
+          rowKey={staffRowKey}
           label="Staff"
-          rowLabel={(r) => r.name}
+          rowLabel={staffRowLabel}
           empty={
             hiddenByStatus > 0
               ? `Nothing to show here — ${String(hiddenByStatus)} ${hiddenWord} ${hiddenByStatus === 1 ? 'match is' : 'matches are'} hidden by the Status filter.`
-              : filters.search
+              : deferredFilters.search
                 ? 'No staff match that search.'
                 : 'No staff yet.'
           }
-          {...(selectMode
-            ? { selection: { selected, onToggleRow: toggleRow, onToggleAll: toggleAll } }
-            : { onRowClick: (r: StaffRow) => setEditing(r) })}
+          {...(selectMode ? { selection } : { onRowClick: handleRowClick })}
           sort={sort}
           onSortChange={setSort}
-          rowActions={(r) => (
-            <RowActions row={r} onEdit={() => setEditing(r)} onPatch={patchStaff} />
-          )}
+          rowActions={renderRowActions}
         />
       </div>
 
