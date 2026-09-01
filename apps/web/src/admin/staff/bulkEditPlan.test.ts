@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Staff } from '@ops/shared';
-import { buildBulkEditPlan, describeBulkEditPlan, type BulkEditValues } from './BulkEditDialog';
+import { buildBulkEditPlan, describeBulkEditPlan, type BulkEditValues } from './bulkEditPlan';
 
 type Row = Staff & { id: string };
 
