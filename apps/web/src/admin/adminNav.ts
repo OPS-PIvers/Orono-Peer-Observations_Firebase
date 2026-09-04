@@ -47,7 +47,7 @@ export const ADMIN_NAV_SECTIONS: readonly AdminNavSection[] = [
     label: 'Evaluation Setup',
     items: [
       { to: '/admin/rubrics', label: 'Rubrics', icon: BookOpen },
-      { to: '/admin/work-product', label: 'Work Product', icon: FileText },
+      { to: '/admin/observation-questions', label: 'Observation Questions', icon: FileText },
       { to: '/admin/role-year-mappings', label: 'Role/Year', icon: CalendarDays },
     ],
   },

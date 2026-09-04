@@ -17,9 +17,12 @@ import {
   type RoleYearMapping,
   type Rubric,
   type RubricDomain,
+  type ObservationType,
+  type QuestionType,
   type WorkProductQuestion,
 } from '@ops/shared';
 import {
+  DRIVE_SERVICE_ACCOUNT,
   ensureObservationFolder,
   getDriveLinks,
   replaceFileContent,
@@ -28,6 +31,30 @@ import {
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { formatDate as formatDateReadable, sendTemplatedEmail } from '../lib/emailUtils.js';
+
+/**
+ * Which question-bank `type` an observation's questions are filed under.
+ * Exhaustive over `OBSERVATION_TYPES` — a new observation type will fail to
+ * compile here until its questions have a home, which is the point.
+ */
+const QUESTION_TYPE_BY_OBSERVATION_TYPE: Record<ObservationType, QuestionType> = {
+  [OBSERVATION_TYPES.standard]: 'standard',
+  [OBSERVATION_TYPES.workProduct]: 'work-product',
+  [OBSERVATION_TYPES.instructionalRound]: 'instructional-round',
+};
+
+/**
+ * Pull a human-readable cause out of a Drive/Gaxios error so the message the
+ * evaluator reads (and forwards to us) names the actual failure — "File not
+ * found: <id>", "storageQuotaExceeded" — instead of a generic string that
+ * costs a log dive to decode.
+ */
+function driveErrorDetail(err: unknown): string {
+  const cause = (err as { cause?: { message?: string } }).cause;
+  if (cause?.message) return cause.message;
+  if (err instanceof Error && err.message) return err.message;
+  return 'unknown error';
+}
 
 if (getApps().length === 0) initializeApp();
 
@@ -68,7 +95,13 @@ export const finalizeObservation = onCall(
   // maxInstances caps concurrent Drive/pdf-renderer work to bound cost/abuse
   // exposure — not copied from onObservationWritten's maxInstances: 1, which
   // exists there solely to respect the Sheets API's 60-writes/min quota.
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, maxInstances: 10 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    memory: '512MiB',
+    timeoutSeconds: 300,
+    maxInstances: 10,
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
@@ -166,19 +199,14 @@ export const finalizeObservation = onCall(
       // exists, falling back to the full rubric otherwise.
       const snapshotDomains = resolveSnapshotDomains(rubric.domains, activeComponentIds);
 
-      // Work Product / Instructional Round observations store their substance
-      // as Q&A answers keyed on questionId. Fetch the matching question bank
-      // so the PDF can print each answer under its question text. Every
-      // question of the type is fetched (not just active ones) so answers to
-      // since-deactivated questions still make it into the permanent record.
-      const questionType =
-        obs.type === OBSERVATION_TYPES.workProduct
-          ? 'work-product'
-          : obs.type === OBSERVATION_TYPES.instructionalRound
-            ? 'instructional-round'
-            : null;
+      // Every observation type stores its reflection answers as Q&A keyed on
+      // questionId. Fetch the matching question bank so the PDF can print each
+      // answer under its question text. Every question of the type is fetched
+      // (not just active ones) so answers to since-deactivated questions still
+      // make it into the permanent record.
+      const questionType = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
       let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text'>[] = [];
-      if (questionType) {
+      {
         const questionsSnap = await db
           .collection(COLLECTIONS.workProductQuestions)
           .where('type', '==', questionType)
@@ -276,7 +304,7 @@ export const finalizeObservation = onCall(
         webViewLink = links.webViewLink;
       } catch (err) {
         logger.error('finalizeObservation: Drive ops failed', err);
-        throw new HttpsError('internal', 'Drive upload or share failed.');
+        throw new HttpsError('internal', `Drive upload or share failed: ${driveErrorDetail(err)}`);
       }
 
       const finalizedAt = FieldValue.serverTimestamp();

@@ -11,11 +11,13 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useActiveStandardObservation } from '@/hooks/useActiveStandardObservation';
 import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { PageHeader } from '@/components/PageHeader';
 import { AssignmentToggle, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
+import { StandardAnswerForm } from '@/observations/StandardAnswerForm';
 import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
 import { InstructionalRoundAnswerForm } from '@/observations/InstructionalRoundAnswerForm';
 import { roleDisplayName } from '@/utils/roleLookup';
@@ -101,6 +103,7 @@ export function MyRubricPage() {
     return { ...rubric, domains: filteredDomains };
   }, [rubric, assignmentMode, assignedComponentIds]);
 
+  const { observation: stdObservation } = useActiveStandardObservation(lowerEmail);
   const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
   const { observation: irObservation } = useActiveInstructionalRoundObservation(lowerEmail);
 
@@ -152,6 +155,8 @@ export function MyRubricPage() {
         ) : null}
 
         <RecentObservationsStrip observedEmail={lowerEmail} />
+
+        {stdObservation ? <StandardAnswerForm observation={stdObservation} /> : null}
 
         {wpObservation ? <WorkProductAnswerForm observation={wpObservation} /> : null}
 

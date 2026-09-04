@@ -10,7 +10,16 @@ import {
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus, X } from 'lucide-react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type WorkProductQuestion } from '@ops/shared';
+import {
+  COLLECTIONS,
+  QUESTION_PHASES,
+  QUESTION_TYPES,
+  type QuestionPhase,
+  type QuestionType,
+  questionPhase,
+  questionType,
+  type WorkProductQuestion,
+} from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -28,12 +37,15 @@ import {
 import { bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { GripHandle, SortableItem } from '@/admin/dashboard/SortableItem';
 
-const QUESTION_TYPES = ['work-product', 'instructional-round'] as const;
-type QuestionType = (typeof QUESTION_TYPES)[number];
-
 const TYPE_LABELS: Record<QuestionType, string> = {
+  standard: 'Standard',
   'work-product': 'Work Product',
   'instructional-round': 'Instructional Round',
+};
+
+const PHASE_LABELS: Record<QuestionPhase, string> = {
+  pre: 'Before observation',
+  post: 'After observation',
 };
 
 type QuestionRow = WorkProductQuestion & { id: string };
@@ -45,7 +57,8 @@ export function WorkProductPage() {
     error,
   } = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
   const [draft, setDraft] = useState('');
-  const [newType, setNewType] = useState<QuestionType>('work-product');
+  const [newType, setNewType] = useState<QuestionType>('standard');
+  const [newPhase, setNewPhase] = useState<QuestionPhase>('pre');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<QuestionRow | null>(null);
@@ -70,6 +83,7 @@ export function WorkProductPage() {
         questionId,
         text,
         type: newType,
+        phase: newPhase,
         order,
         isActive: true,
         createdAt: serverTimestamp(),
@@ -127,9 +141,9 @@ export function WorkProductPage() {
   return (
     <PageHeader
       title="Observation Question Bank"
-      subtitle="Questions for Work Product and Instructional Round observations. Edit text inline; deactivate to hide a question without deleting its history. Set the type so each question appears in the correct staff-facing form."
+      subtitle="Pre- and post-observation reflection questions, for every observation type. Edit text inline; deactivate to hide a question without deleting its history. Type decides which observation a question appears under; phase decides whether the teacher answers it up front or after the observation date has passed."
       variant="light"
-      breadcrumb={['Admin', 'Work Product']}
+      breadcrumb={['Admin', 'Observation Questions']}
     >
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
@@ -155,7 +169,7 @@ export function WorkProductPage() {
             Add
           </Button>
         </div>
-        <div className="mt-2 flex gap-4">
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
           {QUESTION_TYPES.map((t) => (
             <label key={t} className="flex cursor-pointer items-center gap-1.5 text-sm">
               <input
@@ -166,6 +180,19 @@ export function WorkProductPage() {
                 className="h-3.5 w-3.5"
               />
               {TYPE_LABELS[t]}
+            </label>
+          ))}
+          <span className="text-muted-foreground hidden md:inline">|</span>
+          {QUESTION_PHASES.map((ph) => (
+            <label key={ph} className="flex cursor-pointer items-center gap-1.5 text-sm">
+              <input
+                type="radio"
+                name="newPhase"
+                checked={newPhase === ph}
+                onChange={() => setNewPhase(ph)}
+                className="h-3.5 w-3.5"
+              />
+              {PHASE_LABELS[ph]}
             </label>
           ))}
         </div>
@@ -187,6 +214,7 @@ export function WorkProductPage() {
                 <Skeleton className="h-4 w-6" />
                 <Skeleton className="h-9 flex-1" />
                 <Skeleton className="h-7 w-32" />
+                <Skeleton className="h-7 w-32" />
                 <Skeleton className="h-4 w-16" />
               </li>
             ))}
@@ -201,7 +229,7 @@ export function WorkProductPage() {
               {sorted.map((q, idx) => (
                 <SortableItem key={q.id} id={q.id}>
                   {({ dragHandleProps }) => (
-                    <li className="border-border bg-background grid grid-cols-[auto_auto_1fr_auto] gap-2 rounded-md border p-3 md:grid-cols-[auto_auto_1fr_auto_auto_auto] md:items-center">
+                    <li className="border-border bg-background grid grid-cols-[auto_auto_1fr_auto] gap-2 rounded-md border p-3 md:grid-cols-[auto_auto_1fr_auto_auto_auto_auto] md:items-center">
                       <GripHandle
                         dragHandleProps={dragHandleProps}
                         label="Drag to reorder question"
@@ -219,12 +247,12 @@ export function WorkProductPage() {
                         size="icon"
                         onClick={() => setDeleting(q)}
                         aria-label="Delete question"
-                        className="md:col-start-6"
+                        className="md:col-start-7"
                       >
                         <X className="h-4 w-4" />
                       </Button>
                       <select
-                        value={q.type}
+                        value={questionType(q)}
                         onChange={(e) => void update(q, { type: e.target.value as QuestionType })}
                         className="col-start-3 h-9 rounded-md border border-gray-200 px-2 py-1.5 text-xs md:col-start-4 md:w-auto"
                         aria-label="Question type"
@@ -235,7 +263,19 @@ export function WorkProductPage() {
                           </option>
                         ))}
                       </select>
-                      <label className="col-start-3 flex items-center gap-1 text-xs md:col-start-5 md:self-center">
+                      <select
+                        value={questionPhase(q)}
+                        onChange={(e) => void update(q, { phase: e.target.value as QuestionPhase })}
+                        className="col-start-3 h-9 rounded-md border border-gray-200 px-2 py-1.5 text-xs md:col-start-5 md:w-auto"
+                        aria-label="Question phase"
+                      >
+                        {QUESTION_PHASES.map((ph) => (
+                          <option key={ph} value={ph}>
+                            {PHASE_LABELS[ph]}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="col-start-3 flex items-center gap-1 text-xs md:col-start-6 md:self-center">
                         <input
                           type="checkbox"
                           checked={q.isActive}
