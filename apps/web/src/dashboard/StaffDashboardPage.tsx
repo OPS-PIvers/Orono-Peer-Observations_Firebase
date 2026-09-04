@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   collectionGroup,
@@ -21,6 +21,7 @@ import {
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
+  questionType,
   staffMatchesAutoEnable,
   type AppSettings,
   type DashboardConfig,
@@ -33,6 +34,7 @@ import {
   type ObservationWindow,
   type Role,
   type Staff,
+  type WorkProductQuestion,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -191,7 +193,7 @@ export function StaffDashboardPage() {
   const { observation: standardDraft } = useActiveStandardObservation(emailLower);
   const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
   const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
-  const wpQuestions = useFirestoreCollection(COLLECTIONS.workProductQuestions);
+  const wpQuestions = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
   const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
 
   const finalizedStandard = useMemo(
@@ -200,6 +202,12 @@ export function StaffDashboardPage() {
   );
 
   const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
+
+  const activeQuestionCount = useCallback(
+    (type: WorkProductQuestion['type']) =>
+      (wpQuestions.data ?? []).filter((q) => questionType(q) === type && q.isActive).length,
+    [wpQuestions.data],
+  );
 
   const tasks = useMemo<CheckpointWithStatus[]>(() => {
     if (!staff) return [];
@@ -210,8 +218,14 @@ export function StaffDashboardPage() {
       instructionalRoundDraft: irDraft,
       finalizedWorkProduct: null,
       finalizedInstructionalRound: null,
-      workProductQuestionsCount: wpQuestions.data?.length ?? 0,
-      instructionalRoundQuestionsCount: wpQuestions.data?.length ?? 0,
+      // Both counts previously used the whole collection's length, so a
+      // Work Product card counted the Instructional Round questions too (and
+      // vice versa) and never dropped deactivated ones — "0 of 7" on a bank of
+      // three. Count only the active questions of the matching type.
+      // Locked post-observation questions stay in the denominator on purpose:
+      // the teacher does owe them, just not yet.
+      workProductQuestionsCount: activeQuestionCount('work-product'),
+      instructionalRoundQuestionsCount: activeQuestionCount('instructional-round'),
       appSettings: appSettings ?? null,
       openBooking,
       hasBookedSlot,
@@ -225,7 +239,7 @@ export function StaffDashboardPage() {
     standardDraft,
     wpDraft,
     irDraft,
-    wpQuestions.data,
+    activeQuestionCount,
     appSettings,
     openBooking,
     hasBookedSlot,

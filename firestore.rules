@@ -62,10 +62,18 @@ service cloud.firestore {
       let auto = get(/databases/$(database)/documents/modules/$(moduleId)).data.get('autoEnable', null);
       let y = staffDocData().get('year', 1);
       let summ = staffDocData().get('summativeYear', false);
-      let status = y >= 4 ? 'probationary' : (summ ? 'high' : 'low');
+      let status = y >= 4 ? 'probationary' : (summ ? 'high' : (y == 1 ? 'planning' : 'developing'));
       let dy = y >= 4 ? y - 3 : y;
+      // 'low' is the retired pre-split label, kept readable so modules still
+      // pinned to it match both Planning and Developing (mirrors the
+      // LEGACY_CYCLE_STATUS branch in staffMatchesAutoEnable). The whole
+      // expression stays behind `auto != null` so a manual-only module never
+      // dereferences a null rule.
       return auto != null
-        && ((auto.dimension == 'status' && auto.value == status)
+        && ((auto.dimension == 'status'
+             && (auto.value == status
+                 || (auto.value == 'low'
+                     && (status == 'planning' || status == 'developing'))))
             || (auto.dimension == 'year' && auto.value == dy));
     }
 

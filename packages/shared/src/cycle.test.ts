@@ -10,8 +10,8 @@ import {
 import type { StaffYear } from './schema/staff.js';
 
 describe('CYCLE_STATUSES', () => {
-  it('is the three statuses in order', () => {
-    expect(CYCLE_STATUSES).toEqual(['low', 'high', 'probationary']);
+  it('is the four phases in order', () => {
+    expect(CYCLE_STATUSES).toEqual(['planning', 'developing', 'high', 'probationary']);
   });
 });
 
@@ -29,9 +29,13 @@ describe('cycleStatus', () => {
     expect(cycleStatus(4, false)).toBe('probationary');
     expect(cycleStatus(6, true)).toBe('probationary');
   });
-  it('is high when summative, low otherwise, for continuing years', () => {
+  it('is high whenever summative, for continuing years', () => {
     expect(cycleStatus(2, true)).toBe('high');
-    expect(cycleStatus(2, false)).toBe('low');
+  });
+  it('splits non-summative continuing years by year: 1 planning, 2-3 developing', () => {
+    expect(cycleStatus(1, false)).toBe('planning');
+    expect(cycleStatus(2, false)).toBe('developing');
+    expect(cycleStatus(3, false)).toBe('developing');
   });
 });
 

@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getDriveClient } from '../lib/drive.js';
+import { DRIVE_SERVICE_ACCOUNT, getDriveClient } from '../lib/drive.js';
 import { loadSecurityAdminEmail, sendEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -67,6 +67,7 @@ export const monitorDriveQuota = onSchedule(
     schedule: 'every day 05:00',
     timeZone: 'America/Chicago',
     region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
     memory: '256MiB',
     timeoutSeconds: 60,
   },

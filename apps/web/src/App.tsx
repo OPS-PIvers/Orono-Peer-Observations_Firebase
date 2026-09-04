@@ -105,7 +105,13 @@ export function App() {
                   <Route path="rubrics" element={<L.RubricsListPage />} />
                   <Route path="rubrics/:rubricId" element={<L.RubricEditorPage />} />
                   <Route path="role-year-mappings" element={<L.RoleYearMappingsPage />} />
-                  <Route path="work-product" element={<L.WorkProductPage />} />
+                  <Route path="observation-questions" element={<L.WorkProductPage />} />
+                  {/* The bank lived here while it only held Work Product
+                      questions; keep the old path working for stale bookmarks. */}
+                  <Route
+                    path="work-product"
+                    element={<Navigate to="/admin/observation-questions" replace />}
+                  />
                   <Route path="email-templates" element={<L.EmailTemplatesPage />} />
                   <Route path="branding" element={<L.BrandingPage />} />
                   <Route path="dashboard" element={<L.DashboardSettingsPage />} />

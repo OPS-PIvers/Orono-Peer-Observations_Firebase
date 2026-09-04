@@ -183,10 +183,22 @@ export function renderObservationHtml(payload: RenderPayload): string {
     )
     .join('');
 
+  // Work Product / Instructional Round observations are scored purely through
+  // their questions, so an empty component list is normal for them and the
+  // "no components assigned" warning below would be noise. A Standard
+  // observation still expects components, so it keeps the warning.
   const isQuestionType =
     observation.type === OBSERVATION_TYPES.workProduct ||
     observation.type === OBSERVATION_TYPES.instructionalRound;
-  const responsesSection = isQuestionType
+
+  // The responses section, by contrast, is driven by whether there is anything
+  // to print rather than by the type: every observation type now carries
+  // reflection questions, so a Standard observation with answers must no
+  // longer drop them silently.
+  const hasResponses =
+    (payload.workProductQuestions ?? []).length > 0 ||
+    (observation.workProductAnswers ?? []).length > 0;
+  const responsesSection = hasResponses
     ? renderResponsesSection(observation, payload.workProductQuestions ?? [])
     : '';
 

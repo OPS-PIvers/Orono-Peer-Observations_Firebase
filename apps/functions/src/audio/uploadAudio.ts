@@ -5,7 +5,11 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
-import { ensureObservationFolder, uploadFileToFolder } from '../lib/drive.js';
+import {
+  DRIVE_SERVICE_ACCOUNT,
+  ensureObservationFolder,
+  uploadFileToFolder,
+} from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 
 if (getApps().length === 0) initializeApp();
@@ -40,6 +44,7 @@ const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 export const uploadAudio = onRequest(
   {
     region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
     cors: true,
     memory: '512MiB',
     timeoutSeconds: 300,

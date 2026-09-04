@@ -11,7 +11,7 @@ import {
   isAdminRole,
   type Staff,
 } from '@ops/shared';
-import { getDriveClient, uploadFileToFolder } from '../lib/drive.js';
+import { DRIVE_SERVICE_ACCOUNT, getDriveClient, uploadFileToFolder } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -168,7 +168,12 @@ async function shareModuleFileWithDomain(fileId: string): Promise<void> {
  * pattern.
  */
 export const uploadModuleFile = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
   async (request): Promise<UploadModuleFileResult> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();

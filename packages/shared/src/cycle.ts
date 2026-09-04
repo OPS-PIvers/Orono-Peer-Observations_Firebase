@@ -8,8 +8,22 @@
 
 import type { StaffYear } from './schema/staff.js';
 
-export const CYCLE_STATUSES = ['low', 'high', 'probationary'] as const;
+export const CYCLE_STATUSES = ['planning', 'developing', 'high', 'probationary'] as const;
 export type CycleStatus = (typeof CYCLE_STATUSES)[number];
+
+/**
+ * `'low'` was the single pre-2026 label for both non-summative continuing
+ * years, before the peer-evaluator team split it into Planning (year 1) and
+ * Developing (years 2-3). Stored `modules/{id}.autoEnable.value` documents
+ * still carry it, so it stays *parseable* (see `moduleAutoEnableStatus`) even
+ * though it is no longer offered anywhere in the UI. Nothing derives it.
+ */
+export const LEGACY_CYCLE_STATUS = 'low';
+
+/** Every status a stored `autoEnable.value` may legally hold — the current
+ *  four plus the deprecated alias above. */
+export const STORED_CYCLE_STATUSES = [...CYCLE_STATUSES, LEGACY_CYCLE_STATUS] as const;
+export type StoredCycleStatus = (typeof STORED_CYCLE_STATUSES)[number];
 
 /** Stored years 1-3 are continuing; 4-6 are probationary P1-P3. Both display as 1-3. */
 export function displayYear(year: number): 1 | 2 | 3 {
@@ -17,9 +31,23 @@ export function displayYear(year: number): 1 | 2 | 3 {
   return (d < 1 ? 1 : d > 3 ? 3 : d) as 1 | 2 | 3;
 }
 
+/**
+ * The cycle phase a staff member is in, derived from the two stored fields.
+ * Probationary and summative both outrank the year, so the year only decides
+ * between the two non-summative continuing phases:
+ *
+ *   year >= 4                  Probationary  (P1-P3)
+ *   summativeYear              High Cycle    (the year that closes the loop)
+ *   year 1, non-summative      Planning
+ *   years 2-3, non-summative   Developing
+ *
+ * Derived, never stored — renaming a phase is a pure display change and needs
+ * no migration of /staff.
+ */
 export function cycleStatus(year: number, summativeYear: boolean): CycleStatus {
   if (year >= 4) return 'probationary';
-  return summativeYear ? 'high' : 'low';
+  if (summativeYear) return 'high';
+  return year === 1 ? 'planning' : 'developing';
 }
 
 /**

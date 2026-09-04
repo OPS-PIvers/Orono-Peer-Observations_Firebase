@@ -16,6 +16,7 @@ import {
   type Rubric,
 } from '@ops/shared';
 import {
+  DRIVE_SERVICE_ACCOUNT,
   deleteDriveFile,
   ensureObservationFolder,
   getDriveLinks,
@@ -26,6 +27,19 @@ import {
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
+
+/**
+ * Pull a human-readable cause out of a Drive/Gaxios error so the message the
+ * evaluator reads (and forwards to us) names the actual failure — "File not
+ * found: <id>", "storageQuotaExceeded" — instead of a generic string that
+ * costs a log dive to decode.
+ */
+function driveErrorDetail(err: unknown): string {
+  const cause = (err as { cause?: { message?: string } }).cause;
+  if (cause?.message) return cause.message;
+  if (err instanceof Error && err.message) return err.message;
+  return 'unknown error';
+}
 
 if (getApps().length === 0) initializeApp();
 
@@ -55,7 +69,13 @@ export const regenerateObservationPdf = onCall(
   // maxInstances caps concurrent Drive/pdf-renderer work to bound cost/abuse
   // exposure — not copied from onObservationWritten's maxInstances: 1, which
   // exists there solely to respect the Sheets API's 60-writes/min quota.
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 300, maxInstances: 10 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    memory: '512MiB',
+    timeoutSeconds: 300,
+    maxInstances: 10,
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
@@ -189,7 +209,7 @@ export const regenerateObservationPdf = onCall(
       webViewLink = links.webViewLink;
     } catch (err) {
       logger.error('regenerateObservationPdf: Drive ops failed', err);
-      throw new HttpsError('internal', 'Drive upload or share failed.');
+      throw new HttpsError('internal', `Drive upload or share failed: ${driveErrorDetail(err)}`);
     }
 
     // Repoint the observation at the new PDF before deleting the old one, so a
