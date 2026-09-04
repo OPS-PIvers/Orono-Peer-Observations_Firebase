@@ -47,14 +47,49 @@ already resolves at or above the pinned floor without the override.
 
 ## Direct dependency bumps (not overrides)
 
-Two advisories in the 2026-07-25 batch landed on packages this repo depends on
-directly, so they were fixed by raising the declared range rather than by adding
-an override:
+Advisories that land on packages this repo depends on directly are fixed by
+raising the declared range rather than by adding an override:
 
-| Package             | Where               | Change            | Advisory                                       |
-| ------------------- | ------------------- | ----------------- | ---------------------------------------------- |
-| `react-router-dom`  | `apps/web`          | ^7.15.0 → ^7.18.1 | Alerts #80/#81/#82/#83 (all patched in 7.18.0) |
-| `@hono/node-server` | `apps/pdf-renderer` | ^1.18.0 → ^2.0.11 | Alerts #73/#75 (`serve-static` path traversal) |
+| Package             | Where                           | Change              | Advisory                                       |
+| ------------------- | ------------------------------- | ------------------- | ---------------------------------------------- |
+| `react-router-dom`  | `apps/web`                      | ^7.15.0 → ^7.18.1   | Alerts #80/#81/#82/#83 (all patched in 7.18.0) |
+| `@hono/node-server` | `apps/pdf-renderer`             | ^1.18.0 → ^2.0.11   | Alerts #73/#75 (`serve-static` path traversal) |
+| `@tiptap/*`         | `apps/web`, `apps/pdf-renderer` | ^3.22.4 → ^3.30.4   | GHSA-cp6q-959q-f8rh (patched in 3.30.4)        |
+| `puppeteer`         | `apps/pdf-renderer`             | ^24.30.0 → ^25.10.0 | GHSA-jmr9-qjv8-65gv — see below                |
+
+### `@tiptap/*` — GHSA-cp6q-959q-f8rh (medium, runtime)
+
+`mergeAttributes()` treats an own `__proto__` key from JSON as an ordinary
+assignment, so the merged object's prototype becomes attacker-controlled.
+`DOMSerializer.renderSpec()` then enumerates it with `for...in` and copies the
+inherited values through `setAttribute()` — inherited `src`/`onerror` reach the
+DOM while `Object.keys()` shows nothing. Reachable here in principle: observation
+scripts and reflection answers are Tiptap JSON stored in Firestore and
+re-rendered both in the SPA and in the PDF template. Fixed by the floor; all six
+ranges in `apps/web` and all four in `apps/pdf-renderer` move together.
+
+### `puppeteer` — GHSA-jmr9-qjv8-65gv (high, CVSS 8.1)
+
+`extract-zip` has **no patched version**. It reached production through
+`puppeteer` → `@puppeteer/browsers@2.x`, which used it to unpack the downloaded
+Chrome archive. `@puppeteer/browsers@3.x` (shipped in puppeteer 25) replaced it
+with `modern-tar`, so upgrading removes the package from the tree entirely rather
+than pinning around an unfixable advisory — `pnpm why extract-zip` now returns
+nothing.
+
+The major bump has one breaking change that touched this repo: puppeteer 25
+removed the `networkidle0`/`networkidle2` `waitUntil` values. `setContent` in
+`apps/pdf-renderer/src/index.ts` now waits on `load`, which still blocks on the
+remote branding `<img>` — the failure the original `networkidle0` comment was
+guarding against. The template is static HTML with no post-load fetches, so the
+two waited on the same thing. Verified against real Chrome 152: the image
+reports `complete: true` at 150x54 and a valid PDF is produced.
+
+The used Puppeteer surface is small and unchanged across the major: `launch`,
+`newPage`, `setContent`, `page.pdf`, `page.close`, `browser.on('disconnected')`.
+The Dockerfile's `npx puppeteer browsers install chrome` step is unchanged and
+still works; the image itself is built by Cloud Build at deploy time, so a
+Chromium runtime-library gap would fail the deploy loudly rather than silently.
 
 ## Known-open, assessed as not applicable
 
@@ -67,3 +102,16 @@ an override:
   RSC entry points. Revisit if the app ever migrates to react-router 8 or adopts
   RSC. Safe to dismiss in Dependabot as "not affected" — that dismissal is the
   repo owner's call, so it has been left open rather than dismissed unilaterally.
+
+- **GHSA-528h-pc64-c93x — `stream-json` O(depth²) filter DoS (medium).**
+  Patched in 3.5.0, but `firebase-tools` pins `stream-json@^1.7.3` and still does
+  at its own latest (15.29.0), so closing this means overriding a _two-major_
+  jump — 1.x → 3.x, across two sets of breaking changes — into the package this
+  repo deploys with. That trade is not worth taking: the scope is `development`,
+  the vulnerability is CPU exhaustion from deeply nested JSON handed to
+  `pick`/`ignore`/`filter`/`replace`, and nothing here feeds untrusted JSON to
+  `firebase-tools` — it parses Google's own API responses and this repo's own
+  config. An override that broke `firebase deploy` would cost more than the risk
+  it removes. Revisit when `firebase-tools` raises its own floor; that is the
+  correct fix and it belongs upstream. Dismissable as "tolerable risk", left to
+  the repo owner per the convention above.
