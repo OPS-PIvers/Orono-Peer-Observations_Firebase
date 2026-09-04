@@ -32,6 +32,7 @@ import {
   type CycleStatus,
   cycleStatus,
   cycleStatusLabel,
+  encodeYear,
   displayYear as toDisplayYear,
   encodeYearStatus,
 } from './staffCycle';
@@ -139,13 +140,13 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
   const knownModuleIds = useMemo(() => new Set(modules.map((m) => m.moduleId)), [modules]);
 
   // Year + Status mirror the Staff table: the canonical `staff.year` (1-6) +
-  // `summativeYear` are presented as a 1-3 Year plus a Low/High/Probationary
-  // Status, encoded back via the shared staffCycle helpers so every other
-  // consumer keeps working unchanged.
+  // `summativeYear` are presented as a 1-3 Year plus a
+  // Planning/Developing/High Cycle/Probationary Status, encoded back via the
+  // shared staffCycle helpers so every other consumer keeps working unchanged.
   const dYear = toDisplayYear(form.year);
   const status = cycleStatus(form.year, form.summativeYear);
   function setYear(n: 1 | 2 | 3) {
-    const enc = encodeYearStatus(n, status);
+    const enc = encodeYear(n, form);
     setForm((f) => ({ ...f, year: enc.year, summativeYear: enc.summativeYear }));
   }
   function setStatus(s: CycleStatus) {

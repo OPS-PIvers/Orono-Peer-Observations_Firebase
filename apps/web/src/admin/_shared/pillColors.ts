@@ -55,7 +55,8 @@ export function paletteFor(key: string): PillColor {
 
 /** Semantic colors for the cycle Status pill (not user-configurable). */
 export const STATUS_PILL_COLOR: Record<CycleStatus, PillColor> = {
-  low: { bg: PILL_COLOR_CLASSES.green.bg, text: PILL_COLOR_CLASSES.green.text },
+  planning: { bg: PILL_COLOR_CLASSES.green.bg, text: PILL_COLOR_CLASSES.green.text },
+  developing: { bg: PILL_COLOR_CLASSES.amber.bg, text: PILL_COLOR_CLASSES.amber.text },
   high: { bg: PILL_COLOR_CLASSES.red.bg, text: PILL_COLOR_CLASSES.red.text },
   probationary: { bg: PILL_COLOR_CLASSES.purple.bg, text: PILL_COLOR_CLASSES.purple.text },
 };

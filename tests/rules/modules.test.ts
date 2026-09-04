@@ -120,6 +120,77 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
     await seed('staff/y2low@orono.k12.mn.us', { year: 2, summativeYear: false, modules: [] });
     // year 1 but HIGH cycle — matches the status rule, must NOT match the year rule
     await seed('staff/y1high@orono.k12.mn.us', { year: 1, summativeYear: true, modules: [] });
+
+    // planning module: auto-enables for the year-1 non-summative phase
+    await seed('modules/planning', {
+      moduleId: 'planning',
+      displayName: 'Planning',
+      autoEnable: { dimension: 'status', value: 'planning' },
+    });
+    await seed('modules/planning/items/i3', {
+      itemId: 'i3',
+      moduleId: 'planning',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'Planning packet',
+    });
+    // legacy module still pinned to the retired pre-split 'low' status — must
+    // keep matching BOTH planning and developing staff rather than nobody.
+    await seed('modules/legacy-low', {
+      moduleId: 'legacy-low',
+      displayName: 'Legacy Low',
+      autoEnable: { dimension: 'status', value: 'low' },
+    });
+    await seed('modules/legacy-low/items/i4', {
+      itemId: 'i4',
+      moduleId: 'legacy-low',
+      kind: 'material',
+      sectionId: 's1',
+      title: 'Legacy packet',
+    });
+  });
+
+  it('year-1 non-summative staff matches the planning status rule', async () => {
+    const db = testEnv
+      .authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(db, 'modules/planning/items/i3')));
+  });
+
+  it('year-2 non-summative staff is developing, not planning', async () => {
+    const db = testEnv
+      .authenticatedContext('y2l', claims.teacher('y2low@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/planning/items/i3')));
+  });
+
+  it('a summative year-1 staff is high cycle, not planning', async () => {
+    const db = testEnv
+      .authenticatedContext('y1h', claims.teacher('y1high@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(db, 'modules/planning/items/i3')));
+  });
+
+  it('a legacy low-cycle module still reaches both planning and developing staff', async () => {
+    const planning = testEnv
+      .authenticatedContext('l', claims.teacher('low1@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(planning, 'modules/legacy-low/items/i4')));
+    const developing = testEnv
+      .authenticatedContext('y2l', claims.teacher('y2low@orono.k12.mn.us'))
+      .firestore();
+    await assertSucceeds(getDoc(doc(developing, 'modules/legacy-low/items/i4')));
+  });
+
+  it('a legacy low-cycle module does not leak to high-cycle or probationary staff', async () => {
+    const high = testEnv
+      .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(high, 'modules/legacy-low/items/i4')));
+    const prob = testEnv
+      .authenticatedContext('p', claims.teacher('prob@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(getDoc(doc(prob, 'modules/legacy-low/items/i4')));
   });
 
   it('high-cycle staff reads a status-matched module item (not in their array)', async () => {

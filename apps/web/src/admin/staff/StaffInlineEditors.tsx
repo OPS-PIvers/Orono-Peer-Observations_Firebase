@@ -19,6 +19,7 @@ import {
   CYCLE_STATUSES,
   cycleStatus,
   cycleStatusLabel,
+  encodeYear,
   displayYear,
   encodeYearStatus,
 } from './staffCycle';
@@ -112,12 +113,7 @@ export function YearPill({
     <PillSelect
       value={String(current)}
       options={options}
-      onChange={(v) =>
-        onPatch(
-          row.email,
-          encodeYearStatus(Number(v) as 1 | 2 | 3, cycleStatus(row.year, row.summativeYear)),
-        )
-      }
+      onChange={(v) => onPatch(row.email, encodeYear(Number(v) as 1 | 2 | 3, row))}
       ariaLabel={`Year for ${row.name}`}
       menuLabel="Year"
     />

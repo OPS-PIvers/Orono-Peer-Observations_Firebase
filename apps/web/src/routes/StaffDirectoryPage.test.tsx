@@ -78,10 +78,10 @@ describe('StaffDirectoryPage — filtering logic', () => {
       expect(cycleStatus(3, true)).toBe('high');
     });
 
-    it('returns "low" for year 1-3 with summativeYear=false', () => {
-      expect(cycleStatus(1, false)).toBe('low');
-      expect(cycleStatus(2, false)).toBe('low');
-      expect(cycleStatus(3, false)).toBe('low');
+    it('returns "planning"/"developing" for year 1-3 with summativeYear=false', () => {
+      expect(cycleStatus(1, false)).toBe('planning');
+      expect(cycleStatus(2, false)).toBe('developing');
+      expect(cycleStatus(3, false)).toBe('developing');
     });
 
     it('filters staff by high cycle status', () => {
@@ -90,10 +90,16 @@ describe('StaffDirectoryPage — filtering logic', () => {
       expect(filterStatus === 'high').toBe(true);
     });
 
-    it('filters staff by low cycle status', () => {
+    it('filters staff by developing status', () => {
       const staff = makeStaff({ year: 2, summativeYear: false });
       const filterStatus = cycleStatus(staff.year, staff.summativeYear);
-      expect(filterStatus === 'low').toBe(true);
+      expect(filterStatus === 'developing').toBe(true);
+    });
+
+    it('filters staff by planning status', () => {
+      const staff = makeStaff({ year: 1, summativeYear: false });
+      const filterStatus = cycleStatus(staff.year, staff.summativeYear);
+      expect(filterStatus === 'planning').toBe(true);
     });
 
     it('filters staff by probationary status', () => {

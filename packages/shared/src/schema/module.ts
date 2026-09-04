@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
 import { PILL_COLORS, pillColor, type PillColorName } from './pillColor.js';
-import { CYCLE_STATUSES, cycleStatus, displayYear } from '../cycle.js';
+import { LEGACY_CYCLE_STATUS, STORED_CYCLE_STATUSES, cycleStatus, displayYear } from '../cycle.js';
 import type { Staff } from './staff.js';
 
 /**
@@ -72,7 +72,7 @@ export type ModuleSection = z.infer<typeof moduleSection>;
  * multiple values). `null` (the default) means manual assignment only.
  */
 export const autoEnable = z.discriminatedUnion('dimension', [
-  z.object({ dimension: z.literal('status'), value: z.enum(CYCLE_STATUSES) }),
+  z.object({ dimension: z.literal('status'), value: z.enum(STORED_CYCLE_STATUSES) }),
   z.object({
     dimension: z.literal('year'),
     value: z.union([z.literal(1), z.literal(2), z.literal(3)]),
@@ -117,7 +117,14 @@ export function staffMatchesAutoEnable(
 ): boolean {
   if (!rule) return false;
   if (rule.dimension === 'status') {
-    return cycleStatus(staff.year, staff.summativeYear) === rule.value;
+    const status = cycleStatus(staff.year, staff.summativeYear);
+    // A module still pinned to the retired 'low' status keeps applying to
+    // everyone it applied to before the Planning/Developing split, rather than
+    // silently matching nobody and quietly revoking access.
+    if (rule.value === LEGACY_CYCLE_STATUS) {
+      return status === 'planning' || status === 'developing';
+    }
+    return status === rule.value;
   }
   return displayYear(staff.year) === rule.value;
 }
