@@ -4,7 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
-import { downloadFile, getDriveClient } from '../lib/drive.js';
+import { DRIVE_SERVICE_ACCOUNT, downloadFile, getDriveClient } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -22,6 +22,7 @@ if (getApps().length === 0) initializeApp();
 export const getAudio = onRequest(
   {
     region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
     cors: true,
     memory: '512MiB',
     timeoutSeconds: 120,

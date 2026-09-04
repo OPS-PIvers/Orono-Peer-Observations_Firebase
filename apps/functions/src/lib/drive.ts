@@ -10,6 +10,12 @@ import type { drive_v3 } from 'googleapis';
  * Domain-Wide Delegation is OFF the table for this project, so we never
  * impersonate users.
  *
+ * Every call passes `supportsAllDrives: true`. Without it the Drive v3 API
+ * pretends Shared Drive items do not exist and answers `404 File not found:
+ * <id>` for a folder the SA can genuinely reach — the exact failure that broke
+ * finalize once the district parent folder moved onto a Shared Drive. The flag
+ * is a no-op for My Drive items, so it is safe to set unconditionally.
+ *
  * `googleapis` is lazily imported inside `getDriveClient()` rather than at
  * module top level — it's a very large SDK, and most deployed functions
  * (e.g. `syncMyClaims`) never touch Drive at all. Loading it only when a
@@ -17,6 +23,24 @@ import type { drive_v3 } from 'googleapis';
  * built client itself is cached below, so the dynamic import only ever
  * runs once per warm container.
  */
+
+/**
+ * The identity every Drive-touching function must run as.
+ *
+ * Drive access is granted to an *account*, not to the project: the district
+ * "Peer Observations" parent folder is shared with `peer-eval-svc` and with
+ * nobody else. Cloud Functions v2 otherwise defaults to the project's compute
+ * service account, which is a different principal — it can see no Drive files
+ * at all, so every Drive call under it fails `404 File not found: <parent id>`
+ * no matter how the folder is shared or which flags the call passes. That is
+ * not a permissions error you can debug from the message; it is Drive
+ * declining to admit the folder exists.
+ *
+ * So each function that imports from this module pins `serviceAccount` to this
+ * value. Adding a new Drive-touching function without it reintroduces the same
+ * 404.
+ */
+export const DRIVE_SERVICE_ACCOUNT = 'peer-eval-svc@peer-evaluator-rubric.iam.gserviceaccount.com';
 
 let driveClient: drive_v3.Drive | null = null;
 
@@ -43,7 +67,11 @@ export async function ensureObservationFolder(args: {
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
-      await drive.files.get({ fileId: args.existingFolderId, fields: 'id' });
+      await drive.files.get({
+        fileId: args.existingFolderId,
+        fields: 'id',
+        supportsAllDrives: true,
+      });
       return args.existingFolderId;
     } catch {
       // Folder was deleted out from under us; fall through and recreate.
@@ -56,6 +84,7 @@ export async function ensureObservationFolder(args: {
       parents: [args.parentFolderId],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
   if (!created.data.id) throw new Error('Drive folder creation returned no id');
   return created.data.id;
@@ -79,6 +108,7 @@ export async function uploadFileToFolder(args: {
       body: Readable.from(args.body),
     },
     fields: 'id, name',
+    supportsAllDrives: true,
   });
   if (!result.data.id || !result.data.name) {
     throw new Error('Drive upload returned no id/name');
@@ -111,6 +141,7 @@ export async function replaceFileContent(args: {
         body: Readable.from(args.body),
       },
       fields: 'id',
+      supportsAllDrives: true,
     });
     return result.data.id ?? null;
   } catch (err) {
@@ -131,7 +162,11 @@ export async function replaceFileContent(args: {
 export async function trashDriveFile(fileId: string): Promise<void> {
   const drive = await getDriveClient();
   try {
-    await drive.files.update({ fileId, requestBody: { trashed: true } });
+    await drive.files.update({
+      fileId,
+      requestBody: { trashed: true },
+      supportsAllDrives: true,
+    });
   } catch (err) {
     const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
@@ -141,7 +176,7 @@ export async function trashDriveFile(fileId: string): Promise<void> {
 export async function downloadFile(fileId: string): Promise<Buffer> {
   const drive = await getDriveClient();
   const result = await drive.files.get(
-    { fileId, alt: 'media' },
+    { fileId, alt: 'media', supportsAllDrives: true },
     { responseType: 'arraybuffer' },
   );
   return Buffer.from(result.data as ArrayBuffer);
@@ -165,6 +200,7 @@ export async function shareWithUser(args: {
   const existing = await drive.permissions.list({
     fileId: args.fileId,
     fields: 'permissions(id,emailAddress,role)',
+    supportsAllDrives: true,
   });
   const lower = args.email.toLowerCase();
   const match = existing.data.permissions?.find(
@@ -176,6 +212,7 @@ export async function shareWithUser(args: {
       fileId: args.fileId,
       permissionId: match.id,
       requestBody: { role: args.role },
+      supportsAllDrives: true,
     });
     return;
   }
@@ -185,12 +222,14 @@ export async function shareWithUser(args: {
       sendNotificationEmail: args.sendNotificationEmail ?? false,
       emailMessage: args.emailMessage,
       requestBody: { type: 'user', role: args.role, emailAddress: args.email },
+      supportsAllDrives: true,
     });
   } else {
     await drive.permissions.create({
       fileId: args.fileId,
       sendNotificationEmail: args.sendNotificationEmail ?? false,
       requestBody: { type: 'user', role: args.role, emailAddress: args.email },
+      supportsAllDrives: true,
     });
   }
 }
@@ -239,7 +278,7 @@ export async function shareObservationFolderWithObserver(args: {
 export async function deleteDriveFile(fileId: string): Promise<void> {
   const drive = await getDriveClient();
   try {
-    await drive.files.delete({ fileId });
+    await drive.files.delete({ fileId, supportsAllDrives: true });
   } catch (err) {
     const status = (err as { code?: number }).code;
     if (status === 404) return; // already gone — nothing to delete
@@ -270,12 +309,16 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
       q: `'${folderId}' in parents and trashed = false`,
       fields: 'nextPageToken, files(id)',
       pageSize: 1000,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
       ...(pageToken ? { pageToken } : {}),
     });
     await Promise.all(
       (page.data.files ?? []).map((f) =>
         f.id
-          ? drive.files.delete({ fileId: f.id }).catch((err: unknown) => {
+          ? drive.files
+              .delete({ fileId: f.id, supportsAllDrives: true })
+              .catch((err: unknown) => {
               logger.warn('deleteDriveFolder: failed to delete child', {
                 folderId,
                 fileId: f.id,
@@ -288,7 +331,7 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
     pageToken = page.data.nextPageToken ?? undefined;
   } while (pageToken);
 
-  await drive.files.delete({ fileId: folderId }).catch((err: unknown) => {
+  await drive.files.delete({ fileId: folderId, supportsAllDrives: true }).catch((err: unknown) => {
     const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
   });
@@ -299,6 +342,7 @@ export async function getDriveLinks(fileId: string): Promise<DriveLink> {
   const meta = await drive.files.get({
     fileId,
     fields: 'webViewLink, webContentLink',
+    supportsAllDrives: true,
   });
   return {
     webViewLink: meta.data.webViewLink ?? `https://drive.google.com/file/d/${fileId}/view`,

@@ -5,6 +5,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, type Observation, type Staff } from '@ops/shared';
 import {
+  DRIVE_SERVICE_ACCOUNT,
   deleteDriveFolder,
   ensureObservationFolder,
   getDriveClient,
@@ -60,7 +61,12 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 export const uploadEvidenceFile = onCall(
-  { region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    memory: '512MiB',
+    timeoutSeconds: 120,
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();

@@ -11,7 +11,7 @@ import {
   type Observation,
   type Staff,
 } from '@ops/shared';
-import { trashDriveFile } from '../lib/drive.js';
+import { DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -38,7 +38,12 @@ if (getApps().length === 0) initializeApp();
  * found during review).
  */
 export const removeEvidenceFile = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();

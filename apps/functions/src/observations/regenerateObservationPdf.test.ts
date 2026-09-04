@@ -56,6 +56,10 @@ vi.mock('firebase-functions/params', () => ({
 }));
 
 vi.mock('../lib/drive.js', () => ({
+  // Real value, not a spy: the function's own options block reads it at module
+  // load to pin the runtime service account, so a mock returning undefined
+  // would silently deploy under the wrong identity.
+  DRIVE_SERVICE_ACCOUNT: 'peer-eval-svc@peer-evaluator-rubric.iam.gserviceaccount.com',
   ensureObservationFolder: (...a: unknown[]) => h.drive.ensureObservationFolder?.(...a),
   getDriveLinks: (...a: unknown[]) => h.drive.getDriveLinks?.(...a),
   shareObservationFolderWithObserver: (...a: unknown[]) =>
