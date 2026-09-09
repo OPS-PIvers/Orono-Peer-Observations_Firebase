@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Observation } from '@ops/shared';
-import { EVENT_EVALUATORS, resolveObservation, type DeriveContext } from './dashboardEvents';
+import {
+  EVENT_EVALUATORS,
+  resolveObservation,
+  responseProgress,
+  type ActiveQuestion,
+  type DeriveContext,
+} from './dashboardEvents';
 
 const NOW = new Date('2026-03-01T00:00:00Z');
 const PAST = new Date('2026-02-01T00:00:00Z');
@@ -26,8 +32,7 @@ function ctx(partial: Partial<DeriveContext>): DeriveContext {
     instructionalRoundDraft: null,
     finalizedWorkProduct: null,
     finalizedInstructionalRound: null,
-    workProductQuestionsCount: 0,
-    instructionalRoundQuestionsCount: 0,
+    questions: [],
     appSettings: null,
     openBooking: null,
     hasBookedSlot: false,
@@ -114,6 +119,17 @@ describe('EVENT_EVALUATORS', () => {
     expect(r.date).toEqual(PAST);
   });
 
+  it('postQuestionsUnlocked opens the calendar day after the observation date', () => {
+    // NOW is 2026-03-01T00:00Z; day-granularity comparison in local time.
+    const sameDay = obs({ observationDate: NOW });
+    const yesterday = obs({ observationDate: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) });
+    expect(EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), sameDay, NOW).satisfied).toBe(false);
+    const r = EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), yesterday, NOW);
+    expect(r.satisfied).toBe(true);
+    expect(r.date).toEqual(yesterday.observationDate);
+    expect(EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), null, NOW).satisfied).toBe(false);
+  });
+
   it('signupWindowOpened follows openBooking', () => {
     expect(EVENT_EVALUATORS.signupWindowOpened(ctx({}), null, NOW).satisfied).toBe(false);
     expect(
@@ -123,5 +139,72 @@ describe('EVENT_EVALUATORS', () => {
         NOW,
       ).satisfied,
     ).toBe(true);
+  });
+});
+
+describe("resolveObservation('anyDraftFirst')", () => {
+  it('prefers the live draft of any type over a finalized record', () => {
+    const f = obs({ observationId: 'fin', status: 'Finalized', type: 'Standard' });
+    const wp = obs({ observationId: 'wp', type: 'Work Product' });
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [f], workProductDraft: wp }), 'anyDraftFirst')
+        ?.observationId,
+    ).toBe('wp');
+    expect(
+      resolveObservation(ctx({ finalizedStandard: [f] }), 'anyDraftFirst')?.observationId,
+    ).toBe('fin');
+    expect(resolveObservation(ctx({}), 'anyDraftFirst')).toBeNull();
+  });
+});
+
+describe('responseProgress', () => {
+  const bank: ActiveQuestion[] = [
+    { questionId: 's-pre-1', type: 'standard', phase: 'pre' },
+    { questionId: 's-pre-2', type: 'standard', phase: 'pre' },
+    { questionId: 's-post-1', type: 'standard', phase: 'post' },
+    { questionId: 'wp-1', type: 'work-product', phase: 'pre' },
+    // Written before `phase` existed: counts as Planning.
+    { questionId: 'wp-legacy', type: 'work-product' } as ActiveQuestion,
+  ];
+  const answers = (...ids: string[]) =>
+    ids.map((questionId) => ({ questionId, answer: 'x', updatedAt: PAST }));
+
+  it('scopes to the observation type and the requested panel', () => {
+    const std = obs({ type: 'Standard', workProductAnswers: answers('s-pre-1', 's-post-1') });
+    expect(responseProgress(ctx({ questions: bank }), std, 'planning')).toEqual({
+      answered: 1,
+      total: 2,
+    });
+    expect(responseProgress(ctx({ questions: bank }), std, 'reflection')).toEqual({
+      answered: 1,
+      total: 1,
+    });
+    expect(responseProgress(ctx({ questions: bank }), std, null)).toEqual({
+      answered: 2,
+      total: 3,
+    });
+  });
+
+  it("never counts another type's questions or answers to deleted questions", () => {
+    const wp = obs({
+      type: 'Work Product',
+      workProductAnswers: answers('wp-1', 'wp-legacy', 'deleted-q', 's-pre-1'),
+    });
+    expect(responseProgress(ctx({ questions: bank }), wp, 'planning')).toEqual({
+      answered: 2,
+      total: 2,
+    });
+  });
+
+  it('ignores empty answers and a missing observation', () => {
+    const std = obs({
+      type: 'Standard',
+      workProductAnswers: [{ questionId: 's-pre-1', answer: '', updatedAt: PAST }],
+    });
+    expect(responseProgress(ctx({ questions: bank }), std, 'planning').answered).toBe(0);
+    expect(responseProgress(ctx({ questions: bank }), null, 'planning')).toEqual({
+      answered: 0,
+      total: 0,
+    });
   });
 });

@@ -86,8 +86,23 @@ const SAMPLE_CONTEXT: DeriveContext = {
   instructionalRoundDraft: sampleObs({ observationId: 'sample-ir' }),
   finalizedWorkProduct: null,
   finalizedInstructionalRound: null,
-  workProductQuestionsCount: 5,
-  instructionalRoundQuestionsCount: 5,
+  questions: [
+    ...['s1', 's2', 's3'].map((questionId) => ({
+      questionId,
+      type: 'standard' as const,
+      phase: 'pre' as const,
+    })),
+    ...['s4', 's5'].map((questionId) => ({
+      questionId,
+      type: 'standard' as const,
+      phase: 'post' as const,
+    })),
+    ...['w1', 'w2', 'w3', 'w4', 'w5'].map((questionId) => ({
+      questionId,
+      type: 'work-product' as const,
+      phase: 'pre' as const,
+    })),
+  ],
   appSettings: { signupLink: 'https://example.com/signup' } as never,
   openBooking: {
     windowId: 'sample-window',

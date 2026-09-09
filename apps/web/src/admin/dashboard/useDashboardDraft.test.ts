@@ -174,6 +174,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);
@@ -199,6 +200,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);
@@ -225,6 +227,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);
@@ -251,6 +254,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);
@@ -277,6 +281,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'fixedUrl',
           buttonUrl: 'a'.repeat(2049),
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);
@@ -303,6 +308,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
         {
           id: 'step2',
@@ -321,6 +327,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
         {
           id: 'step3',
@@ -339,6 +346,7 @@ describe('useDashboardDraft validation', () => {
           hideWhenDone: false,
           buttonTarget: 'observation',
           buttonUrl: '',
+          openPanel: null,
         },
       ];
       const errors = validateSteps(steps);

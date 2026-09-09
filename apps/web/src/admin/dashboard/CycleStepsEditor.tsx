@@ -16,6 +16,7 @@ import {
   SHOW_WHEN_OPTIONS,
   STEP_BUTTON_TARGETS,
   STEP_CHIP_STYLES,
+  STEP_OPEN_PANELS,
   WATCHED_KINDS,
   dashboardStep,
   type DashboardStep,
@@ -34,6 +35,7 @@ import {
   CS_FIELD_BUTTON,
   CS_FIELD_BUTTON_TARGET,
   CS_FIELD_BUTTON_URL,
+  CS_FIELD_OPEN_PANEL,
   CS_FIELD_CHIP,
   CS_FIELD_CHIP_STYLE,
   CS_FIELD_DATE,
@@ -50,6 +52,7 @@ import {
   DATE_SOURCE_LABELS,
   DONE_WHEN_LABELS,
   IN_PROGRESS_LABELS,
+  OPEN_PANEL_LABELS,
   SHOW_WHEN_LABELS,
   WATCHED_KIND_LABELS,
 } from './copyStrings';
@@ -269,6 +272,21 @@ export function CycleStepsEditor({
                               label={CS_FIELD_BUTTON_URL}
                               value={step.buttonUrl}
                               onChange={(v) => updateStep(step.id, { buttonUrl: v })}
+                            />
+                          ) : null}
+                          {step.buttonTarget === 'observation' ||
+                          step.inProgress === 'responseProgress' ? (
+                            <SelectField
+                              label={CS_FIELD_OPEN_PANEL}
+                              value={step.openPanel ?? 'none'}
+                              options={['none', ...STEP_OPEN_PANELS]}
+                              labels={OPEN_PANEL_LABELS}
+                              onChange={(v) =>
+                                updateStep(step.id, {
+                                  openPanel:
+                                    v === 'none' ? null : (v as DashboardStep['openPanel']),
+                                })
+                              }
                             />
                           ) : null}
                           <label className="flex items-center gap-2 text-xs font-medium">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -52,6 +52,7 @@ import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
 import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
+import { hasTiptapContent } from '@/utils/tiptapContent';
 import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
@@ -128,9 +129,18 @@ const emptyDraft: EditorDraft = {
   observationDate: undefined,
 };
 
+/** `#planning` / `#reflection` in the URL opens that panel on arrival. */
+function panelFromHash(hash: string): 'pre' | 'post' | null {
+  if (hash === '#planning') return 'pre';
+  if (hash === '#reflection') return 'post';
+  return null;
+}
+
 export function ObservationEditorPage() {
   const { observationId } = useParams<{ observationId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedPanel = panelFromHash(location.hash);
   const { user } = useAuth();
   const isAdminUser = useIsAdmin();
   const sidebarWidth = useSidebarWidth();
@@ -507,6 +517,21 @@ export function ObservationEditorPage() {
       isOnline,
     };
   }, [observation, questionBank, isObservedStaff, answers, isOnline]);
+
+  // Reflection questions the observed staff member has not answered yet —
+  // surfaced as a non-blocking warning in FinalizeDialog next to the
+  // unscored-components one. The teacher can still answer after finalize
+  // (Reflection stays open), but the evaluator should know they are
+  // finalizing ahead of it.
+  const unansweredPostQuestions = useMemo(
+    () =>
+      questionsSlot
+        ? questionsSlot.post.questions.filter(
+            (q) => !hasTiptapContent(questionsSlot.answers[q.questionId]),
+          )
+        : [],
+    [questionsSlot],
+  );
 
   // Components assigned to this role-year that have no proficiency selected
   // yet. Surfaced as a non-blocking warning in FinalizeDialog — some
@@ -935,6 +960,7 @@ export function ObservationEditorPage() {
           finalizing={finalizing}
           error={finalizeError}
           unscoredComponents={unscoredComponents}
+          unansweredPostQuestions={unansweredPostQuestions.map((q) => q.text)}
           onConfirm={() => void handleFinalize()}
         />
 
@@ -1029,6 +1055,7 @@ export function ObservationEditorPage() {
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
           questions={questionsSlot}
+          openPanel={requestedPanel}
           // Park the rubric scope toggle on the right of the meeting-
           // notes row at md+ so it sits inline with Planning/
           // Reflection. At mobile widths it drops below the row as a
@@ -1304,6 +1331,7 @@ function FinalizeDialog({
   finalizing,
   error,
   unscoredComponents,
+  unansweredPostQuestions,
   onConfirm,
 }: {
   open: boolean;
@@ -1312,6 +1340,8 @@ function FinalizeDialog({
   finalizing: boolean;
   error: string | null;
   unscoredComponents: ActiveComponent[];
+  /** Reflection question texts the observed staff member has not answered. */
+  unansweredPostQuestions: string[];
   onConfirm: () => void;
 }) {
   return (
@@ -1351,6 +1381,27 @@ function FinalizeDialog({
                   <li key={ac.component.id}>
                     <strong>{ac.component.id}</strong> {ac.component.title}
                   </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+        {unansweredPostQuestions.length > 0 ? (
+          <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p>
+                <strong>
+                  {unansweredPostQuestions.length} Reflection question
+                  {unansweredPostQuestions.length === 1 ? '' : 's'}
+                </strong>{' '}
+                {unansweredPostQuestions.length === 1 ? 'is' : 'are'} still unanswered by{' '}
+                {observation.observedName}. They can still answer after you finalize, but the PDF
+                will not include {unansweredPostQuestions.length === 1 ? 'it' : 'them'}.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {unansweredPostQuestions.map((text) => (
+                  <li key={text}>· {text}</li>
                 ))}
               </ul>
             </div>

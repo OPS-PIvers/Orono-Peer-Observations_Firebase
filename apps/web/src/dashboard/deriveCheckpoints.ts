@@ -25,7 +25,7 @@ import {
  * fabricated — every date and status comes from an existing artifact.
  */
 
-export type { DeriveContext } from './dashboardEvents';
+export type { ActiveQuestion, DeriveContext } from './dashboardEvents';
 
 export type CheckpointStatus = 'done' | 'inprogress' | 'soon' | 'upcoming';
 
@@ -130,7 +130,11 @@ function resolveButton(
   switch (step.buttonTarget) {
     case 'observation': {
       const id = obs ? observationDocId(obs) : '';
-      return { ctaUrl: id ? `/observations/${id}` : '' };
+      if (!id) return { ctaUrl: '' };
+      // `#planning` / `#reflection` opens that panel on arrival — see the
+      // hash handling in ObservationEditorPage.
+      const hash = step.openPanel ? `#${step.openPanel}` : '';
+      return { ctaUrl: `/observations/${id}${hash}` };
     }
     case 'booking': {
       const booking = ctx.openBooking
@@ -201,7 +205,7 @@ export function deriveCheckpoints(
     if (done) {
       status = 'done';
     } else if (step.inProgress === 'responseProgress') {
-      const { answered, total } = responseProgress(ctx, obs, step.watchedKind);
+      const { answered, total } = responseProgress(ctx, obs, step.openPanel);
       if (answered > 0 && total > 0) {
         status = 'inprogress';
         percent = Math.min(100, Math.round((answered / total) * 100));

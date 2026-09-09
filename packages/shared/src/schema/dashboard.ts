@@ -120,6 +120,10 @@ export const BOOLEAN_EVENTS = [
   'postObsDatePassed',
   'finalized',
   'acknowledged',
+  /** The calendar day after the observation date has begun — the moment the
+   *  observed staff member's Reflection questions open (see
+   *  `postQuestionsUnlocked` in workProductQuestion.ts). */
+  'postQuestionsUnlocked',
 ] as const;
 export type BooleanEvent = (typeof BOOLEAN_EVENTS)[number];
 
@@ -159,6 +163,11 @@ export const WATCHED_KINDS = [
    *  post-finalize steps (e.g. acknowledge) that must keep pointing at the
    *  finalized record even after a new cycle's draft is opened. */
   'standardFinalized',
+  /** The live draft of any type, else the most recent finalized observation.
+   *  Use for steps that belong to every observation type (the Planning /
+   *  Reflection question cards): `any` resolves finalized-first, so a prior
+   *  cycle's finalized record would shadow the new draft forever. */
+  'anyDraftFirst',
 ] as const;
 export type WatchedKind = (typeof WATCHED_KINDS)[number];
 
@@ -173,6 +182,12 @@ export type StepButtonTarget = (typeof STEP_BUTTON_TARGETS)[number];
 
 export const STEP_CHIP_STYLES = ['form', 'meeting', 'observation', 'review'] as const;
 export type StepChipStyle = (typeof STEP_CHIP_STYLES)[number];
+
+/** Which Planning / Reflection panel a step's button opens on the observation
+ *  page (`/observations/:id#planning` / `#reflection`). Also scopes
+ *  `responseProgress` to that panel's questions. */
+export const STEP_OPEN_PANELS = ['planning', 'reflection'] as const;
+export type StepOpenPanel = (typeof STEP_OPEN_PANELS)[number];
 
 export const dashboardStep = z.object({
   id: z.string().min(1),
@@ -191,6 +206,9 @@ export const dashboardStep = z.object({
   hideWhenDone: z.boolean().default(false),
   buttonTarget: z.enum(STEP_BUTTON_TARGETS).default('observation'),
   buttonUrl: z.string().trim().max(2048).default(''),
+  /** Optional: open a specific panel on the observation page and count only
+   *  that panel's questions in `responseProgress`. Null = neither. */
+  openPanel: z.enum(STEP_OPEN_PANELS).nullable().default(null),
 });
 export type DashboardStep = z.infer<typeof dashboardStep>;
 
@@ -239,8 +257,15 @@ export const DASHBOARD_QUICK_MATERIALS_DOC_ID = 'global';
 
 // ─── Seed steps + legacy migration ───────────────────────────────────────────
 
-/** The 8 built-ins as editable seed steps. Reproduces today's behavior, with
- *  meetings/visit completing when their date passes (not on finalize). */
+/** The built-ins as editable seed steps. Planning and Reflection carry both
+ *  the meeting date and the observed staff member's question progress for
+ *  that phase, and deep-link into the matching panel on the observation
+ *  page — every observation type has questions, so there is no separate
+ *  Work Product / Instructional Round card any more.
+ *
+ *  Changing this array does NOT change production on its own: a saved
+ *  `steps` array wins verbatim (see resolveSteps). Run
+ *  scripts/migrate-dashboard-steps.mjs after editing. */
 export const DEFAULT_STEPS: DashboardStep[] = [
   dashboardStep.parse({
     id: 'signup',
@@ -267,42 +292,28 @@ export const DEFAULT_STEPS: DashboardStep[] = [
   dashboardStep.parse({
     id: 'preObs',
     order: 1,
-    watchedKind: 'standard',
+    // Every observation type has Planning questions, so track the live draft
+    // whatever its type.
+    watchedKind: 'anyDraftFirst',
     chipStyle: 'meeting',
-    chipLabel: 'Meeting',
-    title: 'Pre-observation conversation',
+    chipLabel: 'Planning',
+    title: 'Planning',
     description:
-      '20-minute conversation with your peer evaluator. Lesson plan, focus components, context.',
-    buttonLabel: 'View meeting',
-    // Only surface once the evaluator has actually scheduled the meeting.
-    // `observationCreated` put a permanent "Awaiting date" card on every
-    // staff dashboard the moment a draft (or a prior year's finalized
-    // observation) existed, with nothing the staff member could do about it.
-    showWhen: 'preObsDateSet',
+      'Answer your planning questions and meet with your peer evaluator about the lesson, focus components, and context.',
+    buttonLabel: 'Open Planning',
+    // Surfaces as soon as the draft exists — the questions are answerable
+    // from that moment, so there is real work on the card even before the
+    // evaluator has scheduled the conversation.
+    showWhen: 'observationCreated',
     doneWhen: 'preObsDatePassed',
     dateFrom: 'preObsDate',
-    buttonTarget: 'observation',
-  }),
-  dashboardStep.parse({
-    id: 'workProduct',
-    order: 2,
-    watchedKind: 'workProduct',
-    chipStyle: 'form',
-    chipLabel: 'Evidence',
-    title: 'Submit work-product responses',
-    description:
-      'Short prompts about your planning, family communication, and growth. Save and resume any time.',
-    buttonLabel: 'Continue answering',
-    showWhen: 'observationCreated',
-    doneWhen: 'finalized',
-    dateFrom: 'lastModifiedAt',
     inProgress: 'responseProgress',
-    buttonTarget: 'fixedUrl',
-    buttonUrl: '/my-rubric',
+    buttonTarget: 'observation',
+    openPanel: 'planning',
   }),
   dashboardStep.parse({
     id: 'observation',
-    order: 3,
+    order: 2,
     watchedKind: 'standard',
     chipStyle: 'observation',
     chipLabel: 'Observation',
@@ -316,7 +327,7 @@ export const DEFAULT_STEPS: DashboardStep[] = [
   }),
   dashboardStep.parse({
     id: 'reviewDraft',
-    order: 4,
+    order: 3,
     // anyDraft (never finalized) makes the step re-show for a fresh draft even
     // if a prior cycle's observation is already finalized.
     watchedKind: 'anyDraft',
@@ -334,21 +345,27 @@ export const DEFAULT_STEPS: DashboardStep[] = [
   }),
   dashboardStep.parse({
     id: 'postObs',
-    order: 5,
-    watchedKind: 'standard',
+    order: 4,
+    watchedKind: 'anyDraftFirst',
     chipStyle: 'meeting',
-    chipLabel: 'Meeting',
-    title: 'Post-observation conversation',
-    description: '30 minutes to talk through proficiency ratings and where to focus next.',
-    buttonLabel: 'View meeting',
-    showWhen: 'postObsDateSet',
+    chipLabel: 'Reflection',
+    title: 'Reflection',
+    description:
+      'Answer your reflection questions and talk through proficiency ratings and where to focus next.',
+    buttonLabel: 'Open Reflection',
+    // The Reflection questions open the day after the observation; that is
+    // when this card has something to do, whether or not the evaluator has
+    // scheduled the conversation yet.
+    showWhen: 'postQuestionsUnlocked',
     doneWhen: 'postObsDatePassed',
     dateFrom: 'postObsDate',
+    inProgress: 'responseProgress',
     buttonTarget: 'observation',
+    openPanel: 'reflection',
   }),
   dashboardStep.parse({
     id: 'acknowledge',
-    order: 6,
+    order: 5,
     // standardFinalized, not standard: `standard` resolves draft-first, so a
     // newly opened draft would hide an as-yet-unacknowledged finalized record.
     watchedKind: 'standardFinalized',
@@ -361,22 +378,6 @@ export const DEFAULT_STEPS: DashboardStep[] = [
     doneWhen: 'acknowledged',
     dateFrom: 'finalizedAt',
     buttonTarget: 'acknowledge',
-  }),
-  dashboardStep.parse({
-    id: 'instructionalRound',
-    order: 7,
-    watchedKind: 'instructionalRound',
-    chipStyle: 'observation',
-    chipLabel: 'Round',
-    title: 'Instructional Round',
-    description: 'Reflective responses for this instructional round.',
-    buttonLabel: 'View details',
-    showWhen: 'observationCreated',
-    doneWhen: 'finalized',
-    dateFrom: 'createdAt',
-    inProgress: 'responseProgress',
-    buttonTarget: 'fixedUrl',
-    buttonUrl: '/my-rubric',
   }),
 ];
 

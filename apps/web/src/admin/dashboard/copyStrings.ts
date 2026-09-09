@@ -118,6 +118,7 @@ export const CS_FIELD_DATE = 'Show date from';
 export const CS_FIELD_PROGRESS = 'Progress bar';
 export const CS_FIELD_BUTTON_TARGET = 'Button goes to';
 export const CS_FIELD_BUTTON_URL = 'Link address';
+export const CS_FIELD_OPEN_PANEL = 'Open which panel';
 export const CS_FIELD_HIDE_DONE = 'Hide once done';
 
 export const CS_PLACEHOLDER_DEFAULT = '(optional)';
@@ -129,6 +130,7 @@ export const WATCHED_KIND_LABELS: Record<string, string> = {
   any: 'Any observation',
   anyDraft: 'Any active draft (skip finalized)',
   standardFinalized: 'Finalized Standard observation (skip drafts)',
+  anyDraftFirst: 'Any observation (active draft first)',
 };
 
 export const SHOW_WHEN_LABELS: Record<string, string> = {
@@ -145,6 +147,7 @@ export const SHOW_WHEN_LABELS: Record<string, string> = {
   postObsDatePassed: 'When the post-observation date passes',
   finalized: 'When the observation is finalized',
   acknowledged: 'When the staff member acknowledges',
+  postQuestionsUnlocked: 'When the Reflection questions open (day after the observation)',
 };
 
 export const DONE_WHEN_LABELS: Record<string, string> = {
@@ -160,6 +163,7 @@ export const DONE_WHEN_LABELS: Record<string, string> = {
   postObsDatePassed: 'When the post-observation date passes',
   finalized: 'When the observation is finalized',
   acknowledged: 'When the staff member acknowledges',
+  postQuestionsUnlocked: 'When the Reflection questions open (day after the observation)',
 };
 
 export const DATE_SOURCE_LABELS: Record<string, string> = {
@@ -175,7 +179,13 @@ export const DATE_SOURCE_LABELS: Record<string, string> = {
 
 export const IN_PROGRESS_LABELS: Record<string, string> = {
   none: 'No progress bar',
-  responseProgress: 'Response form progress (answered ÷ total)',
+  responseProgress: 'Question progress (answered ÷ total, for the panel chosen below)',
+};
+
+export const OPEN_PANEL_LABELS: Record<string, string> = {
+  none: 'Neither — the top of the page',
+  planning: 'Planning',
+  reflection: 'Reflection',
 };
 
 export const BUTTON_TARGET_LABELS: Record<string, string> = {

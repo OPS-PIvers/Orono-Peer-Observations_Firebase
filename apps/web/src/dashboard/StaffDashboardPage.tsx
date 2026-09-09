@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   collectionGroup,
@@ -21,6 +21,7 @@ import {
   OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
+  questionPhase,
   questionType,
   staffMatchesAutoEnable,
   type AppSettings,
@@ -47,6 +48,7 @@ import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
 import { DashboardView, type ModuleChip } from './DashboardView';
 import {
+  type ActiveQuestion,
   type CheckpointWithStatus,
   deriveCheckpoints,
   extractFirstName,
@@ -203,9 +205,13 @@ export function StaffDashboardPage() {
 
   const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
 
-  const activeQuestionCount = useCallback(
-    (type: WorkProductQuestion['type']) =>
-      (wpQuestions.data ?? []).filter((q) => questionType(q) === type && q.isActive).length,
+  // Only active questions count; `responseProgress` narrows them to the
+  // watched observation's type and the step's panel (Planning / Reflection).
+  const activeQuestions = useMemo<ActiveQuestion[]>(
+    () =>
+      (wpQuestions.data ?? [])
+        .filter((q) => q.isActive)
+        .map((q) => ({ questionId: q.questionId, type: questionType(q), phase: questionPhase(q) })),
     [wpQuestions.data],
   );
 
@@ -218,14 +224,7 @@ export function StaffDashboardPage() {
       instructionalRoundDraft: irDraft,
       finalizedWorkProduct: null,
       finalizedInstructionalRound: null,
-      // Both counts previously used the whole collection's length, so a
-      // Work Product card counted the Instructional Round questions too (and
-      // vice versa) and never dropped deactivated ones — "0 of 7" on a bank of
-      // three. Count only the active questions of the matching type.
-      // Locked post-observation questions stay in the denominator on purpose:
-      // the teacher does owe them, just not yet.
-      workProductQuestionsCount: activeQuestionCount('work-product'),
-      instructionalRoundQuestionsCount: activeQuestionCount('instructional-round'),
+      questions: activeQuestions,
       appSettings: appSettings ?? null,
       openBooking,
       hasBookedSlot,
@@ -239,7 +238,7 @@ export function StaffDashboardPage() {
     standardDraft,
     wpDraft,
     irDraft,
-    activeQuestionCount,
+    activeQuestions,
     appSettings,
     openBooking,
     hasBookedSlot,

@@ -15,6 +15,7 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   observationDate: 'Observation date',
   observationName: 'Observation name',
   observationType: 'Observation type',
+  observationLink: 'Observation page link',
   pdfDriveLink: 'PDF report link',
   driveFolderLink: 'Drive folder link',
   appName: 'App name',

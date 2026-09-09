@@ -31,8 +31,7 @@ function ctx(partial: Partial<DeriveContext>): DeriveContext {
     instructionalRoundDraft: null,
     finalizedWorkProduct: null,
     finalizedInstructionalRound: null,
-    workProductQuestionsCount: 0,
-    instructionalRoundQuestionsCount: 0,
+    questions: [],
     appSettings: null,
     openBooking: null,
     hasBookedSlot: false,
@@ -155,12 +154,19 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(review?.status).toBe('soon');
   });
 
-  it('the built-in signup and instructionalRound steps carry a non-ICS-eligible dateSource', () => {
-    // Regression test for the reported defect: both steps use a "meeting" /
-    // "observation" chipStyle but their dates are a booking deadline and a
-    // record-creation timestamp, respectively — neither is a real event.
+  it('the built-in signup step and a createdAt-dated step carry a non-ICS-eligible dateSource', () => {
+    // Regression test for the reported defect: a "meeting" / "observation"
+    // chipStyle whose date is a booking deadline or a record-creation
+    // timestamp is not a real event to put on a calendar.
+    const roundLike = dashboardStep.parse({
+      id: 'round',
+      watchedKind: 'instructionalRound',
+      chipStyle: 'observation',
+      showWhen: 'observationCreated',
+      dateFrom: 'createdAt',
+    });
     const cards = deriveCheckpoints(
-      DEFAULT_STEPS,
+      [...DEFAULT_STEPS, roundLike],
       ctx({
         openBooking: { windowId: 'w', token: 't', endDate: FUTURE },
         instructionalRoundDraft: obs({ createdAt: PAST }),
@@ -168,12 +174,12 @@ describe('deriveCheckpoints (seed behavior)', () => {
       NOW,
     );
     const signup = cards.find((c) => c.id === 'signup');
-    const instructionalRound = cards.find((c) => c.id === 'instructionalRound');
-    if (!signup || !instructionalRound) throw new Error('expected both cards to be present');
+    const round = cards.find((c) => c.id === 'round');
+    if (!signup || !round) throw new Error('expected both cards to be present');
     expect(signup.dateSource).toBe('windowEndDate');
     expect(checkpointToIcsEvent(signup, 'x@orono.k12.mn.us')).toBeNull();
-    expect(instructionalRound.dateSource).toBe('createdAt');
-    expect(checkpointToIcsEvent(instructionalRound, 'x@orono.k12.mn.us')).toBeNull();
+    expect(round.dateSource).toBe('createdAt');
+    expect(checkpointToIcsEvent(round, 'x@orono.k12.mn.us')).toBeNull();
   });
 
   it("threads a real booked slot's scheduledStartAt/scheduledEndAt onto the observation checkpoint (Finding 2)", () => {
@@ -219,24 +225,51 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(event?.end).toEqual(createdInstant);
   });
 
-  it('drives the work-product progress bar from answers', () => {
+  it("drives the Planning progress bar from that phase's answers, for any observation type", () => {
     const wp = obs({
       observationId: 'wp',
+      type: 'Work Product',
       workProductAnswers: [
-        { answer: 'a' },
-        { answer: '' },
-        { answer: 'b' },
+        { questionId: 'q1', answer: 'a' },
+        { questionId: 'q2', answer: '' },
+        { questionId: 'q3', answer: 'b' },
+        { questionId: 'post1', answer: 'answered early?' },
       ] as unknown as Observation['workProductAnswers'],
     });
-    const cards = deriveCheckpoints(
+    const questions = [
+      ...['q1', 'q2', 'q3', 'q4'].map((questionId) => ({
+        questionId,
+        type: 'work-product' as const,
+        phase: 'pre' as const,
+      })),
+      { questionId: 'post1', type: 'work-product' as const, phase: 'post' as const },
+    ];
+    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ workProductDraft: wp, questions }), NOW);
+    const planning = cards.find((c) => c.id === 'preObs');
+    expect(planning?.status).toBe('inprogress');
+    expect(planning?.percent).toBe(50);
+    expect(planning?.percentLabel).toBe('2 of 4 answered');
+    expect(planning?.ctaUrl).toBe('/observations/wp#planning');
+  });
+
+  it('shows Reflection only once the post questions unlock, deep-linking to its panel', () => {
+    const yesterday = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+    const questions = [{ questionId: 'p1', type: 'standard' as const, phase: 'post' as const }];
+    const before = deriveCheckpoints(
       DEFAULT_STEPS,
-      ctx({ workProductDraft: wp, workProductQuestionsCount: 4 }),
+      ctx({ standardDraft: obs({ observationDate: FUTURE }), questions }),
       NOW,
     );
-    const card = cards.find((c) => c.id === 'workProduct');
-    expect(card?.status).toBe('inprogress');
-    expect(card?.percent).toBe(50);
-    expect(card?.percentLabel).toBe('2 of 4 answered');
+    expect(before.find((c) => c.id === 'postObs')).toBeUndefined();
+
+    const after = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ standardDraft: obs({ observationDate: yesterday }), questions }),
+      NOW,
+    );
+    const reflection = after.find((c) => c.id === 'postObs');
+    expect(reflection?.ctaUrl).toBe('/observations/obs-1#reflection');
+    expect(reflection?.status).toBe('soon');
   });
 });
 
@@ -283,12 +316,13 @@ describe('deriveCheckpoints (generic slots)', () => {
     expect(deriveCheckpoints([a, b, c], ctx({}), NOW).map((x) => x.id)).toEqual(['b', 'a']);
   });
 
-  it('hides date-gated meeting cards until their date is actually set', () => {
-    // A bare draft (no meeting dates) must not emit preObs/observation/postObs
-    // "Awaiting date" cards — there is nothing the staff member can act on.
+  it('hides date-gated cards until their date is actually set', () => {
+    // A bare draft (no dates) must not emit the observation card or the
+    // Reflection card — there is nothing the staff member can act on yet.
+    // Planning does show: its questions are answerable from day one.
     const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW);
     const ids = cards.map((c) => c.id);
-    expect(ids).not.toContain('preObs');
+    expect(ids).toContain('preObs');
     expect(ids).not.toContain('observation');
     expect(ids).not.toContain('postObs');
   });
