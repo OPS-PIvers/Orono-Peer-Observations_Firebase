@@ -433,3 +433,35 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 });
+
+describe('observations: draftVisibility switchboard', () => {
+  const visible = {
+    ratings: true,
+    notes: false,
+    evidence: false,
+    script: true,
+    meetingNotes: false,
+  };
+
+  it('observer CAN toggle draftVisibility on their Draft', async () => {
+    await seedDraftObs('visObs');
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/visObs'), {
+        draftVisibility: visible,
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CANNOT change draftVisibility', async () => {
+    await seedDraftObs('visObs2');
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/visObs2'), {
+        draftVisibility: visible,
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+});

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
 import { hasTiptapContent } from '@/utils/tiptapContent';
 import { SaveStatusIndicator } from './GlobalToolsBar';
+import { SelectableAnswer } from './SelectableAnswer';
 import { answerProgress, answeredAfterFinalize, type AnswerEditability } from './questionAnswers';
 
 /** One phase's slice of the observation question bank, plus whether the
@@ -34,6 +35,11 @@ export interface QuestionsSlot {
   /** Observation date, used to explain the Reflection lock. */
   observationDate: Date | null;
   onAnswerChange: (questionId: string, value: TiptapDoc) => void;
+  /** Evaluator-only: lift a selected sentence of an answer into the script
+   *  as evidence. Absent for the teacher's own view and after finalize. */
+  onCaptureEvidence?:
+    | ((text: string, phase: QuestionPhase, questionText: string) => void)
+    | undefined;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   saveError: string | null;
   onRetrySave: () => void;
@@ -227,14 +233,22 @@ function PhaseQuestionsBlock({
                 minHeight="6rem"
               />
             ) : answered ? (
-              <TiptapEditor
-                value={value}
-                onChange={() => undefined}
-                readOnly
-                variant="compact"
-                minHeight="4rem"
-                className="mt-1"
-              />
+              <SelectableAnswer
+                onCapture={
+                  questions.onCaptureEvidence
+                    ? (text) => questions.onCaptureEvidence?.(text, phase, q.text)
+                    : undefined
+                }
+              >
+                <TiptapEditor
+                  value={value}
+                  onChange={() => undefined}
+                  readOnly
+                  variant="compact"
+                  minHeight="4rem"
+                  className="mt-1"
+                />
+              </SelectableAnswer>
             ) : (
               <p className="mt-1 text-sm text-gray-400 italic">Not yet answered</p>
             )}

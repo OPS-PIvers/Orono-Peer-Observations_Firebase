@@ -83,6 +83,36 @@ function tiptapNodeHasText(node: unknown): boolean {
   return false;
 }
 
+/**
+ * What the observed staff member may see on a Draft. Display gating only —
+ * rules gate whole documents and the teacher already has `get` on their own
+ * observation, so this stops the data rendering, not arriving. All off by
+ * default, per observation, no district default; on finalize everything is
+ * visible regardless. Rubric criteria and the teacher's own questions are
+ * never withheld.
+ */
+export const draftVisibility = z.object({
+  /** Proficiency selections and look-fors. */
+  ratings: z.boolean().default(false),
+  /** Per-component manual notes. */
+  notes: z.boolean().default(false),
+  /** Drive evidence links per component. */
+  evidence: z.boolean().default(false),
+  /** The live script and its component tags. */
+  script: z.boolean().default(false),
+  /** The evaluator's Planning / Reflection meeting notes (dates stay visible). */
+  meetingNotes: z.boolean().default(false),
+});
+export type DraftVisibility = z.infer<typeof draftVisibility>;
+
+export const DRAFT_VISIBILITY_HIDDEN: DraftVisibility = {
+  ratings: false,
+  notes: false,
+  evidence: false,
+  script: false,
+  meetingNotes: false,
+};
+
 /** Frozen copy of the rubric content an observation was scored against,
  *  captured server-side at finalize time (finalizeObservation). Domains are
  *  resolved to the components actually in play for the observed role/year
@@ -133,6 +163,9 @@ export const observation = z.object({
   // Script editor (live note-taking)
   scriptDoc: tiptapDoc.optional(),
   componentTags: z.array(componentTag).default([]),
+
+  /** Observer-controlled draft sharing switchboard — see draftVisibility. */
+  draftVisibility: draftVisibility.default(DRAFT_VISIBILITY_HIDDEN),
 
   // Work product answers (only when type === 'Work Product')
   workProductAnswers: z.array(workProductAnswer).optional(),

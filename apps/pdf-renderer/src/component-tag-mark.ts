@@ -44,6 +44,15 @@ export const ComponentTagMark = Mark.create({
           return { 'data-fg': fg };
         },
       },
+      source: {
+        default: 'script',
+        parseHTML: (element: MinimalElement) => element.getAttribute('data-source') ?? 'script',
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const source = attributes['source'];
+          if (typeof source !== 'string' || source.length === 0 || source === 'script') return {};
+          return { 'data-source': source };
+        },
+      },
     };
   },
   parseHTML() {

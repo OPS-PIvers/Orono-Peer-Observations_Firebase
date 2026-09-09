@@ -1,10 +1,20 @@
 import type { TiptapDoc } from '@ops/shared';
 
+/** Where a tagged span came from. `script` is the evaluator's own note-taking;
+ *  the other two are sentences lifted from the teacher's answers. */
+export const TAG_SOURCES = ['script', 'planning', 'reflection'] as const;
+export type TagSource = (typeof TAG_SOURCES)[number];
+
+export function tagSourceOf(value: unknown): TagSource {
+  return value === 'planning' || value === 'reflection' ? value : 'script';
+}
+
 export interface TaggedSpan {
   text: string;
   paragraphIndex: number;
   bg: string | null;
   fg: string | null;
+  source: TagSource;
 }
 
 interface MaybeNode {
@@ -46,7 +56,9 @@ export function extractTaggedSpansForComponent(
         tagMark &&
         (tagMark.attrs as { componentId?: string } | undefined)?.componentId === componentId
       ) {
-        const attrs = tagMark.attrs as { bg?: string | null; fg?: string | null } | undefined;
+        const attrs = tagMark.attrs as
+          | { bg?: string | null; fg?: string | null; source?: unknown }
+          | undefined;
         const last = out[out.length - 1];
         if (currentParagraphHadMatch && last?.paragraphIndex === paragraphIndex) {
           last.text += node.text;
@@ -56,6 +68,7 @@ export function extractTaggedSpansForComponent(
             paragraphIndex,
             bg: attrs?.bg ?? null,
             fg: attrs?.fg ?? null,
+            source: tagSourceOf(attrs?.source),
           });
           currentParagraphHadMatch = true;
         }

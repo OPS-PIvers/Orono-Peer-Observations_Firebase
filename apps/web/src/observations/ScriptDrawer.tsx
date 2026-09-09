@@ -37,7 +37,12 @@ export interface ScriptDrawerProps {
   children: ReactNode;
   /** px — 56 (rail) or 240 (expanded), passed from Layout context. 0 on mobile. */
   sidebarWidth: number;
+  /** Bump to open the drawer from outside (e.g. after capturing evidence
+   *  into the script). Leaves an already-open drawer at its height. */
+  openSignal?: number;
 }
+
+const PROGRAMMATIC_OPEN_HEIGHT = 320;
 
 /**
  * Fixed-bottom resizable drawer for the script editor. There is no
@@ -46,7 +51,7 @@ export interface ScriptDrawerProps {
  * enough, a floating chevron-down at the bottom-center offers a quick
  * one-click collapse back to zero.
  */
-export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
+export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptDrawerProps) {
   const [bodyHeight, setBodyHeight] = useState<number>(() => {
     const raw = parseInt(readSession(HEIGHT_KEY, String(DEFAULT_BODY_HEIGHT)), 10);
     return Number.isFinite(raw) ? Math.max(0, raw) : DEFAULT_BODY_HEIGHT;
@@ -90,6 +95,17 @@ export function ScriptDrawer({ children, sidebarWidth }: ScriptDrawerProps) {
       window.removeEventListener('pointerup', onUp);
     };
   }, []);
+
+  useEffect(() => {
+    if (openSignal === 0) return;
+    setBodyHeight((h) => {
+      if (h > 0) return h;
+      const maxH = window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT;
+      const next = Math.min(maxH, PROGRAMMATIC_OPEN_HEIGHT);
+      writeSession(HEIGHT_KEY, String(next));
+      return next;
+    });
+  }, [openSignal]);
 
   const collapse = useCallback(() => {
     setBodyHeight(0);

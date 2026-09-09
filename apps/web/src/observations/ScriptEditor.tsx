@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type Content, type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -26,6 +26,8 @@ import { functions } from '@/lib/firebase';
 import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
 import { Divider, ToolbarButton, useLinkDialog } from '@/components/ui/tiptap-toolbar';
 import { ComponentTagMark } from './component-tag-mark';
+import type { TagSource } from './extract-script-tags';
+import { buildTeacherResponseNodes } from './insert-teacher-response';
 import { colorFor } from './component-colors';
 import {
   AutoTagReviewDialog,
@@ -67,10 +69,24 @@ type AutoTagNotice =
   | { kind: 'no-suggestions'; skippedCount: number }
   | { kind: 'applied'; appliedCount: number; rejectedCount: number };
 
+/**
+ * A sentence the evaluator lifted from the teacher's Planning / Reflection
+ * answer. The editor appends it (with an attribution line), selects it and
+ * opens the component picker so it lands already tagged — with the tag's
+ * `source` recording where it came from. `id` distinguishes repeat requests.
+ */
+export interface EvidenceCaptureRequest {
+  id: number;
+  text: string;
+  source: Exclude<TagSource, 'script'>;
+  questionText: string;
+}
+
 export interface ScriptEditorProps {
   value: TiptapDoc | undefined;
   onChange: (document: TiptapDoc) => void;
   readOnly?: boolean;
+  captureRequest?: EvidenceCaptureRequest | null | undefined;
   /** Components the script can be tagged against, in display order. */
   availableComponents: { domain: RubricDomain; component: RubricComponent }[];
   /** Observation id, required for the Auto-tag callable. Omit to hide the button. */
@@ -90,6 +106,7 @@ export function ScriptEditor({
   value,
   onChange,
   readOnly = false,
+  captureRequest,
   availableComponents,
   observationId,
   placeholder,
@@ -123,8 +140,9 @@ export function ScriptEditor({
     editor.commands.setContent(incoming as Content, { emitUpdate: false });
   }, [value, editor]);
 
+  // emitUpdate: false — see the same effect in tiptap-editor.tsx.
   useEffect(() => {
-    editor.setEditable(!readOnly);
+    editor.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
   // Force a rerender on each editor selection change so we can read the
@@ -155,9 +173,51 @@ export function ScriptEditor({
 
   const activeTagId = editor.getAttributes('componentTag')['componentId'] as string | null;
 
+  // Source to stamp on the next tag: set by a capture request, consumed by
+  // the tag that follows, cleared if the picker closes without tagging.
+  const pendingSourceRef = useRef<TagSource | null>(null);
+  const handledCaptureId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!captureRequest || readOnly) return;
+    if (handledCaptureId.current === captureRequest.id) return;
+    handledCaptureId.current = captureRequest.id;
+    const nodes = buildTeacherResponseNodes(
+      captureRequest.text,
+      captureRequest.source,
+      captureRequest.questionText,
+    );
+    if (editor.isEmpty) {
+      editor.chain().focus().setContent(nodes).run();
+    } else {
+      editor.chain().focus().insertContentAt(editor.state.doc.content.size, nodes).run();
+    }
+    // Select exactly the captured paragraph (the last block) so the pick
+    // that follows tags it and nothing else.
+    const docNode = editor.state.doc;
+    const last = docNode.lastChild;
+    if (last) {
+      const to = docNode.content.size - 1;
+      const from = to - last.content.size;
+      pendingSourceRef.current = captureRequest.source;
+      editor.chain().focus().setTextSelection({ from, to }).run();
+      setPickerOpen(true);
+    }
+  }, [captureRequest, editor, readOnly]);
+
+  function closePicker() {
+    pendingSourceRef.current = null;
+    setPickerOpen(false);
+  }
+
   function applyTag(component: RubricComponent) {
     const { bg, fg } = colorFor(component);
-    const attrs = { componentId: component.id, bg, fg };
+    const attrs = {
+      componentId: component.id,
+      bg,
+      fg,
+      source: pendingSourceRef.current ?? 'script',
+    };
+    pendingSourceRef.current = null;
     const { from, to, empty } = editor.state.selection;
     if (empty) {
       const paragraphRange = paragraphRangeAt(editor, from);
@@ -247,7 +307,10 @@ export function ScriptEditor({
           editor={editor}
           activeTagId={activeTagId}
           pickerOpen={pickerOpen}
-          onTogglePicker={() => setPickerOpen((v) => !v)}
+          onTogglePicker={() => {
+            if (pickerOpen) closePicker();
+            else setPickerOpen(true);
+          }}
           onAutoTag={observationId && autoTagEnabled ? () => void runAutoTag() : null}
           autoTagBusy={autoTagBusy}
         />
@@ -287,7 +350,7 @@ export function ScriptEditor({
             activeTagId={activeTagId}
             onPick={applyTag}
             onClear={clearTag}
-            onClose={() => setPickerOpen(false)}
+            onClose={closePicker}
           />
         ) : null}
       </div>

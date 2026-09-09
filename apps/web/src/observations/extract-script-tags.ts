@@ -1,10 +1,20 @@
 import type { TiptapDoc } from '@ops/shared';
 
+/** Where a tagged span came from. `script` is the evaluator's own note-taking;
+ *  the other two are sentences lifted from the teacher's answers. */
+export const TAG_SOURCES = ['script', 'planning', 'reflection'] as const;
+export type TagSource = (typeof TAG_SOURCES)[number];
+
+export function tagSourceOf(value: unknown): TagSource {
+  return value === 'planning' || value === 'reflection' ? value : 'script';
+}
+
 export interface TaggedSpan {
   text: string;
   paragraphIndex: number;
   bg: string | null;
   fg: string | null;
+  source: TagSource;
 }
 
 interface MaybeNode {
@@ -47,7 +57,9 @@ export function extractTaggedSpansForComponent(
         tagMark &&
         (tagMark.attrs as { componentId?: string } | undefined)?.componentId === componentId
       ) {
-        const attrs = tagMark.attrs as { bg?: string | null; fg?: string | null } | undefined;
+        const attrs = tagMark.attrs as
+          | { bg?: string | null; fg?: string | null; source?: unknown }
+          | undefined;
         const last = out[out.length - 1];
         if (currentParagraphHadMatch && last?.paragraphIndex === paragraphIndex) {
           last.text += node.text;
@@ -57,6 +69,7 @@ export function extractTaggedSpansForComponent(
             paragraphIndex,
             bg: attrs?.bg ?? null,
             fg: attrs?.fg ?? null,
+            source: tagSourceOf(attrs?.source),
           });
           currentParagraphHadMatch = true;
         }
@@ -74,11 +87,19 @@ export function extractTaggedSpansForComponent(
   return out;
 }
 
+/** Italic prefix shown before a span lifted from the teacher's answers, so
+ *  the mirrored view never presents their words as the evaluator's. */
+export const TAG_SOURCE_PREFIX: Record<Exclude<TagSource, 'script'>, string> = {
+  planning: "Teacher's Planning response",
+  reflection: "Teacher's Reflection response",
+};
+
 /**
  * Build a read-only Tiptap doc that mirrors the tagged spans for a given
  * component. Each span becomes its own paragraph carrying the same
  * `componentTag` mark so the existing CSS / inline-style rules render the
- * correct highlight color in the read-only `TiptapEditor` mount.
+ * correct highlight color in the read-only `TiptapEditor` mount. Spans
+ * lifted from the teacher's answers get an italic attribution prefix.
  */
 export function buildScriptNotesDoc(spans: TaggedSpan[], componentId: string): TiptapDoc {
   if (spans.length === 0) {
@@ -89,6 +110,15 @@ export function buildScriptNotesDoc(spans: TaggedSpan[], componentId: string): T
     content: spans.map((span) => ({
       type: 'paragraph',
       content: [
+        ...(span.source === 'script'
+          ? []
+          : [
+              {
+                type: 'text',
+                text: `${TAG_SOURCE_PREFIX[span.source]}: `,
+                marks: [{ type: 'italic' }],
+              },
+            ]),
         {
           type: 'text',
           text: span.text,
@@ -99,6 +129,7 @@ export function buildScriptNotesDoc(spans: TaggedSpan[], componentId: string): T
                 componentId,
                 bg: span.bg,
                 fg: span.fg,
+                source: span.source,
               },
             },
           ],

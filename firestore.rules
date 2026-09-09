@@ -329,6 +329,7 @@ service cloud.firestore {
                 'preObsNotes',
                 'postObsDate',
                 'postObsNotes',
+                'draftVisibility',
                 'lastModifiedAt'
               ])
         )

@@ -15,8 +15,10 @@ import { doc, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebas
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
+  DRAFT_VISIBILITY_HIDDEN,
   OBSERVATION_STATUS,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
+  type DraftVisibility,
   type Observation,
   type ObservationComponentEntry,
   type Role,
@@ -53,7 +55,8 @@ import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
 import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { hasTiptapContent } from '@/utils/tiptapContent';
-import { ScriptEditor } from './ScriptEditor';
+import { ScriptEditor, type EvidenceCaptureRequest } from './ScriptEditor';
+import { SharingPopover } from './SharingPopover';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
@@ -490,6 +493,26 @@ export function ObservationEditorPage() {
     [questionType ?? ''],
   );
   const answers = useWorkProductAnswers(observation, isObservedStaff);
+
+  // Evidence capture: a sentence selected in a teacher's answer is appended
+  // to the script (attributed) and the component picker opens on it. The
+  // drawer is nudged open so the evaluator sees where it landed.
+  const [captureRequest, setCaptureRequest] = useState<EvidenceCaptureRequest | null>(null);
+  const [drawerOpenSignal, setDrawerOpenSignal] = useState(0);
+  const captureEvidence = useCallback(
+    (text: string, phase: 'pre' | 'post', questionText: string) => {
+      if (!canEdit) return;
+      setCaptureRequest({
+        id: Date.now(),
+        text,
+        source: phase === 'pre' ? 'planning' : 'reflection',
+        questionText,
+      });
+      setDrawerOpenSignal((n) => n + 1);
+    },
+    [canEdit],
+  );
+
   const questionsSlot = useMemo<QuestionsSlot | undefined>(() => {
     if (!observation || !questionBank) return undefined;
     const { pre, post } = splitQuestionsByPhase(questionBank);
@@ -511,12 +534,29 @@ export function ObservationEditorPage() {
       finalizedAt: observation.finalizedAt,
       observationDate,
       onAnswerChange: answers.setAnswer,
+      ...(canEdit ? { onCaptureEvidence: captureEvidence } : {}),
       saveState: answers.saveState,
       saveError: answers.saveError,
       onRetrySave: answers.retry,
       isOnline,
     };
-  }, [observation, questionBank, isObservedStaff, answers, isOnline]);
+  }, [observation, questionBank, isObservedStaff, answers, isOnline, canEdit, captureEvidence]);
+
+  // Draft sharing switchboard (see SharingPopover). Only the observed staff
+  // member viewing a Draft is ever withheld anything; the observer and
+  // admins see everything, and finalize reveals everything to everyone.
+  const draftVisibility: DraftVisibility = {
+    ...DRAFT_VISIBILITY_HIDDEN,
+    ...observation?.draftVisibility,
+  };
+  const withholding = !!observation && !isReadOnly && !canEdit && isObservedStaff;
+  const show = {
+    ratings: !withholding || draftVisibility.ratings,
+    notes: !withholding || draftVisibility.notes,
+    evidence: !withholding || draftVisibility.evidence,
+    script: !withholding || draftVisibility.script,
+    meetingNotes: !withholding || draftVisibility.meetingNotes,
+  };
 
   // Reflection questions the observed staff member has not answered yet —
   // surfaced as a non-blocking warning in FinalizeDialog next to the
@@ -942,6 +982,11 @@ export function ObservationEditorPage() {
         onReopen={() => setReopenOpen(true)}
         showRegenerate={showRegenerate}
         onRegenerate={() => setRegenerateOpen(true)}
+        sharing={
+          canEdit && observation.status === OBSERVATION_STATUS.draft
+            ? { observationId: observation.id, value: observation.draftVisibility }
+            : null
+        }
       />
 
       <div className={bodyWrapperCls}>
@@ -989,7 +1034,7 @@ export function ObservationEditorPage() {
         {!canEdit && !isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
             {isObservedStaff
-              ? 'Your evaluator is still drafting this observation. Open Planning or Reflection below to answer your questions — the rest of the page is read-only until it is finalized.'
+              ? 'Your evaluator is still drafting this observation. Open Planning or Reflection below to answer your questions. Your evaluator chooses what else to share while drafting; everything is visible once it is finalized.'
               : "You can view this observation but not edit it (you're not the observer)."}
           </div>
         ) : null}
@@ -1046,9 +1091,9 @@ export function ObservationEditorPage() {
 
         <MeetingNotesSection
           preObsDate={draft.preObsDate}
-          preObsNotes={draft.preObsNotes}
+          preObsNotes={show.meetingNotes ? draft.preObsNotes : undefined}
           postObsDate={draft.postObsDate}
-          postObsNotes={draft.postObsNotes}
+          postObsNotes={show.meetingNotes ? draft.postObsNotes : undefined}
           readOnly={!canEdit}
           onPreObsDateChange={setPreObsDate}
           onPreObsNotesChange={setPreObsNotes}
@@ -1079,15 +1124,24 @@ export function ObservationEditorPage() {
             No components are assigned for this role/year combination. Ask an admin to update the
             role/year mappings.
           </div>
+        ) : withholding && !show.ratings && !show.notes && !show.evidence ? (
+          // Nothing per-component is shared yet: render the criteria text
+          // only, exactly as the teacher sees it on /my-rubric. Hiding the
+          // grid entirely would make the page look broken.
+          <RubricGrid
+            rubric={visibleRubric}
+            mode={{ kind: 'view', assignedComponentIds, showAssignedOnly: false }}
+            storageScope={`view-${observation.id}`}
+          />
         ) : (
           <RubricGrid
             rubric={visibleRubric}
             mode={{
               kind: 'edit',
-              entries: draft.observationData,
-              notes: draft.componentNotes,
-              ...(draft.scriptDoc ? { scriptDoc: draft.scriptDoc } : {}),
-              evidenceLinks: observation.evidenceLinks ?? {},
+              entries: show.ratings ? draft.observationData : {},
+              notes: show.notes ? draft.componentNotes : {},
+              ...(draft.scriptDoc && show.script ? { scriptDoc: draft.scriptDoc } : {}),
+              evidenceLinks: show.evidence ? (observation.evidenceLinks ?? {}) : {},
               observationId: observation.id,
               readOnly: !canEdit,
               onProficiency: (componentId, proficiency) =>
@@ -1100,16 +1154,19 @@ export function ObservationEditorPage() {
         )}
       </div>
 
-      <ScriptDrawer sidebarWidth={sidebarWidth}>
-        <ScriptEditor
-          value={draft.scriptDoc}
-          onChange={setScriptDoc}
-          readOnly={!canEdit}
-          availableComponents={activeComponents}
-          observationId={observation.id}
-          placeholder="Start typing what you see and hear during the observation…"
-        />
-      </ScriptDrawer>
+      {show.script ? (
+        <ScriptDrawer sidebarWidth={sidebarWidth} openSignal={drawerOpenSignal}>
+          <ScriptEditor
+            value={draft.scriptDoc}
+            onChange={setScriptDoc}
+            readOnly={!canEdit}
+            captureRequest={captureRequest}
+            availableComponents={activeComponents}
+            observationId={observation.id}
+            placeholder="Start typing what you see and hear during the observation…"
+          />
+        </ScriptDrawer>
+      ) : null}
     </>
   );
 }
@@ -1126,6 +1183,8 @@ interface EditorToolbarProps {
   onReopen: () => void;
   showRegenerate: boolean;
   onRegenerate: () => void;
+  /** Evaluator-only draft sharing switchboard; null hides the button. */
+  sharing: { observationId: string; value: DraftVisibility | undefined } | null;
 }
 
 /**
@@ -1153,6 +1212,7 @@ function EditorToolbar({
   onReopen,
   showRegenerate,
   onRegenerate,
+  sharing,
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
   const hasDomains = !!rubric && rubric.domains.length > 0;
@@ -1173,6 +1233,9 @@ function EditorToolbar({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {sharing ? (
+            <SharingPopover observationId={sharing.observationId} value={sharing.value} />
+          ) : null}
           {canEdit ? (
             <AudioPopoverButton
               observationId={observation.id}
