@@ -24,6 +24,10 @@ export const TABS = {
 
 export type TabKey = keyof typeof TABS;
 
+export const SPLITTER_LABEL = 'Resize editor and preview (drag, or use arrow keys)';
+export const URL_OPEN = 'Open link';
+export const URL_TAIL_HINT = 'End of link:';
+
 // ── Section tiles ───────────────────────────────────────────────────────────
 
 interface SectionCopy {

@@ -12,11 +12,12 @@ import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { type DashboardQuickMaterial, type MaterialIcon } from '@ops/shared';
 import { DashboardIcon } from '@/dashboard/DashboardIcon';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { GripHandle, SortableItem } from './SortableItem';
 import { IconPicker } from './IconPicker';
+import { TextField, UrlField } from './fields';
+import { findFieldError, type DraftValidationError } from './dashboardValidation';
 import {
   QM_ADD,
   QM_BLURB,
@@ -62,9 +63,12 @@ function stripIds(items: Item[]): DashboardQuickMaterial[] {
 export function QuickMaterialsEditor({
   value,
   onChange,
+  errors,
 }: {
   value: DashboardQuickMaterial[];
   onChange: (next: DashboardQuickMaterial[]) => void;
+  /** Index-addressed schema errors from the last refused save. */
+  errors?: readonly DraftValidationError[];
 }) {
   /**
    * Stable client-side ids — one per item in `value`. Stored in state so
@@ -135,60 +139,71 @@ export function QuickMaterialsEditor({
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={items.map((m) => m._id)} strategy={verticalListSortingStrategy}>
             <ul className="space-y-3">
-              {items.map((m, idx) => (
-                <SortableItem key={m._id} id={m._id}>
-                  {({ dragHandleProps }) => (
-                    <li className="border-border bg-background rounded-lg border p-3">
-                      <div className="mb-2 flex items-center gap-2">
-                        <GripHandle dragHandleProps={dragHandleProps} />
-                        <ChipPreview item={m} />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={QM_REMOVE}
-                          onClick={() => remove(idx)}
-                        >
-                          <Trash2 className="text-destructive h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="grid gap-3 pl-8">
-                        <div className="grid gap-1">
-                          <Label className="text-xs">{QM_FIELD_TITLE}</Label>
-                          <Input
+              {items.map((m, idx) => {
+                const labelError = findFieldError(errors, { itemIndex: idx, field: 'label' });
+                const subError = findFieldError(errors, { itemIndex: idx, field: 'sub' });
+                const urlError = findFieldError(errors, { itemIndex: idx, field: 'url' });
+                const cardInvalid = Boolean(labelError ?? subError ?? urlError);
+                return (
+                  <SortableItem key={m._id} id={m._id}>
+                    {({ dragHandleProps }) => (
+                      <li
+                        className={cn(
+                          'border-border bg-background rounded-lg border p-3',
+                          cardInvalid && 'border-destructive',
+                        )}
+                      >
+                        <div className="mb-3 flex items-center gap-2">
+                          <GripHandle dragHandleProps={dragHandleProps} />
+                          <ChipPreview item={m} />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={QM_REMOVE}
+                            onClick={() => remove(idx)}
+                          >
+                            <Trash2 className="text-destructive h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="grid gap-4 pl-8">
+                          <TextField
+                            label={QM_FIELD_TITLE}
                             value={m.label}
-                            onChange={(e) => update(idx, { label: e.target.value })}
+                            onChange={(v) => update(idx, { label: v })}
                             placeholder="My rubric"
+                            maxLength={120}
+                            error={labelError}
                           />
-                        </div>
-                        <div className="grid gap-1">
-                          <Label className="text-xs">{QM_FIELD_SUBTITLE}</Label>
-                          <Input
+                          <TextField
+                            label={QM_FIELD_SUBTITLE}
                             value={m.sub}
-                            onChange={(e) => update(idx, { sub: e.target.value })}
+                            onChange={(v) => update(idx, { sub: v })}
                             placeholder="Domains 2 & 3 · 14 components"
+                            maxLength={200}
+                            error={subError}
                           />
-                        </div>
-                        <div className="grid gap-1">
-                          <Label className="text-xs">{QM_FIELD_URL}</Label>
-                          <Input
+                          <UrlField
+                            label={QM_FIELD_URL}
                             value={m.url}
-                            onChange={(e) => update(idx, { url: e.target.value })}
+                            onChange={(v) => update(idx, { url: v })}
                             placeholder="https://drive.google.com/…"
+                            maxLength={2048}
+                            error={urlError}
                           />
+                          <div className="grid gap-1.5">
+                            <Label className="text-sm font-medium">{QM_ICON_PICKER}</Label>
+                            <IconPicker
+                              value={m.icon}
+                              onChange={(icon: MaterialIcon) => update(idx, { icon })}
+                            />
+                          </div>
                         </div>
-                        <div className="grid gap-1">
-                          <Label className="text-xs">{QM_ICON_PICKER}</Label>
-                          <IconPicker
-                            value={m.icon}
-                            onChange={(icon: MaterialIcon) => update(idx, { icon })}
-                          />
-                        </div>
-                      </div>
-                    </li>
-                  )}
-                </SortableItem>
-              ))}
+                      </li>
+                    )}
+                  </SortableItem>
+                );
+              })}
             </ul>
           </SortableContext>
         </DndContext>

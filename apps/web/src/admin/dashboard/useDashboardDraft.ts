@@ -14,6 +14,11 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { db } from '@/lib/firebase';
+import {
+  describeValidationFailure,
+  validateDashboardDraft,
+  type DraftValidationError,
+} from './dashboardValidation';
 
 /**
  * Manages the local draft of the dashboard config + quick materials.
@@ -26,6 +31,11 @@ import { db } from '@/lib/firebase';
  * Initial hydration happens once per doc landing (via a ref guard) so
  * later snapshots don't clobber in-progress edits. Mirrors the
  * `useHydratedDraft` idiom but local to this hook.
+ *
+ * Save runs the shared zod schemas first (see dashboardValidation.ts).
+ * A draft that fails is never written; `validationErrors` is populated
+ * so the page can jump to the offending tab and the editors can mark
+ * the field inline. Errors clear as soon as the draft changes again.
  */
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
@@ -57,7 +67,12 @@ export interface UseDashboardDraftResult {
   saving: boolean;
   savedAt: Date | null;
   saveError: string | null;
-  save: () => Promise<void>;
+  /** Schema violations from the last refused save. Empty once the draft
+   *  changes again or a save succeeds. */
+  validationErrors: DraftValidationError[];
+  /** Resolves `true` when the write happened, `false` when it was refused
+   *  by validation or failed. */
+  save: () => Promise<boolean>;
   /** Discards local edits, snaps draft back to the last saved state. */
   reset: () => void;
   loading: boolean;
@@ -98,6 +113,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<DraftValidationError[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   const inFlightRef = useRef(false);
@@ -119,24 +135,37 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     setHydrated(true);
   }, [hydrated, configLoading, quickLoading, configDoc, quickDoc]);
 
+  // Any edit re-validates on the next save; stale inline errors would
+  // otherwise linger on a field the admin has already fixed.
   const setSections = useCallback((next: DashboardSectionsConfig) => {
+    setValidationErrors([]);
     setDraft((d) => ({ ...d, sections: next }));
   }, []);
   const setSteps = useCallback((next: DashboardStep[]) => {
+    setValidationErrors([]);
     setDraft((d) => ({ ...d, steps: next }));
   }, []);
   const setQuickMaterials = useCallback((next: DashboardQuickMaterial[]) => {
+    setValidationErrors([]);
     setDraft((d) => ({ ...d, quickMaterials: next }));
   }, []);
   const setCycleCloseLabel = useCallback((next: string) => {
+    setValidationErrors([]);
     setDraft((d) => ({ ...d, cycleCloseLabel: next }));
   }, []);
 
-  const save = useCallback(async () => {
-    if (inFlightRef.current) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (inFlightRef.current) return false;
+    const errors = validateDashboardDraft(draft);
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      setSaveError(describeValidationFailure(errors));
+      return false;
+    }
     inFlightRef.current = true;
     setSaving(true);
     setSaveError(null);
+    setValidationErrors([]);
     try {
       await Promise.all([
         setDoc(
@@ -162,8 +191,10 @@ export function useDashboardDraft(): UseDashboardDraftResult {
       ]);
       setSavedSnapshot(draft);
       setSavedAt(new Date());
+      return true;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
+      return false;
     } finally {
       setSaving(false);
       inFlightRef.current = false;
@@ -171,6 +202,8 @@ export function useDashboardDraft(): UseDashboardDraftResult {
   }, [draft, user?.email]);
 
   const reset = useCallback(() => {
+    setValidationErrors([]);
+    setSaveError(null);
     if (savedSnapshot) setDraft(savedSnapshot);
   }, [savedSnapshot]);
 
@@ -187,6 +220,7 @@ export function useDashboardDraft(): UseDashboardDraftResult {
     saving,
     savedAt,
     saveError,
+    validationErrors,
     save,
     reset,
     loading: !hydrated,

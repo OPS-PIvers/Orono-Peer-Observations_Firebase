@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { AlertCircle, Check, Eye, RotateCcw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertCircle, Check, Eye, GripVertical, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
@@ -8,12 +8,14 @@ import { DashboardPreview } from './DashboardPreview';
 import { QuickMaterialsEditor } from './QuickMaterialsEditor';
 import { SectionTilesEditor } from './SectionTilesEditor';
 import { useDashboardDraft } from './useDashboardDraft';
+import { useSplitter } from './useSplitter';
 import {
   PAGE_SUBTITLE,
   PAGE_TITLE,
   SAVE_BUTTON_DEFAULT,
   SAVE_BUTTON_DIRTY,
   SAVE_BUTTON_SAVING,
+  SPLITTER_LABEL,
   TABS,
   UNSAVED_PILL,
   type TabKey,
@@ -25,24 +27,53 @@ import {
  * Layout:
  *   - Sticky chrome: tabs on the left, Save / Discard / unsaved-pill on
  *     the right.
- *   - Two-column body: tab content (60%), live preview (40%).
+ *   - Two-pane body with a draggable splitter. Default 60% editor /
+ *     40% preview; the admin's last position is remembered per browser
+ *     (see useSplitter). The splitter sets width only.
+ *   - One scrollbar. The editor column scrolls with the page; the
+ *     preview is sticky and scrolls inside its own frame. The editor
+ *     deliberately has no nested `overflow-y-auto` — that second
+ *     scroller is what made fields slide out from under the cursor.
  *   - Single source of draft state via useDashboardDraft; one Save
- *     action persists everything.
+ *     action validates, then persists everything. A refused save jumps
+ *     to the tab holding the first offending field.
  *
  * Mobile (< lg): preview collapses behind a toggle so the editor gets
- * the full width.
+ * the full width; the splitter is not rendered.
  */
 
 export function DashboardSettingsPage() {
   const draft = useDashboardDraft();
   const [tab, setTab] = useState<TabKey>('layout');
   const [showPreviewMobile, setShowPreviewMobile] = useState(false);
+  // Destructured so the react-hooks/refs rule can see that only the ref
+  // object itself (not `.current`) is touched during render.
+  const {
+    fraction: editorFraction,
+    dragging: splitterDragging,
+    containerRef: splitRowRef,
+    handleProps: splitterHandleProps,
+  } = useSplitter();
 
   const saveLabel = draft.saving
     ? SAVE_BUTTON_SAVING
     : draft.isDirty
       ? SAVE_BUTTON_DIRTY
       : SAVE_BUTTON_DEFAULT;
+
+  const errorsByTab = {
+    layout: draft.validationErrors.filter((e) => e.tab === 'layout'),
+    steps: draft.validationErrors.filter((e) => e.tab === 'steps'),
+    materials: draft.validationErrors.filter((e) => e.tab === 'materials'),
+  };
+
+  // A refused save lands the admin on the tab holding the first problem.
+  // Keyed on the array identity: the hook replaces it on every refused save
+  // and clears it on the next edit, so this fires once per refusal.
+  const firstErrorTab = draft.validationErrors[0]?.tab;
+  useEffect(() => {
+    if (firstErrorTab) setTab(firstErrorTab);
+  }, [firstErrorTab, draft.validationErrors]);
 
   return (
     <PageHeader
@@ -53,13 +84,25 @@ export function DashboardSettingsPage() {
     >
       {/* Sticky action bar */}
       <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-wrap items-center gap-3 border-b bg-white/95 px-4 py-2 backdrop-blur md:-mx-6 md:px-6">
-        <TabButton active={tab === 'layout'} onClick={() => setTab('layout')}>
+        <TabButton
+          active={tab === 'layout'}
+          onClick={() => setTab('layout')}
+          errorCount={errorsByTab.layout.length}
+        >
           {TABS.layout}
         </TabButton>
-        <TabButton active={tab === 'steps'} onClick={() => setTab('steps')}>
+        <TabButton
+          active={tab === 'steps'}
+          onClick={() => setTab('steps')}
+          errorCount={errorsByTab.steps.length}
+        >
           {TABS.steps}
         </TabButton>
-        <TabButton active={tab === 'materials'} onClick={() => setTab('materials')}>
+        <TabButton
+          active={tab === 'materials'}
+          onClick={() => setTab('materials')}
+          errorCount={errorsByTab.materials.length}
+        >
           {TABS.materials}
         </TabButton>
         <div className="ml-auto flex items-center gap-3">
@@ -101,19 +144,27 @@ export function DashboardSettingsPage() {
       </div>
 
       {draft.saveError ? (
-        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-2 text-sm">
+        <div
+          role="alert"
+          className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-2 text-sm"
+        >
           {draft.saveError}
         </div>
       ) : null}
 
-      {/* Two-column layout: editor 1/3 (scrolls), preview 2/3 (sticky).
-          Mobile/tablet collapses to a single column with the preview toggle. */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+      {/* Two-pane body. On lg+ the panes are sized by the splitter fraction;
+          below lg they stack and the mobile toggle picks which one shows. */}
+      <div
+        ref={splitRowRef}
+        className={cn(
+          'flex flex-col gap-6 lg:flex-row lg:gap-0',
+          splitterDragging && 'select-none',
+        )}
+      >
         <div
-          className={cn(
-            showPreviewMobile && 'hidden lg:block',
-            'lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-2',
-          )}
+          className={cn(showPreviewMobile && 'hidden lg:block', 'min-w-0 lg:pr-3')}
+          style={{ flexBasis: `${String(editorFraction * 100)}%` }}
+          data-testid="dashboard-editor-pane"
         >
           {tab === 'layout' ? (
             <SectionTilesEditor
@@ -121,23 +172,57 @@ export function DashboardSettingsPage() {
               onChange={draft.setSections}
               cycleCloseLabel={draft.draft.cycleCloseLabel}
               onCycleCloseLabelChange={draft.setCycleCloseLabel}
+              errors={errorsByTab.layout}
             />
           ) : null}
           {tab === 'steps' ? (
-            <CycleStepsEditor value={draft.draft.steps} onChange={draft.setSteps} />
+            <CycleStepsEditor
+              value={draft.draft.steps}
+              onChange={draft.setSteps}
+              errors={errorsByTab.steps}
+            />
           ) : null}
           {tab === 'materials' ? (
             <QuickMaterialsEditor
               value={draft.draft.quickMaterials}
               onChange={draft.setQuickMaterials}
+              errors={errorsByTab.materials}
             />
           ) : null}
         </div>
+
+        {/* Drag handle — desktop only. Keyboard: ← → nudge, Home/End
+            snap to the clamps, double-click resets to the default. */}
+        <div
+          {...splitterHandleProps}
+          aria-label={SPLITTER_LABEL}
+          title={SPLITTER_LABEL}
+          className={cn(
+            'group hidden w-3 shrink-0 cursor-col-resize items-stretch justify-center lg:flex',
+            'focus-visible:ring-ring rounded outline-none focus-visible:ring-2',
+          )}
+        >
+          <div
+            className={cn(
+              'flex w-1 items-center justify-center rounded-full transition-colors',
+              splitterDragging ? 'bg-ops-blue' : 'bg-border group-hover:bg-ops-blue/60',
+            )}
+          >
+            <GripVertical
+              className={cn(
+                'text-muted-foreground h-4 w-4 shrink-0 rounded bg-white',
+                'group-hover:text-ops-blue',
+              )}
+            />
+          </div>
+        </div>
+
         <div
           className={cn(
             !showPreviewMobile && 'hidden lg:block',
-            'lg:sticky lg:top-24 lg:h-[calc(100vh-180px)]',
+            'min-w-0 flex-1 lg:sticky lg:top-24 lg:h-[calc(100vh-180px)] lg:self-start',
           )}
+          data-testid="dashboard-preview-pane"
         >
           <DashboardPreview
             sections={draft.draft.sections}
@@ -154,10 +239,12 @@ export function DashboardSettingsPage() {
 function TabButton({
   active,
   onClick,
+  errorCount = 0,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  errorCount?: number;
   children: React.ReactNode;
 }) {
   return (
@@ -167,11 +254,22 @@ function TabButton({
       aria-selected={active}
       role="tab"
       className={cn(
-        'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
         active ? 'bg-ops-blue text-white' : 'text-foreground hover:bg-muted',
       )}
     >
       {children}
+      {errorCount > 0 ? (
+        <span
+          aria-label={`${String(errorCount)} ${errorCount === 1 ? 'problem' : 'problems'}`}
+          className={cn(
+            'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-bold',
+            active ? 'text-ops-red-dark bg-white' : 'bg-ops-red-dark text-white',
+          )}
+        >
+          {errorCount}
+        </span>
+      ) : null}
     </button>
   );
 }
