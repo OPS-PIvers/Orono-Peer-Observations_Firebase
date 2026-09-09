@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -9,7 +9,15 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
-import { type DashboardQuickMaterial, type MaterialIcon } from '@ops/shared';
+import {
+  emptyAudience,
+  staffMatchesAudience,
+  staleAudienceChips,
+  type AudienceContext,
+  type DashboardQuickMaterial,
+  type MaterialIcon,
+  type Staff,
+} from '@ops/shared';
 import { DashboardIcon } from '@/dashboard/DashboardIcon';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -18,6 +26,8 @@ import { GripHandle, SortableItem } from './SortableItem';
 import { IconPicker } from './IconPicker';
 import { TextField, UrlField } from './fields';
 import { findFieldError, type DraftValidationError } from './dashboardValidation';
+import { AudiencePicker, type MatchCount } from './AudiencePicker';
+import { EMPTY_AUDIENCE_OPTIONS, type AudienceOptions } from './audienceOptions';
 import {
   QM_ADD,
   QM_BLURB,
@@ -64,11 +74,18 @@ export function QuickMaterialsEditor({
   value,
   onChange,
   errors,
+  audienceOptions = EMPTY_AUDIENCE_OPTIONS,
+  staffRoster = null,
 }: {
   value: DashboardQuickMaterial[];
   onChange: (next: DashboardQuickMaterial[]) => void;
   /** Index-addressed schema errors from the last refused save. */
   errors?: readonly DraftValidationError[];
+  /** Roles / buildings / modules the audience picker offers. */
+  audienceOptions?: AudienceOptions;
+  /** The staff roster, for the live "Matches N of M staff" count.
+   *  `null` while loading. */
+  staffRoster?: readonly Staff[] | null;
 }) {
   /**
    * Stable client-side ids — one per item in `value`. Stored in state so
@@ -101,6 +118,30 @@ export function QuickMaterialsEditor({
 
   const items: Item[] = value.map((m, i) => ({ ...m, _id: ids[i] ?? `placeholder-${String(i)}` }));
 
+  const audienceCtx = useMemo<AudienceContext>(
+    () => ({
+      modules: audienceOptions.modules,
+      knownBuildings: audienceOptions.buildings.map((b) => b.displayName),
+      knownRoles: audienceOptions.roles.map((r) => r.roleId),
+    }),
+    [audienceOptions],
+  );
+
+  // The chips respond to the click that toggled them; the match counts,
+  // which walk the whole roster once per card, render at transition
+  // priority from the deferred value so a big roster can't make the
+  // picker feel sticky. Archived staff don't count — they don't see the
+  // dashboard.
+  const deferredValue = useDeferredValue(value);
+  const matchCounts = useMemo<(MatchCount | null)[]>(() => {
+    if (!staffRoster) return deferredValue.map(() => null);
+    const active = staffRoster.filter((s) => s.isActive);
+    return deferredValue.map((m) => ({
+      matched: active.filter((s) => staffMatchesAudience(s, m.audience, audienceCtx)).length,
+      total: active.length,
+    }));
+  }, [deferredValue, staffRoster, audienceCtx]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function commit(next: Item[]) {
@@ -112,7 +153,10 @@ export function QuickMaterialsEditor({
   }
   function add() {
     const newId = makeId();
-    commit([...items, { _id: newId, label: '', sub: '', icon: 'doc', url: '' }]);
+    commit([
+      ...items,
+      { _id: newId, label: '', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
+    ]);
   }
   function remove(idx: number) {
     commit(items.filter((_, i) => i !== idx));
@@ -198,6 +242,13 @@ export function QuickMaterialsEditor({
                               onChange={(icon: MaterialIcon) => update(idx, { icon })}
                             />
                           </div>
+                          <AudiencePicker
+                            value={m.audience}
+                            onChange={(audience) => update(idx, { audience })}
+                            options={audienceOptions}
+                            matchCount={matchCounts[idx] ?? null}
+                            stale={staleAudienceChips(m.audience, audienceCtx)}
+                          />
                         </div>
                       </li>
                     )}

@@ -86,6 +86,39 @@ export const QM_FIELD_URL = 'URL';
 export const QM_ICON_PICKER = 'Icon';
 export const QM_REMOVE = 'Remove material';
 
+// ── Audience (who sees a material) ──────────────────────────────────────────
+
+export const AUD_PREFIX = 'Visible to:';
+export const AUD_EVERYONE = 'Everyone';
+export const AUD_EXPAND = 'Choose who sees this material';
+export const AUD_COLLAPSE = 'Done choosing';
+export const AUD_HELP =
+  'Pick any number of groups in each row. A staff member sees this card when they match at least one choice in every row you use; leave every row empty to show it to everyone.';
+export const AUD_DIM_YEARS = 'Year';
+export const AUD_DIM_STATUSES = 'Cycle phase';
+export const AUD_DIM_BUILDINGS = 'Building';
+export const AUD_DIM_ROLES = 'Role';
+export const AUD_DIM_MODULES = 'Module';
+export const AUD_CLEAR = 'Show to everyone';
+export const AUD_STALE = 'Some choices no longer exist and are ignored until you remove them:';
+export const AUD_MATCH_LOADING = 'Counting staff…';
+export function audMatchCount(matched: number, total: number): string {
+  return `Matches ${String(matched)} of ${String(total)} staff`;
+}
+export const AUD_MATCH_NONE = 'Nobody matches this rule right now.';
+
+// ── Preview as ──────────────────────────────────────────────────────────────
+
+export const PV_PREVIEW_AS = 'Preview as';
+export const PV_BLURB = 'Change the sample staff member to see which materials a given group gets.';
+export const PV_YEAR = 'Year';
+export const PV_SUMMATIVE = 'Summative year';
+export const PV_PHASE = 'Cycle phase';
+export const PV_ROLE = 'Role';
+export const PV_BUILDINGS = 'Buildings';
+export const PV_MODULES = 'Modules (manual)';
+export const PV_RESET = 'Reset sample';
+
 // ── Section tiles ───────────────────────────────────────────────────────────
 
 export const ST_HEADING = 'Page layout';

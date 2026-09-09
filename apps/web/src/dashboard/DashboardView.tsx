@@ -246,7 +246,10 @@ export function DashboardView(props: DashboardViewProps): React.ReactElement {
           </div>
 
           <aside className="sidebar">
-            {sections.quickMaterials ? (
+            {/* Audience rules can leave a staff member with no materials at
+                all; an empty labelled panel reads as a broken feature, so
+                the card only renders when there is something in it. */}
+            {sections.quickMaterials && quickMaterials.length > 0 ? (
               <QuickMaterials items={quickMaterials} readOnly={readOnly} />
             ) : null}
             {sections.peerEvaluatorCard ? (
@@ -774,35 +777,29 @@ function QuickMaterials({
   return (
     <div className="side-card">
       <div className="side-card__eyebrow">Quick materials</div>
-      {items.length === 0 ? (
-        <p className="empty-note">No materials posted yet.</p>
-      ) : (
-        <div className="material-list">
-          {items.map((m, i) => {
-            const Tag = m.url && !readOnly ? 'a' : 'span';
-            return (
-              <Tag
-                key={`${m.label}-${String(i)}`}
-                className="material-list__item"
-                {...(m.url && !readOnly
-                  ? { href: m.url, target: '_blank', rel: 'noreferrer' }
-                  : {})}
-              >
-                <div className="material-list__icon">
-                  <DashboardIcon name={m.icon} size={16} />
-                </div>
-                <div>
-                  <div className="material-list__title">{m.label}</div>
-                  {m.sub ? <span className="material-list__sub">{m.sub}</span> : null}
-                </div>
-                <div className="material-list__arrow">
-                  <DashboardIcon name="arrow-right" size={14} />
-                </div>
-              </Tag>
-            );
-          })}
-        </div>
-      )}
+      <div className="material-list">
+        {items.map((m, i) => {
+          const Tag = m.url && !readOnly ? 'a' : 'span';
+          return (
+            <Tag
+              key={`${m.label}-${String(i)}`}
+              className="material-list__item"
+              {...(m.url && !readOnly ? { href: m.url, target: '_blank', rel: 'noreferrer' } : {})}
+            >
+              <div className="material-list__icon">
+                <DashboardIcon name={m.icon} size={16} />
+              </div>
+              <div>
+                <div className="material-list__title">{m.label}</div>
+                {m.sub ? <span className="material-list__sub">{m.sub}</span> : null}
+              </div>
+              <div className="material-list__arrow">
+                <DashboardIcon name="arrow-right" size={14} />
+              </div>
+            </Tag>
+          );
+        })}
+      </div>
     </div>
   );
 }

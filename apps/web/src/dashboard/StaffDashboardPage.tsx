@@ -13,7 +13,9 @@ import {
   questionType,
   effectiveModuleIdsFor,
   effectiveModulesFor,
+  staffMatchesAudience,
   type AppSettings,
+  type Building,
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
@@ -85,6 +87,22 @@ export function StaffDashboardPage() {
 
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
+  // Only read for the audience matcher's stale-chip check: a material
+  // targeted at a building that has since been renamed must not vanish for
+  // everyone, and the matcher needs the live list to know a chip is stale.
+  const { data: buildingsData } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
+
+  // Quick materials carry an optional audience rule; the same matcher runs
+  // in the admin preview so the two cannot drift.
+  const visibleQuickMaterials = useMemo(() => {
+    if (!staff) return [];
+    const ctx = {
+      modules: modulesData,
+      knownBuildings: buildingsData?.map((b) => b.displayName),
+      knownRoles: roles?.map((r) => r.roleId),
+    };
+    return (quick?.items ?? []).filter((m) => staffMatchesAudience(staff, m.audience, ctx));
+  }, [staff, quick, modulesData, buildingsData, roles]);
 
   const { data: moduleProgress } = useFirestoreCollection<ModuleProgress>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}/${STAFF_SUBCOLLECTIONS.moduleProgress}` : '',
@@ -294,7 +312,7 @@ export function StaffDashboardPage() {
       cycleCloseLabel={config?.cycleCloseLabel ?? 'May 15'}
       sections={{ ...DEFAULT_SECTIONS, ...config?.sections }}
       tasks={allTasks}
-      quickMaterials={quick?.items ?? []}
+      quickMaterials={visibleQuickMaterials}
       peerEvaluator={peerEvaluator}
       onAcknowledge={(id) => ackMutation.mutate(id)}
       acknowledging={ackMutation.isPending}

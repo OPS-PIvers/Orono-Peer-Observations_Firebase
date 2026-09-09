@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Check, Eye, GripVertical, RotateCcw } from 'lucide-react';
+import { where } from 'firebase/firestore';
+import { COLLECTIONS, type Building, type ModuleDoc, type Role, type Staff } from '@ops/shared';
+import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/PageHeader';
 import { cn } from '@/lib/utils';
@@ -9,6 +12,7 @@ import { QuickMaterialsEditor } from './QuickMaterialsEditor';
 import { SectionTilesEditor } from './SectionTilesEditor';
 import { useDashboardDraft } from './useDashboardDraft';
 import { useSplitter } from './useSplitter';
+import { type AudienceOptions } from './audienceOptions';
 import {
   PAGE_SUBTITLE,
   PAGE_TITLE,
@@ -42,8 +46,37 @@ import {
  * the full width; the splitter is not rendered.
  */
 
+// Equality-only filters (no orderBy) so these small admin collections
+// don't need composite indexes; sorted client-side below.
+const ACTIVE_ONLY = [where('isActive', '==', true)];
+
+const byDisplayName = <T extends { displayName: string }>(a: T, b: T) =>
+  a.displayName.localeCompare(b.displayName);
+
 export function DashboardSettingsPage() {
   const draft = useDashboardDraft();
+
+  // The audience picker offers the live roles/buildings/modules and counts
+  // matches against the staff roster. Loaded here, once, rather than per
+  // card. Active-only lists: a retired role is not something a new rule
+  // should be able to target, and a chip already naming one is surfaced
+  // as stale by the picker instead.
+  const { data: rolesRaw } = useFirestoreCollection<Role>(COLLECTIONS.roles, ACTIVE_ONLY);
+  const { data: buildingsRaw } = useFirestoreCollection<Building>(
+    COLLECTIONS.buildings,
+    ACTIVE_ONLY,
+  );
+  const { data: modulesRaw } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules, ACTIVE_ONLY);
+  const { data: staffRoster } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const audienceOptions = useMemo<AudienceOptions>(
+    () => ({
+      roles: (rolesRaw ?? []).slice().sort(byDisplayName),
+      buildings: (buildingsRaw ?? []).slice().sort(byDisplayName),
+      modules: (modulesRaw ?? []).slice().sort(byDisplayName),
+    }),
+    [rolesRaw, buildingsRaw, modulesRaw],
+  );
+
   const [tab, setTab] = useState<TabKey>('layout');
   const [showPreviewMobile, setShowPreviewMobile] = useState(false);
   // Destructured so the react-hooks/refs rule can see that only the ref
@@ -187,6 +220,8 @@ export function DashboardSettingsPage() {
               value={draft.draft.quickMaterials}
               onChange={draft.setQuickMaterials}
               errors={errorsByTab.materials}
+              audienceOptions={audienceOptions}
+              staffRoster={staffRoster}
             />
           ) : null}
         </div>
@@ -229,6 +264,7 @@ export function DashboardSettingsPage() {
             steps={draft.draft.steps}
             quickMaterials={draft.draft.quickMaterials}
             cycleCloseLabel={draft.draft.cycleCloseLabel}
+            audienceOptions={audienceOptions}
           />
         </div>
       </div>
