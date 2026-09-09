@@ -22,7 +22,7 @@ export interface RenderObservationArgs {
   /** Question bank for Work Product / Instructional Round observations, in
    *  display order, so the renderer can pair `workProductAnswers` with their
    *  question text. Omit for Standard observations. */
-  workProductQuestions?: Pick<WorkProductQuestion, 'questionId' | 'text'>[];
+  workProductQuestions?: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[];
   /** appSettings.branding (logoUrl/appName/primaryColor), so the archived
    *  PDF matches the web app and email branding. Omit to render with the
    *  packaged OPS defaults. */

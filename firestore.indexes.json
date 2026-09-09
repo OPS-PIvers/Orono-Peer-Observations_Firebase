@@ -4,210 +4,422 @@
       "collectionGroup": "emailTemplates",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isSystem", "order": "DESCENDING" },
-        { "fieldPath": "name", "order": "ASCENDING" }
+        {
+          "fieldPath": "isSystem",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "lastModifiedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastModifiedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "lastModifiedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastModifiedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "lastModifiedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastModifiedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observedEmail", "order": "ASCENDING" },
-        { "fieldPath": "lastModifiedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastModifiedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "observedEmail", "order": "ASCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "observedName", "order": "ASCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "observedName",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "observationName", "order": "ASCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "observationName",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "modules",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isActive", "order": "ASCENDING" },
-        { "fieldPath": "displayName", "order": "ASCENDING" }
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "items",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "kind", "order": "ASCENDING" },
-        { "fieldPath": "moduleId", "order": "ASCENDING" }
+        {
+          "fieldPath": "kind",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "moduleId",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observationWindows",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observerEmail", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observerEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observationWindows",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "invitedEmails", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "invitedEmails",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observationWindows",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "endDate", "order": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "endDate",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "slots",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "buildingId", "order": "ASCENDING" },
-        { "fieldPath": "startUTC", "order": "ASCENDING" }
+        {
+          "fieldPath": "buildingId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startUTC",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "slots",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "buildingId", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "startUTC", "order": "ASCENDING" }
+        {
+          "fieldPath": "buildingId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startUTC",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observedEmail", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "finalizedAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "finalizedAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "observedEmail", "order": "ASCENDING" },
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "observationDate", "order": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "observationDate",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "observations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "workProductQuestions",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "type", "order": "ASCENDING" },
-        { "fieldPath": "isActive", "order": "ASCENDING" },
-        { "fieldPath": "order", "order": "ASCENDING" }
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "order",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "staff",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "role", "order": "ASCENDING" },
-        { "fieldPath": "isActive", "order": "ASCENDING" },
-        { "fieldPath": "name", "order": "ASCENDING" }
+        {
+          "fieldPath": "role",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "emailTemplates",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "triggerType", "order": "ASCENDING" },
-        { "fieldPath": "isActive", "order": "ASCENDING" },
-        { "fieldPath": "name", "order": "ASCENDING" }
+        {
+          "fieldPath": "triggerType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "name",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "auditLog",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "action", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        {
+          "fieldPath": "action",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "auditLog",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "userEmail", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        {
+          "fieldPath": "userEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "auditLog",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "userEmail", "order": "ASCENDING" },
-        { "fieldPath": "action", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        {
+          "fieldPath": "userEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "action",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "observations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],

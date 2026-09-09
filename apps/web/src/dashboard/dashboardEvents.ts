@@ -1,11 +1,17 @@
 import {
   OBSERVATION_STATUS,
+  QUESTION_TYPE_BY_OBSERVATION_TYPE,
+  postQuestionsUnlocked,
+  questionPhase,
+  questionType,
   workProductAnswerHasText,
   type AppSettings,
   type BooleanEvent,
   type DateSource,
   type Observation,
+  type StepOpenPanel,
   type WatchedKind,
+  type WorkProductQuestion,
 } from '@ops/shared';
 
 /**
@@ -27,8 +33,9 @@ export interface DeriveContext {
   instructionalRoundDraft: Observation | null;
   finalizedWorkProduct: Observation | null;
   finalizedInstructionalRound: Observation | null;
-  workProductQuestionsCount: number;
-  instructionalRoundQuestionsCount: number;
+  /** The active question bank, every type and phase. `responseProgress`
+   *  narrows it to the watched observation's type and the step's panel. */
+  questions: ActiveQuestion[];
   appSettings: AppSettings | null;
   /** The open self-scheduling window this staff member is invited to but
    *  hasn't booked yet. `windowEndDate` (booking deadline) is threaded
@@ -44,6 +51,11 @@ export interface EventResult {
   satisfied: boolean;
   date: Date | null;
 }
+
+/** The slice of a question the dashboard needs. `type` / `phase` may be
+ *  missing on docs written before those fields existed — read them through
+ *  `questionType` / `questionPhase`. */
+export type ActiveQuestion = Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'>;
 
 export function toDate(value: Date | null | undefined): Date | null {
   if (!value) return null;
@@ -83,6 +95,19 @@ export function resolveObservation(ctx: DeriveContext, kind: WatchedKind): Obser
       // Never falls through to a finalized observation — used by reviewDraft
       // so a new draft surfaces even when a prior cycle's obs is finalized.
       return ctx.standardDraft ?? ctx.workProductDraft ?? ctx.instructionalRoundDraft ?? null;
+    case 'anyDraftFirst':
+      // Live draft of any type first (the Planning / Reflection cards belong
+      // to whichever observation is in progress), else the most recent
+      // finalized record so Reflection answers stay reachable after finalize.
+      return (
+        ctx.standardDraft ??
+        ctx.workProductDraft ??
+        ctx.instructionalRoundDraft ??
+        ctx.finalizedStandard[0] ??
+        ctx.finalizedWorkProduct ??
+        ctx.finalizedInstructionalRound ??
+        null
+      );
   }
 }
 
@@ -137,6 +162,13 @@ export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
     const d = toDate(obs?.acknowledgedAt);
     return { satisfied: d != null, date: d };
   },
+  // Same gate the observation page uses for the Reflection panel: the raw
+  // observationDate, not the "genuinely scheduled" one — the two must agree
+  // or the card would send the teacher to a locked panel.
+  postQuestionsUnlocked: (_ctx, obs, now) => {
+    const d = toDate(obs?.observationDate);
+    return { satisfied: postQuestionsUnlocked(d, now), date: d };
+  },
 };
 
 export const DATE_SOURCE_FN: Record<
@@ -153,17 +185,29 @@ export const DATE_SOURCE_FN: Record<
   windowEndDate: (_obs, ctx) => ctx.openBooking?.endDate ?? null,
 };
 
-/** answered / total for the in-progress bar, keyed by the watched kind. */
+/**
+ * answered / total for the in-progress bar: the active questions for the
+ * watched observation's type, narrowed to one phase when the step opens a
+ * specific panel (`planning` → pre, `reflection` → post). Locked Reflection
+ * questions stay in their own denominator on purpose — the teacher does owe
+ * them, just not yet — but never leak into the Planning card's count.
+ */
 export function responseProgress(
   ctx: DeriveContext,
   obs: Observation | null,
-  kind: WatchedKind,
+  openPanel: StepOpenPanel | null,
 ): { answered: number; total: number } {
-  const answered =
-    obs?.workProductAnswers?.filter((a) => workProductAnswerHasText(a.answer)).length ?? 0;
-  const total =
-    kind === 'instructionalRound'
-      ? ctx.instructionalRoundQuestionsCount
-      : ctx.workProductQuestionsCount;
-  return { answered, total };
+  if (!obs) return { answered: 0, total: 0 };
+  const type = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
+  const phase = openPanel === 'planning' ? 'pre' : openPanel === 'reflection' ? 'post' : null;
+  const questions = ctx.questions.filter(
+    (q) => questionType(q) === type && (phase === null || questionPhase(q) === phase),
+  );
+  const answeredIds = new Set(
+    (obs.workProductAnswers ?? [])
+      .filter((a) => workProductAnswerHasText(a.answer))
+      .map((a) => a.questionId),
+  );
+  const answered = questions.filter((q) => answeredIds.has(q.questionId)).length;
+  return { answered, total: questions.length };
 }

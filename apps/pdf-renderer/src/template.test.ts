@@ -111,3 +111,58 @@ describe('renderObservationHtml — font embedding', () => {
     expect(html).toContain('Jane Doe');
   });
 });
+
+describe('renderObservationHtml — question responses', () => {
+  const questions = [
+    { questionId: 'pre-1', text: 'What are your goals?', phase: 'pre' as const },
+    { questionId: 'post-1', text: 'What went well?', phase: 'post' as const },
+    // Written before `phase` existed: files under Planning.
+    { questionId: 'legacy', text: 'Legacy question' } as {
+      questionId: string;
+      text: string;
+      phase: 'pre';
+    },
+  ];
+
+  it('splits responses into Planning and Reflection for every type, Standard included', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation({
+        type: 'Standard',
+        workProductAnswers: [
+          { questionId: 'pre-1', answer: 'Factor quadratics', updatedAt: new Date() },
+          { questionId: 'post-1', answer: '', updatedAt: new Date() },
+        ],
+      }),
+      rubric: makeRubric(),
+      activeComponentIds: [],
+      workProductQuestions: questions,
+    });
+    expect(html).toContain('Planning Responses');
+    expect(html).toContain('Reflection Responses');
+    expect(html).not.toContain('Instructional Round Responses');
+    expect(html).not.toContain('Work Product Responses');
+    expect(html.indexOf('Planning Responses')).toBeLessThan(html.indexOf('Reflection Responses'));
+    // Planning numbers its own questions: goals (1), legacy (2).
+    expect(html).toContain('1. What are your goals?');
+    expect(html).toContain('2. Legacy question');
+    expect(html).toContain('1. What went well?');
+    expect(html).toContain('Not answered');
+  });
+
+  it('keeps answers to deleted questions in a trailing block', () => {
+    const html = renderObservationHtml({
+      observation: makeObservation({
+        type: 'Work Product',
+        workProductAnswers: [
+          { questionId: 'gone', answer: 'Still on the record', updatedAt: new Date() },
+        ],
+      }),
+      rubric: makeRubric(),
+      activeComponentIds: [],
+      workProductQuestions: questions,
+    });
+    expect(html).toContain('Other Responses');
+    expect(html).toContain('Still on the record');
+    expect(html.indexOf('Reflection Responses')).toBeLessThan(html.indexOf('Other Responses'));
+  });
+});

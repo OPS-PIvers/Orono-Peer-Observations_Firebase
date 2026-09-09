@@ -9,6 +9,7 @@ import {
   OBSERVATION_STATUS,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
   isAdminRole,
+  questionPhase,
   roleYearMappingDocId,
   workProductAnswerHasText,
   type AppSettings,
@@ -192,7 +193,7 @@ export const finalizeObservation = onCall(
       // (not just active ones) so answers to since-deactivated questions still
       // make it into the permanent record.
       const questionType = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
-      let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text'>[] = [];
+      let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
       {
         const questionsSnap = await db
           .collection(COLLECTIONS.workProductQuestions)
@@ -207,7 +208,7 @@ export const finalizeObservation = onCall(
           .map((doc) => doc.data() as WorkProductQuestion)
           .filter((q) => q.isActive || answeredIds.has(q.questionId))
           .sort((a, b) => a.order - b.order)
-          .map((q) => ({ questionId: q.questionId, text: q.text }));
+          .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) }));
       }
 
       // Thread admin-configured branding into the PDF so the archived

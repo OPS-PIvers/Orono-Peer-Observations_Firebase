@@ -22,6 +22,11 @@ describe('FIXED_RECIPIENT_TRIGGER_TYPES / hasFixedRecipient', () => {
     expect(hasFixedRecipient('scheduled.reminderOverdueFinalize')).toBe(true);
   });
 
+  it('flags the Planning / Reflection reminders as fixed-recipient', () => {
+    expect(hasFixedRecipient('scheduled.reminderPlanning')).toBe(true);
+    expect(hasFixedRecipient('scheduled.reminderReflection')).toBe(true);
+  });
+
   it('flags scheduled.reminderIncomplete as fixed-recipient', () => {
     // scheduledEmailReminders.ts block 2 hardcodes `to: obs.observedEmail`
     // and never reads incompleteTemplate.recipient — same disconnect as

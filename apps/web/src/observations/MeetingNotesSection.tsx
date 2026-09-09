@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarClock, ChevronDown, Lock } from 'lucide-react';
 import type { QuestionPhase, TiptapDoc, WorkProductAnswer, WorkProductQuestion } from '@ops/shared';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
@@ -52,6 +52,13 @@ export interface MeetingNotesSectionProps {
   onPostObsDateChange: (date: Date | undefined) => void;
   onPostObsNotesChange: (doc: TiptapDoc) => void;
   questions?: QuestionsSlot | undefined;
+  /**
+   * External request to open a panel — the observation page passes the URL
+   * hash (`#planning` / `#reflection`) so dashboard cards and emails can
+   * land the reader on the right panel. Re-applied whenever it changes; the
+   * user can still close the panel afterwards.
+   */
+  openPanel?: QuestionPhase | null | undefined;
   /**
    * Optional slot rendered to the far right of the toggle row at md+
    * widths, dropped below the row at narrow widths. Used by the
@@ -332,9 +339,23 @@ export function MeetingNotesSection({
   onPostObsDateChange,
   onPostObsNotesChange,
   questions,
+  openPanel,
   actions,
 }: MeetingNotesSectionProps) {
-  const [active, setActive] = useState<ActiveTab>(null);
+  const [active, setActive] = useState<ActiveTab>(openPanel ?? null);
+
+  useEffect(() => {
+    if (!openPanel) return;
+    setActive(openPanel);
+    // Scroll after the panel has mounted. The scroll container is <main>,
+    // not the document, so a native anchor jump would not land here anyway.
+    const id = requestAnimationFrame(() => {
+      document
+        .getElementById(`meeting-panel-${openPanel}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [openPanel]);
 
   return (
     <div className="space-y-2 md:space-y-0">

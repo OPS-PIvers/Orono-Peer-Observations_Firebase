@@ -4,6 +4,7 @@ import Link from '@tiptap/extension-link';
 import {
   OBSERVATION_TYPES,
   PROFICIENCY_LEVELS,
+  questionPhase,
   workProductAnswerHasText,
   type Observation,
   type ProficiencyLevel,
@@ -44,10 +45,11 @@ export interface RenderPayload {
   /** Component IDs active for this observation's role/year combo. If empty,
    *  every component in the rubric is included. */
   activeComponentIds: string[];
-  /** Question bank for Work Product / Instructional Round observations, in
-   *  display order. The observation's `workProductAnswers` are matched to
-   *  these by questionId. Absent/empty for Standard observations. */
-  workProductQuestions?: Pick<WorkProductQuestion, 'questionId' | 'text'>[];
+  /** The observation type's question bank, in display order. The
+   *  observation's `workProductAnswers` are matched to these by questionId
+   *  and printed under "Planning Responses" / "Reflection Responses" by
+   *  phase. Every observation type has questions, Standard included. */
+  workProductQuestions?: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[];
   /** appSettings.branding, forwarded verbatim by finalizeObservation. Omit
    *  to get the built-in OPS look (used by any caller that hasn't been
    *  updated, and by the small handful of Puppeteer smoke tests). */
@@ -273,14 +275,17 @@ export function renderObservationHtml(payload: RenderPayload): string {
 }
 
 /**
- * Q&A section for Work Product / Instructional Round observations. Renders
- * every provided question in order (answered or not), then any leftover
- * answers whose question no longer exists in the question bank — the PDF is
- * the permanent record, so recorded answers must never be dropped silently.
+ * The observed staff member's question responses, split into "Planning
+ * Responses" (pre) and "Reflection Responses" (post) — the same two panels
+ * they answered them in. Every provided question renders in order, answered
+ * or not, so a reader can see what was left blank. Any leftover answers
+ * whose question no longer exists in the bank trail in their own block: a
+ * deleted question has no phase to file under, and the PDF is the permanent
+ * record, so recorded answers must never be dropped silently.
  */
 function renderResponsesSection(
   observation: Observation,
-  questions: Pick<WorkProductQuestion, 'questionId' | 'text'>[],
+  questions: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[],
 ): string {
   const answerMap = new Map<string, WorkProductAnswer['answer']>();
   for (const a of observation.workProductAnswers ?? []) {
@@ -291,27 +296,42 @@ function renderResponsesSection(
     (a) => !knownIds.has(a.questionId) && workProductAnswerHasText(a.answer),
   );
 
-  const items = [
-    ...questions.map((q, i) =>
-      renderResponse(`${String(i + 1)}. ${q.text}`, answerMap.get(q.questionId)),
-    ),
-    ...orphanedAnswers.map((a, i) =>
-      renderResponse(
-        `${String(questions.length + i + 1)}. (Question no longer in the question bank)`,
-        a.answer,
-      ),
-    ),
-  ].join('');
-
-  const heading =
-    observation.type === OBSERVATION_TYPES.workProduct
-      ? 'Work Product Responses'
-      : 'Instructional Round Responses';
-
-  return `<section class="responses-section">
+  const byPhase = (phase: 'pre' | 'post') => questions.filter((q) => questionPhase(q) === phase);
+  const renderPhase = (heading: string, list: typeof questions): string => {
+    if (list.length === 0) return '';
+    const items = list
+      .map((q, i) => renderResponse(`${String(i + 1)}. ${q.text}`, answerMap.get(q.questionId)))
+      .join('');
+    return `<section class="responses-section">
       <h2>${escapeHtml(heading)}</h2>
-      ${items || '<p class="empty">No responses recorded.</p>'}
+      ${items}
     </section>`;
+  };
+
+  const orphaned =
+    orphanedAnswers.length > 0
+      ? `<section class="responses-section">
+      <h2>Other Responses</h2>
+      ${orphanedAnswers
+        .map((a, i) =>
+          renderResponse(`${String(i + 1)}. (Question no longer in the question bank)`, a.answer),
+        )
+        .join('')}
+    </section>`
+      : '';
+
+  const sections =
+    renderPhase('Planning Responses', byPhase('pre')) +
+    renderPhase('Reflection Responses', byPhase('post')) +
+    orphaned;
+
+  return (
+    sections ||
+    `<section class="responses-section">
+      <h2>Responses</h2>
+      <p class="empty">No responses recorded.</p>
+    </section>`
+  );
 }
 
 function renderResponse(question: string, answer: WorkProductAnswer['answer'] | undefined): string {

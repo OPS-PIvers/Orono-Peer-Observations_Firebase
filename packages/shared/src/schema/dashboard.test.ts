@@ -26,17 +26,33 @@ describe('dashboardStep', () => {
 });
 
 describe('DEFAULT_STEPS', () => {
-  it('has the 8 built-in ids in cycle order', () => {
+  it('has the 6 built-in ids in cycle order', () => {
     expect(DEFAULT_STEPS.map((s) => s.id)).toEqual([
       'signup',
       'preObs',
-      'workProduct',
       'observation',
       'reviewDraft',
       'postObs',
       'acknowledge',
-      'instructionalRound',
     ]);
+  });
+
+  it('Planning and Reflection deep-link into their panels and track every observation type', () => {
+    const byId = Object.fromEntries(DEFAULT_STEPS.map((s) => [s.id, s]));
+    expect(byId['preObs']?.openPanel).toBe('planning');
+    expect(byId['postObs']?.openPanel).toBe('reflection');
+    expect(byId['preObs']?.watchedKind).toBe('anyDraftFirst');
+    expect(byId['postObs']?.watchedKind).toBe('anyDraftFirst');
+    expect(byId['preObs']?.inProgress).toBe('responseProgress');
+    expect(byId['postObs']?.showWhen).toBe('postQuestionsUnlocked');
+    // No separate Work Product / Instructional Round cards: every type has
+    // questions, and they live on the Planning / Reflection cards.
+    expect(byId['workProduct']).toBeUndefined();
+    expect(byId['instructionalRound']).toBeUndefined();
+  });
+
+  it('parses a step saved before openPanel existed as openPanel: null', () => {
+    expect(dashboardStep.parse({ id: 'legacy' }).openPanel).toBeNull();
   });
 
   it('marks meetings/visit done when their date passes', () => {
