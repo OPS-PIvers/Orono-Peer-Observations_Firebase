@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { moduleDoc, moduleSection, autoEnable, staffMatchesAutoEnable } from './module.js';
+import {
+  moduleDoc,
+  moduleSection,
+  autoEnable,
+  effectiveModuleIdsFor,
+  effectiveModulesFor,
+  staffHasModule,
+  staffMatchesAutoEnable,
+} from './module.js';
 import { moduleItem, moduleProgress } from './moduleItem.js';
 
 const now = new Date('2026-05-20T00:00:00Z');
@@ -180,5 +188,108 @@ describe('staffMatchesAutoEnable', () => {
     expect(
       staffMatchesAutoEnable({ year: 1, summativeYear: false }, { dimension: 'year', value: 2 }),
     ).toBe(false);
+  });
+});
+
+const YEAR_2 = { year: 2 as const, summativeYear: false };
+
+function modulesNamed(ids: readonly string[]) {
+  return ids.map((moduleId) => ({ moduleId, autoEnable: null }));
+}
+
+describe('staffHasModule', () => {
+  it('matches a manually assigned module', () => {
+    expect(
+      staffHasModule({ ...YEAR_2, modules: ['mentor'] }, { moduleId: 'mentor', autoEnable: null }),
+    ).toBe(true);
+  });
+  it('matches an auto-enabled module the staff member never picked', () => {
+    expect(
+      staffHasModule(
+        { ...YEAR_2, modules: [] },
+        { moduleId: 'ilt', autoEnable: { dimension: 'year', value: 2 } },
+      ),
+    ).toBe(true);
+  });
+  it('does not match an unassigned, unmatched module', () => {
+    expect(
+      staffHasModule(
+        { ...YEAR_2, modules: ['mentor'] },
+        { moduleId: 'ilt', autoEnable: { dimension: 'year', value: 3 } },
+      ),
+    ).toBe(false);
+  });
+  it('treats a staff doc with no `modules` field as manually unassigned', () => {
+    expect(staffHasModule(YEAR_2, { moduleId: 'mentor', autoEnable: null })).toBe(false);
+    expect(
+      staffHasModule(YEAR_2, { moduleId: 'ilt', autoEnable: { dimension: 'year', value: 2 } }),
+    ).toBe(true);
+  });
+});
+
+describe('effectiveModulesFor', () => {
+  it('keeps input order and the full module objects', () => {
+    const modules = [
+      { moduleId: 'a', autoEnable: null, displayName: 'A' },
+      { moduleId: 'b', autoEnable: { dimension: 'year', value: 2 } as const, displayName: 'B' },
+      { moduleId: 'c', autoEnable: null, displayName: 'C' },
+    ];
+    expect(effectiveModulesFor({ ...YEAR_2, modules: ['c'] }, modules)).toEqual([
+      modules[1],
+      modules[2],
+    ]);
+  });
+  it('returns [] for a null/undefined module list', () => {
+    expect(effectiveModulesFor(YEAR_2, null)).toEqual([]);
+    expect(effectiveModulesFor(YEAR_2, undefined)).toEqual([]);
+  });
+});
+
+describe('effectiveModuleIdsFor', () => {
+  it('unions manual assignments with auto-enable matches', () => {
+    const modules = [
+      { moduleId: 'mentor', autoEnable: null },
+      { moduleId: 'ilt', autoEnable: { dimension: 'year', value: 2 } as const },
+      { moduleId: 'other', autoEnable: { dimension: 'year', value: 3 } as const },
+    ];
+    expect(effectiveModuleIdsFor({ ...YEAR_2, modules: ['mentor'] }, modules)).toEqual([
+      'mentor',
+      'ilt',
+    ]);
+  });
+
+  it('de-duplicates a module that is both manually assigned and auto-enabled', () => {
+    const modules = [{ moduleId: 'ilt', autoEnable: { dimension: 'year', value: 2 } as const }];
+    expect(effectiveModuleIdsFor({ ...YEAR_2, modules: ['ilt'] }, modules)).toEqual(['ilt']);
+  });
+
+  it('keeps a manual id that has no matching module doc', () => {
+    expect(effectiveModuleIdsFor({ ...YEAR_2, modules: ['deleted'] }, [])).toEqual(['deleted']);
+  });
+
+  it("does not truncate at Firestore's 30-value `in` limit", () => {
+    const manual = Array.from({ length: 20 }, (_, i) => `manual-${String(i)}`);
+    const autoIds = Array.from({ length: 20 }, (_, i) => `auto-${String(i)}`);
+    const modules = [
+      ...modulesNamed(manual),
+      ...autoIds.map((moduleId) => ({
+        moduleId,
+        autoEnable: { dimension: 'year', value: 2 } as const,
+      })),
+    ];
+
+    const ids = effectiveModuleIdsFor({ ...YEAR_2, modules: manual }, modules);
+
+    expect(ids).toHaveLength(40);
+    expect(new Set(ids)).toEqual(new Set([...manual, ...autoIds]));
+  });
+
+  it('keeps every id when a staff member is auto-enabled into more than 30 modules', () => {
+    const modules = Array.from({ length: 31 }, (_, i) => ({
+      moduleId: `auto-${String(i)}`,
+      autoEnable: { dimension: 'year', value: 2 } as const,
+    }));
+
+    expect(effectiveModuleIdsFor(YEAR_2, modules)).toHaveLength(31);
   });
 });

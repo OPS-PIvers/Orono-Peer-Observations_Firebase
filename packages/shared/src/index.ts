@@ -13,5 +13,6 @@ export * from './brand.js';
 export * from './email/renderEmailShell.js';
 export * from './schema/index.js';
 export * from './firestoreDefaults.js';
+export * from './firestoreQuery.js';
 export * from './toDate.js';
 export * from './url.js';

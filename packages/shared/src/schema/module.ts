@@ -128,3 +128,68 @@ export function staffMatchesAutoEnable(
   }
   return displayYear(staff.year) === rule.value;
 }
+
+/**
+ * The staff fields the module-assignment helpers read. `modules` is optional
+ * because Firestore reads bypass the Zod default — a staff doc written before
+ * the field existed simply omits it.
+ */
+export type ModuleAssignmentStaff = Pick<Staff, 'year' | 'summativeYear'> & {
+  modules?: readonly string[];
+};
+
+/** The module fields the assignment helpers read. */
+export type ModuleAssignmentModule = Pick<ModuleDoc, 'moduleId'> & {
+  autoEnable?: AutoEnable | null;
+};
+
+/**
+ * Is this module part of the staff member's effective set — either manually
+ * assigned on their staff doc, or matched by the module's auto-enable rule?
+ *
+ * This union is the single definition of "assigned"; every surface that asks
+ * the question (dashboard, sidebar, admin pills, module page) must go through
+ * here rather than re-deriving it, and firestore.rules mirrors the same logic
+ * server-side (see `matchesModuleAutoEnable`).
+ */
+export function staffHasModule(
+  staff: ModuleAssignmentStaff,
+  module: ModuleAssignmentModule,
+): boolean {
+  return (
+    (staff.modules ?? []).includes(module.moduleId) ||
+    staffMatchesAutoEnable(staff, module.autoEnable ?? null)
+  );
+}
+
+/**
+ * The modules a staff member effectively has, preserving the input order of
+ * `modules`. Generic in the element type so callers keep their own fields
+ * (displayName, color, hasPage, …).
+ */
+export function effectiveModulesFor<M extends ModuleAssignmentModule>(
+  staff: ModuleAssignmentStaff,
+  modules: readonly M[] | null | undefined,
+): M[] {
+  return (modules ?? []).filter((m) => staffHasModule(staff, m));
+}
+
+/**
+ * The ids of a staff member's effective modules: their manual assignments
+ * (kept even when no module doc matches, so a stale id still round-trips)
+ * unioned with every auto-enable match, de-duplicated.
+ *
+ * The result is deliberately uncapped. Firestore's `in` filter takes at most
+ * `FIRESTORE_IN_LIMIT` values, so a caller querying by these ids must batch
+ * them with `chunkForInQuery` rather than truncating the list.
+ */
+export function effectiveModuleIdsFor(
+  staff: ModuleAssignmentStaff,
+  modules: readonly ModuleAssignmentModule[] | null | undefined,
+): string[] {
+  const ids = new Set<string>(staff.modules ?? []);
+  for (const m of modules ?? []) {
+    if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
+  }
+  return [...ids];
+}
