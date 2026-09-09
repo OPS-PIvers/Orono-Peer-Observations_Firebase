@@ -1,51 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import {
-  dashboardQuickMaterial,
-  dashboardStep,
-  type DashboardQuickMaterial,
-  type DashboardStep,
-} from '@ops/shared';
+import type { DashboardQuickMaterial, DashboardStep } from '@ops/shared';
+import { validateQuickMaterials, validateSteps } from './dashboardValidation';
 
 /**
- * Validation functions exported for testing.
- * These mirror the validation logic in useDashboardDraft.ts.
+ * Per-item schema checks used by useDashboardDraft.save(). The full
+ * pre-save gate (tab routing, banner text, field lookup) is covered in
+ * dashboardValidation.test.ts; this file keeps the original item-level
+ * cases against the real implementation.
  */
-
-function validateSteps(steps: DashboardStep[]): { itemIndex: number; message: string }[] {
-  const errors: { itemIndex: number; message: string }[] = [];
-  steps.forEach((step, idx) => {
-    const result = dashboardStep.safeParse(step);
-    if (!result.success) {
-      const messages = result.error.issues
-        .map((issue: { message: string }) => issue.message)
-        .join('; ');
-      errors.push({
-        itemIndex: idx,
-        message: messages,
-      });
-    }
-  });
-  return errors;
-}
-
-function validateQuickMaterials(
-  items: DashboardQuickMaterial[],
-): { itemIndex: number; message: string }[] {
-  const errors: { itemIndex: number; message: string }[] = [];
-  items.forEach((item, idx) => {
-    const result = dashboardQuickMaterial.safeParse(item);
-    if (!result.success) {
-      const messages = result.error.issues
-        .map((issue: { message: string }) => issue.message)
-        .join('; ');
-      errors.push({
-        itemIndex: idx,
-        message: messages,
-      });
-    }
-  });
-  return errors;
-}
 
 describe('useDashboardDraft validation', () => {
   describe('validateQuickMaterials', () => {
@@ -80,7 +42,7 @@ describe('useDashboardDraft validation', () => {
       const errors = validateQuickMaterials(items);
       expect(errors).toHaveLength(1);
       expect(errors[0]?.itemIndex).toBe(0);
-      expect(errors[0]?.message).toContain('Too small');
+      expect(errors[0]?.message).toBe('Required.');
     });
 
     it('rejects label exceeding max length', () => {

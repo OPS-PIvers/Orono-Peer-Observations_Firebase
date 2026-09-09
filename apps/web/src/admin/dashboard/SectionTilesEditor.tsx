@@ -1,7 +1,7 @@
 import type { DashboardSectionsConfig } from '@ops/shared';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { TextField } from './fields';
+import { findFieldError, type DraftValidationError } from './dashboardValidation';
 import {
   SECTION_COPY,
   ST_BLURB,
@@ -14,8 +14,9 @@ import {
 
 /**
  * Section toggle list — one row per top-level area of the staff dashboard,
- * with a switch on the right. Picked over a tile grid because the 1/3
- * editor column doesn't have room for cards without ugly title wrapping.
+ * with a switch on the right. Picked over a tile grid because the editor
+ * column (resizable, down to 35% of the row) doesn't reliably have room
+ * for cards without ugly title wrapping.
  *
  * The whole row is clickable (large click target). The switch is the
  * visual primary state indicator; row background shifts subtly when on.
@@ -26,11 +27,13 @@ export function SectionTilesEditor({
   onChange,
   cycleCloseLabel,
   onCycleCloseLabelChange,
+  errors,
 }: {
   value: DashboardSectionsConfig;
   onChange: (next: DashboardSectionsConfig) => void;
   cycleCloseLabel: string;
   onCycleCloseLabelChange: (next: string) => void;
+  errors?: readonly DraftValidationError[];
 }) {
   const keys = Object.keys(SECTION_COPY) as (keyof DashboardSectionsConfig)[];
 
@@ -79,19 +82,15 @@ export function SectionTilesEditor({
       </ul>
 
       {/* Cycle close date input */}
-      <div className="mt-6 space-y-2">
-        <Label htmlFor="cycleCloseLabel" className="text-sm font-semibold">
-          {ST_CYCLE_CLOSE_LABEL}
-        </Label>
-        <p className="text-muted-foreground text-xs">{ST_CYCLE_CLOSE_BLURB}</p>
-        <Input
-          id="cycleCloseLabel"
-          type="text"
+      <div className="mt-6">
+        <TextField
+          label={ST_CYCLE_CLOSE_LABEL}
+          hint={ST_CYCLE_CLOSE_BLURB}
           value={cycleCloseLabel}
-          onChange={(e) => onCycleCloseLabelChange(e.target.value)}
+          onChange={onCycleCloseLabelChange}
           placeholder={ST_CYCLE_CLOSE_PLACEHOLDER}
           maxLength={50}
-          className="mt-1"
+          error={findFieldError(errors, { itemIndex: -1, field: 'cycleCloseLabel' })}
         />
       </div>
     </section>

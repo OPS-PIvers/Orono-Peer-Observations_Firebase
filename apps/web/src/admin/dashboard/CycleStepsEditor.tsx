@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -20,9 +20,9 @@ import {
   dashboardStep,
   type DashboardStep,
 } from '@ops/shared';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { Field, TextField, UrlField } from './fields';
+import { findFieldError, type DraftValidationError } from './dashboardValidation';
 import {
   BUTTON_TARGET_LABELS,
   CHIP_STYLE_LABELS,
@@ -64,12 +64,26 @@ import { GripHandle, SortableItem } from './SortableItem';
 export function CycleStepsEditor({
   value,
   onChange,
+  errors,
 }: {
   value: DashboardStep[];
   onChange: (next: DashboardStep[]) => void;
+  /** Schema errors from the last refused save, keyed by step id. */
+  errors?: readonly DraftValidationError[];
 }) {
   const steps = [...value].sort((a, b) => a.order - b.order);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // A refused save expands every step that has a problem so the inline
+  // error is visible without hunting for the right "Edit" button.
+  useEffect(() => {
+    if (!errors || errors.length === 0) return;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const e of errors) if (e.itemId) next.add(e.itemId);
+      return next;
+    });
+  }, [errors]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function commit(next: DashboardStep[]) {
@@ -138,10 +152,17 @@ export function CycleStepsEditor({
           <ul className="space-y-2">
             {steps.map((step) => {
               const isExpanded = expanded.has(step.id);
+              const err = (field: string) => findFieldError(errors, { itemId: step.id, field });
+              const stepInvalid = errors?.some((e) => e.itemId === step.id) ?? false;
               return (
                 <SortableItem key={step.id} id={step.id}>
                   {({ dragHandleProps }) => (
-                    <li className="border-border bg-background rounded-lg border">
+                    <li
+                      className={cn(
+                        'border-border bg-background rounded-lg border',
+                        stepInvalid && 'border-destructive',
+                      )}
+                    >
                       <div className="flex items-start gap-2 p-3">
                         <GripHandle dragHandleProps={dragHandleProps} />
                         <div className="min-w-0 flex-1">
@@ -176,26 +197,39 @@ export function CycleStepsEditor({
                       </div>
 
                       {isExpanded ? (
-                        <div className="bg-muted/30 grid gap-3 px-3 pb-3 md:grid-cols-2">
+                        <div className="bg-muted/30 grid gap-4 px-3 pt-1 pb-4 md:grid-cols-2">
                           <TextField
                             label={CS_FIELD_TITLE}
                             value={step.title}
                             onChange={(v) => updateStep(step.id, { title: v })}
+                            placeholder={CS_PLACEHOLDER_DEFAULT}
+                            maxLength={160}
+                            error={err('title')}
                           />
                           <TextField
                             label={CS_FIELD_CHIP}
                             value={step.chipLabel}
                             onChange={(v) => updateStep(step.id, { chipLabel: v })}
+                            placeholder={CS_PLACEHOLDER_DEFAULT}
+                            maxLength={40}
+                            error={err('chipLabel')}
                           />
                           <TextField
                             label={CS_FIELD_DESC}
                             value={step.description}
                             onChange={(v) => updateStep(step.id, { description: v })}
+                            placeholder={CS_PLACEHOLDER_DEFAULT}
+                            maxLength={400}
+                            error={err('description')}
+                            className="md:col-span-2"
                           />
                           <TextField
                             label={CS_FIELD_BUTTON}
                             value={step.buttonLabel}
                             onChange={(v) => updateStep(step.id, { buttonLabel: v })}
+                            placeholder={CS_PLACEHOLDER_DEFAULT}
+                            maxLength={40}
+                            error={err('buttonLabel')}
                           />
                           <SelectField
                             label={CS_FIELD_CHIP_STYLE}
@@ -265,13 +299,17 @@ export function CycleStepsEditor({
                             }
                           />
                           {step.buttonTarget === 'fixedUrl' ? (
-                            <TextField
+                            <UrlField
                               label={CS_FIELD_BUTTON_URL}
                               value={step.buttonUrl}
                               onChange={(v) => updateStep(step.id, { buttonUrl: v })}
+                              placeholder="https://… or /my-rubric"
+                              maxLength={2048}
+                              error={err('buttonUrl')}
+                              className="md:col-span-2"
                             />
                           ) : null}
-                          <label className="flex items-center gap-2 text-xs font-medium">
+                          <label className="flex items-center gap-2 text-sm font-medium">
                             <input
                               type="checkbox"
                               checked={step.hideWhenDone}
@@ -326,27 +364,6 @@ function ShowSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
   );
 }
 
-function TextField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="grid gap-1">
-      <Label className="text-xs">{label}</Label>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={CS_PLACEHOLDER_DEFAULT}
-      />
-    </div>
-  );
-}
-
 function SelectField({
   label,
   value,
@@ -361,19 +378,21 @@ function SelectField({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="grid gap-1">
-      <Label className="text-xs">{label}</Label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border-input bg-background h-9 rounded-md border px-2 text-sm"
-      >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {labels[opt] ?? opt}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Field label={label}>
+      {({ id }) => (
+        <select
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="border-input bg-background h-10 rounded-md border px-2 text-sm"
+        >
+          {options.map((opt) => (
+            <option key={opt} value={opt}>
+              {labels[opt] ?? opt}
+            </option>
+          ))}
+        </select>
+      )}
+    </Field>
   );
 }
