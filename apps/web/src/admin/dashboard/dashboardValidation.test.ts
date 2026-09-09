@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_STEPS,
   dashboardStep,
+  emptyAudience,
   type DashboardQuickMaterial,
   type DashboardStep,
 } from '@ops/shared';
@@ -50,7 +51,13 @@ function draftWith(partial: Partial<DashboardDraft>): DashboardDraft {
 
 describe('validateQuickMaterials', () => {
   it('rejects the blank card that "Add link" creates', () => {
-    const blank: DashboardQuickMaterial = { label: '', sub: '', icon: 'doc', url: '' };
+    const blank: DashboardQuickMaterial = {
+      label: '',
+      sub: '',
+      icon: 'doc',
+      url: '',
+      audience: emptyAudience(),
+    };
     const errors = validateQuickMaterials([blank]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({
@@ -63,23 +70,31 @@ describe('validateQuickMaterials', () => {
   });
 
   it('treats a whitespace-only label as blank', () => {
-    const errors = validateQuickMaterials([{ label: '   ', sub: '', icon: 'doc', url: '' }]);
+    const errors = validateQuickMaterials([
+      { label: '   ', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
+    ]);
     expect(errors.map((e) => e.field)).toEqual(['label']);
   });
 
   it('passes complete materials', () => {
     expect(
       validateQuickMaterials([
-        { label: 'Rubric', sub: 'Domains 2 & 3', icon: 'rubric', url: 'https://x.test/a' },
-        { label: 'Handbook', sub: '', icon: 'folder', url: '' },
+        {
+          label: 'Rubric',
+          sub: 'Domains 2 & 3',
+          icon: 'rubric',
+          url: 'https://x.test/a',
+          audience: emptyAudience(),
+        },
+        { label: 'Handbook', sub: '', icon: 'folder', url: '', audience: emptyAudience() },
       ]),
     ).toEqual([]);
   });
 
   it('reports the right index and a length message for an over-long subtitle', () => {
     const errors = validateQuickMaterials([
-      { label: 'ok', sub: '', icon: 'doc', url: '' },
-      { label: 'ok', sub: 'a'.repeat(201), icon: 'doc', url: '' },
+      { label: 'ok', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
+      { label: 'ok', sub: 'a'.repeat(201), icon: 'doc', url: '', audience: emptyAudience() },
     ]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ itemIndex: 1, field: 'sub' });
@@ -89,7 +104,13 @@ describe('validateQuickMaterials', () => {
 
   it('collapses several issues on one field to a single error', () => {
     const errors = validateQuickMaterials([
-      { label: 'ok', sub: '', icon: 'nope' as DashboardQuickMaterial['icon'], url: '' },
+      {
+        label: 'ok',
+        sub: '',
+        icon: 'nope' as DashboardQuickMaterial['icon'],
+        url: '',
+        audience: emptyAudience(),
+      },
     ]);
     expect(errors.filter((e) => e.field === 'icon')).toHaveLength(1);
   });
@@ -130,7 +151,7 @@ describe('validateDashboardDraft + describeValidationFailure', () => {
     const errors = validateDashboardDraft(
       draftWith({
         cycleCloseLabel: 'x'.repeat(51),
-        quickMaterials: [{ label: '', sub: '', icon: 'doc', url: '' }],
+        quickMaterials: [{ label: '', sub: '', icon: 'doc', url: '', audience: emptyAudience() }],
       }),
     );
     expect(errors.map((e) => e.tab)).toEqual(['layout', 'materials']);
@@ -151,8 +172,8 @@ describe('findFieldError', () => {
     draftWith({
       steps: [{ ...seedStep(), chipLabel: 'a'.repeat(41) }],
       quickMaterials: [
-        { label: 'ok', sub: '', icon: 'doc', url: '' },
-        { label: '', sub: '', icon: 'doc', url: '' },
+        { label: 'ok', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
+        { label: '', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
       ],
     }),
   );

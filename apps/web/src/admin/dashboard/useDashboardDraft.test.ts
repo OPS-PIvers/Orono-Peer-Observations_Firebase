@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { DashboardQuickMaterial, DashboardStep } from '@ops/shared';
+import { emptyAudience, type DashboardQuickMaterial, type DashboardStep } from '@ops/shared';
 import { validateQuickMaterials, validateSteps } from './dashboardValidation';
 
 /**
@@ -18,12 +18,14 @@ describe('useDashboardDraft validation', () => {
           sub: 'Domains 2 & 3',
           icon: 'doc',
           url: 'https://drive.google.com/...',
+          audience: emptyAudience(),
         },
         {
           label: 'Handbook',
           sub: '',
           icon: 'folder',
           url: 'https://handbook.example.com',
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);
@@ -37,6 +39,7 @@ describe('useDashboardDraft validation', () => {
           sub: 'Subtitle',
           icon: 'doc',
           url: 'https://example.com',
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);
@@ -52,6 +55,7 @@ describe('useDashboardDraft validation', () => {
           sub: '',
           icon: 'doc',
           url: '',
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);
@@ -66,6 +70,7 @@ describe('useDashboardDraft validation', () => {
           sub: 'a'.repeat(201),
           icon: 'doc',
           url: '',
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);
@@ -80,6 +85,7 @@ describe('useDashboardDraft validation', () => {
           sub: '',
           icon: 'doc',
           url: 'a'.repeat(2049),
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);
@@ -94,18 +100,21 @@ describe('useDashboardDraft validation', () => {
           sub: '',
           icon: 'doc',
           url: '',
+          audience: emptyAudience(),
         },
         {
           label: 'Valid Item',
           sub: '',
           icon: 'doc',
           url: '',
+          audience: emptyAudience(),
         },
         {
           label: 'a'.repeat(121),
           sub: '',
           icon: 'doc',
           url: '',
+          audience: emptyAudience(),
         },
       ];
       const errors = validateQuickMaterials(items);

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { email, isoDate } from './common.js';
+import { dashboardMaterialAudience, emptyAudience } from './dashboardAudience.js';
 
 /**
  * Staff Dashboard configuration.
@@ -225,6 +226,8 @@ export const dashboardQuickMaterial = z.object({
   sub: z.string().trim().max(200).default(''),
   icon: materialIcon.default('doc'),
   url: z.string().trim().max(2048).default(''),
+  /** Who sees the card. Empty (the default) = everyone. See dashboardAudience.ts. */
+  audience: dashboardMaterialAudience.default(emptyAudience()),
 });
 export type DashboardQuickMaterial = z.infer<typeof dashboardQuickMaterial>;
 

@@ -23,10 +23,14 @@ vi.mock('firebase/firestore', () => ({
   doc: (_db: unknown, path: string) => ({ path }),
   setDoc: mockSetDoc,
   serverTimestamp: () => 'ts',
+  where: () => ({}),
 }));
 vi.mock('@/lib/firebase', () => ({ db: {} }));
 vi.mock('@/auth/AuthProvider', () => ({
   useAuth: () => ({ user: { email: 'admin@example.test' } }),
+}));
+vi.mock('@/hooks/useFirestoreCollection', () => ({
+  useFirestoreCollection: () => ({ data: [], loading: false, error: null }),
 }));
 vi.mock('@/hooks/useFirestoreDoc', () => ({
   useFirestoreDoc: (path: string) => ({
@@ -42,6 +46,7 @@ vi.mock('./DashboardPreview', () => ({
   DashboardPreview: () => <div data-testid="preview-stub">preview</div>,
 }));
 
+import { emptyAudience } from '@ops/shared';
 import { DashboardSettingsPage } from './DashboardSettingsPage';
 import { SPLITTER_STORAGE_KEY } from './useSplitter';
 
@@ -123,6 +128,8 @@ describe('DashboardSettingsPage', () => {
     const quickWrite = mockSetDoc.mock.calls
       .map((c) => c as unknown as [{ path: string }, { items?: unknown[] }])
       .find(([ref]) => ref.path.startsWith('dashboardQuickMaterials'));
-    expect(quickWrite?.[1].items).toEqual([{ label: 'Rubric', sub: '', icon: 'doc', url: '' }]);
+    expect(quickWrite?.[1].items).toEqual([
+      { label: 'Rubric', sub: '', icon: 'doc', url: '', audience: emptyAudience() },
+    ]);
   });
 });
