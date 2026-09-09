@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isoDate, slugId } from './common.js';
+import { OBSERVATION_TYPES, type ObservationType } from '../constants.js';
 
 /**
  * Which observation type a question is filed under — one entry per member of
@@ -9,6 +10,19 @@ import { isoDate, slugId } from './common.js';
  */
 export const QUESTION_TYPES = ['standard', 'work-product', 'instructional-round'] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
+
+/**
+ * Which question-bank `type` an observation's questions are filed under.
+ * Exhaustive over `OBSERVATION_TYPES` — a new observation type will fail to
+ * compile here until its questions have a home, which is the point. Shared
+ * by the web editor (loading the bank for the Planning / Reflection panels)
+ * and the finalize callable (printing answers into the PDF).
+ */
+export const QUESTION_TYPE_BY_OBSERVATION_TYPE: Record<ObservationType, QuestionType> = {
+  [OBSERVATION_TYPES.standard]: 'standard',
+  [OBSERVATION_TYPES.workProduct]: 'work-product',
+  [OBSERVATION_TYPES.instructionalRound]: 'instructional-round',
+};
 
 /**
  * /workProductQuestions/{id} — the reflection question bank the observed staff
