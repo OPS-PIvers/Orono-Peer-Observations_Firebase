@@ -1,17 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  collectionGroup,
-  doc,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
+import { doc, limit, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
@@ -22,13 +11,13 @@ import {
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
   questionType,
-  staffMatchesAutoEnable,
+  effectiveModuleIdsFor,
+  effectiveModulesFor,
   type AppSettings,
   type DashboardConfig,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
   type ModuleDoc,
-  type ModuleItem,
   type ModuleProgress,
   type Observation,
   type ObservationWindow,
@@ -45,6 +34,7 @@ import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObs
 import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
+import { useAssignedModuleMaterials } from './useAssignedModuleMaterials';
 import { DashboardView, type ModuleChip } from './DashboardView';
 import {
   type CheckpointWithStatus,
@@ -100,40 +90,14 @@ export function StaffDashboardPage() {
     emailLower ? `${COLLECTIONS.staff}/${emailLower}/${STAFF_SUBCOLLECTIONS.moduleProgress}` : '',
   );
 
-  // Assigned module IDs (max 30 for the `in` query — staff never have that many).
-  const assignedModuleIds = useMemo(() => {
-    if (!staff) return [];
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-    const ids = new Set(staff.modules ?? []);
-    for (const m of modulesData ?? []) {
-      if (staffMatchesAutoEnable(staff, m.autoEnable ?? null)) ids.add(m.moduleId);
-    }
-    return [...ids].slice(0, 30);
-  }, [staff, modulesData]);
-
-  const materialsConstraints = useMemo(
-    () =>
-      assignedModuleIds.length > 0
-        ? [where('kind', '==', 'material'), where('moduleId', 'in', assignedModuleIds)]
-        : null,
-    [assignedModuleIds],
+  // Manual assignments unioned with every auto-enable match, uncapped — the
+  // hook below batches them past Firestore's `in` limit.
+  const assignedModuleIds = useMemo(
+    () => (staff ? effectiveModuleIdsFor(staff, modulesData) : []),
+    [staff, modulesData],
   );
 
-  const [moduleMaterials, setModuleMaterials] = useState<ModuleItem[]>([]);
-  useEffect(() => {
-    if (!materialsConstraints) {
-      setModuleMaterials([]);
-      return;
-    }
-    let cancelled = false;
-    void getDocs(query(collectionGroup(db, 'items'), ...materialsConstraints)).then((snap) => {
-      if (cancelled) return;
-      setModuleMaterials(snap.docs.map((d) => d.data() as ModuleItem));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [materialsConstraints]);
+  const { materials: moduleMaterials } = useAssignedModuleMaterials(assignedModuleIds);
 
   const finalizedConstraints = useMemo(
     () =>
@@ -280,14 +244,11 @@ export function StaffDashboardPage() {
 
   const moduleChips = useMemo<ModuleChip[]>(() => {
     if (!staff || !modulesData) return [];
-    return modulesData
-      .filter(
-        (m) =>
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-          (staff.modules ?? []).includes(m.moduleId) ||
-          staffMatchesAutoEnable(staff, m.autoEnable ?? null),
-      )
-      .map((m) => ({ moduleId: m.moduleId, displayName: m.displayName, color: m.color }));
+    return effectiveModulesFor(staff, modulesData).map((m) => ({
+      moduleId: m.moduleId,
+      displayName: m.displayName,
+      color: m.color,
+    }));
   }, [staff, modulesData]);
 
   if (staffLoading && !staff) {

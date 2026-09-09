@@ -4,6 +4,7 @@ import {
   type PillColorName,
   type Role,
   type Staff,
+  effectiveModuleIdsFor,
   staffMatchesAutoEnable,
 } from '@ops/shared';
 import { PillSelect, PillMultiSelect, type PillOption } from '@/admin/_shared/PillEditor';
@@ -173,11 +174,8 @@ export function ModuleAccessPill({
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
   const assignedModules = row.modules ?? [];
 
-  const selected = new Set<string>(assignedModules);
+  const selected = new Set<string>(effectiveModuleIdsFor(row, modules));
   if (row.hasAdminAccess) selected.add(ADMIN_ACCESS);
-  for (const m of modules) {
-    if (staffMatchesAutoEnable(row, m.autoEnable ?? null)) selected.add(m.moduleId);
-  }
 
   const options: PillOption[] = [
     { value: ADMIN_ACCESS, label: 'Admin Console Access', color: ADMIN_PILL_COLOR },
