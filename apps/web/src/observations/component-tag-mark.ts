@@ -12,8 +12,15 @@ import { Mark, mergeAttributes } from '@tiptap/core';
  * Stored shape in the Tiptap JSON document:
  *   { type: 'text',
  *     marks: [{ type: 'componentTag',
- *               attrs: { componentId: '1a', bg: '#dbeafe', fg: '#1e3a8a' } }],
+ *               attrs: { componentId: '1a', bg: '#dbeafe', fg: '#1e3a8a',
+ *                        source: 'planning' } }],
  *     text: '…' }
+ *
+ * `source` records where the tagged text came from — the evaluator's own
+ * script (the default, omitted from HTML) or a sentence lifted from the
+ * teacher's Planning / Reflection answer. "The teacher says they
+ * differentiate" and "the evaluator observed differentiation" are different
+ * claims, and the PDF must let a reader tell them apart.
  */
 export const ComponentTagMark = Mark.create({
   name: 'componentTag',
@@ -45,6 +52,17 @@ export const ComponentTagMark = Mark.create({
           const fg = attributes['fg'] as string | null;
           if (!fg) return {};
           return { 'data-fg': fg };
+        },
+      },
+      source: {
+        // Defaulting to 'script' keeps every tag written before this attr
+        // existed rendering exactly as it did.
+        default: 'script',
+        parseHTML: (element) => element.getAttribute('data-source') ?? 'script',
+        renderHTML: (attributes) => {
+          const source = attributes['source'] as string | null;
+          if (!source || source === 'script') return {};
+          return { 'data-source': source };
         },
       },
     };

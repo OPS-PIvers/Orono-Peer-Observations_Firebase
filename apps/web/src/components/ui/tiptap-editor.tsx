@@ -89,8 +89,12 @@ export function TiptapEditor({
     editor.commands.setContent(incoming as Content, { emitUpdate: false });
   }, [value, editor]);
 
+  // emitUpdate: false — toggling editability is not a content change.
+  // Tiptap's default emits `update`, which reached onChange with whatever
+  // the editor held at mount (an empty doc when the value had not hydrated
+  // yet) and could autosave that emptiness over a real stored answer.
   useEffect(() => {
-    editor.setEditable(!readOnly);
+    editor.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
   return (

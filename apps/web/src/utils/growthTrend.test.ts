@@ -5,6 +5,7 @@ import type {
   RubricComponent,
   RubricDomain,
 } from '@ops/shared';
+import { DRAFT_VISIBILITY_HIDDEN } from '@ops/shared';
 import { computeGrowthTrend } from './growthTrend';
 
 const EMPTY_PROFICIENCIES = {
@@ -72,6 +73,7 @@ function makeObservation(
     lastModifiedAt: new Date('2025-10-01'),
     finalizedAt: new Date('2025-10-02'),
     acknowledgedAt: null,
+    draftVisibility: DRAFT_VISIBILITY_HIDDEN,
     windowId: null,
     slotId: null,
     scheduledStartAt: null,

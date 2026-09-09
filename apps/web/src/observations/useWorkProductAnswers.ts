@@ -66,10 +66,15 @@ export function useWorkProductAnswers(
     };
   }, []);
 
+  // Nothing may be edited before the stored answers are in local state:
+  // an editor mounted against the empty pre-hydration value must not be
+  // able to write that emptiness back over the real answers.
+  const hydratedRef = useRef(false);
   useHydratedDraft(observation?.id ?? null, observation, (src) => {
     const next: Record<string, TiptapDoc> = {};
     for (const a of src.workProductAnswers ?? []) next[a.questionId] = answerToTiptapDoc(a.answer);
     localRef.current = next;
+    hydratedRef.current = true;
     setLocalDocs(next);
   });
 
@@ -139,7 +144,7 @@ export function useWorkProductAnswers(
 
   const setAnswer = useCallback(
     (questionId: string, value: TiptapDoc) => {
-      if (!canAnswer) return;
+      if (!canAnswer || !hydratedRef.current) return;
       // Ignore no-op updates (editor normalisation on mount, a click that
       // changes nothing): a write would stamp a fresh `updatedAt` on every
       // answer and falsely flag them as edited after finalize.

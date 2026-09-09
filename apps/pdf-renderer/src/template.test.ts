@@ -166,3 +166,45 @@ describe('renderObservationHtml — question responses', () => {
     expect(html.indexOf('Reflection Responses')).toBeLessThan(html.indexOf('Other Responses'));
   });
 });
+
+describe('renderObservationHtml — script tag provenance', () => {
+  it("labels spans lifted from the teacher's answers and leaves script spans bare", () => {
+    const html = renderObservationHtml({
+      observation: makeObservation({
+        scriptDoc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Observed grouping.',
+                  marks: [{ type: 'componentTag', attrs: { componentId: '1a' } }],
+                },
+              ],
+            },
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'I group by readiness.',
+                  marks: [
+                    { type: 'componentTag', attrs: { componentId: '1a', source: 'planning' } },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      rubric: makeRubric(),
+      activeComponentIds: [],
+    });
+    expect(html).toContain('From the teacher&#39;s Planning response');
+    expect(html).toContain('I group by readiness.');
+    const bare = html.indexOf('Observed grouping.');
+    expect(html.slice(Math.max(0, bare - 120), bare)).not.toContain('span-source');
+  });
+});

@@ -15,7 +15,15 @@ import {
 } from '@ops/shared';
 import { ComponentTagMark } from './component-tag-mark.js';
 import { colorFor } from './component-colors.js';
-import { extractTaggedSpansForComponent } from './extract-script-tags.js';
+import { extractTaggedSpansForComponent, type TagSource } from './extract-script-tags.js';
+
+/** Printed before a tagged span that was lifted from the teacher's own
+ *  answer, so the archived record never presents their words as the
+ *  evaluator's observation. */
+const TAG_SOURCE_LABEL: Record<Exclude<TagSource, 'script'>, string> = {
+  planning: "From the teacher's Planning response",
+  reflection: "From the teacher's Reflection response",
+};
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -164,7 +172,11 @@ export function renderObservationHtml(payload: RenderPayload): string {
                           .map((span) => {
                             const bg = span.bg ?? fallbackColor.bg;
                             const fg = span.fg ?? fallbackColor.fg;
-                            return `<li><mark style="background-color:${escapeHtml(bg)};color:${escapeHtml(fg)}">${escapeHtml(span.text)}</mark></li>`;
+                            const sourceLabel =
+                              span.source === 'script'
+                                ? ''
+                                : `<span class="span-source">${escapeHtml(TAG_SOURCE_LABEL[span.source])}:</span> `;
+                            return `<li>${sourceLabel}<mark style="background-color:${escapeHtml(bg)};color:${escapeHtml(fg)}">${escapeHtml(span.text)}</mark></li>`;
                           })
                           .join('')}
                       </ul>
@@ -517,6 +529,7 @@ function styles(primaryColor: string): string {
     .notes-from-script { margin-top: 0.6em; }
     .notes-from-script h4 { margin: 0.2em 0 0.3em; font-size: 10pt; color: var(--ops-gray-dark); }
     .notes-from-script ul { list-style: none; padding: 0; margin: 0; }
+    .notes-from-script .span-source { font-style: italic; color: #555; }
     .notes-from-script li {
       margin: 0.2em 0;
       font-size: 10pt;
