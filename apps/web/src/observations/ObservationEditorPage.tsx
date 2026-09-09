@@ -11,12 +11,12 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { toDateInputValue, parseDateInput } from '@/utils/dateHelpers';
-import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
-  OBSERVATION_TYPES,
+  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   type Observation,
   type ObservationComponentEntry,
   type Role,
@@ -27,6 +27,7 @@ import {
   type RubricDomain,
   type SignupFieldAnswer,
   type TiptapDoc,
+  type WorkProductQuestion,
   roleYearMappingDocId,
 } from '@ops/shared';
 import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
@@ -55,9 +56,9 @@ import { ScriptEditor } from './ScriptEditor';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
-import { MeetingNotesSection } from './MeetingNotesSection';
-import { WorkProductResponseViewer } from './WorkProductResponseViewer';
-import { InstructionalRoundResponseViewer } from './InstructionalRoundResponseViewer';
+import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
+import { useWorkProductAnswers } from './useWorkProductAnswers';
+import { answerEditability, splitQuestionsByPhase } from './questionAnswers';
 import { AudioPopoverButton } from './AudioPopoverButton';
 import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
@@ -459,6 +460,53 @@ export function ObservationEditorPage() {
   // finalized observation without a full reopen/re-finalize cycle. Mirrors
   // the callable's own auth check server-side — this is UX gating only.
   const showRegenerate = isReadOnly && (isObserver || isAdminUser);
+
+  // The observed staff member's Planning / Reflection questions live in the
+  // same panels as the evaluator's meeting notes — this page serves both
+  // audiences. Load the bank for this observation's type; answers autosave
+  // to the observation doc (the teacher's only live editing surface).
+  const questionType = observation ? QUESTION_TYPE_BY_OBSERVATION_TYPE[observation.type] : null;
+  const questionConstraints = useMemo(
+    () => [
+      where('type', '==', questionType),
+      where('isActive', '==', true),
+      orderBy('order', 'asc'),
+    ],
+    [questionType],
+  );
+  const { data: questionBank } = useFirestoreCollection<WorkProductQuestion>(
+    questionType ? COLLECTIONS.workProductQuestions : '',
+    questionConstraints,
+    [questionType ?? ''],
+  );
+  const answers = useWorkProductAnswers(observation, isObservedStaff);
+  const questionsSlot = useMemo<QuestionsSlot | undefined>(() => {
+    if (!observation || !questionBank) return undefined;
+    const { pre, post } = splitQuestionsByPhase(questionBank);
+    const observationDate = toJsDate(observation.observationDate) ?? null;
+    const now = new Date();
+    const editabilityFor = (phase: 'pre' | 'post') =>
+      answerEditability({
+        phase,
+        status: observation.status,
+        isObservedStaff,
+        observationDate,
+        now,
+      });
+    return {
+      pre: { questions: pre, editability: editabilityFor('pre') },
+      post: { questions: post, editability: editabilityFor('post') },
+      answers: answers.docs,
+      stored: answers.stored,
+      finalizedAt: observation.finalizedAt,
+      observationDate,
+      onAnswerChange: answers.setAnswer,
+      saveState: answers.saveState,
+      saveError: answers.saveError,
+      onRetrySave: answers.retry,
+      isOnline,
+    };
+  }, [observation, questionBank, isObservedStaff, answers, isOnline]);
 
   // Components assigned to this role-year that have no proficiency selected
   // yet. Surfaced as a non-blocking warning in FinalizeDialog — some
@@ -914,7 +962,9 @@ export function ObservationEditorPage() {
 
         {!canEdit && !isReadOnly ? (
           <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
-            You can view this observation but not edit it (you&apos;re not the observer).
+            {isObservedStaff
+              ? 'Your evaluator is still drafting this observation. Open Planning or Reflection below to answer your questions — the rest of the page is read-only until it is finalized.'
+              : "You can view this observation but not edit it (you're not the observer)."}
           </div>
         ) : null}
         {isReadOnly ? (
@@ -978,6 +1028,7 @@ export function ObservationEditorPage() {
           onPreObsNotesChange={setPreObsNotes}
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
+          questions={questionsSlot}
           // Park the rubric scope toggle on the right of the meeting-
           // notes row at md+ so it sits inline with Planning/
           // Reflection. At mobile widths it drops below the row as a
@@ -990,14 +1041,6 @@ export function ObservationEditorPage() {
             )
           }
         />
-
-        {observation.type === OBSERVATION_TYPES.workProduct ? (
-          <WorkProductResponseViewer observation={observation} />
-        ) : null}
-
-        {observation.type === OBSERVATION_TYPES.instructionalRound ? (
-          <InstructionalRoundResponseViewer observation={observation} />
-        ) : null}
 
         {!visibleRubric ? (
           <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3">

@@ -11,15 +11,9 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { useActiveStandardObservation } from '@/hooks/useActiveStandardObservation';
-import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
-import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { PageHeader } from '@/components/PageHeader';
 import { AssignmentToggle, RubricGrid, type AssignmentMode } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
-import { StandardAnswerForm } from '@/observations/StandardAnswerForm';
-import { WorkProductAnswerForm } from '@/observations/WorkProductAnswerForm';
-import { InstructionalRoundAnswerForm } from '@/observations/InstructionalRoundAnswerForm';
 import { roleDisplayName } from '@/utils/roleLookup';
 
 const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
@@ -103,10 +97,6 @@ export function MyRubricPage() {
     return { ...rubric, domains: filteredDomains };
   }, [rubric, assignmentMode, assignedComponentIds]);
 
-  const { observation: stdObservation } = useActiveStandardObservation(lowerEmail);
-  const { observation: wpObservation } = useActiveWorkProductObservation(lowerEmail);
-  const { observation: irObservation } = useActiveInstructionalRoundObservation(lowerEmail);
-
   // Scroll to the targeted domain section when the URL hash changes.
   // React Router's <Link> updates the hash but does NOT trigger native
   // browser anchor-scroll, especially because the scrolling container is
@@ -155,12 +145,6 @@ export function MyRubricPage() {
         ) : null}
 
         <RecentObservationsStrip observedEmail={lowerEmail} />
-
-        {stdObservation ? <StandardAnswerForm observation={stdObservation} /> : null}
-
-        {wpObservation ? <WorkProductAnswerForm observation={wpObservation} /> : null}
-
-        {irObservation ? <InstructionalRoundAnswerForm observation={irObservation} /> : null}
 
         {visibleRubric ? (
           <RubricGrid

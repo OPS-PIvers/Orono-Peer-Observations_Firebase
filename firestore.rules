@@ -288,8 +288,9 @@ service cloud.firestore {
     //     immutable here. The Draft → Finalized transition happens server-side
     //     via a callable (it also renders the PDF, shares the Drive folder,
     //     sends email, etc.).
-    //   - observed staff: workProductAnswers on a WP/IR Draft, or the ack
-    //     fields on a Finalized observation (must stamp their own email).
+    //   - observed staff: workProductAnswers on their own observation (any
+    //     type, Draft or Finalized), or the ack fields on a Finalized
+    //     observation (must stamp their own email).
     //
     // Delete: admin, or the observer while the observation is still a Draft.
     match /observations/{observationId} {
@@ -332,9 +333,15 @@ service cloud.firestore {
               ])
         )
         || (
+          // Observed staff answering their Planning / Reflection questions.
+          // Every observation type carries questions (Standard included).
+          // Allowed on Finalized too: Reflection stays open after finalize
+          // (the evaluator may finalize before the teacher has reflected),
+          // and rules cannot tell which array entries changed, so the UI —
+          // not this rule — keeps Planning read-only once finalized and
+          // flags any answer saved after finalizedAt.
           isCurrentUserEmail(resource.data.observedEmail)
-          && resource.data.status == 'Draft'
-          && resource.data.type in ['Work Product', 'Instructional Round']
+          && resource.data.status in ['Draft', 'Finalized']
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['workProductAnswers', 'lastModifiedAt'])
         )

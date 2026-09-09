@@ -7,7 +7,7 @@ import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_STATUS,
-  OBSERVATION_TYPES,
+  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   isAdminRole,
   roleYearMappingDocId,
   workProductAnswerHasText,
@@ -17,8 +17,6 @@ import {
   type RoleYearMapping,
   type Rubric,
   type RubricDomain,
-  type ObservationType,
-  type QuestionType,
   type WorkProductQuestion,
 } from '@ops/shared';
 import {
@@ -31,17 +29,6 @@ import {
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { formatDate as formatDateReadable, sendTemplatedEmail } from '../lib/emailUtils.js';
-
-/**
- * Which question-bank `type` an observation's questions are filed under.
- * Exhaustive over `OBSERVATION_TYPES` — a new observation type will fail to
- * compile here until its questions have a home, which is the point.
- */
-const QUESTION_TYPE_BY_OBSERVATION_TYPE: Record<ObservationType, QuestionType> = {
-  [OBSERVATION_TYPES.standard]: 'standard',
-  [OBSERVATION_TYPES.workProduct]: 'work-product',
-  [OBSERVATION_TYPES.instructionalRound]: 'instructional-round',
-};
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the

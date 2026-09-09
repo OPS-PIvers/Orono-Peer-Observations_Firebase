@@ -334,7 +334,7 @@ describe('observations: acknowledge (observed staff)', () => {
   });
 });
 
-describe('observations: staff WP/IR draft access', () => {
+describe('observations: observed staff draft access and answers', () => {
   it('observed teacher CAN read a Work Product Draft', async () => {
     await seedDraftObs('wpObs', { type: 'Work Product' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
@@ -377,12 +377,57 @@ describe('observations: staff WP/IR draft access', () => {
     );
   });
 
-  it('observed teacher CANNOT save workProductAnswers on a Standard Draft', async () => {
+  it('observed teacher CAN save workProductAnswers on a Standard Draft', async () => {
+    // Standard observations carry Planning / Reflection questions too.
     await seedDraftObs('stdObs2', { type: 'Standard', workProductAnswers: [] });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(
+    await assertSucceeds(
       updateDoc(doc(db, 'observations/stdObs2'), {
-        workProductAnswers: [{ questionId: 'q1', answer: 'Hax', updatedAt: new Date() }],
+        workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CAN save workProductAnswers on a Finalized observation', async () => {
+    // Reflection questions stay open after finalize; the UI locks Planning.
+    await seedDraftObs('finalStd', {
+      type: 'Standard',
+      status: 'Finalized',
+      finalizedAt: new Date(),
+      workProductAnswers: [],
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/finalStd'), {
+        workProductAnswers: [
+          { questionId: 'q1', answer: 'Later reflection', updatedAt: new Date() },
+        ],
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CANNOT touch other fields alongside workProductAnswers', async () => {
+    await seedDraftObs('stdObs3', { type: 'Standard', workProductAnswers: [] });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/stdObs3'), {
+        workProductAnswers: [{ questionId: 'q1', answer: 'x', updatedAt: new Date() }],
+        observationName: 'tampered',
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('a different teacher CANNOT save workProductAnswers', async () => {
+    await seedDraftObs('stdObs4', { type: 'Standard', workProductAnswers: [] });
+    const db = testEnv
+      .authenticatedContext('o', claims.teacher('other@orono.k12.mn.us'))
+      .firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/stdObs4'), {
+        workProductAnswers: [{ questionId: 'q1', answer: 'x', updatedAt: new Date() }],
         lastModifiedAt: new Date(),
       }),
     );
