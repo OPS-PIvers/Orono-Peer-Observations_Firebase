@@ -5,11 +5,18 @@ import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
-  OBSERVATION_TYPES,
+  QUESTION_TYPE_BY_OBSERVATION_TYPE,
+  questionPhase,
+  questionType,
   workProductAnswerHasText,
+  type EmailTemplate,
+  type ObservationType,
+  type QuestionPhase,
   type Role,
+  type WorkProductQuestion,
 } from '@ops/shared';
 import {
+  APP_URL,
   formatDate,
   loadActiveTemplate,
   sendEmail,
@@ -26,6 +33,90 @@ function resolveRoleLabel(rolesByIdOrName: Map<string, string>, value: string): 
 }
 
 if (getApps().length === 0) initializeApp();
+
+/**
+ * Question ids of the given phase, for the given observation type, that
+ * have no answer with text. Pure — the reminder decision in one place.
+ * Unknown observation types (bad data) have no questions and get no nudge.
+ */
+export function unansweredQuestionIds(
+  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'>[],
+  answers: unknown,
+  observationType: string,
+  phase: QuestionPhase,
+): string[] {
+  const type = (QUESTION_TYPE_BY_OBSERVATION_TYPE as Record<string, string | undefined>)[
+    observationType
+  ];
+  if (!type) return [];
+  const answered = new Set<string>();
+  for (const a of Array.isArray(answers) ? (answers as unknown[]) : []) {
+    if (typeof a !== 'object' || a === null) continue;
+    const entry = a as Record<string, unknown>;
+    if (typeof entry['questionId'] === 'string' && workProductAnswerHasText(entry['answer'])) {
+      answered.add(entry['questionId']);
+    }
+  }
+  return questions
+    .filter((q) => questionType(q) === type && questionPhase(q) === phase)
+    .map((q) => q.questionId)
+    .filter((id) => !answered.has(id));
+}
+
+/** `/mail` doc id for a phase reminder — stable within an ISO week so a
+ *  re-run is a no-op, new the following week so the nudge repeats. */
+export function phaseReminderMailDocId(
+  phase: QuestionPhase,
+  observationId: string,
+  week: string,
+): string {
+  return `incomplete-${phase === 'pre' ? 'planning' : 'reflection'}-${observationId}-${week}`;
+}
+
+async function sendPhaseReminder(args: {
+  db: FirebaseFirestore.Firestore;
+  docSnap: FirebaseFirestore.QueryDocumentSnapshot;
+  phase: QuestionPhase;
+  template: EmailTemplate & { id: string };
+  activeQuestions: WorkProductQuestion[];
+  rolesLookup: Map<string, string>;
+  week: string;
+}): Promise<boolean> {
+  const { db, docSnap, phase, template, activeQuestions, rolesLookup, week } = args;
+  const obs = docSnap.data();
+  const observedEmail = (obs['observedEmail'] as string | undefined) ?? '';
+  if (!observedEmail) return false;
+  const type = (obs['type'] as ObservationType | undefined) ?? '';
+  if (unansweredQuestionIds(activeQuestions, obs['workProductAnswers'], type, phase).length === 0) {
+    return false;
+  }
+
+  const name = (obs['observationName'] as string | undefined) ?? '';
+  const vars = {
+    observedName: (obs['observedName'] as string | undefined) ?? '',
+    observedEmail,
+    observedRole: resolveRoleLabel(rolesLookup, (obs['observedRole'] as string | undefined) ?? ''),
+    observationType: type,
+    // Rendered mid-sentence in the seed templates ("observation{{observationName}}"),
+    // so carry the separator with the value and vanish cleanly when unset.
+    observationName: name ? ` "${name}"` : '',
+    observationDate: formatDate(obs['observationDate']),
+    observationLink: `${APP_URL}/observations/${docSnap.id}#${phase === 'pre' ? 'planning' : 'reflection'}`,
+  };
+  const triggerType = template.triggerType;
+  await sendEmail({
+    db,
+    to: observedEmail,
+    subject: substituteVariables(template.subject, vars),
+    html: substituteVariables(template.bodyHtml, vars),
+    mailDocId: phaseReminderMailDocId(phase, docSnap.id, week),
+    triggerType,
+    auditDetails: { observationId: docSnap.id, triggerType, phase },
+  }).catch((err: unknown) =>
+    logger.error(`scheduledEmailReminders: ${phase} reminder send failed`, err),
+  );
+  return true;
+}
 
 /**
  * Return the UTC Date corresponding to midnight Chicago time on the calendar
@@ -94,9 +185,13 @@ export function isoYearWeek(utcNow: Date): string {
 }
 
 /**
- * Daily scheduled job that sends three types of reminder emails:
+ * Daily scheduled job that sends four kinds of reminder emails:
  *   1. Pre-observation reminders N days before a Draft observation's date.
- *   2. Incomplete WP/IR reminders N days after creation with no responses.
+ *   2. Planning-question reminders N+ days after a Draft is created while
+ *      any Planning question is unanswered, and Reflection-question
+ *      reminders N+ days after the observation date while any Reflection
+ *      question is unanswered — each repeating weekly, for every
+ *      observation type.
  *   3. Overdue-finalize reminders N+ days after a Draft observation's date
  *      has passed, repeating weekly to the *observer* until finalized.
  *
@@ -185,60 +280,77 @@ export const scheduledEmailReminders = onSchedule(
       logger.info('scheduledEmailReminders: preObs processed', { count: snap.size, daysAhead });
     }
 
-    // ── 2. Incomplete WP / IR reminders ──────────────────────────────
-    const incompleteTemplate = await loadActiveTemplate(db, 'scheduled.reminderIncomplete');
-    if (incompleteTemplate) {
-      const daysAfter = incompleteTemplate.scheduledDays;
-      // Use Chicago midnight as the cutoff so observations created on the same
-      // calendar day N days ago are included regardless of time-of-day.
-      const { start: cutoff } = chicagoMidnight(today, -daysAfter);
+    // ── 2. Planning / Reflection question reminders ───────────────────
+    // One template per phase so the copy can say the right thing, both
+    // keyed by ISO week so they repeat weekly while questions stay
+    // unanswered (admins tune the start offset and cadence per template).
+    // Every observation type has questions, Standard included.
+    const questionsSnap = await db
+      .collection(COLLECTIONS.workProductQuestions)
+      .where('isActive', '==', true)
+      .get();
+    const activeQuestions = questionsSnap.docs.map((d) => d.data() as WorkProductQuestion);
+    const week = isoYearWeek(today);
 
-      const wpIrSnap = await db
+    const planningTemplate = await loadActiveTemplate(db, 'scheduled.reminderPlanning');
+    if (planningTemplate) {
+      // Planning questions are answerable from creation; start nudging N
+      // days after the draft was created (Chicago midnight cutoff so the
+      // creation time-of-day does not matter).
+      const { start: cutoff } = chicagoMidnight(today, -planningTemplate.scheduledDays);
+      const snap = await db
         .collection(COLLECTIONS.observations)
         .where('status', '==', OBSERVATION_STATUS.draft)
-        .where('type', 'in', [OBSERVATION_TYPES.workProduct, OBSERVATION_TYPES.instructionalRound])
         .where('createdAt', '<=', Timestamp.fromDate(cutoff))
         .get();
-
-      for (const docSnap of wpIrSnap.docs) {
-        const obs = docSnap.data();
-        const answers: unknown[] = Array.isArray(obs['workProductAnswers'])
-          ? (obs['workProductAnswers'] as unknown[])
-          : [];
-        const hasAnyAnswer = answers.some(
-          (a) =>
-            typeof a === 'object' &&
-            a !== null &&
-            workProductAnswerHasText((a as Record<string, unknown>)['answer']),
-        );
-        if (hasAnyAnswer) continue;
-
-        if (!obs['observedEmail']) continue;
-
-        const vars = {
-          observedName: (obs['observedName'] as string | undefined) ?? '',
-          observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
-          observedRole: resolveRoleLabel(
+      let sent = 0;
+      for (const docSnap of snap.docs) {
+        if (
+          await sendPhaseReminder({
+            db,
+            docSnap,
+            phase: 'pre',
+            template: planningTemplate,
+            activeQuestions,
             rolesLookup,
-            (obs['observedRole'] as string | undefined) ?? '',
-          ),
-          observationType: (obs['type'] as string | undefined) ?? '',
-          observationName: (obs['observationName'] as string | undefined) ?? '',
-        };
-
-        await sendEmail({
-          db,
-          to: obs['observedEmail'] as string,
-          subject: substituteVariables(incompleteTemplate.subject, vars),
-          html: substituteVariables(incompleteTemplate.bodyHtml, vars),
-          mailDocId: `incomplete-${docSnap.id}`,
-          triggerType: 'scheduled.reminderIncomplete',
-          auditDetails: { observationId: docSnap.id, triggerType: 'scheduled.reminderIncomplete' },
-        }).catch((err: unknown) =>
-          logger.error('scheduledEmailReminders: incomplete send failed', err),
-        );
+            week,
+          })
+        ) {
+          sent += 1;
+        }
       }
-      logger.info('scheduledEmailReminders: incomplete processed', { count: wpIrSnap.size });
+      logger.info('scheduledEmailReminders: planning processed', { count: snap.size, sent });
+    }
+
+    const reflectionTemplate = await loadActiveTemplate(db, 'scheduled.reminderReflection');
+    if (reflectionTemplate) {
+      // Reflection questions open the day after the observation; start N
+      // days after the observation date. Drafts only: once finalized, the
+      // Reflection stays open but the evaluator has moved on, and the
+      // permanent record is already archived.
+      const { start: cutoff } = chicagoMidnight(today, -reflectionTemplate.scheduledDays);
+      const snap = await db
+        .collection(COLLECTIONS.observations)
+        .where('status', '==', OBSERVATION_STATUS.draft)
+        .where('observationDate', '<=', Timestamp.fromDate(cutoff))
+        .get();
+      let sent = 0;
+      for (const docSnap of snap.docs) {
+        if (
+          await sendPhaseReminder({
+            db,
+            docSnap,
+            phase: 'post',
+            template: reflectionTemplate,
+            activeQuestions,
+            rolesLookup,
+            week,
+          })
+        ) {
+          sent += 1;
+        }
+      }
+      logger.info('scheduledEmailReminders: reflection processed', { count: snap.size, sent });
     }
 
     // ── 3. Overdue-finalize reminders ─────────────────────────────────
@@ -252,12 +364,10 @@ export const scheduledEmailReminders = onSchedule(
     if (overdueTemplate) {
       const daysPast = overdueTemplate.scheduledDays;
       const { start: cutoff } = chicagoMidnight(today, -daysPast);
-      // Weekly cadence: this label is stable for an entire ISO week, so the
+      // Weekly cadence: `week` is stable for an entire ISO week, so the
       // mailDocId below is idempotent per week (re-running the same day only
       // sends once) but produces a fresh id — and a fresh send — every
       // following week the observation is still Draft.
-      const week = isoYearWeek(today);
-
       const overdueSnap = await db
         .collection(COLLECTIONS.observations)
         .where('status', '==', OBSERVATION_STATUS.draft)

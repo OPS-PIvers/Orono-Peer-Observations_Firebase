@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isoYearWeek } from './scheduledEmailReminders.js';
+import {
+  isoYearWeek,
+  phaseReminderMailDocId,
+  unansweredQuestionIds,
+} from './scheduledEmailReminders.js';
 
 /**
  * Unit tests for the ISO-year-week helper backing the overdue-finalize
@@ -35,5 +39,54 @@ describe('isoYearWeek', () => {
     // 2027-01-01 is a Friday whose ISO week's Thursday (2026-12-31) falls in
     // 2026, so this date is ISO week 53 of 2026, not week 1 of 2027.
     expect(isoYearWeek(new Date('2027-01-01T17:00:00Z'))).toBe('2026-W53');
+  });
+});
+
+describe('unansweredQuestionIds', () => {
+  const bank = [
+    { questionId: 's-pre-1', type: 'standard' as const, phase: 'pre' as const },
+    { questionId: 's-pre-2', type: 'standard' as const, phase: 'pre' as const },
+    { questionId: 's-post-1', type: 'standard' as const, phase: 'post' as const },
+    { questionId: 'wp-1', type: 'work-product' as const, phase: 'pre' as const },
+    // Written before `phase` / `type` existed: work-product, Planning.
+    { questionId: 'legacy' } as { questionId: string; type: 'work-product'; phase: 'pre' },
+  ];
+
+  it('lists only the phase questions of the observation type that lack text', () => {
+    const answers = [
+      { questionId: 's-pre-1', answer: 'done' },
+      { questionId: 's-pre-2', answer: '' },
+      { questionId: 's-post-1', answer: { type: 'doc', content: [{ type: 'paragraph' }] } },
+    ];
+    expect(unansweredQuestionIds(bank, answers, 'Standard', 'pre')).toEqual(['s-pre-2']);
+    expect(unansweredQuestionIds(bank, answers, 'Standard', 'post')).toEqual(['s-post-1']);
+    expect(unansweredQuestionIds(bank, answers, 'Work Product', 'pre')).toEqual(['wp-1', 'legacy']);
+  });
+
+  it('is empty when everything is answered, and for an unknown type', () => {
+    const answers = [
+      { questionId: 's-pre-1', answer: 'a' },
+      { questionId: 's-pre-2', answer: 'b' },
+    ];
+    expect(unansweredQuestionIds(bank, answers, 'Standard', 'pre')).toEqual([]);
+    expect(unansweredQuestionIds(bank, answers, 'Mystery', 'pre')).toEqual([]);
+  });
+
+  it('tolerates malformed answer arrays from raw Firestore data', () => {
+    expect(unansweredQuestionIds(bank, undefined, 'Standard', 'post')).toEqual(['s-post-1']);
+    expect(unansweredQuestionIds(bank, [null, 'junk', {}], 'Standard', 'post')).toEqual([
+      's-post-1',
+    ]);
+  });
+});
+
+describe('phaseReminderMailDocId', () => {
+  it('is keyed by phase, observation and ISO week so it repeats weekly', () => {
+    expect(phaseReminderMailDocId('pre', 'obs1', '2026-W31')).toBe(
+      'incomplete-planning-obs1-2026-W31',
+    );
+    expect(phaseReminderMailDocId('post', 'obs1', '2026-W32')).toBe(
+      'incomplete-reflection-obs1-2026-W32',
+    );
   });
 });

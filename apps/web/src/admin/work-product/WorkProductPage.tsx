@@ -43,9 +43,11 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   'instructional-round': 'Instructional Round',
 };
 
+// Display only — stored values stay 'pre' / 'post'. Named to match the
+// Planning / Reflection panels the teacher answers them in.
 const PHASE_LABELS: Record<QuestionPhase, string> = {
-  pre: 'Before observation',
-  post: 'After observation',
+  pre: 'Planning',
+  post: 'Reflection',
 };
 
 type QuestionRow = WorkProductQuestion & { id: string };

@@ -181,20 +181,45 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
-    templateId: 'incomplete-response-reminder',
-    name: 'Reminder: Incomplete Work Product / IR Responses',
+    templateId: 'planning-questions-reminder',
+    name: 'Reminder: Planning Questions',
     description:
-      'Sent automatically N days after a WP or IR observation is created if staff has not responded.',
-    subject: 'Reminder: Please Complete Your Observation Questions — {{appName}}',
+      'Sent automatically (weekly, while unanswered) to the observed staff member starting N days after any observation is created, if their Planning questions are not all answered.',
+    subject: 'Reminder: Your Planning questions are waiting — {{appName}}',
     bodyHtml: `<p>Hi {{observedName}},</p>
-<p>This is a friendly reminder that you have unanswered questions for your <strong>{{observationType}}</strong> observation in {{appName}}.</p>
-<p>Your peer evaluator is waiting on your responses to proceed. Please sign in and complete them when you have a moment:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
+<p>Your <strong>{{observationType}}</strong> observation{{observationName}} has Planning questions that are not answered yet. Your peer evaluator uses these to prepare for the lesson.</p>
+<p>Open the observation and use the <strong>Planning</strong> panel to answer them — your responses save as you type:</p>
+${ctaRow('{{observationLink}}', 'Open Planning')}
 <p>— {{appName}}</p>`,
-    variables: ['observedName', 'observationType', 'signInLink', 'appName'],
-    triggerType: 'scheduled.reminderIncomplete',
+    variables: ['observedName', 'observationType', 'observationName', 'observationLink', 'appName'],
+    triggerType: 'scheduled.reminderPlanning',
     recipient: 'observed',
     scheduledDays: 7,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'reflection-questions-reminder',
+    name: 'Reminder: Reflection Questions',
+    description:
+      'Sent automatically (weekly, while unanswered) to the observed staff member starting N days after the observation date, if their Reflection questions are not all answered.',
+    subject: 'Reminder: Your Reflection questions are open — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your <strong>{{observationType}}</strong> observation{{observationName}} on {{observationDate}} has Reflection questions that are not answered yet.</p>
+<p>Open the observation and use the <strong>Reflection</strong> panel to answer them while the lesson is still fresh:</p>
+${ctaRow('{{observationLink}}', 'Open Reflection')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observedName',
+      'observationType',
+      'observationName',
+      'observationDate',
+      'observationLink',
+      'appName',
+    ],
+    triggerType: 'scheduled.reminderReflection',
+    recipient: 'observed',
+    scheduledDays: 3,
     isActive: true,
     isSystem: true,
   },

@@ -15,7 +15,11 @@ export const EMAIL_TRIGGER_TYPES = [
   'staff.created',
   'roleYearMapping.updated',
   'scheduled.preObservation',
+  /** @deprecated No longer sent — replaced by the two phase-aware reminders
+   *  below. Kept so templates saved under it still parse. */
   'scheduled.reminderIncomplete',
+  'scheduled.reminderPlanning',
+  'scheduled.reminderReflection',
   'scheduled.reminderOverdueFinalize',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
@@ -76,6 +80,8 @@ export const EMAIL_TRIGGER_CATEGORY: Partial<Record<EmailTriggerType, EmailPrefe
   'observation.finalized': 'observationNotices',
   'scheduled.preObservation': 'reminders',
   'scheduled.reminderIncomplete': 'reminders',
+  'scheduled.reminderPlanning': 'reminders',
+  'scheduled.reminderReflection': 'reminders',
   'scheduled.reminderOverdueFinalize': 'reminders',
   'scheduling.windowInvite': 'schedulingUpdates',
   'scheduling.assignmentNotice': 'schedulingUpdates',
@@ -142,11 +148,15 @@ export type EmailRecipientType = (typeof EMAIL_RECIPIENT_TYPES)[number];
  *
  * Keep this in sync with scheduledEmailReminders.ts: a trigger belongs here
  * only if its block in that file ignores `template.recipient` entirely.
- *   - scheduled.reminderIncomplete   → always sends to obs.observedEmail
+ *   - scheduled.reminderIncomplete   → (legacy, never sent)
+ *   - scheduled.reminderPlanning     → always sends to obs.observedEmail
+ *   - scheduled.reminderReflection   → always sends to obs.observedEmail
  *   - scheduled.reminderOverdueFinalize → always sends to obs.observerEmail
  */
 export const FIXED_RECIPIENT_TRIGGER_TYPES = [
   'scheduled.reminderIncomplete',
+  'scheduled.reminderPlanning',
+  'scheduled.reminderReflection',
   'scheduled.reminderOverdueFinalize',
 ] as const satisfies readonly EmailTriggerType[];
 
@@ -161,6 +171,8 @@ export function hasFixedRecipient(triggerType: EmailTriggerType): boolean {
  *  Recipient control. */
 export const FIXED_RECIPIENT_DESCRIPTION: Partial<Record<EmailTriggerType, string>> = {
   'scheduled.reminderIncomplete': 'the observed staff member',
+  'scheduled.reminderPlanning': 'the observed staff member',
+  'scheduled.reminderReflection': 'the observed staff member',
   'scheduled.reminderOverdueFinalize': 'the observing peer evaluator',
 };
 
@@ -180,6 +192,9 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   'observationDate',
   'observationName',
   'observationType',
+  /** Deep link to the observation page (Planning / Reflection reminders
+   *  point it at the matching panel). */
+  'observationLink',
   // Drive links (set on finalization)
   'pdfDriveLink',
   'driveFolderLink',
@@ -255,7 +270,10 @@ export const emailTemplate = z.object({
   recipient: z.enum(EMAIL_RECIPIENT_TYPES).default('observed'),
   /**
    * For scheduled.preObservation: days before observationDate to send.
-   * For scheduled.reminderIncomplete: days after WP/IR creation to send.
+   * For scheduled.reminderPlanning: days after the observation is created to
+   * start the weekly nudge while Planning questions are unanswered.
+   * For scheduled.reminderReflection: days after observationDate to start
+   * the weekly nudge while Reflection questions are unanswered.
    * For scheduled.reminderOverdueFinalize: days after observationDate (with
    * the observation still Draft) to start the weekly nudge.
    */
