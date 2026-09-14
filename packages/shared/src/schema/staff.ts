@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
 import { OBSERVATION_YEARS } from '../constants.js';
+import { CYCLE_STATUSES, type CycleStatus, cycleStatus } from '../cycle.js';
 import { DEFAULT_EMAIL_PREFERENCES, emailPreferences } from './emailTemplate.js';
 
 /**
@@ -10,8 +11,14 @@ import { DEFAULT_EMAIL_PREFERENCES, emailPreferences } from './emailTemplate.js'
  *   1, 2, 3 = continuing-contract years
  *   4, 5, 6 = probationary years P1, P2, P3
  *
+ * `year` and `cycleStatus` are independent. Year alone decides assigned
+ * domains (roleYearMappings); status is its own admin-set label. Read status
+ * through `staffCycleStatus`, which falls back to the legacy derivation for
+ * docs written before `cycleStatus` was stored.
+ *
  * `summativeYear` is true in years where a staff member receives a summative
- * (vs formative) evaluation. Drives some default observation behaviors.
+ * (vs formative) evaluation. It follows status (High Cycle / Probationary) and
+ * is written in sync with every status change — see `cycleStatusFields`.
  *
  * `buildings` is a string array — staff can be assigned to multiple buildings
  * (e.g., a counselor at both OMS and OHS).
@@ -42,6 +49,10 @@ export const staff = z.object({
   buildings: z.array(z.string().trim().min(1).max(80)).default([]),
   modules: z.array(slugId).default([]),
   summativeYear: z.boolean().default(false),
+  /** Stored cycle status. Optional (no default) so a doc that predates the
+   *  field keeps parsing and reads its status via the legacy fallback in
+   *  `staffCycleStatus` rather than a default that would silently relabel it. */
+  cycleStatus: z.enum(CYCLE_STATUSES).optional(),
   isActive: z.boolean().default(true),
   /** Grants admin-console access independent of professional role. */
   hasAdminAccess: z.boolean().default(false),
@@ -85,14 +96,32 @@ export type StaffInput = z.infer<typeof staffInput>;
  * applyStaffRollover callable). `fromYear` is an optimistic-concurrency
  * guard: the server skips (and reports) any row whose stored year no longer
  * matches what the admin previewed.
+ *
+ * `toCycleStatus` is the status to write (with its synced `summativeYear`).
+ * `toSummativeYear` is the pre-status field, still accepted so a client and
+ * callable deployed at different times keep working: the web client sends
+ * both, and an entry carrying only `toSummativeYear` derives its status the
+ * legacy way.
  */
-export const staffRolloverEntry = z.object({
-  email,
-  fromYear: staffYear,
-  toYear: staffYear,
-  toSummativeYear: z.boolean(),
-});
+export const staffRolloverEntry = z
+  .object({
+    email,
+    fromYear: staffYear,
+    toYear: staffYear,
+    toCycleStatus: z.enum(CYCLE_STATUSES).optional(),
+    toSummativeYear: z.boolean().optional(),
+  })
+  .refine((e) => e.toCycleStatus !== undefined || e.toSummativeYear !== undefined, {
+    message: 'toCycleStatus is required',
+    path: ['toCycleStatus'],
+  });
 export type StaffRolloverEntry = z.infer<typeof staffRolloverEntry>;
+
+/** The status a rollover entry writes: `toCycleStatus`, or — for an entry
+ *  from a pre-status client — the legacy derivation of its target year. */
+export function rolloverEntryCycleStatus(entry: StaffRolloverEntry): CycleStatus {
+  return entry.toCycleStatus ?? cycleStatus(entry.toYear, entry.toSummativeYear ?? false);
+}
 
 export const applyStaffRolloverInput = z.object({
   entries: z.array(staffRolloverEntry).min(1).max(1000),

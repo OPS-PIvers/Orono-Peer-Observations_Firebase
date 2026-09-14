@@ -2,8 +2,14 @@ import { serverTimestamp } from 'firebase/firestore';
 import {
   ALLOWED_EMAIL_DOMAIN,
   COLLECTIONS,
+  CYCLE_STATUSES,
+  cycleStatus,
+  cycleStatusFields,
   isStaffYear,
+  isSummative,
+  staffCycleStatus,
   staffInput,
+  type CycleStatus,
   type ModuleDoc,
   type Role,
   type Staff,
@@ -20,7 +26,7 @@ import {
 const staffCsvInput = staffInput.omit({ emailPreferences: true });
 export type StaffCsvInput = Omit<StaffInput, 'emailPreferences'>;
 import { bulkMergePerRow } from '@/admin/_shared/bulkWrite';
-import { toJsDate } from '@/utils/staffFormatting';
+import { cycleStatusLabel, toJsDate } from '@/utils/staffFormatting';
 
 /**
  * Bulk CSV import/export for the staff roster (StaffPage). Hand-written CSV
@@ -32,6 +38,11 @@ import { toJsDate } from '@/utils/staffFormatting';
  * `createdAt`/`updatedAt`, which are server-managed and ignored on import).
  * `emailPreferences` is deliberately excluded in both directions — it's
  * self-service data owned by each staff member, never bulk-managed by CSV.
+ *
+ * Status: `cycleStatus` is its own column, independent of `year`, and
+ * `summativeYear` follows it on import. Files exported before the column
+ * existed still import — a row with no status derives one the legacy way
+ * from its `year` + `summativeYear` cells.
  */
 
 /** Column order for exported/imported staff CSVs. */
@@ -40,6 +51,7 @@ export const STAFF_CSV_COLUMNS = [
   'name',
   'role',
   'year',
+  'cycleStatus',
   'summativeYear',
   'buildings',
   'modules',
@@ -52,18 +64,22 @@ export type StaffCsvColumn = (typeof STAFF_CSV_COLUMNS)[number];
 
 /** Columns required to resolve a valid staff record. `createdAt`/`updatedAt`
  *  are exported for reference but server-stamped, so they're not required
- *  (or read) on import. */
+ *  (or read) on import. The status needs `cycleStatus` or, for an older
+ *  file, `summativeYear` — see `STATUS_COLUMNS`. */
 const REQUIRED_COLUMNS: StaffCsvColumn[] = [
   'email',
   'name',
   'role',
   'year',
-  'summativeYear',
   'buildings',
   'modules',
   'isActive',
   'hasAdminAccess',
 ];
+
+/** Either column is enough to resolve a status; a file with neither is
+ *  reported as missing `cycleStatus`. */
+const STATUS_COLUMNS: StaffCsvColumn[] = ['cycleStatus', 'summativeYear'];
 
 /** Separator used inside a single CSV field for list values (buildings,
  *  modules). A semicolon+space reads cleanly and never collides with the
@@ -186,7 +202,8 @@ export function serializeStaffCsv(
         s.name,
         roleLabel.get(s.role) ?? s.role,
         String(s.year),
-        String(s.summativeYear),
+        staffCycleStatus(s),
+        String(isSummative(s)),
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
         (s.buildings ?? []).join(LIST_SEPARATOR),
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
@@ -251,7 +268,9 @@ function staffInputEquals(existing: Staff, next: StaffCsvInput): boolean {
     existing.name === next.name &&
     existing.role === next.role &&
     existing.year === next.year &&
-    existing.summativeYear === next.summativeYear &&
+    // Compare the effective status, so a legacy doc (no stored cycleStatus)
+    // round-trips as unchanged; summativeYear follows status on both sides.
+    staffCycleStatus(existing) === staffCycleStatus(next) &&
     existing.isActive === next.isActive &&
     existing.hasAdminAccess === next.hasAdminAccess &&
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack these fields
@@ -292,6 +311,27 @@ function resolveBool(raw: string, label: string, errors: string[], defaultValue:
   if (['false', '0', 'no', 'n'].includes(v)) return false;
   errors.push(`${label} must be true/false (got "${raw}").`);
   return defaultValue;
+}
+
+/**
+ * The row's cycle status: the `cycleStatus` cell (id or label, any case),
+ * or — when blank, as in a file exported before the column existed — the
+ * legacy derivation from the row's year + summativeYear.
+ */
+function resolveCycleStatus(
+  raw: string,
+  year: number,
+  summativeYear: boolean,
+  errors: string[],
+): CycleStatus {
+  const v = raw.trim().toLowerCase();
+  if (v === '') return cycleStatus(year, summativeYear);
+  const match = CYCLE_STATUSES.find((s) => s === v || cycleStatusLabel(s).toLowerCase() === v);
+  if (match) return match;
+  errors.push(
+    `Status must be one of ${CYCLE_STATUSES.map(cycleStatusLabel).join(', ')} (got "${raw}").`,
+  );
+  return cycleStatus(year, summativeYear);
 }
 
 function resolveBuildings(raw: string): string[] {
@@ -345,7 +385,10 @@ function resolveStaffRow(
 
   const roleId = resolveRole(raw.role, ctx.roles, errors);
   const year = resolveYear(raw.year, errors);
-  const summativeYear = resolveBool(raw.summativeYear, 'Summative year', errors, false);
+  // summativeYear is only read to derive a missing status; the written value
+  // always follows the status.
+  const legacySummative = resolveBool(raw.summativeYear, 'Summative year', errors, false);
+  const status = resolveCycleStatus(raw.cycleStatus, year, legacySummative, errors);
   const isActive = resolveBool(raw.isActive, 'Active', errors, true);
   const hasAdminAccess = resolveBool(raw.hasAdminAccess, 'Admin access', errors, false);
   const buildings = resolveBuildings(raw.buildings);
@@ -360,7 +403,7 @@ function resolveStaffRow(
     year,
     buildings,
     modules,
-    summativeYear,
+    ...cycleStatusFields(status),
     isActive,
     hasAdminAccess,
   });
@@ -393,6 +436,9 @@ export function parseStaffCsv(text: string, ctx: ResolveContext): StaffCsvParseR
   const knownLower = new Set<string>(STAFF_CSV_COLUMNS.map((c) => c.toLowerCase()));
   const unknownColumns = header.filter((h) => h !== '' && !knownLower.has(h.toLowerCase()));
   const missingColumns = REQUIRED_COLUMNS.filter((c) => !colIndex.has(c.toLowerCase()));
+  if (!STATUS_COLUMNS.some((c) => colIndex.has(c.toLowerCase()))) {
+    missingColumns.push('cycleStatus');
+  }
 
   const rows: StaffCsvRow[] = [];
   if (missingColumns.length > 0) {

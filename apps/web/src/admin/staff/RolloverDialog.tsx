@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { ArrowRight } from 'lucide-react';
 import {
+  CYCLE_STATUSES,
   isStaffYear,
+  isSummativeStatus,
   isTenureTransition,
   rolloverCycle,
+  staffCycleStatus,
   type ApplyStaffRolloverInput,
   type ApplyStaffRolloverResult,
+  type CycleStatus,
   type Staff,
   type StaffYear,
 } from '@ops/shared';
@@ -29,7 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { yearStatusLabel } from '@/utils/staffFormatting';
+import { cycleStatusLabel, yearLabel, yearStatusLabel } from '@/utils/staffFormatting';
 
 const applyStaffRolloverFn = httpsCallable<ApplyStaffRolloverInput, ApplyStaffRolloverResult>(
   functions,
@@ -45,15 +49,15 @@ interface RolloverDialogProps {
   onApplied: () => void;
 }
 
-/** One previewed change. `toSummative` and `included` are admin-editable
+/** One previewed change. `toStatus` and `included` are admin-editable
  *  before anything is written. */
 interface RolloverRow {
   email: string;
   name: string;
   fromYear: StaffYear;
-  fromSummative: boolean;
+  fromStatus: CycleStatus;
   toYear: StaffYear;
-  toSummative: boolean;
+  toStatus: CycleStatus;
   included: boolean;
   gainsTenure: boolean;
 }
@@ -77,9 +81,9 @@ function buildRows(staff: (Staff & { id: string })[]): {
       email: s.email,
       name: s.name,
       fromYear: s.year,
-      fromSummative: s.summativeYear,
+      fromStatus: staffCycleStatus(s),
       toYear: next.year,
-      toSummative: next.summativeYear,
+      toStatus: next.cycleStatus,
       included: true,
       gainsTenure: isTenureTransition(s.year),
     });
@@ -90,9 +94,9 @@ function buildRows(staff: (Staff & { id: string })[]): {
 
 /**
  * Annual rollover — advance every active staff member one cycle year
- * (1→2→3→1 continuing; P1→P2→P3→tenure), with the summative flag derived
- * for the new position. Shows a full current→next preview with per-row
- * opt-out and a per-row summative override, then applies via the
+ * (1→2→3→1 continuing; P1→P2→P3→tenure), with a status suggested for the
+ * new year (`suggestedCycleStatus`). Shows a full current→next preview with
+ * per-row opt-out and a per-row status override, then applies via the
  * applyStaffRollover callable (batched writes + audit log, server-side).
  */
 export function RolloverDialog({ open, onOpenChange, staff, onApplied }: RolloverDialogProps) {
@@ -120,7 +124,7 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
   const includedCount = useMemo(() => rows.filter((r) => r.included).length, [rows]);
   const tenureCount = useMemo(() => rows.filter((r) => r.included && r.gainsTenure).length, [rows]);
   const summativeCount = useMemo(
-    () => rows.filter((r) => r.included && r.toSummative).length,
+    () => rows.filter((r) => r.included && isSummativeStatus(r.toStatus)).length,
     [rows],
   );
   const allIncluded = rows.length > 0 && includedCount === rows.length;
@@ -130,8 +134,8 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
     setRows((prev) => prev.map((r) => (r.email === email ? { ...r, included } : r)));
   }
 
-  function setToSummative(email: string, toSummative: boolean) {
-    setRows((prev) => prev.map((r) => (r.email === email ? { ...r, toSummative } : r)));
+  function setToStatus(email: string, toStatus: CycleStatus) {
+    setRows((prev) => prev.map((r) => (r.email === email ? { ...r, toStatus } : r)));
   }
 
   function toggleAll() {
@@ -145,7 +149,10 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
         email: r.email,
         fromYear: r.fromYear,
         toYear: r.toYear,
-        toSummativeYear: r.toSummative,
+        toCycleStatus: r.toStatus,
+        // Still sent so a callable deployed before `toCycleStatus` existed
+        // keeps working; the current callable derives it from the status.
+        toSummativeYear: isSummativeStatus(r.toStatus),
       }));
     if (entries.length === 0) return;
     setError(null);
@@ -174,9 +181,10 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
           <DialogTitle>Annual rollover</DialogTitle>
           <DialogDescription>
             Advance every active staff member one cycle year for the new school year: tenured staff
-            loop 1 → 2 → 3 → 1 (year 3 defaults to summative), probationary staff advance P1 → P2 →
-            P3 and then earn tenure at continuing year 1. Review the preview — uncheck anyone who
-            should not advance and adjust the summative flag per person — then apply. Nothing is
+            loop 1 → 2 → 3 → 1, probationary staff advance P1 → P2 → P3 and then earn tenure at
+            continuing year 1. Each person gets a suggested status for their new year (Planning,
+            Developing, High Cycle for year 3, Probationary for P1–P3). Review the preview — uncheck
+            anyone who should not advance and adjust the status per person — then apply. Nothing is
             written until you confirm.
           </DialogDescription>
         </DialogHeader>
@@ -254,7 +262,7 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
                         <TableHead>Current</TableHead>
                         <TableHead className="w-8" aria-hidden />
                         <TableHead>Next year</TableHead>
-                        <TableHead className="w-28">Summative</TableHead>
+                        <TableHead className="w-40">Status</TableHead>
                         <TableHead>Note</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -276,18 +284,27 @@ export function RolloverDialog({ open, onOpenChange, staff, onApplied }: Rollove
                             <div className="font-medium">{row.name}</div>
                             <div className="text-muted-foreground text-xs">{row.email}</div>
                           </TableCell>
-                          <TableCell>{yearStatusLabel(row.fromYear, row.fromSummative)}</TableCell>
+                          <TableCell>{yearStatusLabel(row.fromYear, row.fromStatus)}</TableCell>
                           <TableCell>
                             <ArrowRight className="text-muted-foreground h-4 w-4" />
                           </TableCell>
-                          <TableCell>{yearStatusLabel(row.toYear, row.toSummative)}</TableCell>
+                          <TableCell>{yearLabel(row.toYear)}</TableCell>
                           <TableCell>
-                            <Checkbox
-                              checked={row.toSummative}
-                              onChange={(e) => setToSummative(row.email, e.target.checked)}
-                              aria-label={`Summative next year for ${row.name}`}
+                            <select
+                              value={row.toStatus}
+                              onChange={(e) =>
+                                setToStatus(row.email, e.target.value as CycleStatus)
+                              }
+                              aria-label={`Status next year for ${row.name}`}
                               disabled={submitting || !row.included}
-                            />
+                              className="border-input bg-background focus-visible:ring-ring h-9 rounded-md border px-2 text-sm focus-visible:ring-2 focus-visible:outline-hidden disabled:opacity-50"
+                            >
+                              {CYCLE_STATUSES.map((s) => (
+                                <option key={s} value={s}>
+                                  {cycleStatusLabel(s)}
+                                </option>
+                              ))}
+                            </select>
                           </TableCell>
                           <TableCell className="text-xs">
                             {row.gainsTenure ? (

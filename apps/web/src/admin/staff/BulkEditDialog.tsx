@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { where } from 'firebase/firestore';
 import {
   COLLECTIONS,
+  CYCLE_STATUSES,
   OBSERVATION_YEARS,
   isStaffYear,
   type Building,
+  type CycleStatus,
   type ModuleDoc,
   type Role,
   type Staff,
@@ -22,7 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { BulkWriteError, bulkMergePerRow } from '@/admin/_shared/bulkWrite';
-import { yearLabel } from '@/utils/staffFormatting';
+import { cycleStatusLabel, yearLabel } from '@/utils/staffFormatting';
 import { describeBulkEditRisk, type BulkEditField } from './bulkEditRisk';
 import { buildBulkEditPlan, describeBulkEditPlan } from './bulkEditPlan';
 
@@ -73,6 +75,7 @@ export function BulkEditDialog({
   const [roleId, setRoleId] = useState('');
   const [building, setBuilding] = useState('');
   const [moduleId, setModuleId] = useState('');
+  const [cycleStatus, setCycleStatus] = useState<CycleStatus>('planning');
   const [boolValue, setBoolValue] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
@@ -104,6 +107,7 @@ export function BulkEditDialog({
     setRoleId('');
     setBuilding('');
     setModuleId('');
+    setCycleStatus('planning');
     setBoolValue(true);
     setConfirming(false);
     setProgress(null);
@@ -114,9 +118,13 @@ export function BulkEditDialog({
   const plan = useMemo(
     () =>
       field
-        ? buildBulkEditPlan(field, { year, roleId, building, moduleId, boolValue }, selectedRows)
+        ? buildBulkEditPlan(
+            field,
+            { year, roleId, building, moduleId, cycleStatus, boolValue },
+            selectedRows,
+          )
         : null,
-    [field, year, roleId, building, moduleId, boolValue, selectedRows],
+    [field, year, roleId, building, moduleId, cycleStatus, boolValue, selectedRows],
   );
 
   if (!field || !plan) return null;
@@ -172,7 +180,7 @@ export function BulkEditDialog({
   const partial = failure && failure.written > 0 ? failure : null;
   // Non-null only for the edits that can take down the roster or hand out the
   // admin console; those get a second step before anything is written.
-  const risk = describeBulkEditRisk(field, boolValue, targets.length);
+  const risk = describeBulkEditRisk(field, boolValue, targets.length, cycleStatus);
   const titles: Record<BulkEditField, string> = {
     year: 'Set year',
     role: 'Set role',
@@ -182,7 +190,7 @@ export function BulkEditDialog({
     removeModule: 'Remove module',
     hasAdminAccess: 'Set admin access',
     isActive: 'Set active status',
-    summativeYear: 'Set summative year',
+    cycleStatus: 'Set status',
   };
 
   return (
@@ -322,15 +330,31 @@ export function BulkEditDialog({
                 </div>
               ) : null}
 
-              {field === 'isActive' || field === 'summativeYear' || field === 'hasAdminAccess' ? (
+              {field === 'cycleStatus' ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="bulk-status">Status</Label>
+                  <select
+                    id="bulk-status"
+                    value={cycleStatus}
+                    onChange={(e) => setCycleStatus(e.target.value as CycleStatus)}
+                    className={SELECT_CLASSNAME}
+                  >
+                    {CYCLE_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {cycleStatusLabel(s)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    Sets each selected staff member’s status. High Cycle and Probationary are
+                    summative; their year is not changed.
+                  </p>
+                </div>
+              ) : null}
+
+              {field === 'isActive' || field === 'hasAdminAccess' ? (
                 <div className="flex flex-col gap-2">
-                  <Label>
-                    {field === 'isActive'
-                      ? 'Active status'
-                      : field === 'summativeYear'
-                        ? 'Summative year'
-                        : 'Admin access'}
-                  </Label>
+                  <Label>{field === 'isActive' ? 'Active status' : 'Admin access'}</Label>
                   <div className="flex gap-2">
                     <Button
                       type="button"
@@ -338,11 +362,7 @@ export function BulkEditDialog({
                       onClick={() => setBoolValue(true)}
                       className="flex-1"
                     >
-                      {field === 'isActive'
-                        ? 'Active'
-                        : field === 'summativeYear'
-                          ? 'Summative'
-                          : 'Grant'}
+                      {field === 'isActive' ? 'Active' : 'Grant'}
                     </Button>
                     <Button
                       type="button"
@@ -350,11 +370,7 @@ export function BulkEditDialog({
                       onClick={() => setBoolValue(false)}
                       className="flex-1"
                     >
-                      {field === 'isActive'
-                        ? 'Inactive'
-                        : field === 'summativeYear'
-                          ? 'Not summative'
-                          : 'Revoke'}
+                      {field === 'isActive' ? 'Inactive' : 'Revoke'}
                     </Button>
                   </div>
                 </div>

@@ -62,7 +62,11 @@ service cloud.firestore {
       let auto = get(/databases/$(database)/documents/modules/$(moduleId)).data.get('autoEnable', null);
       let y = staffDocData().get('year', 1);
       let summ = staffDocData().get('summativeYear', false);
-      let status = y >= 4 ? 'probationary' : (summ ? 'high' : (y == 1 ? 'planning' : 'developing'));
+      // Stored cycleStatus wins; docs written before it existed fall back to
+      // the legacy year/summativeYear derivation (mirrors staffCycleStatus).
+      let stored = staffDocData().get('cycleStatus', null);
+      let legacy = y >= 4 ? 'probationary' : (summ ? 'high' : (y == 1 ? 'planning' : 'developing'));
+      let status = stored in ['planning', 'developing', 'high', 'probationary'] ? stored : legacy;
       let dy = y >= 4 ? y - 3 : y;
       // 'low' is the retired pre-split label, kept readable so modules still
       // pinned to it match both Planning and Developing (mirrors the

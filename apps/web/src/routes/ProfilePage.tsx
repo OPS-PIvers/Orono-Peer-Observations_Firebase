@@ -10,6 +10,8 @@ import {
   EMAIL_PREFERENCE_CATEGORY_LABELS,
   OBSERVATION_STATUS,
   SPECIAL_ROLES,
+  isSummative,
+  staffCycleStatus,
   type CalendarConnectionStatusResult,
   type EmailPreferences,
   type Observation,
@@ -776,10 +778,10 @@ export function ProfilePage() {
             </div>
             <span
               className={`inline-flex items-center rounded px-2 py-1 text-xs font-semibold ${yearBadgeClass(staff.year)}`}
-              title={yearStatusLabel(staff.year, staff.summativeYear)}
+              title={yearStatusLabel(staff.year, staffCycleStatus(staff))}
             >
               {yearLabel(staff.year)}
-              {staff.summativeYear ? ' · Summative' : ''}
+              {isSummative(staff) ? ' · Summative' : ''}
             </span>
           </div>
 
@@ -795,7 +797,7 @@ export function ProfilePage() {
                 Status
               </dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {yearStatusLabel(staff.year, staff.summativeYear)}
+                {yearStatusLabel(staff.year, staffCycleStatus(staff))}
               </dd>
             </div>
             <div className="sm:col-span-2">

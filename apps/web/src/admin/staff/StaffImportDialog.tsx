@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, FileUp, X } from 'lucide-react';
-import { COLLECTIONS, type ModuleDoc, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, staffCycleStatus, type ModuleDoc, type Role, type Staff } from '@ops/shared';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +27,7 @@ import {
   type StaffCsvRow,
   type StaffCsvRowAction,
 } from './staffCsv';
-import { yearLabel } from '@/utils/staffFormatting';
+import { cycleStatusLabel, yearLabel } from '@/utils/staffFormatting';
 
 interface StaffImportDialogProps {
   open: boolean;
@@ -265,6 +265,7 @@ export function StaffImportDialog({
                       <TableHead>Name</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Year</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Buildings</TableHead>
                       <TableHead>Modules</TableHead>
                       <TableHead>Active</TableHead>
@@ -349,6 +350,9 @@ function PreviewRow({ row }: { row: StaffCsvRow }) {
         <TableCell>{input?.name ?? row.raw.name}</TableCell>
         <TableCell>{row.raw.role}</TableCell>
         <TableCell>{input ? yearLabel(input.year) : row.raw.year}</TableCell>
+        <TableCell>
+          {input ? cycleStatusLabel(staffCycleStatus(input)) : row.raw.cycleStatus}
+        </TableCell>
         <TableCell className="max-w-40 truncate" title={row.raw.buildings}>
           {row.raw.buildings}
         </TableCell>
@@ -370,7 +374,7 @@ function PreviewRow({ row }: { row: StaffCsvRow }) {
       {row.errors.length > 0 ? (
         <TableRow className="bg-ops-red-lighter/40 hover:bg-ops-red-lighter/40">
           <TableCell />
-          <TableCell colSpan={9} className="text-ops-red-dark py-1.5 text-xs">
+          <TableCell colSpan={10} className="text-ops-red-dark py-1.5 text-xs">
             {row.errors.join(' ')}
           </TableCell>
         </TableRow>

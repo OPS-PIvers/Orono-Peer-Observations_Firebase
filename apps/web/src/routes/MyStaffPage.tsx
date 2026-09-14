@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, orderBy } from 'firebase/firestore';
 import { Check } from 'lucide-react';
-import { COLLECTIONS, type Staff } from '@ops/shared';
+import { COLLECTIONS, isSummative, staffCycleStatus, type Staff } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -53,17 +53,19 @@ export function MyStaffPage() {
     );
   }, [allStaff, adminBuildings, missingBuildings]);
 
-  const probationary = useMemo(() => buildingScoped.filter((s) => s.year >= 4), [buildingScoped]);
+  // Tabs key off status, not year: a P-year teacher whose status is
+  // Developing is not on the Probationary tab.
+  const probationary = useMemo(
+    () => buildingScoped.filter((s) => staffCycleStatus(s) === 'probationary'),
+    [buildingScoped],
+  );
   const highCycle = useMemo(
-    () => buildingScoped.filter((s) => s.summativeYear && s.year < 4),
+    () => buildingScoped.filter((s) => staffCycleStatus(s) === 'high'),
     [buildingScoped],
   );
-  // Administrators see only staff who are probationary OR in a summative year.
-  // The "All" tab is this union (building AND (probationary ∪ summative)).
-  const inScope = useMemo(
-    () => buildingScoped.filter((s) => s.year >= 4 || s.summativeYear),
-    [buildingScoped],
-  );
+  // Administrators see only staff in a summative status (Probationary or High
+  // Cycle). The "All" tab is this union (building AND summative).
+  const inScope = useMemo(() => buildingScoped.filter((s) => isSummative(s)), [buildingScoped]);
 
   const [activeTab, setActiveTab] = useState<StaffTab>('all');
   const [search, setSearch] = useState('');
@@ -201,7 +203,7 @@ export function MyStaffPage() {
                     {s.buildings.join(', ') || '—'}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {s.summativeYear ? (
+                    {staffCycleStatus(s) === 'high' ? (
                       <Check
                         role="img"
                         className="mx-auto h-4 w-4 text-green-600"

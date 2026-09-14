@@ -29,7 +29,14 @@ import { join } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import type { Firestore } from 'firebase-admin/firestore';
 import { Timestamp } from 'firebase-admin/firestore';
-import { COLLECTIONS, type ModuleDoc, type Role, type Staff } from '@ops/shared';
+import {
+  COLLECTIONS,
+  isSummative,
+  staffCycleStatus,
+  type ModuleDoc,
+  type Role,
+  type Staff,
+} from '@ops/shared';
 import { initFirestore, type ImportTarget } from '../import/firebase.js';
 import { csvSerializeDocument } from './csv.js';
 
@@ -127,6 +134,7 @@ const STAFF_CSV_COLUMNS = [
   'name',
   'role',
   'year',
+  'cycleStatus',
   'summativeYear',
   'buildings',
   'modules',
@@ -157,7 +165,8 @@ function writeStaffCsv(
     s.name,
     roleLabel.get(s.role) ?? s.role,
     String(s.year),
-    String(s.summativeYear),
+    staffCycleStatus(s),
+    String(isSummative(s)),
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
     (s.buildings ?? []).join(LIST_SEPARATOR),
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field

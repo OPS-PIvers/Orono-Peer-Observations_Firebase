@@ -78,7 +78,17 @@ describe('staffMatchesAudience', () => {
     expect(staffMatchesAudience(person({ year: 4 }), rule({ years: [4] }))).toBe(true);
   });
 
-  it('matches cycle statuses via the derived phase', () => {
+  it('matches cycle statuses on the stored status, independent of year', () => {
+    const p2Developing = person({ year: 5, summativeYear: false, cycleStatus: 'developing' });
+    expect(staffMatchesAudience(p2Developing, rule({ cycleStatuses: ['developing'] }))).toBe(true);
+    expect(staffMatchesAudience(p2Developing, rule({ cycleStatuses: ['probationary'] }))).toBe(
+      false,
+    );
+    // …while the years dimension still reads the stored year.
+    expect(staffMatchesAudience(p2Developing, rule({ years: [5] }))).toBe(true);
+  });
+
+  it('matches cycle statuses via the legacy derived phase when none is stored', () => {
     expect(staffMatchesAudience(person({ year: 1 }), rule({ cycleStatuses: ['planning'] }))).toBe(
       true,
     );

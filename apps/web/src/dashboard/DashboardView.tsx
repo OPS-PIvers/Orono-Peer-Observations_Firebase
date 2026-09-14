@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  isSummative,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
   type ModuleColor,
@@ -317,7 +318,7 @@ function Hero(p: HeroProps) {
       <div className="dash-hero__top">
         <div className="dash-hero__copy">
           <span className="dash-hero__eyebrow">
-            {p.staff.summativeYear ? 'Summative cycle' : 'Formative cycle'} · {p.cycleYearLabel}
+            {isSummative(p.staff) ? 'Summative cycle' : 'Formative cycle'} · {p.cycleYearLabel}
           </span>
           <h1 className="dash-hero__title">Welcome back, {p.firstName}.</h1>
           {p.showRoleChip ? (
@@ -349,7 +350,7 @@ function Hero(p: HeroProps) {
               <div className="dash-hero__meta-item">
                 <span className="dash-hero__meta-num">{p.yearTierLabel}</span>
                 <span className="dash-hero__meta-label">
-                  {p.staff.summativeYear ? 'Summative' : 'Formative'}
+                  {isSummative(p.staff) ? 'Summative' : 'Formative'}
                 </span>
               </div>
               <div className="dash-hero__meta-item">

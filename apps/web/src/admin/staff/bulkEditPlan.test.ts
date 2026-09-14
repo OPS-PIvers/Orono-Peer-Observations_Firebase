@@ -25,6 +25,7 @@ const values: BulkEditValues = {
   roleId: 'coach',
   building: 'OMS',
   moduleId: 'mints',
+  cycleStatus: 'high',
   boolValue: true,
 };
 
@@ -50,6 +51,30 @@ describe('buildBulkEditPlan', () => {
     if (plan.kind !== 'ready') throw new Error('expected ready');
     expect(plan.patches.size).toBe(2);
     expect(plan.patches.get('a@x')).toEqual({ year: 2 });
+  });
+
+  it('sets a P-year without touching status', () => {
+    const plan = buildBulkEditPlan('year', { ...values, year: 5 }, [row('a@x')]);
+    if (plan.kind !== 'ready') throw new Error('expected ready');
+    expect(plan.patches.get('a@x')).toEqual({ year: 5 });
+  });
+
+  it('sets status with its synced summativeYear and leaves year alone', () => {
+    const plan = buildBulkEditPlan('cycleStatus', values, [
+      row('a@x', { year: 1 }),
+      row('b@x', { year: 5 }),
+    ]);
+    if (plan.kind !== 'ready') throw new Error('expected ready');
+    expect(plan.patches.size).toBe(2);
+    expect(plan.patches.get('a@x')).toEqual({ cycleStatus: 'high', summativeYear: true });
+    const developing = buildBulkEditPlan('cycleStatus', { ...values, cycleStatus: 'developing' }, [
+      row('b@x', { year: 5, summativeYear: true }),
+    ]);
+    if (developing.kind !== 'ready') throw new Error('expected ready');
+    expect(developing.patches.get('b@x')).toEqual({
+      cycleStatus: 'developing',
+      summativeYear: false,
+    });
   });
 
   it('skips rows that already have the building — the count must not promise a write', () => {

@@ -19,9 +19,14 @@ describe('describeBulkEditRisk', () => {
     );
   });
 
-  it('confirms the summative flag in both directions', () => {
-    expect(describeBulkEditRisk('summativeYear', true, 5)).not.toBeNull();
-    expect(describeBulkEditRisk('summativeYear', false, 5)).not.toBeNull();
+  it('confirms every status change, naming the status and the summative flag it implies', () => {
+    const high = describeBulkEditRisk('cycleStatus', true, 5, 'high');
+    expect(high?.title).toBe('Set the status of 5 staff members to High Cycle?');
+    expect(high?.confirmLabel).toBe('Set 5 to High Cycle');
+    expect(high?.detail).toContain('summative');
+    const planning = describeBulkEditRisk('cycleStatus', false, 5, 'planning');
+    expect(planning?.detail).toContain('formative');
+    expect(planning?.detail).toContain('Their year is not changed.');
   });
 
   it('leaves routine corrections one click', () => {

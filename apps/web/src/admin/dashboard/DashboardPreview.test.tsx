@@ -78,8 +78,13 @@ describe('DashboardPreview "Preview as"', () => {
     await user.click(screen.getByRole('checkbox', { name: 'OMS' }));
     expect(screen.getByText('OMS only')).toBeInTheDocument();
 
+    // Year and status are independent: a P-year alone is not Probationary.
     await user.selectOptions(screen.getByLabelText('Year'), '4');
-    expect(screen.getByText(/Cycle phase/)).toHaveTextContent('Probationary');
+    expect(screen.getByLabelText('Status')).toHaveValue('developing');
+    expect(screen.queryByText('Probationary only')).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText('Status'), 'probationary');
+    expect(screen.getByLabelText('Year')).toHaveValue('4');
     expect(screen.getByText('Probationary only')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /reset sample/i }));
