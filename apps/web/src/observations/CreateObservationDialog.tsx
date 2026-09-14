@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection } from 'firebase/firestore';
 import {
   COLLECTIONS,
-  OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   type ObservationType,
   type Role,
@@ -26,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { newDraftObservationDoc } from './newObservationDoc';
 
 export interface CreateObservationDialogProps {
   open: boolean;
@@ -81,31 +81,16 @@ export function CreateObservationDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const ref = await addDoc(collection(db, COLLECTIONS.observations), {
-        observerEmail: observerEmail.toLowerCase(),
-        observerName: observerStaff?.name ?? '',
-        observedEmail: staff.email.toLowerCase(),
-        observedName: staff.name,
-        observedRole: staff.role,
-        observedYear: staff.year,
-        observedBuildings: staff.buildings,
-        status: OBSERVATION_STATUS.draft,
-        type,
-        observationName: name.trim(),
-        observationData: {},
-        componentNotes: {},
-        evidenceLinks: {},
-        componentTags: [],
-        workProductAnswers: [],
-        audioDriveFileIds: [],
-        transcripts: {},
-        driveFolderId: null,
-        pdfDriveFileId: null,
-        observationDate: new Date(),
-        createdAt: serverTimestamp(),
-        lastModifiedAt: serverTimestamp(),
-        finalizedAt: null,
-      });
+      const ref = await addDoc(
+        collection(db, COLLECTIONS.observations),
+        newDraftObservationDoc({
+          observerEmail,
+          observerName: observerStaff?.name ?? '',
+          staff,
+          type,
+          observationName: name,
+        }),
+      );
       onOpenChange(false);
       onCreated(ref.id);
     } catch (err) {

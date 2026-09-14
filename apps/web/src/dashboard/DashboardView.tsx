@@ -9,6 +9,7 @@ import { downloadTextFile } from '@/lib/download';
 import { buildIcsEvent, icsFileName } from '@/lib/ics';
 import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
 import {
+  checkAttributionLabel,
   checkpointToIcsEvent,
   type CheckpointWithStatus,
   initialsFromName,
@@ -413,8 +414,14 @@ function Timeline({
           ]
             .filter(Boolean)
             .join(' ');
+          const attribution = t.status === 'done' ? checkAttributionLabel(t) : null;
           return (
-            <div key={t.id} className={cls} style={{ left: `${String(left)}%` }}>
+            <div
+              key={t.id}
+              className={cls}
+              style={{ left: `${String(left)}%` }}
+              title={attribution ? `${t.title} — ${attribution}` : t.title}
+            >
               {t.monthLabel ? <span className="timeline__dot-date">{t.monthLabel}</span> : null}
               <div className="timeline__dot-pin" />
               {isCurrent && t.dateLabel ? (
@@ -546,6 +553,7 @@ function TaskRow({
   const isAck = !!task.ackObservationId;
   const dateLabel = task.status === 'done' ? (task.completedLabel ?? '') : task.dateLabel;
   const expandedId = `task-row-detail-${task.id}`;
+  const checkAttribution = checkAttributionLabel(task);
 
   // STAFF-04 — "Add to calendar" .ics download for dated meeting/observation
   // checkpoints. Client-only: builds the file in memory and triggers a
@@ -606,6 +614,9 @@ function TaskRow({
             ) : null}
           </div>
           {task.desc ? <p className="task-row__detail-desc">{task.desc}</p> : null}
+          {task.status === 'done' && checkAttribution ? (
+            <p className="task-row__detail-check">{checkAttribution}</p>
+          ) : null}
           {task.status === 'inprogress' && task.percent != null ? (
             <div className="task__progress">
               <div className="task__progress-bar">

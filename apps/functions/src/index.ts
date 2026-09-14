@@ -60,3 +60,4 @@ export { connectGoogleCalendar } from './calendar/auth/connectGoogleCalendar.js'
 export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalendar.js';
 export { getCalendarConnectionStatus } from './calendar/auth/getCalendarConnectionStatus.js';
 export { onObservationBooked } from './calendar/onObservationBooked.js';
+export { setStepCheck } from './dashboard/setStepCheck.js';

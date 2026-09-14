@@ -11,6 +11,7 @@ import {
   type Staff,
   type StaffRolloverEntry,
 } from '@ops/shared';
+import { clearStaffStepChecks } from '../dashboard/clearStaffStepChecks.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -116,6 +117,14 @@ export const applyStaffRollover = onCall(
       }
       await batch.commit();
     }
+
+    // Staff-scoped evaluator check-offs (e.g. sign-up) belong to the year
+    // that just ended; observation-tied checks reset with the new observation.
+    const stepChecksCleared = await clearStaffStepChecks(
+      db,
+      applicable.map((e) => e.email),
+    );
+    logger.info('applyStaffRollover: cleared staff step checks', { stepChecksCleared });
 
     const result: ApplyStaffRolloverResult = {
       applied: applicable.length,

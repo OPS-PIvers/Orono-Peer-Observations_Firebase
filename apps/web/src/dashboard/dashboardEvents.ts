@@ -45,6 +45,25 @@ export interface DeriveContext {
   hasBookedSlot: boolean;
   hasWorkProduct: boolean;
   hasInstructionalRound: boolean;
+  /** Peer-evaluator check-offs for this staff member. Only consulted by
+   *  steps whose completion mode is `manual` or `either`; absent = none. */
+  stepChecks?: StepChecksIndex;
+}
+
+/** One evaluator check-off as the dashboard reads it (see stepCheck.ts). */
+export interface StepCheckRecord {
+  stepId: string;
+  checkedBy: string;
+  checkedByName: string;
+  checkedAt: Date | null;
+}
+
+/** Check-offs grouped the way `stepCheckScope` stores them. */
+export interface StepChecksIndex {
+  /** Observation doc id → step id → check. */
+  byObservation: Record<string, Record<string, StepCheckRecord>>;
+  /** Staff-scoped checks, by step id. */
+  staff: Record<string, StepCheckRecord>;
 }
 
 export interface EventResult {

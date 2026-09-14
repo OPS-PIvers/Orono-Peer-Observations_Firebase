@@ -47,6 +47,14 @@ export const MODULE_SUBCOLLECTIONS = {
 /** Subcollections under /staff/{email}. */
 export const STAFF_SUBCOLLECTIONS = {
   moduleProgress: 'moduleProgress',
+  /** Evaluator check-offs for steps not tied to an observation. */
+  stepChecks: 'stepChecks',
+} as const;
+
+/** Subcollections under /observations/{observationId}. */
+export const OBSERVATION_SUBCOLLECTIONS = {
+  /** Evaluator check-offs for steps tied to this observation. */
+  stepChecks: 'stepChecks',
 } as const;
 
 /** Subcollections under /buildingSchedules/{buildingId}. */

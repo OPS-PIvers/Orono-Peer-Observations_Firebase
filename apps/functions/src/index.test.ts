@@ -38,5 +38,6 @@ describe('functions index', () => {
     expect(typeof mod.disconnectGoogleCalendar).not.toBe('undefined');
     expect(typeof mod.getCalendarConnectionStatus).not.toBe('undefined');
     expect(typeof mod.onObservationBooked).not.toBe('undefined');
+    expect(typeof mod.setStepCheck).not.toBe('undefined');
   }, 120_000);
 });

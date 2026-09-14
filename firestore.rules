@@ -107,6 +107,15 @@ service cloud.firestore {
       match /moduleProgress/{itemId} {
         allow read, write: if isCurrentUserEmail(email) || isAdmin();
       }
+
+      // Evaluator check-offs for dashboard steps not tied to an observation.
+      // Read: the staff member (their dashboard) and special access (the
+      // evaluator checklist). Written only by the setStepCheck callable
+      // (Admin SDK), which re-verifies special access and the step's mode.
+      match /stepChecks/{stepId} {
+        allow read: if isCurrentUserEmail(email) || hasSpecialAccess();
+        allow write: if false;
+      }
     }
 
     // --- /roles, /rubrics ----------------------------------------------------
@@ -363,6 +372,17 @@ service cloud.firestore {
           isCurrentUserEmail(resource.data.observerEmail)
           && resource.data.status == 'Draft'
         );
+
+      // Evaluator check-offs for dashboard steps tied to this observation.
+      // Read: special access, or the observed staff member (any status —
+      // their dashboard shows the check). Written only by the setStepCheck
+      // callable (Admin SDK); no client writes, including admins.
+      match /stepChecks/{stepId} {
+        allow read: if hasSpecialAccess()
+          || isCurrentUserEmail(
+               get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail);
+        allow write: if false;
+      }
     }
 
     // --- /userCalendarTokens/{email} ----------------------------------------

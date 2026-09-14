@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { dashboardStep, DEFAULT_STEPS, applyLegacyOverride, resolveSteps } from './dashboard.js';
+import {
+  dashboardStep,
+  DEFAULT_STEPS,
+  applyLegacyOverride,
+  resolveSteps,
+  stepAllowsEvaluatorCheck,
+  stepCheckScope,
+  stepCompletionMode,
+  type DashboardStep,
+} from './dashboard.js';
 
 describe('dashboardStep', () => {
   it('applies defaults for a minimal step', () => {
@@ -90,5 +99,67 @@ describe('applyLegacyOverride', () => {
   it('returns the seed unchanged when no legacy entry', () => {
     const seed = dashboardStep.parse({ id: 'signup', title: 'Default' });
     expect(applyLegacyOverride(seed, undefined)).toEqual(seed);
+  });
+});
+
+describe('step completion mode', () => {
+  it('defaults to auto, so steps saved before the field existed keep completing automatically', () => {
+    expect(dashboardStep.parse({ id: 'legacy' }).completionMode).toBe('auto');
+    expect(DEFAULT_STEPS.every((s) => s.completionMode === 'auto')).toBe(true);
+  });
+
+  it('reads a raw Firestore step with no completionMode as auto', () => {
+    const raw = { id: 'raw' } as unknown as DashboardStep;
+    expect(stepCompletionMode(raw)).toBe('auto');
+    expect(stepAllowsEvaluatorCheck(raw)).toBe(false);
+  });
+
+  it('round-trips manual and either through JSON (the saved config doc)', () => {
+    for (const mode of ['manual', 'either'] as const) {
+      const step = dashboardStep.parse({ id: 's', completionMode: mode });
+      const reparsed = dashboardStep.parse(JSON.parse(JSON.stringify(step)));
+      expect(reparsed.completionMode).toBe(mode);
+      expect(stepAllowsEvaluatorCheck(reparsed)).toBe(true);
+    }
+  });
+
+  it('rejects an unknown mode', () => {
+    expect(() => dashboardStep.parse({ id: 's', completionMode: 'sometimes' })).toThrow();
+  });
+});
+
+describe('stepCheckScope', () => {
+  it('stores the sign-up step on the staff member and every other built-in on the observation', () => {
+    const scopes = Object.fromEntries(DEFAULT_STEPS.map((s) => [s.id, stepCheckScope(s)]));
+    expect(scopes).toEqual({
+      signup: 'staff',
+      preObs: 'observation',
+      observation: 'observation',
+      reviewDraft: 'observation',
+      postObs: 'observation',
+      acknowledge: 'observation',
+    });
+  });
+
+  it('treats a step that reads nothing from the observation as staff-scoped', () => {
+    const step = dashboardStep.parse({
+      id: 'custom',
+      showWhen: 'always',
+      doneWhen: 'never',
+      buttonTarget: 'fixedUrl',
+    });
+    expect(stepCheckScope(step)).toBe('staff');
+  });
+
+  it('ties a step to the observation when any one slot reads it', () => {
+    const base = { id: 'c', showWhen: 'always', doneWhen: 'never', buttonTarget: 'none' } as const;
+    const scopeOf = (patch: Record<string, string>) =>
+      stepCheckScope(dashboardStep.parse({ ...base, ...patch }));
+    expect(scopeOf({ doneWhen: 'finalized' })).toBe('observation');
+    expect(scopeOf({ showWhen: 'observationCreated' })).toBe('observation');
+    expect(scopeOf({ dateFrom: 'postObsDate' })).toBe('observation');
+    expect(scopeOf({ inProgress: 'responseProgress' })).toBe('observation');
+    expect(scopeOf({ buttonTarget: 'acknowledge' })).toBe('observation');
+    expect(scopeOf({ dateFrom: 'windowEndDate', buttonTarget: 'booking' })).toBe('staff');
   });
 });

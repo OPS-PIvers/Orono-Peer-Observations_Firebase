@@ -1027,6 +1027,13 @@
 .staff-dashboard .task-row__cta {
   margin-top: 4px;
 }
+/* "Marked complete by {name} on {date}" — an evaluator's check-off. */
+.staff-dashboard .task-row__detail-check {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-2);
+  margin: 0 0 12px;
+}
 /* Row wrapping the primary CTA plus secondary actions (e.g. "Add to
  * calendar" — STAFF-04) so they sit side by side and wrap on narrow
  * viewports instead of overlapping. */

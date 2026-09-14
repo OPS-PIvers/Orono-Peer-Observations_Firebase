@@ -40,6 +40,8 @@ export const AUDIT_ACTIONS = {
   evidenceRemoved: 'evidence_removed',
   dayPreferenceWithdrawn: 'day_preference_withdrawn',
   rateLimitTripped: 'rate_limit_tripped',
+  stepCheckSet: 'step_check_set',
+  stepCheckCleared: 'step_check_cleared',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
