@@ -11,7 +11,7 @@ import {
   type Observation,
   type Staff,
 } from '@ops/shared';
-import { DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
+import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -41,6 +41,7 @@ export const removeEvidenceFile = onCall(
   {
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     memory: '256MiB',
     timeoutSeconds: 60,
   },

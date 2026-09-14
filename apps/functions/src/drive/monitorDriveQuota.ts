@@ -2,7 +2,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { DRIVE_SERVICE_ACCOUNT, getDriveClient } from '../lib/drive.js';
+import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, getDriveClient } from '../lib/drive.js';
 import { loadSecurityAdminEmail, sendEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -46,18 +46,14 @@ export function parseStorageQuota(quota: {
 }
 
 /**
- * Daily scheduled function that checks the service account's Drive storage
- * quota and emails the security admin when usage crosses
- * {@link QUOTA_ALERT_THRESHOLD}.
+ * Daily scheduled function that checks the Drive storage quota of the account
+ * Drive calls act as (the observations folder owner — see lib/drive.ts) and
+ * emails the security admin when usage crosses {@link QUOTA_ALERT_THRESHOLD}.
  *
- * **Why this matters now:** while the long-term fix is to move the parent
- * folder to a Shared Drive (which has pooled, effectively unbounded Workspace
- * capacity), the quota check provides an early-warning layer regardless of
- * where the parent folder lives. If the SA is still operating on My Drive, the
- * alert fires before uploads begin to fail. If the SA has been migrated to a
- * Shared Drive, `storageQuota.limit` will not be reported by the API (Shared
- * Drive items do not count against personal quota), so the check logs a
- * non-alert info entry and returns without emailing.
+ * Every recording, evidence file and PDF counts against that account, so the
+ * alert fires before uploads begin to fail. If the account reports no limit
+ * (unlimited or pooled plan), the check logs a non-alert info entry and
+ * returns without emailing.
  *
  * Runs at 05:00 America/Chicago — well before the morning sign-in spike and
  * after audit/transcription sweeps.
@@ -68,6 +64,7 @@ export const monitorDriveQuota = onSchedule(
     timeZone: 'America/Chicago',
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     memory: '256MiB',
     timeoutSeconds: 60,
   },
@@ -75,7 +72,7 @@ export const monitorDriveQuota = onSchedule(
     const drive = await getDriveClient();
     const db = getFirestore();
 
-    // drive.about.get returns the SA's own storage quota.
+    // drive.about.get returns the authorized account's own storage quota.
     const aboutRes = await drive.about.get({ fields: 'storageQuota' });
     const rawQuota = aboutRes.data.storageQuota;
 
@@ -129,15 +126,14 @@ export const monitorDriveQuota = onSchedule(
       to: adminEmail,
       subject: `[Orono Peer Obs] Drive storage at ${String(pct)}% — action required`,
       html: `
-        <p>The Peer Observations service account's Google Drive storage is at
-        <strong>${String(pct)}%</strong> of its ${limitGB} GB limit
+        <p>The Google Drive account that stores Peer Observations files is at
+        <strong>${String(pct)}%</strong> of its ${limitGB} GB storage limit
         (${usedGB} GB used).</p>
         <p>If storage fills completely, audio uploads, evidence uploads, and PDF
         finalization will fail for all users district-wide.</p>
-        <p><strong>Recommended action:</strong> move the observations parent
-        folder to a Google Workspace Shared Drive and make the service account
-        a Content Manager. Shared Drive capacity is pooled across the
-        Workspace domain and not subject to per-account limits.</p>
+        <p><strong>Recommended action:</strong> free up space in that account,
+        or move the observations parent folder to a Google Workspace Shared
+        Drive, where capacity is pooled across the domain.</p>
       `.trim(),
       mailDocId: quotaAlertMailDocId(dateYMD),
       // Ops alert to the security admin — 'manual' is an always-send trigger

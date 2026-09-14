@@ -6,6 +6,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
 import {
+  DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   ensureObservationFolder,
   uploadFileToFolder,
@@ -45,6 +46,7 @@ export const uploadAudio = onRequest(
   {
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     cors: true,
     memory: '512MiB',
     timeoutSeconds: 300,

@@ -5,6 +5,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, type Observation, type Staff } from '@ops/shared';
 import {
+  DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   deleteDriveFolder,
   ensureObservationFolder,
@@ -64,6 +65,7 @@ export const uploadEvidenceFile = onCall(
   {
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     memory: '512MiB',
     timeoutSeconds: 120,
   },

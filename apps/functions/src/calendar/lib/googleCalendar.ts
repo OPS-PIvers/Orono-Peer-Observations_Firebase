@@ -1,4 +1,3 @@
-import { defineSecret, defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
@@ -11,6 +10,9 @@ import {
   type ObservationWindow,
 } from '@ops/shared';
 import { APP_URL } from '../../lib/emailUtils.js';
+import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET } from '../../lib/googleOAuth.js';
+
+export { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET };
 
 if (getApps().length === 0) initializeApp();
 
@@ -22,15 +24,8 @@ if (getApps().length === 0) initializeApp();
  * during connect. Tokens live in /userCalendarTokens/{lowercased email} and are
  * SERVER-ONLY — never logged, never returned to the client.
  *
- * Params:
- *   GOOGLE_OAUTH_CLIENT_ID     (defineString) — OAuth web client id
- *   GOOGLE_OAUTH_CLIENT_SECRET (defineSecret) — OAuth web client secret
- *
- * The frontend uses the same client id, exposed to Vite as
- * `VITE_GOOGLE_OAUTH_CLIENT_ID` (see the SDK auth flow on the web side).
+ * OAuth client params live in lib/googleOAuth.ts (shared with Drive).
  */
-export const GOOGLE_OAUTH_CLIENT_ID = defineString('GOOGLE_OAUTH_CLIENT_ID');
-export const GOOGLE_OAUTH_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
 
 /** The Calendar scope we require to write events on a user's behalf. */
 export const CALENDAR_EVENTS_SCOPE = 'https://www.googleapis.com/auth/calendar.events';

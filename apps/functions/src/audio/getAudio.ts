@@ -4,13 +4,18 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
-import { DRIVE_SERVICE_ACCOUNT, downloadFile, getDriveClient } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  downloadFile,
+  getDriveClient,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
 /**
  * Streams an audio file from Drive back to the client. The client uses
- * this in an `<audio>` tag for playback. The SA owns the file, and the
+ * this in an `<audio>` tag for playback. The file lives in a private Drive folder, and the
  * client can't read it directly from Drive — we proxy the bytes through.
  *
  * GET /getAudio?observationId=<id>&audioFileId=<id>
@@ -23,6 +28,7 @@ export const getAudio = onRequest(
   {
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     cors: true,
     memory: '512MiB',
     timeoutSeconds: 120,
