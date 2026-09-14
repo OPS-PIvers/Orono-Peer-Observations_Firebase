@@ -27,14 +27,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { yearLabel } from '@/utils/staffFormatting';
 import {
   CYCLE_STATUSES,
+  STAFF_YEARS,
   type CycleStatus,
-  cycleStatus,
+  cycleStatusFields,
   cycleStatusLabel,
-  encodeYear,
-  displayYear as toDisplayYear,
-  encodeYearStatus,
+  staffCycleStatus,
 } from './staffCycle';
 
 interface StaffDialogProps {
@@ -51,7 +51,7 @@ interface FormState {
   year: StaffYear;
   buildings: string[];
   modules: string[];
-  summativeYear: boolean;
+  cycleStatus: CycleStatus;
   isActive: boolean;
   hasAdminAccess: boolean;
 }
@@ -63,7 +63,7 @@ const empty: FormState = {
   year: 1,
   buildings: [],
   modules: [],
-  summativeYear: false,
+  cycleStatus: 'planning',
   isActive: true,
   hasAdminAccess: false,
 };
@@ -115,7 +115,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         buildings: existing.buildings,
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
         modules: existing.modules ?? [],
-        summativeYear: existing.summativeYear,
+        cycleStatus: staffCycleStatus(existing),
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
       });
@@ -138,21 +138,6 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
   );
 
   const knownModuleIds = useMemo(() => new Set(modules.map((m) => m.moduleId)), [modules]);
-
-  // Year + Status mirror the Staff table: the canonical `staff.year` (1-6) +
-  // `summativeYear` are presented as a 1-3 Year plus a
-  // Planning/Developing/High Cycle/Probationary Status, encoded back via the
-  // shared staffCycle helpers so every other consumer keeps working unchanged.
-  const dYear = toDisplayYear(form.year);
-  const status = cycleStatus(form.year, form.summativeYear);
-  function setYear(n: 1 | 2 | 3) {
-    const enc = encodeYear(n, form);
-    setForm((f) => ({ ...f, year: enc.year, summativeYear: enc.summativeYear }));
-  }
-  function setStatus(s: CycleStatus) {
-    const enc = encodeYearStatus(dYear, s);
-    setForm((f) => ({ ...f, year: enc.year, summativeYear: enc.summativeYear }));
-  }
 
   // Module Access rows — Admin Console Access first, then admin-defined
   // modules. (Cycle status lives in the Status field above, not here.)
@@ -237,7 +222,7 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           year: form.year,
           buildings: form.buildings,
           modules: form.modules,
-          summativeYear: form.summativeYear,
+          ...cycleStatusFields(form.cycleStatus),
           isActive: form.isActive,
           hasAdminAccess: form.hasAdminAccess,
           updatedAt: serverTimestamp(),
@@ -342,13 +327,17 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
             ) : null}
           </div>
 
+          {/* Status and Year are independent: each select writes only its own
+              field. Year alone decides assigned domains. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="status">Status</Label>
               <select
                 id="status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as CycleStatus)}
+                value={form.cycleStatus}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, cycleStatus: e.target.value as CycleStatus }))
+                }
                 className={SELECT_CLASSNAME}
               >
                 {CYCLE_STATUSES.map((s) => (
@@ -362,13 +351,15 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
               <Label htmlFor="year">Year</Label>
               <select
                 id="year"
-                value={dYear}
-                onChange={(e) => setYear(Number(e.target.value) as 1 | 2 | 3)}
+                value={form.year}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, year: Number(e.target.value) as StaffYear }))
+                }
                 className={SELECT_CLASSNAME}
               >
-                {[1, 2, 3].map((y) => (
+                {STAFF_YEARS.map((y) => (
                   <option key={y} value={y}>
-                    Year {y}
+                    {yearLabel(y)}
                   </option>
                 ))}
               </select>

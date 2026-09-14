@@ -3,12 +3,13 @@
  *
  * Tests for the filter logic and rendering behavior:
  *   - Building filter correctly filters staff by building overlap.
- *   - Cycle status filter correctly maps year/summativeYear to cycle status.
+ *   - Cycle status filter reads the stored status, falling back to the
+ *     legacy year/summativeYear derivation.
  *   - Multiple filters compose correctly (AND logic).
  *   - Clear filters resets all filter state.
  */
 import { describe, expect, it } from 'vitest';
-import { cycleStatus } from '@ops/shared';
+import { staffCycleStatus } from '@ops/shared';
 import type { CycleStatus, Staff } from '@ops/shared';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -66,45 +67,52 @@ describe('StaffDirectoryPage — filtering logic', () => {
   });
 
   describe('Cycle status filter', () => {
-    it('returns "probationary" for year 4-6', () => {
-      expect(cycleStatus(4, false)).toBe('probationary');
-      expect(cycleStatus(5, true)).toBe('probationary');
-      expect(cycleStatus(6, false)).toBe('probationary');
+    it('uses the stored status, independent of year', () => {
+      expect(staffCycleStatus(makeStaff({ year: 5, cycleStatus: 'developing' }))).toBe(
+        'developing',
+      );
+      expect(staffCycleStatus(makeStaff({ year: 1, cycleStatus: 'high' }))).toBe('high');
     });
 
-    it('returns "high" for year 1-3 with summativeYear=true', () => {
-      expect(cycleStatus(1, true)).toBe('high');
-      expect(cycleStatus(2, true)).toBe('high');
-      expect(cycleStatus(3, true)).toBe('high');
+    it('legacy fallback: returns "probationary" for year 4-6', () => {
+      expect(staffCycleStatus(makeStaff({ year: 4, summativeYear: false }))).toBe('probationary');
+      expect(staffCycleStatus(makeStaff({ year: 5, summativeYear: true }))).toBe('probationary');
+      expect(staffCycleStatus(makeStaff({ year: 6, summativeYear: false }))).toBe('probationary');
     });
 
-    it('returns "planning"/"developing" for year 1-3 with summativeYear=false', () => {
-      expect(cycleStatus(1, false)).toBe('planning');
-      expect(cycleStatus(2, false)).toBe('developing');
-      expect(cycleStatus(3, false)).toBe('developing');
+    it('legacy fallback: returns "high" for year 1-3 with summativeYear=true', () => {
+      expect(staffCycleStatus(makeStaff({ year: 1, summativeYear: true }))).toBe('high');
+      expect(staffCycleStatus(makeStaff({ year: 2, summativeYear: true }))).toBe('high');
+      expect(staffCycleStatus(makeStaff({ year: 3, summativeYear: true }))).toBe('high');
+    });
+
+    it('legacy fallback: returns "planning"/"developing" for year 1-3 with summativeYear=false', () => {
+      expect(staffCycleStatus(makeStaff({ year: 1, summativeYear: false }))).toBe('planning');
+      expect(staffCycleStatus(makeStaff({ year: 2, summativeYear: false }))).toBe('developing');
+      expect(staffCycleStatus(makeStaff({ year: 3, summativeYear: false }))).toBe('developing');
     });
 
     it('filters staff by high cycle status', () => {
       const staff = makeStaff({ year: 3, summativeYear: true });
-      const filterStatus = cycleStatus(staff.year, staff.summativeYear);
+      const filterStatus = staffCycleStatus(staff);
       expect(filterStatus === 'high').toBe(true);
     });
 
     it('filters staff by developing status', () => {
       const staff = makeStaff({ year: 2, summativeYear: false });
-      const filterStatus = cycleStatus(staff.year, staff.summativeYear);
+      const filterStatus = staffCycleStatus(staff);
       expect(filterStatus === 'developing').toBe(true);
     });
 
     it('filters staff by planning status', () => {
       const staff = makeStaff({ year: 1, summativeYear: false });
-      const filterStatus = cycleStatus(staff.year, staff.summativeYear);
+      const filterStatus = staffCycleStatus(staff);
       expect(filterStatus === 'planning').toBe(true);
     });
 
     it('filters staff by probationary status', () => {
       const staff = makeStaff({ year: 4, summativeYear: true });
-      const filterStatus = cycleStatus(staff.year, staff.summativeYear);
+      const filterStatus = staffCycleStatus(staff);
       expect(filterStatus === 'probationary').toBe(true);
     });
   });
@@ -121,7 +129,7 @@ describe('StaffDirectoryPage — filtering logic', () => {
       const cycleStatusFilter = 'high';
 
       const buildingMatch = staff.buildings.some((b) => selectedBuildings.has(b));
-      const cycleMatch = cycleStatus(staff.year, staff.summativeYear) === cycleStatusFilter;
+      const cycleMatch = staffCycleStatus(staff) === cycleStatusFilter;
 
       expect(buildingMatch && cycleMatch).toBe(true);
     });
@@ -137,7 +145,7 @@ describe('StaffDirectoryPage — filtering logic', () => {
       const cycleStatusFilter = 'high';
 
       const buildingMatch = staff.buildings.some((b) => selectedBuildings.has(b));
-      const cycleMatch = cycleStatus(staff.year, staff.summativeYear) === cycleStatusFilter;
+      const cycleMatch = staffCycleStatus(staff) === cycleStatusFilter;
 
       expect(buildingMatch && cycleMatch).toBe(false);
     });
@@ -153,7 +161,7 @@ describe('StaffDirectoryPage — filtering logic', () => {
       const cycleStatusFilter = 'high';
 
       const buildingMatch = staff.buildings.some((b) => selectedBuildings.has(b));
-      const cycleMatch = cycleStatus(staff.year, staff.summativeYear) === cycleStatusFilter;
+      const cycleMatch = staffCycleStatus(staff) === cycleStatusFilter;
 
       expect(buildingMatch && cycleMatch).toBe(false);
     });
@@ -168,7 +176,7 @@ describe('StaffDirectoryPage — filtering logic', () => {
 
     // Mirrors the cycle predicate: 'all' means "no filter".
     function passesCycleFilter(staff: Staff, filter: CycleStatus | 'all'): boolean {
-      return filter === 'all' || cycleStatus(staff.year, staff.summativeYear) === filter;
+      return filter === 'all' || staffCycleStatus(staff) === filter;
     }
 
     it('treats empty building set as no filter (includes all)', () => {

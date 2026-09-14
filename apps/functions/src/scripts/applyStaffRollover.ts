@@ -6,7 +6,9 @@ import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   applyStaffRolloverInput,
+  cycleStatusFields,
   isAdminRole,
+  rolloverEntryCycleStatus,
   type ApplyStaffRolloverResult,
   type Staff,
   type StaffRolloverEntry,
@@ -24,7 +26,7 @@ const WRITE_BATCH = 400;
  *
  * The web client computes each staff member's next cycle position with the
  * pure helpers in @ops/shared/cycle (1-3 continuing loop, 4-6 probationary →
- * tenure transition, summativeYear derivation), shows the admin a full
+ * tenure transition, suggested status), shows the admin a full
  * preview with per-row opt-out/override, and then sends the confirmed
  * per-person changes here. This function:
  *
@@ -110,7 +112,7 @@ export const applyStaffRollover = onCall(
       for (const entry of chunk) {
         batch.update(db.doc(`${COLLECTIONS.staff}/${entry.email}`), {
           year: entry.toYear,
-          summativeYear: entry.toSummativeYear,
+          ...cycleStatusFields(rolloverEntryCycleStatus(entry)),
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
@@ -137,7 +139,7 @@ export const applyStaffRollover = onCall(
           email: e.email,
           fromYear: e.fromYear,
           toYear: e.toYear,
-          toSummativeYear: e.toSummativeYear,
+          toCycleStatus: rolloverEntryCycleStatus(e),
         })),
       },
     });

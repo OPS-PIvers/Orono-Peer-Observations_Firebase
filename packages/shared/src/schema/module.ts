@@ -1,8 +1,13 @@
 import { z } from 'zod';
 import { email, isoDate, slugId } from './common.js';
 import { PILL_COLORS, pillColor, type PillColorName } from './pillColor.js';
-import { LEGACY_CYCLE_STATUS, STORED_CYCLE_STATUSES, cycleStatus, displayYear } from '../cycle.js';
-import type { Staff } from './staff.js';
+import {
+  LEGACY_CYCLE_STATUS,
+  STORED_CYCLE_STATUSES,
+  type CycleStatusStaff,
+  displayYear,
+  staffCycleStatus,
+} from '../cycle.js';
 
 /**
  * /modules/{moduleId} — admin-defined participation tracks (e.g. Mentor,
@@ -108,16 +113,16 @@ export type ModuleInput = z.infer<typeof moduleInput>;
 
 /**
  * Does this staff member satisfy a module's auto-enable rule? Mirrors the
- * inline cycle math in firestore.rules — keep the two in sync (rules tests
- * guard the rules side).
+ * inline stored-status-with-fallback read in firestore.rules — keep the two
+ * in sync (rules tests guard the rules side).
  */
 export function staffMatchesAutoEnable(
-  staff: Pick<Staff, 'year' | 'summativeYear'>,
+  staff: CycleStatusStaff,
   rule: AutoEnable | null | undefined,
 ): boolean {
   if (!rule) return false;
   if (rule.dimension === 'status') {
-    const status = cycleStatus(staff.year, staff.summativeYear);
+    const status = staffCycleStatus(staff);
     // A module still pinned to the retired 'low' status keeps applying to
     // everyone it applied to before the Planning/Developing split, rather than
     // silently matching nobody and quietly revoking access.
@@ -134,7 +139,7 @@ export function staffMatchesAutoEnable(
  * because Firestore reads bypass the Zod default — a staff doc written before
  * the field existed simply omits it.
  */
-export type ModuleAssignmentStaff = Pick<Staff, 'year' | 'summativeYear'> & {
+export type ModuleAssignmentStaff = CycleStatusStaff & {
   modules?: readonly string[];
 };
 

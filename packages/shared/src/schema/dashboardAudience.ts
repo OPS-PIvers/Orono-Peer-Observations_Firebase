@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { OBSERVATION_YEARS } from '../constants.js';
-import { LEGACY_CYCLE_STATUS, STORED_CYCLE_STATUSES, cycleStatus } from '../cycle.js';
+import {
+  LEGACY_CYCLE_STATUS,
+  STORED_CYCLE_STATUSES,
+  type CycleStatusStaff,
+  staffCycleStatus,
+} from '../cycle.js';
 import { effectiveModuleIdsFor, type ModuleAssignmentModule } from './module.js';
 import { staffYear, type Staff } from './staff.js';
 
@@ -18,7 +23,7 @@ import { staffYear, type Staff } from './staff.js';
  *   - `years`         stored `staff.year` (1-3 continuing, 4-6 probationary
  *                     P1-P3). The picker labels 4-6 as "Probationary N"
  *                     because they *display* as years 1-3 elsewhere.
- *   - `cycleStatuses` the derived phase (`cycleStatus()`); the retired
+ *   - `cycleStatuses` the staff member's status (`staffCycleStatus()`); the retired
  *                     `'low'` stays parseable and widens to planning-or-
  *                     developing, as `staffMatchesAutoEnable` does.
  *   - `buildings`     building `displayName`, as `staff.buildings` holds.
@@ -63,9 +68,10 @@ export function isEveryoneAudience(
 
 /** The staff fields the matcher reads. `modules` is optional because
  *  Firestore reads bypass the zod default on older docs. */
-export type AudienceStaff = Pick<Staff, 'year' | 'summativeYear' | 'role' | 'buildings'> & {
-  modules?: readonly string[];
-};
+export type AudienceStaff = CycleStatusStaff &
+  Pick<Staff, 'year' | 'role' | 'buildings'> & {
+    modules?: readonly string[];
+  };
 
 /**
  * What the matcher needs beyond the staff doc. Every field is optional so
@@ -132,7 +138,7 @@ export function staffMatchesAudience(
   if (audience.years.length > 0 && !audience.years.includes(staff.year)) return false;
 
   if (audience.cycleStatuses.length > 0) {
-    const status = cycleStatus(staff.year, staff.summativeYear);
+    const status = staffCycleStatus(staff);
     const ok = audience.cycleStatuses.some((s) =>
       s === LEGACY_CYCLE_STATUS ? status === 'planning' || status === 'developing' : s === status,
     );

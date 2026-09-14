@@ -32,22 +32,75 @@ export function displayYear(year: number): 1 | 2 | 3 {
 }
 
 /**
- * The cycle phase a staff member is in, derived from the two stored fields.
- * Probationary and summative both outrank the year, so the year only decides
- * between the two non-summative continuing phases:
+ * The *legacy* cycle phase, derived from the two fields every staff doc
+ * carried before `cycleStatus` was stored. Probationary and summative both
+ * outrank the year, so the year only decides between the two non-summative
+ * continuing phases:
  *
  *   year >= 4                  Probationary  (P1-P3)
  *   summativeYear              High Cycle    (the year that closes the loop)
  *   year 1, non-summative      Planning
  *   years 2-3, non-summative   Developing
  *
- * Derived, never stored — renaming a phase is a pure display change and needs
- * no migration of /staff.
+ * Only the fallback for docs that predate the stored field — read status
+ * through `staffCycleStatus`, never this directly. Mirrored by hand in
+ * firestore.rules (`matchesModuleAutoEnable`).
  */
 export function cycleStatus(year: number, summativeYear: boolean): CycleStatus {
   if (year >= 4) return 'probationary';
   if (summativeYear) return 'high';
   return year === 1 ? 'planning' : 'developing';
+}
+
+/**
+ * The staff fields the status helpers read. `summativeYear` and
+ * `cycleStatus` are optional because Firestore reads bypass the Zod schema —
+ * a doc written before either field existed simply omits it.
+ */
+export interface CycleStatusStaff {
+  year: number;
+  summativeYear?: boolean | undefined;
+  cycleStatus?: CycleStatus | null | undefined;
+}
+
+/**
+ * A staff member's cycle status. Status and year are independent: year alone
+ * decides assigned domains, status is its own admin-set label. The stored
+ * `staff.cycleStatus` wins; docs written before it existed fall back to the
+ * legacy derivation (`cycleStatus(year, summativeYear)`) until
+ * `scripts/backfill/backfill-cycle-status.ts` stamps them.
+ *
+ * Every status consumer goes through here, and firestore.rules mirrors the
+ * same stored-with-fallback read, so the two can never disagree.
+ */
+export function staffCycleStatus(staff: CycleStatusStaff): CycleStatus {
+  const stored = staff.cycleStatus;
+  if (stored && (CYCLE_STATUSES as readonly string[]).includes(stored)) return stored;
+  return cycleStatus(staff.year, staff.summativeYear ?? false);
+}
+
+/** Summative follows status: High Cycle and Probationary staff receive a
+ *  summative evaluation; Planning and Developing staff a formative one. */
+export function isSummativeStatus(status: CycleStatus): boolean {
+  return status === 'high' || status === 'probationary';
+}
+
+/** Is this staff member in a summative year? Derived from their status. */
+export function isSummative(staff: CycleStatusStaff): boolean {
+  return isSummativeStatus(staffCycleStatus(staff));
+}
+
+/**
+ * The stored fields for a status change: the status plus the `summativeYear`
+ * it implies. Every status writer spreads this so the denormalized flag
+ * (still read by exports and older clients) never drifts from the status.
+ * Deliberately never touches `year`.
+ */
+export function cycleStatusFields(status: CycleStatus): {
+  cycleStatus: CycleStatus;
+  summativeYear: boolean;
+} {
+  return { cycleStatus: status, summativeYear: isSummativeStatus(status) };
 }
 
 /**
@@ -73,23 +126,34 @@ export function isTenureTransition(year: StaffYear): boolean {
 
 export interface CycleRollover {
   year: StaffYear;
+  cycleStatus: CycleStatus;
   summativeYear: boolean;
 }
 
 /**
- * Default year + summativeYear for a staff member after an annual rollover.
+ * The status the rollover preview proposes for someone landing on `year`:
  *
- * `summativeYear` derivation for the NEW position:
- *   - still probationary (4-6): true — probationary staff are summatively
- *     evaluated every year (mirrors encodeYearStatus in the web client)
- *   - continuing year 3: true — the summative-review (high-cycle) year that
- *     closes out the 3-year continuing loop
- *   - continuing years 1-2 (including fresh tenure at year 1): false
+ *   P1-P3 (4-6)   Probationary — summatively evaluated every year
+ *   year 3        High Cycle   — the summative year that closes the loop
+ *   year 2        Developing
+ *   year 1        Planning     (including fresh tenure out of P3)
  *
- * This is a *default*: admins can override summativeYear per person in the
- * rollover preview before anything is written.
+ * Only a suggestion — status is independent of year, and the admin can
+ * override it per person before anything is written.
+ */
+export function suggestedCycleStatus(year: StaffYear): CycleStatus {
+  if (year >= 4) return 'probationary';
+  if (year === 3) return 'high';
+  return year === 2 ? 'developing' : 'planning';
+}
+
+/**
+ * Default year + status for a staff member after an annual rollover: the
+ * next year in the loop, the status suggested for it, and the
+ * `summativeYear` that status implies. This is a *default*: admins can
+ * override the status per person in the rollover preview.
  */
 export function rolloverCycle(year: StaffYear): CycleRollover {
   const next = nextCycleYear(year);
-  return { year: next, summativeYear: next >= 4 || next === 3 };
+  return { year: next, ...cycleStatusFields(suggestedCycleStatus(next)) };
 }

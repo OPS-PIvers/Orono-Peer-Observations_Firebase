@@ -1,3 +1,5 @@
+import type { CycleStatus } from '@ops/shared';
+
 export function yearLabel(year: number): string {
   return year < 4 ? `Y${String(year)}` : `P${String(year - 3)}`;
 }
@@ -8,15 +10,29 @@ export function yearBadgeClass(year: number): string {
     : 'bg-ops-red-lighter text-ops-red-dark border border-ops-red-lighter';
 }
 
+const CYCLE_STATUS_LABELS: Record<CycleStatus, string> = {
+  planning: 'Planning',
+  developing: 'Developing',
+  high: 'High Cycle',
+  probationary: 'Probationary',
+};
+
+export function cycleStatusLabel(status: CycleStatus): string {
+  return CYCLE_STATUS_LABELS[status];
+}
+
 /**
- * Human-readable status combining year + summative flag. Example outputs:
- *   "Tenured Year 2 — Summative"
- *   "Tenured Year 3"
+ * Human-readable year + cycle status. Year and status are independent, so
+ * both always show — except a Probationary status on a P-year, where the
+ * suffix would just repeat the year. Example outputs:
+ *   "Tenured Year 2 — High Cycle"
+ *   "Tenured Year 1 — Planning"
  *   "Probationary 1"
+ *   "Probationary 2 — Developing"
  */
-export function yearStatusLabel(year: number, summativeYear: boolean): string {
+export function yearStatusLabel(year: number, status: CycleStatus): string {
   const base = year < 4 ? `Tenured Year ${String(year)}` : `Probationary ${String(year - 3)}`;
-  return summativeYear ? `${base} — Summative` : base;
+  return year >= 4 && status === 'probationary' ? base : `${base} — ${cycleStatusLabel(status)}`;
 }
 
 /**

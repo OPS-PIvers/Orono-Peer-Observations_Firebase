@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import type { Staff } from '@ops/shared';
 import {
   CYCLE_STATUSES,
-  cycleStatus,
+  STAFF_YEARS,
+  cycleStatusFields,
   cycleStatusLabel,
+  cycleStatusOrder,
   displayYear,
-  encodeYear,
-  encodeYearStatus,
+  staffCycleStatus,
 } from './staffCycle';
+import { buildBulkEditPlan, type BulkEditValues } from './bulkEditPlan';
 
 describe('displayYear', () => {
   it('passes continuing years through and maps probationary 4-6 to 1-3', () => {
@@ -14,52 +17,6 @@ describe('displayYear', () => {
     expect(displayYear(3)).toBe(3);
     expect(displayYear(4)).toBe(1);
     expect(displayYear(6)).toBe(3);
-  });
-});
-
-describe('cycleStatus', () => {
-  it('is probationary for year >= 4 regardless of summative', () => {
-    expect(cycleStatus(4, false)).toBe('probationary');
-    expect(cycleStatus(6, true)).toBe('probationary');
-  });
-  it('is high whenever summative, for any continuing year', () => {
-    expect(cycleStatus(1, true)).toBe('high');
-    expect(cycleStatus(2, true)).toBe('high');
-    expect(cycleStatus(3, true)).toBe('high');
-  });
-  it('splits the non-summative continuing years into planning and developing', () => {
-    expect(cycleStatus(1, false)).toBe('planning');
-    expect(cycleStatus(2, false)).toBe('developing');
-    expect(cycleStatus(3, false)).toBe('developing');
-  });
-});
-
-describe('encodeYearStatus', () => {
-  it('encodes high as the same year, summative true', () => {
-    expect(encodeYearStatus(1, 'high')).toEqual({ year: 1, summativeYear: true });
-    expect(encodeYearStatus(2, 'high')).toEqual({ year: 2, summativeYear: true });
-  });
-  it('pins planning to year 1 — the phase defines the year', () => {
-    expect(encodeYearStatus(1, 'planning')).toEqual({ year: 1, summativeYear: false });
-    expect(encodeYearStatus(3, 'planning')).toEqual({ year: 1, summativeYear: false });
-  });
-  it('keeps developing on years 2-3, promoting year 1 to year 2', () => {
-    expect(encodeYearStatus(1, 'developing')).toEqual({ year: 2, summativeYear: false });
-    expect(encodeYearStatus(2, 'developing')).toEqual({ year: 2, summativeYear: false });
-    expect(encodeYearStatus(3, 'developing')).toEqual({ year: 3, summativeYear: false });
-  });
-  it('encodes probationary as year + 3, summative true', () => {
-    expect(encodeYearStatus(1, 'probationary')).toEqual({ year: 4, summativeYear: true });
-    expect(encodeYearStatus(3, 'probationary')).toEqual({ year: 6, summativeYear: true });
-  });
-  it('round-trips through display + cycleStatus', () => {
-    for (let y = 1; y <= 6; y++) {
-      for (const s of [true, false]) {
-        const enc = encodeYearStatus(displayYear(y), cycleStatus(y, s));
-        expect(displayYear(enc.year)).toBe(displayYear(y));
-        expect(cycleStatus(enc.year, enc.summativeYear)).toBe(cycleStatus(y, s));
-      }
-    }
   });
 });
 
@@ -73,20 +30,82 @@ describe('labels', () => {
   });
 });
 
-describe('encodeYear', () => {
-  it('moves the year without disturbing the summative flag', () => {
-    expect(encodeYear(3, { year: 1, summativeYear: false })).toEqual({
-      year: 3,
-      summativeYear: false,
-    });
-    expect(encodeYear(1, { year: 3, summativeYear: true })).toEqual({
-      year: 1,
-      summativeYear: true,
-    });
+describe('STAFF_YEARS', () => {
+  it('offers all six stored years — Y1-Y3 then P1-P3', () => {
+    expect(STAFF_YEARS).toEqual([1, 2, 3, 4, 5, 6]);
   });
-  it('keeps probationary staff on the 4-6 encoding', () => {
-    expect(encodeYear(2, { year: 4, summativeYear: true })).toEqual({
-      year: 5,
+});
+
+describe('cycleStatusOrder', () => {
+  it('sorts statuses in phase order', () => {
+    const shuffled = ['probationary', 'planning', 'high', 'developing'] as const;
+    expect([...shuffled].sort((a, b) => cycleStatusOrder(a) - cycleStatusOrder(b))).toEqual([
+      ...CYCLE_STATUSES,
+    ]);
+  });
+});
+
+/**
+ * The regression this module exists to prevent: Status and Year used to be
+ * encoded into each other, so picking "Planning" snapped a year-2 teacher to
+ * year 1 and picking "Probationary" moved them onto P-years. Every writer now
+ * patches only its own field.
+ */
+describe('Status and Year are independent', () => {
+  const base = { year: 2 as const, summativeYear: false, cycleStatus: 'developing' as const };
+
+  it('a status write never carries a year', () => {
+    for (const s of CYCLE_STATUSES) {
+      const patch = cycleStatusFields(s);
+      expect(patch).not.toHaveProperty('year');
+      // Applying it leaves the year exactly where it was.
+      expect({ ...base, ...patch }.year).toBe(2);
+      expect(staffCycleStatus({ ...base, ...patch })).toBe(s);
+    }
+  });
+
+  it('a year write (any of the six) leaves the stored status untouched', () => {
+    for (const y of STAFF_YEARS) {
+      const next = { ...base, year: y };
+      expect(staffCycleStatus(next)).toBe('developing');
+    }
+  });
+
+  it('allows any combination, e.g. P2 + Developing and Y1 + Probationary', () => {
+    expect(staffCycleStatus({ year: 5, summativeYear: false, cycleStatus: 'developing' })).toBe(
+      'developing',
+    );
+    expect(staffCycleStatus({ year: 1, summativeYear: true, cycleStatus: 'probationary' })).toBe(
+      'probationary',
+    );
+  });
+
+  it('bulk edits respect the split too', () => {
+    const row = {
+      id: 'a@x',
+      email: 'a@x',
+      name: 'A',
+      role: 'teacher',
+      buildings: [],
+      modules: [],
+      isActive: true,
+      hasAdminAccess: false,
+      ...base,
+    } as unknown as Staff & { id: string };
+    const values: BulkEditValues = {
+      year: 6,
+      roleId: '',
+      building: '',
+      moduleId: '',
+      cycleStatus: 'probationary',
+      boolValue: true,
+    };
+    const yearPlan = buildBulkEditPlan('year', values, [row]);
+    const statusPlan = buildBulkEditPlan('cycleStatus', values, [row]);
+    if (yearPlan.kind !== 'ready' || statusPlan.kind !== 'ready') throw new Error('expected ready');
+    expect(yearPlan.patches.get('a@x')).toEqual({ year: 6 });
+    expect(statusPlan.patches.get('a@x')).toEqual({
+      cycleStatus: 'probationary',
       summativeYear: true,
     });
   });

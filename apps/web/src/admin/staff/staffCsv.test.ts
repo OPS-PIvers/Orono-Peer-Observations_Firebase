@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_EMAIL_PREFERENCES, type ModuleDoc, type Role, type Staff } from '@ops/shared';
-import { csvSerializeRow, parseCsv, parseStaffCsv, serializeStaffCsv } from './staffCsv';
+import {
+  STAFF_CSV_COLUMNS,
+  csvSerializeRow,
+  parseCsv,
+  parseStaffCsv,
+  serializeStaffCsv,
+} from './staffCsv';
 
 // Mock firebase so staffCsv's bulkWrite import doesn't trigger a real
 // Firebase initialization (which requires valid env vars) during tests.
@@ -172,6 +178,99 @@ describe('serializeStaffCsv + parseStaffCsv round-trip', () => {
 
     expect(must(result.rows[1]).action).toBe('error');
     expect(must(must(result.rows[1]).errors[0])).toMatch(/Duplicate email/);
+  });
+
+  it('exports the stored status, and the summativeYear it implies', () => {
+    const csv = serializeStaffCsv(
+      [makeStaff({ year: 5, summativeYear: true, cycleStatus: 'developing' })],
+      roles,
+      modules,
+    );
+    const [header, line] = csv.split('\r\n');
+    expect(header).toBe(STAFF_CSV_COLUMNS.join(','));
+    expect(line).toContain(',5,developing,false,');
+  });
+
+  it('exports a legacy row (no stored status) with the derived status and round-trips unchanged', () => {
+    const legacy = makeStaff({ year: 4, summativeYear: false });
+    const csv = serializeStaffCsv([legacy], roles, modules);
+    expect(csv).toContain(',4,probationary,true,');
+    const result = parseStaffCsv(csv, {
+      roles,
+      modules,
+      existingByEmail: new Map([[legacy.email, legacy]]),
+    });
+    expect(must(result.rows[0]).action).toBe('unchanged');
+  });
+
+  it('reads status independently of year, syncing summativeYear to the status', () => {
+    const existing = makeStaff({ year: 2, summativeYear: false, cycleStatus: 'developing' });
+    const csv = [
+      'email,name,role,year,cycleStatus,summativeYear,buildings,modules,isActive,hasAdminAccess',
+      // A label, a contradictory summativeYear cell, and a P-year.
+      'jane.doe@orono.k12.mn.us,Jane Doe,Teacher,5,High Cycle,false,Intermediate School,Mentor,true,false',
+      'new.person@orono.k12.mn.us,New Person,Teacher,1,probationary,,,,true,false',
+    ].join('\n');
+    const result = parseStaffCsv(csv, {
+      roles,
+      modules,
+      existingByEmail: new Map([[existing.email, existing]]),
+    });
+    expect(must(result.rows[0]).action).toBe('update');
+    expect(must(result.rows[0]).input).toMatchObject({
+      year: 5,
+      cycleStatus: 'high',
+      summativeYear: true,
+    });
+    expect(must(result.rows[1]).input).toMatchObject({
+      year: 1,
+      cycleStatus: 'probationary',
+      summativeYear: true,
+    });
+  });
+
+  it('flags a status-only change as an update', () => {
+    const existing = makeStaff({ year: 2, cycleStatus: 'developing' });
+    const csv = [
+      'email,name,role,year,cycleStatus,buildings,modules,isActive,hasAdminAccess',
+      'jane.doe@orono.k12.mn.us,Jane Doe,Teacher,2,planning,Intermediate School,Mentor,true,false',
+    ].join('\n');
+    const result = parseStaffCsv(csv, {
+      roles,
+      modules,
+      existingByEmail: new Map([[existing.email, existing]]),
+    });
+    expect(result.missingColumns).toEqual([]);
+    expect(must(result.rows[0]).action).toBe('update');
+    expect(must(result.rows[0]).input?.year).toBe(2);
+  });
+
+  it('derives the status from year + summativeYear for a file with no status column', () => {
+    const csv = [
+      'email,name,role,year,summativeYear,buildings,modules,isActive,hasAdminAccess',
+      'jane.doe@orono.k12.mn.us,Jane Doe,Teacher,3,true,,,true,false',
+    ].join('\n');
+    const result = parseStaffCsv(csv, { roles, modules, existingByEmail: new Map() });
+    expect(must(result.rows[0]).input).toMatchObject({ cycleStatus: 'high', summativeYear: true });
+  });
+
+  it('rejects an unknown status', () => {
+    const csv = [
+      'email,name,role,year,cycleStatus,buildings,modules,isActive,hasAdminAccess',
+      'jane.doe@orono.k12.mn.us,Jane Doe,Teacher,1,low,,,true,false',
+    ].join('\n');
+    const result = parseStaffCsv(csv, { roles, modules, existingByEmail: new Map() });
+    expect(must(result.rows[0]).action).toBe('error');
+    expect(must(must(result.rows[0]).errors[0])).toMatch(/Status must be one of/);
+  });
+
+  it('requires a status column (cycleStatus, or summativeYear on an older file)', () => {
+    const csv = [
+      'email,name,role,year,buildings,modules,isActive,hasAdminAccess',
+      'jane.doe@orono.k12.mn.us,Jane Doe,Teacher,1,,,true,false',
+    ].join('\n');
+    const result = parseStaffCsv(csv, { roles, modules, existingByEmail: new Map() });
+    expect(result.missingColumns).toEqual(['cycleStatus']);
   });
 
   it('reports missing required columns', () => {

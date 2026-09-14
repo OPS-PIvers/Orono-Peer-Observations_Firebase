@@ -1,4 +1,10 @@
-import { isStaffYear, type Staff, type StaffYear } from '@ops/shared';
+import {
+  cycleStatusFields,
+  isStaffYear,
+  type CycleStatus,
+  type Staff,
+  type StaffYear,
+} from '@ops/shared';
 import type { DocumentData } from 'firebase/firestore';
 import type { BulkEditField } from './bulkEditRisk';
 
@@ -15,6 +21,7 @@ export interface BulkEditValues {
   roleId: string;
   building: string;
   moduleId: string;
+  cycleStatus: CycleStatus;
   boolValue: boolean;
 }
 
@@ -70,8 +77,9 @@ export function buildBulkEditPlan(
       everyRow({ isActive: values.boolValue });
       break;
     }
-    case 'summativeYear': {
-      everyRow({ summativeYear: values.boolValue });
+    case 'cycleStatus': {
+      // Status only, with its synced summativeYear — never the year.
+      everyRow(cycleStatusFields(values.cycleStatus));
       break;
     }
     case 'addBuilding':

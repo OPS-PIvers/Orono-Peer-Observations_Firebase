@@ -47,6 +47,7 @@ import { BulkEditBar } from './BulkEditBar';
 import { BulkEditDialog, type BulkEditField } from './BulkEditDialog';
 import { MessageGroupDialog } from './MessageGroupDialog';
 import { serializeStaffCsv } from './staffCsv';
+import { cycleStatusOrder, staffCycleStatus } from './staffCycle';
 import {
   BuildingsPill,
   ModuleAccessPill,
@@ -202,7 +203,7 @@ export function StaffPage() {
         key: 'status',
         header: 'Status',
         headClassName: 'w-36',
-        sortAccessor: (r) => (r.summativeYear ? 1 : 0),
+        sortAccessor: (r) => cycleStatusOrder(staffCycleStatus(r)),
         cell: (r) => <StatusPill row={r} onPatch={patchStaff} />,
       },
       {

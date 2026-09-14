@@ -49,7 +49,7 @@ const ALL_ACTIONS: BulkAction[] = [
   { field: 'removeModule', label: 'Remove module', icon: CircleSlash },
   { field: 'hasAdminAccess', label: 'Set admin access', icon: ShieldCheck },
   { field: 'isActive', label: 'Set active status', icon: Power },
-  { field: 'summativeYear', label: 'Set summative year', icon: CheckCheck },
+  { field: 'cycleStatus', label: 'Set status', icon: CheckCheck },
 ];
 
 /**
@@ -67,11 +67,11 @@ const INLINE_FIELDS: BulkEditField[] = ['year', 'role'];
 
 /**
  * Fields BulkEditDialog gates behind a confirm step (see describeBulkEditRisk):
- * archiving, admin access, and the summative flag. They sit at the end of the
+ * archiving, admin access, and the cycle status. They sit at the end of the
  * overflow, past a separator, so a write that can take down the roster is never
  * an identical-looking button away from a routine correction.
  */
-const GUARDED_FIELDS: BulkEditField[] = ['hasAdminAccess', 'isActive', 'summativeYear'];
+const GUARDED_FIELDS: BulkEditField[] = ['hasAdminAccess', 'isActive', 'cycleStatus'];
 
 // Overflow is the complement of the inline set rather than its own list, so a
 // field added to ALL_ACTIONS cannot end up unreachable from either branch.

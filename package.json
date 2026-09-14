@@ -40,6 +40,9 @@
     "backfill:last-sign-in:dry-run": "tsx scripts/backfill/backfill-last-sign-in.ts --target=prod --dry-run",
     "backfill:last-sign-in:emulator": "tsx scripts/backfill/backfill-last-sign-in.ts --target=emulator",
     "backfill:last-sign-in:prod": "tsx scripts/backfill/backfill-last-sign-in.ts --target=prod",
+    "backfill:cycle-status:dry-run": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod --dry-run",
+    "backfill:cycle-status:emulator": "tsx scripts/backfill/backfill-cycle-status.ts --target=emulator",
+    "backfill:cycle-status:prod": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod",
     "prepare": "husky"
   },
   "devDependencies": {

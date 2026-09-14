@@ -4,6 +4,7 @@ import {
   type PillColorName,
   type Role,
   type Staff,
+  type StaffYear,
   effectiveModuleIdsFor,
   staffMatchesAutoEnable,
 } from '@ops/shared';
@@ -16,13 +17,15 @@ import {
   paletteFor,
 } from '@/admin/_shared/pillColors';
 import { MODULE_COLOR_CLASSES } from '@/admin/modules/ModulesPage';
+import { yearLabel } from '@/utils/staffFormatting';
 import {
   CYCLE_STATUSES,
-  cycleStatus,
+  STAFF_YEARS,
+  type CycleStatus,
+  cycleStatusFields,
   cycleStatusLabel,
-  encodeYear,
   displayYear,
-  encodeYearStatus,
+  staffCycleStatus,
 } from './staffCycle';
 
 type StaffRow = Staff & { id: string };
@@ -69,8 +72,10 @@ export function RolePill({
   );
 }
 
+/** Status and Year are independent: this pill writes only the status (and
+ *  its synced summativeYear), never the year. */
 export function StatusPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaff }) {
-  const current = cycleStatus(row.year, row.summativeYear);
+  const current = staffCycleStatus(row);
   const options: PillOption[] = CYCLE_STATUSES.map((s) => ({
     value: s,
     label: cycleStatusLabel(s),
@@ -80,18 +85,15 @@ export function StatusPill({ row, onPatch }: { row: StaffRow; onPatch: PatchStaf
     <PillSelect
       value={current}
       options={options}
-      onChange={(v) =>
-        onPatch(
-          row.email,
-          encodeYearStatus(displayYear(row.year), v as (typeof CYCLE_STATUSES)[number]),
-        )
-      }
+      onChange={(v) => onPatch(row.email, cycleStatusFields(v as CycleStatus))}
       ariaLabel={`Status for ${row.name}`}
       menuLabel="Status"
     />
   );
 }
 
+/** All six stored years (Y1-Y3, P1-P3). Writes only `year`, never the
+ *  status. A P-year takes its display year's color. */
 export function YearPill({
   row,
   onPatch,
@@ -101,20 +103,19 @@ export function YearPill({
   onPatch: PatchStaff;
   yearColors?: Partial<Record<1 | 2 | 3, PillColorName | undefined>>;
 }) {
-  const current = displayYear(row.year);
-  const options: PillOption[] = [1, 2, 3].map((y) => {
-    const yy = y as 1 | 2 | 3;
+  const options: PillOption[] = STAFF_YEARS.map((y) => {
+    const dy = displayYear(y);
     return {
       value: String(y),
-      label: String(y),
-      color: colorClasses(yearColors?.[yy]) ?? YEAR_PILL_COLOR[yy],
+      label: yearLabel(y),
+      color: colorClasses(yearColors?.[dy]) ?? YEAR_PILL_COLOR[dy],
     };
   });
   return (
     <PillSelect
-      value={String(current)}
+      value={String(row.year)}
       options={options}
-      onChange={(v) => onPatch(row.email, encodeYear(Number(v) as 1 | 2 | 3, row))}
+      onChange={(v) => onPatch(row.email, { year: Number(v) as StaffYear })}
       ariaLabel={`Year for ${row.name}`}
       menuLabel="Year"
     />

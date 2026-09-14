@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LayoutGrid, List, Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
-import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, staffCycleStatus, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
@@ -199,7 +199,7 @@ export function StaffDirectoryPage() {
                 </span>
               </div>
               <p className="text-ops-gray mb-2 text-xs">{roleDisplayName(roles, s.role)}</p>
-              {s.summativeYear ? (
+              {staffCycleStatus(s) === 'high' ? (
                 <span className="bg-ops-blue-lighter text-ops-blue-dark mb-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
                   High Cycle
                 </span>
@@ -237,7 +237,7 @@ export function StaffDirectoryPage() {
                   >
                     {yearLabel(s.year)}
                   </span>
-                  {s.summativeYear ? (
+                  {staffCycleStatus(s) === 'high' ? (
                     <span className="bg-ops-blue-lighter text-ops-blue-dark inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
                       High Cycle
                     </span>

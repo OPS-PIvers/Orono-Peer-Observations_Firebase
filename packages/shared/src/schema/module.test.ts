@@ -178,6 +178,34 @@ describe('staffMatchesAutoEnable', () => {
       ),
     ).toBe(true);
   });
+  it('matches status on the stored cycleStatus over the legacy derivation', () => {
+    expect(
+      staffMatchesAutoEnable(
+        { year: 5, summativeYear: true, cycleStatus: 'developing' },
+        { dimension: 'status', value: 'probationary' },
+      ),
+    ).toBe(false);
+    expect(
+      staffMatchesAutoEnable(
+        { year: 5, summativeYear: true, cycleStatus: 'developing' },
+        { dimension: 'status', value: 'low' },
+      ),
+    ).toBe(true);
+    expect(
+      staffMatchesAutoEnable(
+        { year: 2, summativeYear: false, cycleStatus: 'high' },
+        { dimension: 'status', value: 'high' },
+      ),
+    ).toBe(true);
+  });
+  it('matches year independently of a stored status', () => {
+    expect(
+      staffMatchesAutoEnable(
+        { year: 5, summativeYear: false, cycleStatus: 'planning' },
+        { dimension: 'year', value: 2 },
+      ),
+    ).toBe(true);
+  });
   it('matches on display year, including probationary 4-6 -> 1-3', () => {
     expect(
       staffMatchesAutoEnable({ year: 2, summativeYear: false }, { dimension: 'year', value: 2 }),

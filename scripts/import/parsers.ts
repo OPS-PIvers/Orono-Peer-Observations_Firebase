@@ -1,4 +1,6 @@
 import {
+  cycleStatus,
+  cycleStatusFields,
   isStaffYear,
   type Role,
   type Rubric,
@@ -123,7 +125,10 @@ export function parseStaff(rows: string[][]): ParseStaffResult {
       role: roleNameToSlug(role || 'Teacher'),
       year,
       buildings,
-      summativeYear,
+      // The sheet has no status column: derive it the legacy way and store
+      // it, with the summativeYear it implies, so the imported doc never
+      // depends on the fallback.
+      ...cycleStatusFields(cycleStatus(year, summativeYear)),
       isActive,
     });
   }

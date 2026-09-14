@@ -239,6 +239,63 @@ describe('/modules/{id}/items — auto-enable grants access by status/year', () 
     await assertSucceeds(getDoc(doc(db, 'modules/high-cycle/items/i1')));
   });
 
+  describe('stored cycleStatus', () => {
+    beforeEach(async () => {
+      // Stored High Cycle on a year that the legacy derivation calls Developing.
+      await seed('staff/storedhigh@orono.k12.mn.us', {
+        year: 2,
+        summativeYear: false,
+        cycleStatus: 'high',
+        modules: [],
+      });
+      // Stored Developing on a P2 year the legacy derivation calls Probationary.
+      await seed('staff/p2dev@orono.k12.mn.us', {
+        year: 5,
+        summativeYear: true,
+        cycleStatus: 'developing',
+        modules: [],
+      });
+      // Stored Planning on a summative year 3 (legacy: High Cycle).
+      await seed('staff/y3plan@orono.k12.mn.us', {
+        year: 3,
+        summativeYear: true,
+        cycleStatus: 'planning',
+        modules: [],
+      });
+    });
+
+    it('a stored status wins over the legacy year/summativeYear derivation', async () => {
+      const high = testEnv
+        .authenticatedContext('sh', claims.teacher('storedhigh@orono.k12.mn.us'))
+        .firestore();
+      await assertSucceeds(getDoc(doc(high, 'modules/high-cycle/items/i1')));
+      await assertFails(getDoc(doc(high, 'modules/legacy-low/items/i4')));
+
+      const planning = testEnv
+        .authenticatedContext('y3p', claims.teacher('y3plan@orono.k12.mn.us'))
+        .firestore();
+      await assertSucceeds(getDoc(doc(planning, 'modules/planning/items/i3')));
+      await assertFails(getDoc(doc(planning, 'modules/high-cycle/items/i1')));
+    });
+
+    it('a stored non-probationary status on a P-year is not probationary', async () => {
+      const db = testEnv
+        .authenticatedContext('p2d', claims.teacher('p2dev@orono.k12.mn.us'))
+        .firestore();
+      // Developing → the legacy low module applies, high cycle does not.
+      await assertSucceeds(getDoc(doc(db, 'modules/legacy-low/items/i4')));
+      await assertFails(getDoc(doc(db, 'modules/high-cycle/items/i1')));
+    });
+
+    it('a stored status leaves year matching alone', async () => {
+      const db = testEnv
+        .authenticatedContext('p2d', claims.teacher('p2dev@orono.k12.mn.us'))
+        .firestore();
+      // Stored year 5 still displays as year 2, whatever the status.
+      await assertSucceeds(getDoc(doc(db, 'modules/year2/items/i2')));
+    });
+  });
+
   it('a matching staff can run the dashboard collectionGroup query for the auto module', async () => {
     const db = testEnv
       .authenticatedContext('h', claims.teacher('high2@orono.k12.mn.us'))

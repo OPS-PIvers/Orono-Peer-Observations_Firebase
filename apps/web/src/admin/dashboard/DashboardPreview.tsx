@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cycleStatus,
+  CYCLE_STATUSES,
+  cycleStatusFields,
   effectiveModulesFor,
+  staffCycleStatus,
   staffMatchesAudience,
   type AudienceContext,
+  type CycleStatus,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
   type DashboardStep,
@@ -36,11 +39,10 @@ import {
   PV_BLURB,
   PV_BUILDINGS,
   PV_MODULES,
-  PV_PHASE,
   PV_PREVIEW_AS,
   PV_RESET,
   PV_ROLE,
-  PV_SUMMATIVE,
+  PV_STATUS,
   PV_YEAR,
 } from './copyStrings';
 
@@ -52,11 +54,11 @@ import {
  * active observations of their own.
  *
  * "Preview as" (header popover) edits the sample staff member's year,
- * summative flag, role, buildings and manual modules, and the quick
- * materials are filtered through the same `staffMatchesAudience` the
- * staff dashboard uses, so an admin can see exactly which cards a given
- * group gets. Cycle phase is derived from year + summative, as it is on
- * real staff docs, so it is shown rather than set.
+ * status, role, buildings and manual modules, and the quick materials are
+ * filtered through the same `staffMatchesAudience` the staff dashboard
+ * uses, so an admin can see exactly which cards a given group gets. Year
+ * and status are independent, as they are on real staff docs; the
+ * summative flag follows the status.
  *
  * Read-only: no Acknowledge action, no outbound links.
  */
@@ -72,7 +74,7 @@ export interface DashboardPreviewProps {
 /** The five things "Preview as" can change on the sample staff member. */
 export interface PreviewPersona {
   year: StaffYear;
-  summativeYear: boolean;
+  cycleStatus: CycleStatus;
   role: string;
   buildings: string[];
   modules: string[];
@@ -80,7 +82,7 @@ export interface PreviewPersona {
 
 export const DEFAULT_PERSONA: PreviewPersona = {
   year: SAMPLE_STAFF.year,
-  summativeYear: SAMPLE_STAFF.summativeYear,
+  cycleStatus: staffCycleStatus(SAMPLE_STAFF),
   role: SAMPLE_STAFF.role,
   buildings: SAMPLE_STAFF.buildings,
   modules: SAMPLE_STAFF.modules,
@@ -100,7 +102,10 @@ export function DashboardPreview({
   const tasks = useMemo(() => buildSampleCheckpoints(steps), [steps]);
   const [persona, setPersona] = useState<PreviewPersona>(DEFAULT_PERSONA);
 
-  const sampleStaff = useMemo<Staff>(() => ({ ...SAMPLE_STAFF, ...persona }), [persona]);
+  const sampleStaff = useMemo<Staff>(
+    () => ({ ...SAMPLE_STAFF, ...persona, ...cycleStatusFields(persona.cycleStatus) }),
+    [persona],
+  );
 
   const ctx = useMemo<AudienceContext>(
     () => ({
@@ -173,9 +178,9 @@ function PreviewAsPopover({
   hidden: boolean;
 }) {
   const yearId = 'preview-as-year';
+  const statusId = 'preview-as-status';
   const roleId = 'preview-as-role';
   const isDefault = JSON.stringify(persona) === JSON.stringify(DEFAULT_PERSONA);
-  const phase = CYCLE_STATUS_LABELS[cycleStatus(persona.year, persona.summativeYear)];
   const set = <K extends keyof PreviewPersona>(key: K, value: PreviewPersona[K]) =>
     onChange({ ...persona, [key]: value });
 
@@ -229,16 +234,26 @@ function PreviewAsPopover({
             </select>
           </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={persona.summativeYear}
-              onChange={(e) => set('summativeYear', e.target.checked)}
-            />
-            {PV_SUMMATIVE}
-          </label>
-          <p className="text-muted-foreground -mt-1 text-xs">
-            {PV_PHASE}: <span className="text-foreground font-medium">{phase}</span>
-          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor={statusId} className="text-xs font-medium">
+              {PV_STATUS}
+            </Label>
+            <select
+              id={statusId}
+              value={persona.cycleStatus}
+              onChange={(e) => {
+                const s = CYCLE_STATUSES.find((v) => v === e.target.value);
+                if (s !== undefined) set('cycleStatus', s);
+              }}
+              className="border-input bg-background h-8 rounded-md border px-2 text-sm"
+            >
+              {CYCLE_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {CYCLE_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="grid gap-1.5">
             <Label htmlFor={roleId} className="text-xs font-medium">

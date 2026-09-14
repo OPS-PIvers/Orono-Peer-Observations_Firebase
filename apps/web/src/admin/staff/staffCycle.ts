@@ -1,55 +1,39 @@
-import type { StaffYear } from '@ops/shared';
-import { CYCLE_STATUSES, type CycleStatus, cycleStatus, displayYear } from '@ops/shared';
+import { OBSERVATION_YEARS, type StaffYear } from '@ops/shared';
+import {
+  CYCLE_STATUSES,
+  type CycleStatus,
+  cycleStatus,
+  cycleStatusFields,
+  displayYear,
+  staffCycleStatus,
+} from '@ops/shared';
+import { cycleStatusLabel } from '@/utils/staffFormatting';
 
-// Cycle status/year logic now lives in @ops/shared; re-exported here so existing
-// web imports keep working. Labels + the table-pill encoding stay web-local.
-export { CYCLE_STATUSES, cycleStatus, displayYear };
+// Cycle status/year logic lives in @ops/shared; re-exported here so existing
+// web imports keep working. Labels stay web-local.
+export {
+  CYCLE_STATUSES,
+  cycleStatus,
+  cycleStatusFields,
+  cycleStatusLabel,
+  displayYear,
+  staffCycleStatus,
+};
 export type { CycleStatus };
 
-const LABELS: Record<CycleStatus, string> = {
-  planning: 'Planning',
-  developing: 'Developing',
-  high: 'High Cycle',
-  probationary: 'Probationary',
-};
-
-export function cycleStatusLabel(status: CycleStatus): string {
-  return LABELS[status];
-}
-
 /**
- * Encode a chosen display-year (1-3) + status back into stored fields.
+ * Every stored year, in picker order: Y1, Y2, Y3, P1, P2, P3.
  *
- * Planning and Developing are *defined* by the year (1, and 2-3
- * respectively), so choosing one of them moves the year to match — picking
- * "Planning" for a year-2 staff member makes them year 1, because a Planning
- * year 2 does not exist. Probationary and High Cycle leave the year alone;
- * both are legal at any point in the loop.
+ * Year and Status are independent controls. The Year picker writes only
+ * `year` (which alone decides assigned domains); the Status picker writes
+ * only `cycleStatus` + its synced `summativeYear` (`cycleStatusFields`).
+ * Neither ever moves the other, and no combination is forbidden — how
+ * Probationary status relates to the P-years is still an open question for
+ * the peer evaluation team.
  */
-export function encodeYearStatus(
-  year: 1 | 2 | 3,
-  status: CycleStatus,
-): { year: StaffYear; summativeYear: boolean } {
-  if (status === 'probationary') return { year: (year + 3) as StaffYear, summativeYear: true };
-  if (status === 'high') return { year, summativeYear: true };
-  if (status === 'planning') return { year: 1, summativeYear: false };
-  return { year: year === 1 ? 2 : year, summativeYear: false };
-}
+export const STAFF_YEARS: readonly StaffYear[] = OBSERVATION_YEARS;
 
-/**
- * Set the display-year without touching the phase inputs — the counterpart to
- * `encodeYearStatus` for the Year control. Routing a year change back through
- * the status would snap Planning to year 1 the instant the user picked year 2,
- * making the Year select look broken; the phase re-derives from the new year
- * instead.
- */
-export function encodeYear(
-  year: 1 | 2 | 3,
-  current: { year: number; summativeYear: boolean },
-): { year: StaffYear; summativeYear: boolean } {
-  const probationary = current.year >= 4;
-  return {
-    year: (probationary ? year + 3 : year) as StaffYear,
-    summativeYear: current.summativeYear,
-  };
+/** Sort key for the Status column: the phases in their `CYCLE_STATUSES` order. */
+export function cycleStatusOrder(status: CycleStatus): number {
+  return CYCLE_STATUSES.indexOf(status);
 }

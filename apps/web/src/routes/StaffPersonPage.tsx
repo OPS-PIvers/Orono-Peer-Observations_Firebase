@@ -8,6 +8,7 @@ import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  staffCycleStatus,
   type EmailTemplate,
   type Observation,
   type ObservationStatus,
@@ -262,7 +263,7 @@ export function StaffPersonPage() {
           >
             {yearLabel(staffMember.year)}
           </span>
-          {staffMember.summativeYear ? (
+          {staffCycleStatus(staffMember) === 'high' ? (
             <span className="bg-ops-blue-lighter text-ops-blue-dark inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">
               High Cycle
             </span>
