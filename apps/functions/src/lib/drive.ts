@@ -1,14 +1,28 @@
 import { Readable } from 'node:stream';
 import { logger } from 'firebase-functions';
+import { defineSecret } from 'firebase-functions/params';
 import type { drive_v3 } from 'googleapis';
+import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET } from './googleOAuth.js';
 
 /**
- * Drive API helpers backed by the Cloud Functions runtime service account
- * (`peer-eval-svc@…`). The SA owns observation folders directly — observed
- * staff get `reader` permission on finalize via `permissions.create`.
+ * Drive API helpers that act as the Workspace user who owns the observations
+ * parent folder, via a stored OAuth refresh token. Observed staff and
+ * observers get `reader` permission via `permissions.create`.
  *
- * Domain-Wide Delegation is OFF the table for this project, so we never
- * impersonate users.
+ * Why a user, not the service account. The parent folder lives in that user's
+ * My Drive. Every My Drive file counts against its owner's storage, and a file
+ * the service account uploads is owned by the service account, which has no
+ * storage — every upload failed `403 Service Accounts do not have storage
+ * quota` (folders still worked; they use no storage). Acting as the folder
+ * owner makes new folders and files owned by, and counted against, that user.
+ * Domain-Wide Delegation is off the table for this project, so the token comes
+ * from a one-time consent: `pnpm drive:authorize` (scripts/drive-auth).
+ *
+ * The token is issued to the same OAuth client as the Calendar integration.
+ * Google revokes a user's whole grant to a client at once, so if the folder
+ * owner disconnects Google Calendar in the app (which revokes their Calendar
+ * token), Drive access goes with it — re-run `pnpm drive:authorize`, then
+ * redeploy functions.
  *
  * Every call passes `supportsAllDrives: true`. Without it the Drive v3 API
  * pretends Shared Drive items do not exist and answers `404 File not found:
@@ -25,32 +39,49 @@ import type { drive_v3 } from 'googleapis';
  */
 
 /**
- * The identity every Drive-touching function must run as.
+ * The runtime identity for every Drive-touching function.
  *
- * Drive access is granted to an *account*, not to the project: the district
- * "Peer Observations" parent folder is shared with `peer-eval-svc` and with
- * nobody else. Cloud Functions v2 otherwise defaults to the project's compute
- * service account, which is a different principal — it can see no Drive files
- * at all, so every Drive call under it fails `404 File not found: <parent id>`
- * no matter how the folder is shared or which flags the call passes. That is
- * not a permissions error you can debug from the message; it is Drive
- * declining to admit the folder exists.
- *
- * So each function that imports from this module pins `serviceAccount` to this
- * value. Adding a new Drive-touching function without it reintroduces the same
- * 404.
+ * Drive calls authenticate with the folder owner's OAuth token (see above),
+ * not with this account. Functions still pin it because it is the principal
+ * granted access to the Drive-related secrets and the Master Log Sheet, and
+ * because the emulator fallback below uses runtime credentials.
  */
 export const DRIVE_SERVICE_ACCOUNT = 'peer-eval-svc@peer-evaluator-rubric.iam.gserviceaccount.com';
+
+/** Refresh token for the folder owner, written by `pnpm drive:authorize`. */
+export const DRIVE_OAUTH_REFRESH_TOKEN = defineSecret('DRIVE_OAUTH_REFRESH_TOKEN');
+
+/**
+ * Secrets every Drive-touching function must declare in its `secrets` option.
+ * A function that omits them reads an empty token and `getDriveClient` throws.
+ */
+export const DRIVE_SECRETS = [GOOGLE_OAUTH_CLIENT_SECRET, DRIVE_OAUTH_REFRESH_TOKEN];
 
 let driveClient: drive_v3.Drive | null = null;
 
 export async function getDriveClient(): Promise<drive_v3.Drive> {
   if (driveClient) return driveClient;
   const { google } = await import('googleapis');
-  const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  });
-  driveClient = google.drive({ version: 'v3', auth });
+  const refreshToken = DRIVE_OAUTH_REFRESH_TOKEN.value();
+  if (refreshToken) {
+    const auth = new google.auth.OAuth2({
+      clientId: GOOGLE_OAUTH_CLIENT_ID.value(),
+      clientSecret: GOOGLE_OAUTH_CLIENT_SECRET.value(),
+    });
+    auth.setCredentials({ refresh_token: refreshToken });
+    driveClient = google.drive({ version: 'v3', auth });
+  } else if (process.env['FUNCTIONS_EMULATOR'] === 'true') {
+    // Local emulator without a token: runtime credentials, as before.
+    const auth = new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/drive'],
+    });
+    driveClient = google.drive({ version: 'v3', auth });
+  } else {
+    throw new Error(
+      'DRIVE_OAUTH_REFRESH_TOKEN is empty. Add DRIVE_SECRETS to this function’s ' +
+        '`secrets`, or run `pnpm drive:authorize` and redeploy functions.',
+    );
+  }
   return driveClient;
 }
 
@@ -238,8 +269,8 @@ export async function shareWithUser(args: {
  * Grant the observation's observer Reader access on its Drive folder so the
  * observer-facing links the app renders (Finalized banner "Open PDF" /
  * "Open Drive folder", StaffPersonPage "View PDF", evidence chips) actually
- * open. The district parent folder is shared only with the service account
- * and admins — Peer Evaluators are not admins, so without this per-folder
+ * open. The district parent folder is shared only with its owner, the service
+ * account and admins. Peer Evaluators are none of those, so without this per-folder
  * grant every observer link lands on Drive's request-access page.
  *
  * Idempotent (`shareWithUser` dedupes existing grants) and deliberately
@@ -271,7 +302,7 @@ export async function shareObservationFolderWithObserver(args: {
 
 /**
  * Permanently delete a single Drive file. Used to remove an individual
- * evidence/audio file or a superseded PDF (the SA owns these files, so the
+ * evidence/audio file or a superseded PDF (the authorized folder owner owns these files, so the
  * delete is unconditional). A missing file (404) is treated as success so a
  * double-delete or an already-cleaned file never throws.
  */
@@ -293,7 +324,7 @@ export interface DriveLink {
 
 /**
  * Permanently delete a Drive folder and all of its children.
- * Used when a Draft observation is deleted — the SA owns the folder so
+ * Used when a Draft observation is deleted — the authorized folder owner owns the folder so
  * deletion is unconditional. Pages through children so folders with
  * more than one page of files are cleared completely. Logs (but does
  * not propagate) per-child failures so the parent delete still runs;

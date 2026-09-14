@@ -11,7 +11,12 @@ import {
   isAdminRole,
   type Staff,
 } from '@ops/shared';
-import { DRIVE_SERVICE_ACCOUNT, getDriveClient, uploadFileToFolder } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  getDriveClient,
+  uploadFileToFolder,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -171,6 +176,7 @@ export const uploadModuleFile = onCall(
   {
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     memory: '512MiB',
     timeoutSeconds: 120,
   },

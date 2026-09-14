@@ -6,7 +6,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
-import { DRIVE_SERVICE_ACCOUNT, deleteDriveFolder } from '../lib/drive.js';
+import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, deleteDriveFolder } from '../lib/drive.js';
 import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -68,6 +68,7 @@ export const onObservationWritten = onDocumentWritten(
     document: 'observations/{observationId}',
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
     memory: '256MiB',
     // Serialize: each invocation does 2 Sheet reads + 1 write, and the
     // free Sheets API quota is 60 read + 60 write per minute. Allowing

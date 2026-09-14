@@ -9,7 +9,12 @@ import {
   DEFAULT_GEMINI_MODEL,
   resolveGeminiModel,
 } from '@ops/shared';
-import { DRIVE_SERVICE_ACCOUNT, downloadFile, getDriveClient } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  downloadFile,
+  getDriveClient,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -47,7 +52,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
     document: 'transcriptionJobs/{jobId}',
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
-    secrets: [GEMINI_API_KEY],
+    secrets: [GEMINI_API_KEY, ...DRIVE_SECRETS],
     memory: '1GiB',
     timeoutSeconds: 540,
     // maxInstances caps concurrent transcription work to bound cost/abuse

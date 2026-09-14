@@ -243,6 +243,7 @@ jobs:
           cat > apps/functions/lib/.secret.local <<'EOF'
           GEMINI_API_KEY=demo-gemini-key
           GOOGLE_OAUTH_CLIENT_SECRET=demo-oauth-secret
+          DRIVE_OAUTH_REFRESH_TOKEN=
           EOF
 
       # Both Playwright projects (desktop-chrome and the iPad-viewport

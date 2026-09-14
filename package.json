@@ -43,6 +43,7 @@
     "backfill:cycle-status:dry-run": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod --dry-run",
     "backfill:cycle-status:emulator": "tsx scripts/backfill/backfill-cycle-status.ts --target=emulator",
     "backfill:cycle-status:prod": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod",
+    "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
     "prepare": "husky"
   },
   "devDependencies": {

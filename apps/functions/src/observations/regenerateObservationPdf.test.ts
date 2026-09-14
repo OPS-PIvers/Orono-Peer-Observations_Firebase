@@ -60,6 +60,7 @@ vi.mock('../lib/drive.js', () => ({
   // load to pin the runtime service account, so a mock returning undefined
   // would silently deploy under the wrong identity.
   DRIVE_SERVICE_ACCOUNT: 'peer-eval-svc@peer-evaluator-rubric.iam.gserviceaccount.com',
+  DRIVE_SECRETS: [],
   ensureObservationFolder: (...a: unknown[]) => h.drive.ensureObservationFolder?.(...a),
   getDriveLinks: (...a: unknown[]) => h.drive.getDriveLinks?.(...a),
   shareObservationFolderWithObserver: (...a: unknown[]) =>
