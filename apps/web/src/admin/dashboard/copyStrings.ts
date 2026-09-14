@@ -156,6 +156,21 @@ export const CS_FIELD_BUTTON_TARGET = 'Button goes to';
 export const CS_FIELD_BUTTON_URL = 'Link address';
 export const CS_FIELD_OPEN_PANEL = 'Open which panel';
 export const CS_FIELD_HIDE_DONE = 'Hide once done';
+export const CS_FIELD_COMPLETION = 'How it gets completed';
+export const CS_COMPLETION_HELP =
+  'Peer evaluators check steps off from a staff member’s page (Staff → name → Year at a glance). Staff can never check off their own steps.';
+
+export const COMPLETION_MODE_LABELS: Record<string, string> = {
+  auto: 'Automatic — when the "Mark it done" event happens',
+  manual: 'Evaluator checks off',
+  either: 'Either — automatically or when an evaluator checks it off',
+};
+
+/** Short form for the collapsed step row's summary line. */
+export const COMPLETION_MODE_SUMMARY: Record<string, string> = {
+  manual: 'Evaluator checks off',
+  either: 'or evaluator checks off',
+};
 
 export const CS_PLACEHOLDER_DEFAULT = '(optional)';
 

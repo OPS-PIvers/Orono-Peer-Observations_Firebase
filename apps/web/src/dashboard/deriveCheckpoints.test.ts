@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STEPS, dashboardStep, type Observation } from '@ops/shared';
+import { DEFAULT_STEPS, dashboardStep, type DashboardStep, type Observation } from '@ops/shared';
 import {
+  checkAttributionLabel,
   checkpointToIcsEvent,
   deriveCheckpoints,
   type CheckpointWithStatus,
 } from './deriveCheckpoints';
-import type { DeriveContext } from './dashboardEvents';
+import type { DeriveContext, StepCheckRecord, StepChecksIndex } from './dashboardEvents';
 
 const NOW = new Date('2026-03-01T00:00:00Z');
 const PAST = new Date('2026-02-01T00:00:00Z');
@@ -367,6 +368,189 @@ describe('deriveCheckpoints (generic slots)', () => {
     const cards = deriveCheckpoints([link, inert], ctx({}), NOW);
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');
     expect(cards.find((c) => c.id === 'i')?.ctaUrl).toBe('');
+  });
+});
+
+describe('deriveCheckpoints (evaluator check-offs)', () => {
+  const CHECKED_AT = new Date('2026-02-20T15:00:00');
+  const check = (stepId: string): StepCheckRecord => ({
+    stepId,
+    checkedBy: 'pe@orono.k12.mn.us',
+    checkedByName: 'Pat Evaluator',
+    checkedAt: CHECKED_AT,
+  });
+  /** A Planning-like step: observation-tied, done when the pre-obs date passes. */
+  const planning = (completionMode: DashboardStep['completionMode']) =>
+    dashboardStep.parse({
+      id: 'preObs',
+      watchedKind: 'standard',
+      showWhen: 'observationCreated',
+      doneWhen: 'preObsDatePassed',
+      dateFrom: 'preObsDate',
+      completionMode,
+    });
+  const onObs = (checks: StepCheckRecord[]): StepChecksIndex => ({
+    byObservation: { 'obs-1': Object.fromEntries(checks.map((c) => [c.stepId, c])) },
+    staff: {},
+  });
+  const draftBefore = obs({ preObsDate: FUTURE });
+  const draftAfter = obs({ preObsDate: PAST });
+
+  describe('auto', () => {
+    it('completes from doneWhen only and ignores a stray check', () => {
+      const [card] = deriveCheckpoints(
+        [planning('auto')],
+        ctx({ standardDraft: draftBefore, stepChecks: onObs([check('preObs')]) }),
+        NOW,
+      );
+      expect(card?.status).toBe('soon');
+      expect(card?.checkedBy).toBeNull();
+    });
+
+    it('is done when doneWhen fires', () => {
+      const [card] = deriveCheckpoints([planning('auto')], ctx({ standardDraft: draftAfter }), NOW);
+      expect(card?.status).toBe('done');
+      expect(card?.autoDone).toBe(true);
+    });
+
+    it('treats a step saved before completionMode existed as auto', () => {
+      const legacy = { ...planning('auto') } as Partial<DashboardStep>;
+      delete legacy.completionMode;
+      const [card] = deriveCheckpoints(
+        [legacy as DashboardStep],
+        ctx({ standardDraft: draftBefore, stepChecks: onObs([check('preObs')]) }),
+        NOW,
+      );
+      expect(card?.status).toBe('soon');
+      expect(card?.completionMode).toBe('auto');
+    });
+  });
+
+  describe('manual', () => {
+    it('is not done when unchecked, even after doneWhen fires', () => {
+      const [card] = deriveCheckpoints(
+        [planning('manual')],
+        ctx({ standardDraft: draftAfter }),
+        NOW,
+      );
+      expect(card?.status).toBe('soon');
+      expect(card?.autoDone).toBe(false);
+    });
+
+    it('is done once checked, with attribution and the check date as its completed label', () => {
+      const [card] = deriveCheckpoints(
+        [planning('manual')],
+        ctx({ standardDraft: obs({}), stepChecks: onObs([check('preObs')]) }),
+        NOW,
+      );
+      expect(card?.status).toBe('done');
+      expect(card?.checkedBy).toBe('pe@orono.k12.mn.us');
+      expect(card?.checkedByName).toBe('Pat Evaluator');
+      expect(card?.checkedAt).toEqual(CHECKED_AT);
+      expect(card?.completedLabel).toBe('Feb 20');
+      expect(card && checkAttributionLabel(card)).toBe(
+        'Marked complete by Pat Evaluator on Feb 20, 2026',
+      );
+    });
+
+    it('ignores a check stored on a different observation (a new cycle starts fresh)', () => {
+      const [card] = deriveCheckpoints(
+        [planning('manual')],
+        ctx({
+          standardDraft: obs({ observationId: 'obs-2' }),
+          stepChecks: onObs([check('preObs')]),
+        }),
+        NOW,
+      );
+      expect(card?.status).toBe('soon');
+      expect(card?.observationId).toBe('obs-2');
+    });
+
+    it('reads a staff-scoped step from the staff checks', () => {
+      const signupLike = dashboardStep.parse({
+        id: 'signup',
+        showWhen: 'signupWindowOpened',
+        doneWhen: 'signupSlotBooked',
+        dateFrom: 'windowEndDate',
+        buttonTarget: 'booking',
+        completionMode: 'manual',
+      });
+      const [card] = deriveCheckpoints(
+        [signupLike],
+        ctx({ stepChecks: { byObservation: {}, staff: { signup: check('signup') } } }),
+        NOW,
+      );
+      expect(card?.status).toBe('done');
+      expect(card?.checkScope).toBe('staff');
+    });
+
+    it('a checked step satisfies the next previousStepDone step', () => {
+      const next = dashboardStep.parse({ id: 'next', order: 1, showWhen: 'previousStepDone' });
+      const cards = deriveCheckpoints(
+        [planning('manual'), next],
+        ctx({ standardDraft: obs({}), stepChecks: onObs([check('preObs')]) }),
+        NOW,
+      );
+      expect(cards.map((c) => c.id)).toEqual(['preObs', 'next']);
+    });
+  });
+
+  describe('either', () => {
+    it('is done from doneWhen with no check', () => {
+      const [card] = deriveCheckpoints(
+        [planning('either')],
+        ctx({ standardDraft: draftAfter }),
+        NOW,
+      );
+      expect(card?.status).toBe('done');
+      expect(card?.checkedBy).toBeNull();
+      expect(card && checkAttributionLabel(card)).toBeNull();
+    });
+
+    it('is done from a check before doneWhen fires', () => {
+      const [card] = deriveCheckpoints(
+        [planning('either')],
+        ctx({ standardDraft: draftBefore, stepChecks: onObs([check('preObs')]) }),
+        NOW,
+      );
+      expect(card?.status).toBe('done');
+      expect(card?.autoDone).toBe(false);
+      expect(card?.checkedByName).toBe('Pat Evaluator');
+    });
+
+    it('is not done with neither', () => {
+      const [card] = deriveCheckpoints(
+        [planning('either')],
+        ctx({ standardDraft: draftBefore }),
+        NOW,
+      );
+      expect(card?.status).toBe('soon');
+    });
+  });
+
+  it('attribution falls back to the email when the name is empty', () => {
+    const [card] = deriveCheckpoints(
+      [planning('manual')],
+      ctx({
+        standardDraft: obs({}),
+        stepChecks: onObs([{ ...check('preObs'), checkedByName: '' }]),
+      }),
+      NOW,
+    );
+    expect(card && checkAttributionLabel(card)).toBe(
+      'Marked complete by pe@orono.k12.mn.us on Feb 20, 2026',
+    );
+  });
+
+  it('includeHidden emits steps the staff member cannot see yet, flagged', () => {
+    const withoutObs = ctx({});
+    expect(deriveCheckpoints([planning('manual')], withoutObs, NOW)).toEqual([]);
+    const [card] = deriveCheckpoints([planning('manual')], withoutObs, NOW, {
+      includeHidden: true,
+    });
+    expect(card?.visibleToStaff).toBe(false);
+    expect(card?.status).toBe('upcoming');
+    expect(card?.observationId).toBeNull();
   });
 });
 

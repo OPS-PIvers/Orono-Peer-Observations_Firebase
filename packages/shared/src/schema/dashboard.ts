@@ -190,6 +190,14 @@ export type StepChipStyle = (typeof STEP_CHIP_STYLES)[number];
 export const STEP_OPEN_PANELS = ['planning', 'reflection'] as const;
 export type StepOpenPanel = (typeof STEP_OPEN_PANELS)[number];
 
+/** How a step turns complete:
+ *   - `auto`   — only its `doneWhen` event (the original behavior).
+ *   - `manual` — only a peer evaluator's check-off; `doneWhen` is ignored.
+ *   - `either` — `doneWhen` OR an evaluator's check-off.
+ *  Check-offs are stored in `stepChecks` docs (see stepCheck.ts). */
+export const STEP_COMPLETION_MODES = ['auto', 'manual', 'either'] as const;
+export type StepCompletionMode = (typeof STEP_COMPLETION_MODES)[number];
+
 export const dashboardStep = z.object({
   id: z.string().min(1),
   enabled: z.boolean().default(true),
@@ -210,8 +218,67 @@ export const dashboardStep = z.object({
   /** Optional: open a specific panel on the observation page and count only
    *  that panel's questions in `responseProgress`. Null = neither. */
   openPanel: z.enum(STEP_OPEN_PANELS).nullable().default(null),
+  /** Missing on every step saved before evaluator check-offs existed —
+   *  those keep completing automatically. Read it through
+   *  `stepCompletionMode`, which also covers raw Firestore reads. */
+  completionMode: z.enum(STEP_COMPLETION_MODES).default('auto'),
 });
 export type DashboardStep = z.infer<typeof dashboardStep>;
+
+/** The step's completion mode, defaulting to `auto`. The config doc is read
+ *  without Zod, so a production step saved before the field existed has no
+ *  `completionMode` at all despite what the type says. */
+export function stepCompletionMode(
+  step: Pick<DashboardStep, 'completionMode'>,
+): StepCompletionMode {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults
+  return step.completionMode ?? 'auto';
+}
+
+/** True when a peer evaluator may check this step off. */
+export function stepAllowsEvaluatorCheck(step: Pick<DashboardStep, 'completionMode'>): boolean {
+  return stepCompletionMode(step) !== 'auto';
+}
+
+/** Events answered from scheduling-window state rather than the watched
+ *  observation (see EVENT_EVALUATORS in the web dashboard). */
+const NON_OBSERVATION_EVENTS: ReadonlySet<string> = new Set([
+  'always',
+  'previousStepDone',
+  'never',
+  'signupWindowOpened',
+  'signupSlotBooked',
+]);
+
+/**
+ * Where an evaluator's check-off for this step is stored.
+ *
+ * Rule: a step is observation-tied when any of its logic slots reads the
+ * observation `watchedKind` resolves to — a show/done event other than the
+ * sign-up-window ones, an observation date, question progress, or a button
+ * that opens / acknowledges the observation. Its check lives on that
+ * observation (`observations/{id}/stepChecks/{stepId}`), so the next cycle's
+ * observation starts unchecked. A step that never touches the observation
+ * (the built-in `signup`: window events, window deadline, booking button)
+ * is staff-scoped (`staff/{email}/stepChecks/{stepId}`) and is cleared by
+ * the annual rollover instead.
+ *
+ * Every step carries a `watchedKind` (it defaults to `standard`), so the
+ * kind alone can't tell the two apart; what the step reads can.
+ */
+export type StepCheckScope = 'observation' | 'staff';
+export function stepCheckScope(
+  step: Pick<DashboardStep, 'showWhen' | 'doneWhen' | 'dateFrom' | 'inProgress' | 'buttonTarget'>,
+): StepCheckScope {
+  const readsObservation =
+    !NON_OBSERVATION_EVENTS.has(step.showWhen) ||
+    !NON_OBSERVATION_EVENTS.has(step.doneWhen) ||
+    (step.dateFrom !== 'none' && step.dateFrom !== 'windowEndDate') ||
+    step.inProgress === 'responseProgress' ||
+    step.buttonTarget === 'observation' ||
+    step.buttonTarget === 'acknowledge';
+  return readsObservation ? 'observation' : 'staff';
+}
 
 export const dashboardConfig = z.object({
   sections: dashboardSectionsConfig.default({

@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CreateObservationDialog } from '@/observations/CreateObservationDialog';
+import { EvaluatorStepChecklist } from '@/dashboard/EvaluatorStepChecklist';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 type ObsTab = 'all' | ObservationStatus;
@@ -337,6 +338,9 @@ export function StaffPersonPage() {
         </div>
       }
     >
+      {/* Evaluator check-offs for this teacher's dashboard steps */}
+      <EvaluatorStepChecklist staff={staffMember} />
+
       {/* Observation tabs */}
       <div className="mb-4 flex overflow-hidden rounded-lg border border-gray-200 bg-white">
         {tabs.map((tab) => (

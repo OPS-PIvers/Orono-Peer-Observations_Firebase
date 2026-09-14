@@ -16,9 +16,11 @@ import {
   SHOW_WHEN_OPTIONS,
   STEP_BUTTON_TARGETS,
   STEP_CHIP_STYLES,
+  STEP_COMPLETION_MODES,
   STEP_OPEN_PANELS,
   WATCHED_KINDS,
   dashboardStep,
+  stepCompletionMode,
   type DashboardStep,
 } from '@ops/shared';
 import { cn } from '@/lib/utils';
@@ -27,6 +29,10 @@ import { findFieldError, type DraftValidationError } from './dashboardValidation
 import {
   BUTTON_TARGET_LABELS,
   CHIP_STYLE_LABELS,
+  COMPLETION_MODE_LABELS,
+  COMPLETION_MODE_SUMMARY,
+  CS_COMPLETION_HELP,
+  CS_FIELD_COMPLETION,
   CS_ADD_STEP,
   CS_BLURB,
   CS_DELETE_STEP,
@@ -157,6 +163,7 @@ export function CycleStepsEditor({
               const isExpanded = expanded.has(step.id);
               const err = (field: string) => findFieldError(errors, { itemId: step.id, field });
               const stepInvalid = errors?.some((e) => e.itemId === step.id) ?? false;
+              const mode = stepCompletionMode(step);
               return (
                 <SortableItem key={step.id} id={step.id}>
                   {({ dragHandleProps }) => (
@@ -178,7 +185,12 @@ export function CycleStepsEditor({
                             {step.title || '(untitled step)'}
                           </span>
                           <p className="text-muted-foreground mt-0.5 text-xs">
-                            {SHOW_WHEN_LABELS[step.showWhen]} · {DONE_WHEN_LABELS[step.doneWhen]}
+                            {SHOW_WHEN_LABELS[step.showWhen]} ·{' '}
+                            {mode === 'manual'
+                              ? COMPLETION_MODE_SUMMARY['manual']
+                              : mode === 'either'
+                                ? `${DONE_WHEN_LABELS[step.doneWhen] ?? ''} ${COMPLETION_MODE_SUMMARY['either'] ?? ''}`
+                                : DONE_WHEN_LABELS[step.doneWhen]}
                           </p>
                           <button
                             type="button"
@@ -264,14 +276,30 @@ export function CycleStepsEditor({
                             }
                           />
                           <SelectField
-                            label={CS_FIELD_DONE}
-                            value={step.doneWhen}
-                            options={DONE_WHEN_OPTIONS}
-                            labels={DONE_WHEN_LABELS}
+                            label={CS_FIELD_COMPLETION}
+                            value={mode}
+                            options={STEP_COMPLETION_MODES}
+                            labels={COMPLETION_MODE_LABELS}
+                            hint={CS_COMPLETION_HELP}
                             onChange={(v) =>
-                              updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })
+                              updateStep(step.id, {
+                                completionMode: v as DashboardStep['completionMode'],
+                              })
                             }
                           />
+                          {/* Manual steps ignore their done event, so the
+                              control would only mislead. */}
+                          {mode !== 'manual' ? (
+                            <SelectField
+                              label={CS_FIELD_DONE}
+                              value={step.doneWhen}
+                              options={DONE_WHEN_OPTIONS}
+                              labels={DONE_WHEN_LABELS}
+                              onChange={(v) =>
+                                updateStep(step.id, { doneWhen: v as DashboardStep['doneWhen'] })
+                              }
+                            />
+                          ) : null}
                           <SelectField
                             label={CS_FIELD_DATE}
                             value={step.dateFrom}
@@ -387,16 +415,18 @@ function SelectField({
   value,
   options,
   labels,
+  hint,
   onChange,
 }: {
   label: string;
   value: string;
   options: readonly string[];
   labels: Record<string, string>;
+  hint?: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       {({ id }) => (
         <select
           id={id}

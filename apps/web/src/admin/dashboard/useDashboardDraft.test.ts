@@ -146,6 +146,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);
@@ -172,6 +173,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);
@@ -199,6 +201,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);
@@ -226,6 +229,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);
@@ -253,6 +257,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'fixedUrl',
           buttonUrl: 'a'.repeat(2049),
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);
@@ -280,6 +285,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
         {
           id: 'step2',
@@ -299,6 +305,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
         {
           id: 'step3',
@@ -318,6 +325,7 @@ describe('useDashboardDraft validation', () => {
           buttonTarget: 'observation',
           buttonUrl: '',
           openPanel: null,
+          completionMode: 'auto',
         },
       ];
       const errors = validateSteps(steps);

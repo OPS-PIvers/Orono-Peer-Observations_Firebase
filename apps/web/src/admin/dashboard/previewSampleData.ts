@@ -1,11 +1,12 @@
 import {
   DEFAULT_EMAIL_PREFERENCES,
+  stepCompletionMode,
   type DashboardStep,
   type Observation,
   type Staff,
 } from '@ops/shared';
 import { deriveCheckpoints, type CheckpointWithStatus } from '@/dashboard/deriveCheckpoints';
-import type { DeriveContext } from '@/dashboard/dashboardEvents';
+import type { DeriveContext, StepChecksIndex } from '@/dashboard/dashboardEvents';
 import type { ModuleChip } from '@/dashboard/DashboardView';
 
 /**
@@ -114,6 +115,43 @@ const SAMPLE_CONTEXT: DeriveContext = {
   hasInstructionalRound: true,
 };
 
+/**
+ * Sample evaluator check-offs. The sample has no real checks, so a step set
+ * to "Evaluator checks off" would otherwise sit unfinished forever in the
+ * preview. Instead, treat the sample evaluator as having checked off every
+ * manual / either step whose automatic event has happened in the sample —
+ * the same point in the cycle an evaluator would — so the preview shows the
+ * checked state and its "Marked complete by…" line.
+ */
+function sampleStepChecks(steps: DashboardStep[]): StepChecksIndex {
+  const checks: StepChecksIndex = { byObservation: {}, staff: {} };
+  const asEither = steps.map((s) => ({ ...s, completionMode: 'either' as const }));
+  const cards = deriveCheckpoints(asEither, SAMPLE_CONTEXT, PREVIEW_NOW, { includeHidden: true });
+  for (const card of cards) {
+    const step = steps.find((s) => s.id === card.key);
+    if (!step || stepCompletionMode(step) === 'auto' || !card.autoDone) continue;
+    const record = {
+      stepId: step.id,
+      checkedBy: SAMPLE_PEER_EVALUATOR.email,
+      checkedByName: SAMPLE_PEER_EVALUATOR.name,
+      checkedAt: PAST,
+    };
+    if (card.checkScope === 'staff') {
+      checks.staff[step.id] = record;
+    } else if (card.observationId) {
+      checks.byObservation[card.observationId] = {
+        ...checks.byObservation[card.observationId],
+        [step.id]: record,
+      };
+    }
+  }
+  return checks;
+}
+
 export function buildSampleCheckpoints(steps: DashboardStep[]): CheckpointWithStatus[] {
-  return deriveCheckpoints(steps, SAMPLE_CONTEXT, PREVIEW_NOW);
+  return deriveCheckpoints(
+    steps,
+    { ...SAMPLE_CONTEXT, stepChecks: sampleStepChecks(steps) },
+    PREVIEW_NOW,
+  );
 }

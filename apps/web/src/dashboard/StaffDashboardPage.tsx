@@ -1,51 +1,31 @@
 import { useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { doc, limit, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import {
-  APP_SETTINGS_DOC_ID,
   COLLECTIONS,
-  DASHBOARD_CONFIG_DOC_ID,
   DASHBOARD_QUICK_MATERIALS_DOC_ID,
-  OBSERVATION_STATUS,
-  OBSERVATION_TYPES,
   STAFF_SUBCOLLECTIONS,
-  resolveSteps,
-  questionPhase,
-  questionType,
   effectiveModuleIdsFor,
   effectiveModulesFor,
   staffMatchesAudience,
-  type AppSettings,
   type Building,
-  type DashboardConfig,
   type DashboardQuickMaterialsDoc,
   type DashboardSectionsConfig,
   type ModuleDoc,
   type ModuleProgress,
-  type Observation,
-  type ObservationWindow,
   type Role,
   type Staff,
-  type WorkProductQuestion,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
-import { useActiveStandardObservation } from '@/hooks/useActiveStandardObservation';
-import { useActiveWorkProductObservation } from '@/hooks/useActiveWorkProductObservation';
-import { useActiveInstructionalRoundObservation } from '@/hooks/useActiveInstructionalRoundObservation';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/Skeleton';
 import { useAssignedModuleMaterials } from './useAssignedModuleMaterials';
 import { DashboardView, type ModuleChip } from './DashboardView';
-import {
-  type ActiveQuestion,
-  type CheckpointWithStatus,
-  deriveCheckpoints,
-  extractFirstName,
-} from './deriveCheckpoints';
+import { type CheckpointWithStatus, extractFirstName } from './deriveCheckpoints';
 import { deriveModuleTasks } from './deriveModuleTasks';
+import { useStaffCheckpoints } from './useStaffCheckpoints';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -78,14 +58,8 @@ export function StaffDashboardPage() {
   const staffPath = emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '';
   const { data: staff, loading: staffLoading } = useFirestoreDoc<Staff>(staffPath);
 
-  const configPath = `${COLLECTIONS.appSettings}/${DASHBOARD_CONFIG_DOC_ID}`;
-  const { data: config } = useFirestoreDoc<DashboardConfig>(configPath);
-
   const quickPath = `${COLLECTIONS.dashboardQuickMaterials}/${DASHBOARD_QUICK_MATERIALS_DOC_ID}`;
   const { data: quick } = useFirestoreDoc<DashboardQuickMaterialsDoc>(quickPath);
-
-  const settingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
-  const { data: appSettings } = useFirestoreDoc<AppSettings>(settingsPath);
 
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: modulesData } = useFirestoreCollection<ModuleDoc>(COLLECTIONS.modules);
@@ -119,114 +93,9 @@ export function StaffDashboardPage() {
 
   const { materials: moduleMaterials } = useAssignedModuleMaterials(assignedModuleIds);
 
-  const finalizedConstraints = useMemo(
-    () =>
-      emailLower
-        ? [
-            where('observedEmail', '==', emailLower),
-            where('status', '==', OBSERVATION_STATUS.finalized),
-            orderBy('finalizedAt', 'desc'),
-            limit(10),
-          ]
-        : [],
-    [emailLower],
-  );
-  const { data: finalizedObs } = useFirestoreCollection<Observation>(
-    emailLower ? COLLECTIONS.observations : '',
-    finalizedConstraints,
-    [emailLower],
-  );
-
-  const windowConstraints = useMemo(
-    () =>
-      emailLower
-        ? [
-            where('invitedEmails', 'array-contains', emailLower),
-            where('status', 'in', ['open', 'partially-booked']),
-          ]
-        : [],
-    [emailLower],
-  );
-  const { data: myWindows } = useFirestoreCollection<ObservationWindow>(
-    emailLower ? COLLECTIONS.observationWindows : '',
-    windowConstraints,
-    [emailLower],
-  );
-  const openBooking = useMemo(() => {
-    for (const w of myWindows ?? []) {
-      const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
-      if (inv && !inv.bookedSlotId) {
-        return {
-          windowId: w.windowId,
-          token: inv.inviteToken,
-          endDate: w.endDate ? new Date(`${w.endDate}T12:00:00`) : null,
-        };
-      }
-    }
-    return null;
-  }, [myWindows, emailLower]);
-
-  const hasBookedSlot = useMemo(() => {
-    for (const w of myWindows ?? []) {
-      const inv = w.invitees.find((i) => i.email.toLowerCase() === emailLower);
-      if (inv?.bookedSlotId) return true;
-    }
-    return false;
-  }, [myWindows, emailLower]);
-
-  const { observation: standardDraft } = useActiveStandardObservation(emailLower);
-  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
-  const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
-  const wpQuestions = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
-  const { hasWorkProduct, hasInstructionalRound } = useActiveObservationTypes();
-
-  const finalizedStandard = useMemo(
-    () => (finalizedObs ?? []).filter((o) => o.type === OBSERVATION_TYPES.standard),
-    [finalizedObs],
-  );
-
-  const peSource = standardDraft ?? wpDraft ?? irDraft ?? finalizedStandard[0] ?? null;
-
-  // Only active questions count; `responseProgress` narrows them to the
-  // watched observation's type and the step's panel (Planning / Reflection).
-  const activeQuestions = useMemo<ActiveQuestion[]>(
-    () =>
-      (wpQuestions.data ?? [])
-        .filter((q) => q.isActive)
-        .map((q) => ({ questionId: q.questionId, type: questionType(q), phase: questionPhase(q) })),
-    [wpQuestions.data],
-  );
-
-  const tasks = useMemo<CheckpointWithStatus[]>(() => {
-    if (!staff) return [];
-    return deriveCheckpoints(resolveSteps(config), {
-      finalizedStandard: finalizedStandard,
-      standardDraft,
-      workProductDraft: wpDraft,
-      instructionalRoundDraft: irDraft,
-      finalizedWorkProduct: null,
-      finalizedInstructionalRound: null,
-      questions: activeQuestions,
-      appSettings: appSettings ?? null,
-      openBooking,
-      hasBookedSlot,
-      hasWorkProduct,
-      hasInstructionalRound,
-    });
-  }, [
-    staff,
-    config,
-    finalizedStandard,
-    standardDraft,
-    wpDraft,
-    irDraft,
-    activeQuestions,
-    appSettings,
-    openBooking,
-    hasBookedSlot,
-    hasWorkProduct,
-    hasInstructionalRound,
-  ]);
+  // Step checkpoints (observations, windows, questions, evaluator check-offs)
+  // load through the same hook the evaluator checklist uses.
+  const { config, tasks, peSource } = useStaffCheckpoints(emailLower);
 
   const moduleTasks = useMemo(() => {
     const done = new Set((moduleProgress ?? []).map((p) => p.itemId));

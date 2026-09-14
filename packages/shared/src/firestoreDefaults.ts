@@ -3,6 +3,7 @@ import {
   BUILDING_SCHEDULE_SUBCOLLECTIONS,
   COLLECTIONS,
   MODULE_SUBCOLLECTIONS,
+  OBSERVATION_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
   WINDOW_SUBCOLLECTIONS,
 } from './constants.js';
@@ -27,6 +28,7 @@ import { rubric } from './schema/rubric.js';
 import { APP_SETTINGS_DOC_ID, appSettings, roleYearMapping } from './schema/settings.js';
 import { signupField } from './schema/signupField.js';
 import { staff } from './schema/staff.js';
+import { stepCheck } from './schema/stepCheck.js';
 import { transcriptionJob } from './schema/transcriptionJob.js';
 import { userCalendarTokens } from './schema/userCalendarTokens.js';
 import { workProductQuestion } from './schema/workProductQuestion.js';
@@ -237,6 +239,7 @@ export function applySchemaDefaults<T = Record<string, unknown>>(
 const COLLECTION_SCHEMAS: Record<string, AnyObjectSchema> = {
   [COLLECTIONS.staff]: staff,
   [`${COLLECTIONS.staff}/${STAFF_SUBCOLLECTIONS.moduleProgress}`]: moduleProgress,
+  [`${COLLECTIONS.staff}/${STAFF_SUBCOLLECTIONS.stepChecks}`]: stepCheck,
   [COLLECTIONS.roles]: role,
   [COLLECTIONS.modules]: moduleDoc,
   [`${COLLECTIONS.modules}/${MODULE_SUBCOLLECTIONS.items}`]: moduleItem,
@@ -244,6 +247,7 @@ const COLLECTION_SCHEMAS: Record<string, AnyObjectSchema> = {
   [COLLECTIONS.rubrics]: rubric,
   [COLLECTIONS.roleYearMappings]: roleYearMapping,
   [COLLECTIONS.observations]: observation,
+  [`${COLLECTIONS.observations}/${OBSERVATION_SUBCOLLECTIONS.stepChecks}`]: stepCheck,
   [COLLECTIONS.workProductQuestions]: workProductQuestion,
   [COLLECTIONS.emailTemplates]: emailTemplate,
   [COLLECTIONS.auditLog]: auditLog,

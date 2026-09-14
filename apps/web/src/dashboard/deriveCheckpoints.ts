@@ -1,9 +1,14 @@
 import {
+  stepCheckScope,
+  stepCompletionMode,
   type DashboardStep,
   type DateSource,
   type DoneWhen,
   type Observation,
   type ShowWhen,
+  type StepCheckScope,
+  type StepCompletionMode,
+  type WatchedKind,
 } from '@ops/shared';
 import { type IcsEventInput } from '@/lib/ics';
 import {
@@ -13,6 +18,7 @@ import {
   responseProgress,
   toDate,
   type DeriveContext,
+  type StepCheckRecord,
 } from './dashboardEvents';
 
 /**
@@ -25,7 +31,12 @@ import {
  * fabricated — every date and status comes from an existing artifact.
  */
 
-export type { ActiveQuestion, DeriveContext } from './dashboardEvents';
+export type {
+  ActiveQuestion,
+  DeriveContext,
+  StepCheckRecord,
+  StepChecksIndex,
+} from './dashboardEvents';
 
 export type CheckpointStatus = 'done' | 'inprogress' | 'soon' | 'upcoming';
 
@@ -77,6 +88,44 @@ export interface CheckpointWithStatus {
   ackObservationId?: string;
   moduleItemId?: string;
   moduleId?: string;
+  // ── Evaluator check-offs (step checkpoints only; absent on module tasks) ──
+  /** The step's completion mode. */
+  completionMode?: StepCompletionMode;
+  /** Where a check-off for this step is stored (see `stepCheckScope`). */
+  checkScope?: StepCheckScope;
+  /** The step's watched kind — decides what observation type the evaluator
+   *  checklist creates when there is none yet. */
+  watchedKind?: WatchedKind;
+  /** Doc id of the observation the step resolved to, or null for none. */
+  observationId?: string | null;
+  /** True when the step's `doneWhen` event is satisfied (never for `manual`). */
+  autoDone?: boolean;
+  /** False when the staff member's dashboard hides this step right now —
+   *  only emitted with `includeHidden` (the evaluator checklist). */
+  visibleToStaff?: boolean;
+  /** The evaluator check-off counted for this step, or null when unchecked
+   *  or the step's mode is `auto`. */
+  checkedBy?: string | null;
+  checkedByName?: string | null;
+  checkedAt?: Date | null;
+}
+
+export interface DeriveOptions {
+  /** Also emit enabled steps the staff member can't see yet (not shown, or
+   *  hidden once done), flagged `visibleToStaff: false`. The evaluator
+   *  checklist needs them so a step can be checked off before its card
+   *  would appear on the dashboard. */
+  includeHidden?: boolean;
+}
+
+/** "Marked complete by {name} on {date}" for a checked checkpoint, else null. */
+export function checkAttributionLabel(task: CheckpointWithStatus): string | null {
+  if (!task.checkedBy) return null;
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- an empty denormalized name falls back to the email too
+  const who = task.checkedByName || task.checkedBy;
+  return task.checkedAt
+    ? `Marked complete by ${who} on ${task.checkedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : `Marked complete by ${who}`;
 }
 
 function dateLabel(d: Date): string {
@@ -178,10 +227,27 @@ function deadlineRelativeLabel(days: number): string {
   return `${String(days)} days left`;
 }
 
+/** The evaluator check-off for `step`, looked up where `stepCheckScope`
+ *  stores it: on the resolved observation, or on the staff member. An
+ *  observation-tied step with no resolved observation has nowhere to be
+ *  checked, so it reads as unchecked. */
+function findCheck(
+  step: DashboardStep,
+  ctx: DeriveContext,
+  observationId: string,
+): StepCheckRecord | null {
+  const checks = ctx.stepChecks;
+  if (!checks) return null;
+  if (stepCheckScope(step) === 'staff') return checks.staff[step.id] ?? null;
+  if (!observationId) return null;
+  return checks.byObservation[observationId]?.[step.id] ?? null;
+}
+
 export function deriveCheckpoints(
   steps: DashboardStep[],
   ctx: DeriveContext,
   now: Date = new Date(),
+  options: DeriveOptions = {},
 ): CheckpointWithStatus[] {
   const ordered = steps
     .filter((s) => s.enabled)
@@ -192,12 +258,21 @@ export function deriveCheckpoints(
 
   for (const step of ordered) {
     const obs = resolveObservation(ctx, step.watchedKind);
-    const done = evalDone(step.doneWhen, ctx, obs, now);
+    // Check-offs are stored under the real doc id (the path the callable
+    // reads), so prefer the hydrated `id` over the `observationId` field.
+    const docId = obs ? ((obs as Observation & { id?: string }).id ?? observationDocId(obs)) : '';
+    const observationId = docId ? docId : null;
+    // auto: doneWhen only. manual: the evaluator's check only (doneWhen is
+    // ignored). either: whichever comes first.
+    const mode = stepCompletionMode(step);
+    const autoDone = mode !== 'manual' && evalDone(step.doneWhen, ctx, obs, now);
+    const check = mode === 'auto' ? null : findCheck(step, ctx, observationId ?? '');
+    const done = autoDone || check != null;
     const shown = evalShow(step.showWhen, ctx, obs, now, prevDone);
     prevDone = done;
 
-    const emit = (shown || done) && !(done && step.hideWhenDone);
-    if (!emit) continue;
+    const visibleToStaff = (shown || done) && !(done && step.hideWhenDone);
+    if (!visibleToStaff && !options.includeHidden) continue;
 
     let status: CheckpointStatus;
     let percent: number | null = null;
@@ -258,10 +333,26 @@ export function deriveCheckpoints(
       ctaUrl,
       status,
       urgent,
-      completedLabel: done && stepDate ? dateLabel(stepDate) : null,
+      // A checked-off step with no date of its own shows when it was checked.
+      completedLabel: !done
+        ? null
+        : stepDate
+          ? dateLabel(stepDate)
+          : check?.checkedAt
+            ? dateLabel(check.checkedAt)
+            : null,
       percent,
       percentLabel,
       ...(ackObservationId ? { ackObservationId } : {}),
+      completionMode: mode,
+      checkScope: stepCheckScope(step),
+      watchedKind: step.watchedKind,
+      observationId,
+      autoDone,
+      visibleToStaff,
+      checkedBy: check?.checkedBy ?? null,
+      checkedByName: check?.checkedByName ?? null,
+      checkedAt: check?.checkedAt ?? null,
     });
   }
 
