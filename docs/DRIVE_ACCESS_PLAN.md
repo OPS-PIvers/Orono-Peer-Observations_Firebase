@@ -17,15 +17,15 @@ Move every permanent observation record (finalized PDFs, audio recordings, evide
 
 The target policy. Everything in phases 2–4 enforces this table.
 
-| Person | While Draft | Once Finalized | Source |
-| --- | --- | --- | --- |
-| Observer | Reader | Reader | `observerEmail` on the observation |
-| Co-access | Reader | Reader | Admin-console rules matched against the observed staff member's `buildings` and `role` |
-| Observed staff | No | Reader | `observedEmail`, granted at finalize |
-| App admins | No | No | Administrator / Full Access roles work through the app only, unless a co-access rule names them |
-| Shared Drive members | Everything | Everything | Membership inherits into every folder, so keep this list minimal: the district owner, `observations@`, and Paul temporarily |
-| Other Peer Evaluators | No | No | Unless a co-access rule names them |
-| Shared by hand | Kept | Kept | A share someone adds directly in Drive is honored, never removed by the app |
+| Person                | While Draft | Once Finalized | Source                                                                                                                      |
+| --------------------- | ----------- | -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Observer              | Reader      | Reader         | `observerEmail` on the observation                                                                                          |
+| Co-access             | Reader      | Reader         | Admin-console rules matched against the observed staff member's `buildings` and `role`                                      |
+| Observed staff        | No          | Reader         | `observedEmail`, granted at finalize                                                                                        |
+| App admins            | No          | No             | Administrator / Full Access roles work through the app only, unless a co-access rule names them                             |
+| Shared Drive members  | Everything  | Everything     | Membership inherits into every folder, so keep this list minimal: the district owner, `observations@`, and Paul temporarily |
+| Other Peer Evaluators | No          | No             | Unless a co-access rule names them                                                                                          |
+| Shared by hand        | Kept        | Kept           | A share someone adds directly in Drive is honored, never removed by the app                                                 |
 
 ## Decisions
 
@@ -35,7 +35,7 @@ Decided 2026-09-16 unless marked otherwise. Nothing left here blocks building.
 - **B. Co-access people see Drafts: yes** (phase 3). They get Reader from the moment the folder is created. Only the observed staff member waits for finalize.
 - **C. App admins work through the app only** (phases 3, 4). No automatic Drive access. Admins keep reopening, regenerating and finalizing in the app, and the server does the Drive work. An admin who needs to browse a folder gets a co-access rule like anyone else. Revisit later if needed.
 - **D. Permanent Shared Drive manager: deferred** (before Paul leaves). Paul is the Manager during setup and migration. The drive and the `observations@` account can be handed to a district owner at any point. The one requirement is that someone else is a Manager before Paul removes himself (last cutover step).
-- **E. Manual Drive shares are honored** (phase 3). Sharing a folder by hand is a deliberate, rare act. The sync only ever removes access *the app itself granted* (tracked per observation), such as when a principal changes buildings. Manual shares stay, and the admin preview lists them as "Shared directly in Drive" so they aren't invisible.
+- **E. Manual Drive shares are honored** (phase 3). Sharing a folder by hand is a deliberate, rare act. The sync only ever removes access _the app itself granted_ (tracked per observation), such as when a principal changes buildings. Manual shares stay, and the admin preview lists them as "Shared directly in Drive" so they aren't invisible.
 - **F. Reopening keeps observee access** (phase 3). Unchanged from today (`reopenObservation.ts:28`). The observed staff member keeps folder access while an admin corrects a reopened observation.
 - **G. Evidence in shared drafts is hidden** (phase 4). When an observer shares evidence with the observed staff member during a Draft, that person sees evidence names but no Drive links until the observation is finalized, because the files aren't shared with them yet.
 - **H. Rule shape for co-access: building rules and role rules** (phase 2). Building rules give building administrators access to their building's staff. A role rule gives the Director of Special Services access to staff in the special education roles. Admins enter the actual people and role lists on the new page.
@@ -45,7 +45,7 @@ Decided 2026-09-16 unless marked otherwise. Nothing left here blocks building.
 
 ## Phase 0 — Workspace setup
 
-*No code · about 1 hour with a Workspace admin.* Done in Google Drive and the Google Admin console, not in the repo.
+_No code · about 1 hour with a Workspace admin._ Done in Google Drive and the Google Admin console, not in the repo.
 
 1. Create a Shared Drive named **Orono Peer Observations**. Paul is the **Manager** for now (moving folders in during phase 5 requires Manager access). A district owner can be added as Manager any time (Decision D).
 2. Add `observations@orono.k12.mn.us` as a **Content manager**, not a Manager, so the app can't change membership. Content managers can't permanently delete in a Shared Drive, so phase 1 switches the app's deletes to trash.
@@ -58,7 +58,7 @@ Decided 2026-09-16 unless marked otherwise. Nothing left here blocks building.
 
 ## Phase 1 — Make the Drive code Shared Drive–safe
 
-*Small · 1 PR.* Most helpers in `lib/drive.ts` already pass `supportsAllDrives`. A handful of direct API calls don't, and those return 404 on Shared Drive files.
+_Small · 1 PR._ Most helpers in `lib/drive.ts` already pass `supportsAllDrives`. A handful of direct API calls don't, and those return 404 on Shared Drive files.
 
 ### Add `supportsAllDrives: true` where it's missing
 
@@ -87,21 +87,21 @@ Decided 2026-09-16 unless marked otherwise. Nothing left here blocks building.
 
 ## Phase 2 — Co-access mapping in the admin console
 
-*Medium · 1 PR.* Staff records already carry `buildings: string[]` and `role` (`packages/shared/src/schema/staff.ts:47–49`). Rules match on those two fields.
+_Medium · 1 PR._ Staff records already carry `buildings: string[]` and `role` (`packages/shared/src/schema/staff.ts:47–49`). Rules match on those two fields.
 
 ### Data model
 
 New schema `packages/shared/src/schema/observationAccessRule.ts` and collection `COLLECTIONS.observationAccessRules`:
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `label` | string | Human name, for example "Orono Middle School administrators" |
-| `kind` | `'building' \| 'role'` | Which staff field the rule matches |
-| `buildingIds` | string[] | For `building`: matches observed staff in any of these buildings |
-| `roleIds` | string[] | For `role`: matches observed staff with any of these role slugs |
-| `granteeEmails` | string[] | Who gets Reader on matching folders |
-| `active` | boolean | Turn a rule off without deleting it |
-| `updatedAt`, `updatedBy` | timestamp, email | Audit trail |
+| Field                    | Type                   | Meaning                                                          |
+| ------------------------ | ---------------------- | ---------------------------------------------------------------- |
+| `label`                  | string                 | Human name, for example "Orono Middle School administrators"     |
+| `kind`                   | `'building' \| 'role'` | Which staff field the rule matches                               |
+| `buildingIds`            | string[]               | For `building`: matches observed staff in any of these buildings |
+| `roleIds`                | string[]               | For `role`: matches observed staff with any of these role slugs  |
+| `granteeEmails`          | string[]               | Who gets Reader on matching folders                              |
+| `active`                 | boolean                | Turn a rule off without deleting it                              |
+| `updatedAt`, `updatedBy` | timestamp, email       | Audit trail                                                      |
 
 Firestore rules: admin read and write only. Add a `match /observationAccessRules/{ruleId}` block to `firestore.rules`.
 
@@ -115,7 +115,7 @@ Firestore rules: admin read and write only. Add a `match /observationAccessRules
 
 ## Phase 3 — Resolve and sync folder access
 
-*Medium–large · 1–2 PRs.*
+_Medium–large · 1–2 PRs._
 
 ### Resolver: one function decides who can open a folder
 
@@ -151,7 +151,7 @@ Best-effort, like today's `shareObservationFolderWithObserver`: a failure is log
 
 ## Phase 4 — Match in-app links and audio to the policy
 
-*Small · 1 PR.*
+_Small · 1 PR._
 
 > **The audio proxy currently bypasses Drive access.** `getAudio.ts:93–99` lets any user with special access (every Peer Evaluator) stream any recording. Its `role === 'Administrator'` check also compares against display names, but roles are stored as slugs, so that branch never matches.
 
@@ -165,7 +165,7 @@ Best-effort, like today's `shareObservationFolderWithObserver`: a failure is log
 
 ## Phase 5 — Migration and cutover
 
-*Medium · script + ops runbook.*
+_Medium · script + ops runbook._
 
 ### Migration script
 
@@ -176,7 +176,7 @@ New `scripts/drive-migrate/move-to-shared-drive.ts`, with dry-run by default, `-
 3. Report each item's current owner first. Folders created before PR #110 may belong to the **service account**, not Paul, and must be moved by whichever identity owns them. The dry run lists these separately.
 4. Report anything that fails to move, such as a folder containing files owned by someone else.
 
-> Confirm in the dry run that the Drive API accepts moving *folders* from My Drive into this Shared Drive under the district's settings. If it doesn't, the fallback is to create a new folder in the Shared Drive, move the files into it (file IDs are kept), and update `driveFolderId`.
+> Confirm in the dry run that the Drive API accepts moving _folders_ from My Drive into this Shared Drive under the district's settings. If it doesn't, the fallback is to create a new folder in the Shared Drive, move the files into it (file IDs are kept), and update `driveFolderId`.
 
 ### Cutover order
 
