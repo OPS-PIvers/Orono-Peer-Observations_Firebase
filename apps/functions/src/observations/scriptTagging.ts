@@ -11,12 +11,12 @@ import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_STATUS,
-  geminiFeature,
+  canUseGeminiFeature,
   isAdminRole,
-  resolveGeminiModel,
+  resolveGeminiFeature,
   roleYearMappingDocId,
   type ComponentColor,
-  type GeminiFeature,
+  type ResolvedGeminiFeature,
   type Observation,
   type Role,
   type RoleYearMapping,
@@ -86,28 +86,32 @@ export function filterVerbatimSuggestions(
 
 /**
  * Read `gemini.scriptAutoTag` from /appSettings/global. Raw Admin SDK reads
- * bypass Zod defaults, so a missing doc / missing field / malformed value all
- * fall back to the schema's own defaults (enabled, default model) rather than
- * throwing or silently disabling the feature.
+ * bypass Zod defaults, so the stored value goes through resolveGeminiFeature,
+ * which settles a missing doc / missing field / malformed value field by
+ * field (and maps a retired model forward).
  */
-export async function loadScriptAutoTagFeature(db: Firestore): Promise<GeminiFeature> {
+export async function loadScriptAutoTagFeature(db: Firestore): Promise<ResolvedGeminiFeature> {
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
   const raw = snap.exists
     ? (snap.data()?.['gemini'] as { scriptAutoTag?: unknown } | undefined)?.scriptAutoTag
     : undefined;
-  const parsed = geminiFeature.safeParse(raw ?? {});
-  const feature = parsed.success ? parsed.data : geminiFeature.parse({});
-  // A doc saved against an older menu still names a model we no longer
-  // offer; resolveGeminiModel maps those forward.
-  return { ...feature, model: resolveGeminiModel(feature.model) };
+  return resolveGeminiFeature(raw);
 }
 
-/** Throw the shared "admin turned this off" error unless auto-tag is enabled. */
-export function assertScriptAutoTagEnabled(feature: GeminiFeature): void {
-  if (!feature.enabled) {
+/**
+ * Throw the shared "not available" error unless the caller may auto-tag:
+ * the feature is on for everyone, or on for beta and they are on the list.
+ * Keyed on the caller, not the observer — an admin tagging someone else's
+ * script is the one spending the Gemini call.
+ */
+export function assertScriptAutoTagAvailable(
+  feature: ResolvedGeminiFeature,
+  userEmail: string,
+): void {
+  if (!canUseGeminiFeature(feature, userEmail)) {
     throw new HttpsError(
       'failed-precondition',
-      'Script auto-tagging is currently disabled by an admin.',
+      'Script auto-tagging is not available for your account.',
     );
   }
 }

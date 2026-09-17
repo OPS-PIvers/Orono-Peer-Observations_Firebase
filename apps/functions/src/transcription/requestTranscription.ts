@@ -2,7 +2,12 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  canUseGeminiFeature,
+  resolveGeminiFeature,
+} from '@ops/shared';
 import { RATE_LIMIT_KEYS, checkRateLimit, rateLimitsFromSettings } from '../lib/rateLimit.js';
 
 if (getApps().length === 0) initializeApp();
@@ -51,14 +56,15 @@ export const requestTranscription = onCall(
     // partially-populated doc doesn't crash this guard.
     const settings = settingsSnap.exists
       ? (settingsSnap.data() as {
-          gemini?: { audioTranscription?: { enabled?: boolean } };
+          gemini?: { audioTranscription?: unknown };
           rateLimits?: unknown;
         })
       : null;
-    if (settings?.gemini?.audioTranscription?.enabled === false) {
+    const feature = resolveGeminiFeature(settings?.gemini?.audioTranscription);
+    if (!canUseGeminiFeature(feature, userEmail)) {
       throw new HttpsError(
         'failed-precondition',
-        'Audio transcription is currently disabled by an admin.',
+        'Audio transcription is not available for your account.',
       );
     }
 

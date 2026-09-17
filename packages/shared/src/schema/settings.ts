@@ -123,8 +123,31 @@ export function resolveGeminiModel(stored: string | null | undefined): string {
   return stored;
 }
 
+/**
+ * Who a Gemini feature is offered to. Every call costs money, so this is a
+ * cost gate as much as a feature flag:
+ *   - 'off'  — nobody; every trace of the feature is hidden.
+ *   - 'beta' — only the addresses in `betaEmails`.
+ *   - 'all'  — every signed-in user.
+ */
+export const GEMINI_ACCESS_LEVELS = ['off', 'beta', 'all'] as const;
+export type GeminiAccess = (typeof GEMINI_ACCESS_LEVELS)[number];
+
+/** Access when nothing usable is stored: off, so a new cost is opt-in. */
+export const DEFAULT_GEMINI_ACCESS: GeminiAccess = 'off';
+
+const GEMINI_MODEL_PATTERN = /^gemini-[a-z0-9.-]+$/;
+
 export const geminiFeature = z.object({
-  enabled: z.boolean().default(true),
+  /**
+   * Deliberately has no `.default()`. The read-boundary hydration fills
+   * schema defaults into raw docs, which would stamp 'off' over a tenant
+   * still carrying the legacy `enabled` boolean before
+   * {@link resolveGeminiFeature} could read it. Absent means "resolve it".
+   */
+  access: z.enum(GEMINI_ACCESS_LEVELS).optional(),
+  /** Who gets the feature while `access` is 'beta'. Kept when switching modes. */
+  betaEmails: z.array(email).default([]),
   /**
    * Free-form string so admins can paste a newer model id we haven't yet
    * added to GEMINI_MODEL_OPTIONS without us having to ship a release.
@@ -132,22 +155,70 @@ export const geminiFeature = z.object({
    */
   model: z
     .string()
-    .regex(/^gemini-[a-z0-9.-]+$/, 'Model must look like "gemini-…"')
+    .regex(GEMINI_MODEL_PATTERN, 'Model must look like "gemini-…"')
     .default(DEFAULT_GEMINI_MODEL),
 });
 export type GeminiFeature = z.infer<typeof geminiFeature>;
 
 export const geminiFeatures = z.object({
-  audioTranscription: geminiFeature.default({
-    enabled: true,
-    model: DEFAULT_GEMINI_MODEL,
-  }),
-  scriptAutoTag: geminiFeature.default({
-    enabled: true,
-    model: DEFAULT_GEMINI_MODEL,
-  }),
+  audioTranscription: geminiFeature.default({ betaEmails: [], model: DEFAULT_GEMINI_MODEL }),
+  scriptAutoTag: geminiFeature.default({ betaEmails: [], model: DEFAULT_GEMINI_MODEL }),
 });
 export type GeminiFeatures = z.infer<typeof geminiFeatures>;
+export type GeminiFeatureKey = keyof GeminiFeatures;
+
+/** A Gemini feature config with every field decided. */
+export interface ResolvedGeminiFeature {
+  access: GeminiAccess;
+  betaEmails: string[];
+  model: string;
+}
+
+/**
+ * Turn whatever `/appSettings/global` holds for one feature into a complete
+ * config. Each field falls back on its own, so one malformed beta address
+ * can't reset the whole feature:
+ *   - `access` wins when valid. Otherwise the pre-access `enabled` boolean
+ *     maps to 'all' / 'off', and with neither it is {@link DEFAULT_GEMINI_ACCESS}.
+ *   - `betaEmails` keeps only strings that look like addresses, lowercased.
+ *   - `model` goes through {@link resolveGeminiModel}.
+ */
+export function resolveGeminiFeature(raw: unknown): ResolvedGeminiFeature {
+  const stored = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+
+  const parsedAccess = z.enum(GEMINI_ACCESS_LEVELS).safeParse(stored['access']);
+  const access: GeminiAccess = parsedAccess.success
+    ? parsedAccess.data
+    : typeof stored['enabled'] === 'boolean'
+      ? stored['enabled']
+        ? 'all'
+        : 'off'
+      : DEFAULT_GEMINI_ACCESS;
+
+  const betaEmails = Array.isArray(stored['betaEmails'])
+    ? stored['betaEmails'].flatMap((e) => {
+        const parsed = email.safeParse(e);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : [];
+
+  const model =
+    typeof stored['model'] === 'string' && GEMINI_MODEL_PATTERN.test(stored['model'])
+      ? resolveGeminiModel(stored['model'])
+      : DEFAULT_GEMINI_MODEL;
+
+  return { access, betaEmails, model };
+}
+
+/** Whether `userEmail` may see and use a feature with this config. */
+export function canUseGeminiFeature(
+  feature: ResolvedGeminiFeature,
+  userEmail: string | null | undefined,
+): boolean {
+  if (feature.access === 'all') return true;
+  if (feature.access === 'off' || !userEmail) return false;
+  return feature.betaEmails.includes(userEmail.trim().toLowerCase());
+}
 
 /**
  * Scheduling behavior knobs. Per-window the PE can override mode/buffer/caps/
@@ -215,10 +286,10 @@ export const appSettings = z.object({
     logoUrl: null,
     iconUrl: null,
   }),
-  /** Per-feature Gemini config: enable/disable + model selection. */
+  /** Per-feature Gemini config: who gets it (off / beta / all) + model selection. */
   gemini: geminiFeatures.default({
-    audioTranscription: { enabled: true, model: DEFAULT_GEMINI_MODEL },
-    scriptAutoTag: { enabled: true, model: DEFAULT_GEMINI_MODEL },
+    audioTranscription: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
+    scriptAutoTag: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
   }),
   /** Where security alerts go. */
   securityAdminEmail: email,
