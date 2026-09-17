@@ -6,7 +6,7 @@ import type { Observation, TiptapDoc } from '@ops/shared';
 import {
   applyTagsToScriptDoc,
   assertObservationTaggable,
-  assertScriptAutoTagEnabled,
+  assertScriptAutoTagAvailable,
   extractParagraphs,
   filterVerbatimSuggestions,
   loadScriptAutoTagFeature,
@@ -81,7 +81,7 @@ export const applyScriptTags = onCall(
 
     const db = getFirestore();
     const feature = await loadScriptAutoTagFeature(db);
-    assertScriptAutoTagEnabled(feature);
+    assertScriptAutoTagAvailable(feature, userEmail);
 
     const callerRole = request.auth.token['role'] as string | undefined;
     // Fail fast on a cheap non-transactional read. This is a courtesy check

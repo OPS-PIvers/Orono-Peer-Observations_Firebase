@@ -139,10 +139,12 @@ describe('applySchemaDefaults', () => {
   it('fills nested appSettings groups that were only partially written', () => {
     const filled = applySchemaDefaults<{
       scheduling: Record<string, unknown>;
-      gemini: { audioTranscription: { enabled: boolean } };
+      gemini: { audioTranscription: { access?: string; betaEmails: string[] } };
     }>(appSettings, { scheduling: {}, gemini: {} });
     expect(filled.scheduling).not.toEqual({});
-    expect(filled.gemini.audioTranscription.enabled).toBe(true);
+    expect(filled.gemini.audioTranscription.betaEmails).toEqual([]);
+    // access has no default on purpose — see geminiFeature in schema/settings.
+    expect(filled.gemini.audioTranscription.access).toBeUndefined();
   });
 });
 
