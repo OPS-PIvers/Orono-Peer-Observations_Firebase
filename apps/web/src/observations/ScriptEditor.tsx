@@ -23,7 +23,7 @@ import {
 import type { RubricComponent, RubricDomain, TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { functions } from '@/lib/firebase';
-import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
+import { useGeminiAccess } from '@/hooks/useGeminiAccess';
 import { Divider, ToolbarButton, useLinkDialog } from '@/components/ui/tiptap-toolbar';
 import { ComponentTagMark } from './component-tag-mark';
 import type { TagSource } from './extract-script-tags';
@@ -160,8 +160,7 @@ export function ScriptEditor({
     };
   }, [editor]);
 
-  const geminiFeatures = useGeminiFeatures();
-  const autoTagEnabled = geminiFeatures.scriptAutoTag.enabled;
+  const autoTagEnabled = useGeminiAccess().scriptAutoTag;
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoTagBusy, setAutoTagBusy] = useState(false);

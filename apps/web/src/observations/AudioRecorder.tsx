@@ -16,7 +16,7 @@ import type { TranscriptionJob } from '@ops/shared';
 import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/auth/AuthProvider';
-import { useGeminiFeatures } from '@/hooks/useGeminiFeatures';
+import { useGeminiAccess } from '@/hooks/useGeminiAccess';
 import { cn } from '@/lib/utils';
 import { useTranscriptionJobs } from './useTranscriptionJobs';
 
@@ -78,7 +78,7 @@ export function AudioRecorder({
   /** fileIds whose transcript has been inserted into the script this
    *  session (local feedback only — inserting again is always allowed). */
   const [insertedIds, setInsertedIds] = useState<Set<string>>(new Set());
-  const transcriptionEnabled = useGeminiFeatures().audioTranscription.enabled;
+  const transcriptionEnabled = useGeminiAccess().audioTranscription;
   const { user } = useAuth();
   // Job docs are the source of truth for in-flight/failed state so it
   // survives a page reload — no local "transcribing" flag to lose.
@@ -229,7 +229,8 @@ export function AudioRecorder({
       setPhase('idle');
       onUploaded?.(data.audioFileId);
       // Auto-request transcription so the user doesn't have to click again
-      // for the common path. Skipped when admins have disabled the feature.
+      // for the common path. Skipped when transcription isn't available to
+      // this user (off, or beta without them on the list).
       if (transcriptionEnabled) {
         void requestTranscription(data.audioFileId);
       }
@@ -246,8 +247,14 @@ export function AudioRecorder({
           <h3 className="font-heading text-lg font-semibold">Audio</h3>
           <p className="text-muted-foreground mt-0.5 text-xs">
             Record voice notes during the observation. After stopping, the recording uploads to this
-            observation&apos;s Drive folder. When a transcript is ready, use{' '}
-            <strong>Insert into script</strong> to add it to the observation script for tagging.
+            observation&apos;s Drive folder.
+            {transcriptionEnabled ? (
+              <>
+                {' '}
+                When a transcript is ready, use <strong>Insert into script</strong> to add it to the
+                observation script for tagging.
+              </>
+            ) : null}
           </p>
         </div>
         <RecordButton
@@ -386,23 +393,29 @@ function RecordingsList({
         const isFailed = job?.status === 'Failed';
         // A request-time failure (callable rejected outright) takes
         // priority since it means no job doc exists to explain itself.
-        const errMsg =
-          requestError[fileId] ?? (isFailed ? (job.error ?? 'Transcription failed') : undefined);
+        // Every message here is about transcription, so none shows when
+        // the feature is hidden from this user.
+        const errMsg = !transcriptionEnabled
+          ? undefined
+          : (requestError[fileId] ??
+            (isFailed ? (job.error ?? 'Transcription failed') : undefined));
         const isInserted = insertedIds.has(fileId);
         return (
           <li key={fileId} className="py-3">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <span className="text-muted-foreground text-xs">
                 Recording {String(i + 1)}
-                {transcript
-                  ? ' · transcript ready'
-                  : isTranscribing
-                    ? job.status === 'Running'
-                      ? ' · transcribing…'
-                      : ' · queued…'
-                    : isFailed
-                      ? ' · transcription failed'
-                      : ' · no transcript yet'}
+                {!transcriptionEnabled
+                  ? null
+                  : transcript
+                    ? ' · transcript ready'
+                    : isTranscribing
+                      ? job.status === 'Running'
+                        ? ' · transcribing…'
+                        : ' · queued…'
+                      : isFailed
+                        ? ' · transcription failed'
+                        : ' · no transcript yet'}
               </span>
               {!readOnly && transcriptionEnabled ? (
                 <Button
@@ -449,7 +462,7 @@ function RecordingsList({
                 <span>{errMsg}</span>
               </p>
             ) : null}
-            {transcript ? (
+            {transcriptionEnabled && transcript ? (
               <details className="mt-2" open>
                 <summary className="text-muted-foreground cursor-pointer text-xs">
                   Transcript

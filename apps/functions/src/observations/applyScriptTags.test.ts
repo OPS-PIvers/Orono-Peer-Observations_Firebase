@@ -106,7 +106,10 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
   const txAssigned = config.assignedComponentIdsInTransaction ?? assigned;
 
   const staticDocs: Record<string, Record<string, unknown> | undefined> = {
-    [`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`]: config.settings,
+    // Auto-tag is off unless configured, so default the fake to on-for-all.
+    [`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`]: config.settings ?? {
+      gemini: { scriptAutoTag: { access: 'all' } },
+    },
     [`${COLLECTIONS.rubrics}/rubric-1`]: {
       rubricId: 'rubric-1',
       domains: [
@@ -305,10 +308,18 @@ describe('applyScriptTags — input & auth guards', () => {
     expect(rec.txUpdates).toHaveLength(0);
   });
 
-  it('refuses to run when an admin has disabled script auto-tagging', async () => {
+  it.each([
+    ['turned off', { access: 'off' }],
+    [
+      'in beta without the caller',
+      { access: 'beta', betaEmails: ['someone.else@orono.k12.mn.us'] },
+    ],
+    ['turned off by the legacy enabled flag', { enabled: false }],
+    ['never configured', undefined],
+  ])('refuses to run when script auto-tagging is %s', async (_label, scriptAutoTag) => {
     install({
       observation: observation(),
-      settings: { gemini: { scriptAutoTag: { enabled: false } } },
+      settings: scriptAutoTag ? { gemini: { scriptAutoTag } } : {},
     });
     await expect(
       run(
@@ -317,8 +328,22 @@ describe('applyScriptTags — input & auth guards', () => {
           suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
         }),
       ),
-    ).rejects.toThrow(/disabled by an admin/);
+    ).rejects.toThrow(/not available for your account/);
     expect(rec.txUpdates).toHaveLength(0);
+  });
+
+  it('runs for a caller on the beta list', async () => {
+    install({
+      observation: observation(),
+      settings: { gemini: { scriptAutoTag: { access: 'beta', betaEmails: [OBSERVER] } } },
+    });
+    await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
+      }),
+    );
+    expect(rec.txUpdates).toHaveLength(1);
   });
 });
 

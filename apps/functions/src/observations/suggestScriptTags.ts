@@ -5,7 +5,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { RubricComponent } from '@ops/shared';
 import {
-  assertScriptAutoTagEnabled,
+  assertScriptAutoTagAvailable,
   filterVerbatimSuggestions,
   loadScriptAutoTagFeature,
   loadTaggingContext,
@@ -73,7 +73,7 @@ export const suggestScriptTags = onCall(
 
     const db = getFirestore();
     const feature = await loadScriptAutoTagFeature(db);
-    assertScriptAutoTagEnabled(feature);
+    assertScriptAutoTagAvailable(feature, userEmail);
 
     const callerRole = request.auth.token['role'] as string | undefined;
     const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole);
