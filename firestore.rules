@@ -203,6 +203,7 @@ service cloud.firestore {
       allow get, list: if hasSpecialAccess()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
       allow create: if hasSpecialAccess()
+        && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email;
       // Delete: admin or the observer. Unchanged.
       allow delete: if isAdmin()
@@ -291,7 +292,10 @@ service cloud.firestore {
     //   - observed staff member, ONLY if status == 'Finalized'
     //   - any user with special access (admin / PE / full access)
     //
-    // Create: special-access only (PEs and admins create observations).
+    // Create: observer roles only (administrator / peer-evaluator /
+    // full-access — canCreateObservations in @ops/shared). hasSpecialAccess
+    // alone isn't enough: the hasAdminAccess staff flag grants it to people
+    // whose own role is observed (e.g. a specialist with Admin Console access).
     //
     // Update:
     //   - admin: any field
@@ -316,6 +320,7 @@ service cloud.firestore {
         || isCurrentUserEmail(resource.data.observedEmail);
 
       allow create: if hasSpecialAccess()
+        && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
         && request.resource.data.status == 'Draft';
 

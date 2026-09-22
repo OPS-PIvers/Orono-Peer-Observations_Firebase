@@ -68,3 +68,11 @@ export function isSpecialRole(role: string | null | undefined): role is SpecialR
 export function isAdminRole(role: string | null | undefined): boolean {
   return role === SPECIAL_ROLES.administrator || role === SPECIAL_ROLES.fullAccess;
 }
+
+/** Whether a role may start observations. Keyed on the role alone, NOT the
+ *  `hasAdminAccess` staff flag: that flag grants the Admin Console to people
+ *  whose own role is observed (e.g. a specialist), and must not turn them
+ *  into observers. Mirrored by the observation create rule in firestore.rules. */
+export function canCreateObservations(role: string | null | undefined): boolean {
+  return isSpecialRole(role);
+}

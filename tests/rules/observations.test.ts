@@ -149,6 +149,32 @@ describe('observations: create', () => {
     );
   });
 
+  it('Admin Console user with an observed role cannot create observations', async () => {
+    // hasAdminAccess flag: isAdmin + hasSpecialAccess, but the role is observed.
+    const db = testEnv
+      .authenticatedContext('spec', {
+        ...claims.teacher('spec@orono.k12.mn.us'),
+        role: 'instructional-specialist',
+        hasSpecialAccess: true,
+        isAdmin: true,
+      })
+      .firestore();
+    await assertFails(
+      setDoc(doc(db, 'observations/new5'), {
+        observerEmail: 'spec@orono.k12.mn.us',
+        observedEmail: OBSERVED_EMAIL,
+        observedName: 'X',
+        observedRole: 'Teacher',
+        observedYear: 1,
+        status: 'Draft',
+        type: 'Standard',
+        observationName: '',
+        createdAt: new Date(),
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
   it('teacher cannot create observations', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher()).firestore();
     await assertFails(

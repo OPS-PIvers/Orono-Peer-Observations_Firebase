@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ClipboardList, Mail } from 'lucide-react';
 import { deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
@@ -8,6 +9,7 @@ import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  canCreateObservations,
   staffCycleStatus,
   type EmailTemplate,
   type Observation,
@@ -135,6 +137,7 @@ export function StaffPersonPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const newObservationsDisabled = useNewObservationsDisabled();
+  const canCreate = canCreateObservations(useEffectiveClaims().role);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -323,18 +326,20 @@ export function StaffPersonPage() {
             ) : null}
           </div>
 
-          <Button
-            variant="onDark"
-            onClick={() => setDialogOpen(true)}
-            disabled={newObservationsDisabled}
-            title={
-              newObservationsDisabled
-                ? 'New observation creation is currently disabled by an administrator.'
-                : undefined
-            }
-          >
-            New Observation
-          </Button>
+          {canCreate ? (
+            <Button
+              variant="onDark"
+              onClick={() => setDialogOpen(true)}
+              disabled={newObservationsDisabled}
+              title={
+                newObservationsDisabled
+                  ? 'New observation creation is currently disabled by an administrator.'
+                  : undefined
+              }
+            >
+              New Observation
+            </Button>
+          ) : null}
         </div>
       }
     >
@@ -370,17 +375,19 @@ export function StaffPersonPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
-          <Button
-            onClick={() => setDialogOpen(true)}
-            disabled={newObservationsDisabled}
-            title={
-              newObservationsDisabled
-                ? 'New observation creation is currently disabled by an administrator.'
-                : undefined
-            }
-          >
-            Start first observation
-          </Button>
+          {canCreate ? (
+            <Button
+              onClick={() => setDialogOpen(true)}
+              disabled={newObservationsDisabled}
+              title={
+                newObservationsDisabled
+                  ? 'New observation creation is currently disabled by an administrator.'
+                  : undefined
+              }
+            >
+              Start first observation
+            </Button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">

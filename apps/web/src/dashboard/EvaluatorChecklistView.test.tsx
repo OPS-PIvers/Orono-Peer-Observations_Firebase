@@ -53,6 +53,7 @@ function renderView(props: Partial<EvaluatorChecklistViewProps>) {
       pendingId={null}
       errors={{}}
       newObservationsDisabled={false}
+      canCreateObservations
       onToggle={onToggle}
       onStart={onStart}
       {...props}
@@ -62,7 +63,7 @@ function renderView(props: Partial<EvaluatorChecklistViewProps>) {
 }
 
 describe('checklistAction', () => {
-  const opts = { newObservationsDisabled: false };
+  const opts = { newObservationsDisabled: false, canCreateObservations: true };
   it('keeps auto steps read-only', () => {
     expect(checklistAction(task({ completionMode: 'auto' }), opts)).toBe('auto');
   });
@@ -74,12 +75,17 @@ describe('checklistAction', () => {
   });
   it('offers to start an observation when an observation-tied step has none', () => {
     expect(checklistAction(task({ observationId: null }), opts)).toBe('start');
-    expect(checklistAction(task({ observationId: null }), { newObservationsDisabled: true })).toBe(
-      'creationDisabled',
-    );
+    expect(
+      checklistAction(task({ observationId: null }), { ...opts, newObservationsDisabled: true }),
+    ).toBe('creationDisabled');
     expect(
       checklistAction(task({ observationId: null, watchedKind: 'standardFinalized' }), opts),
     ).toBe('needsFinalized');
+  });
+  it("doesn't offer to start one when the viewer's role can't observe", () => {
+    expect(
+      checklistAction(task({ observationId: null }), { ...opts, canCreateObservations: false }),
+    ).toBe('observerOnly');
   });
 });
 

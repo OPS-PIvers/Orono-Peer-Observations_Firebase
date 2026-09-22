@@ -36,10 +36,19 @@ function KeyedStaffPersonPage() {
 interface ShellProps {
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
+  requireObserverRole?: boolean;
 }
-function StandardShell({ requireAdmin = false, requireSpecialAccess = false }: ShellProps) {
+function StandardShell({
+  requireAdmin = false,
+  requireSpecialAccess = false,
+  requireObserverRole = false,
+}: ShellProps) {
   return (
-    <RequireAuth requireAdmin={requireAdmin} requireSpecialAccess={requireSpecialAccess}>
+    <RequireAuth
+      requireAdmin={requireAdmin}
+      requireSpecialAccess={requireSpecialAccess}
+      requireObserverRole={requireObserverRole}
+    >
       <Layout />
     </RequireAuth>
   );
@@ -76,15 +85,21 @@ export function App() {
               {/* Special access (PE + Full Access) */}
               <Route element={<StandardShell requireSpecialAccess />}>
                 <Route path="/observations" element={<L.ObservationsListPage />} />
+                <Route path="/staff" element={<L.StaffDirectoryPage />} />
+                <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
+                <Route path="/my-staff" element={<L.MyStaffPage />} />
+              </Route>
+
+              {/* Starting observations: observer roles only. hasSpecialAccess
+                  alone isn't enough — the hasAdminAccess flag grants it to
+                  observed roles too. */}
+              <Route element={<StandardShell requireObserverRole />}>
                 <Route path="/observations/new" element={<L.NewObservationPage />} />
                 <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
                 <Route
                   path="/observations/windows/:windowId/assign"
                   element={<L.AssignPreferencesPage />}
                 />
-                <Route path="/staff" element={<L.StaffDirectoryPage />} />
-                <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
-                <Route path="/my-staff" element={<L.MyStaffPage />} />
               </Route>
 
               {/* Admin section (gated to Administrator + Full Access) */}
