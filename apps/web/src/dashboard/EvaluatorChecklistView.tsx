@@ -14,16 +14,26 @@ import { checkAttributionLabel, type CheckpointWithStatus } from './deriveCheckp
  *                          exist yet; a new draft wouldn't satisfy it.
  *   - `creationDisabled` — would be `start`, but an admin has switched off
  *                          new observation creation.
+ *   - `observerOnly`     — would be `start`, but the viewer's role can't
+ *                          start observations (e.g. an Admin Console user
+ *                          whose own role is observed).
  */
-export type ChecklistAction = 'auto' | 'toggle' | 'start' | 'needsFinalized' | 'creationDisabled';
+export type ChecklistAction =
+  | 'auto'
+  | 'toggle'
+  | 'start'
+  | 'needsFinalized'
+  | 'creationDisabled'
+  | 'observerOnly';
 
 export function checklistAction(
   task: CheckpointWithStatus,
-  opts: { newObservationsDisabled: boolean },
+  opts: { newObservationsDisabled: boolean; canCreateObservations: boolean },
 ): ChecklistAction {
   if (!task.completionMode || task.completionMode === 'auto') return 'auto';
   if (task.checkScope !== 'observation' || task.observationId) return 'toggle';
   if (task.watchedKind === 'standardFinalized') return 'needsFinalized';
+  if (!opts.canCreateObservations) return 'observerOnly';
   return opts.newObservationsDisabled ? 'creationDisabled' : 'start';
 }
 
@@ -43,6 +53,7 @@ export interface EvaluatorChecklistViewProps {
   /** Last failure per step id. */
   errors: Record<string, string>;
   newObservationsDisabled: boolean;
+  canCreateObservations: boolean;
   onToggle: (task: CheckpointWithStatus) => void;
   onStart: (task: CheckpointWithStatus) => void;
 }
@@ -58,6 +69,7 @@ export function EvaluatorChecklistView({
   pendingId,
   errors,
   newObservationsDisabled,
+  canCreateObservations,
   onToggle,
   onStart,
 }: EvaluatorChecklistViewProps) {
@@ -86,7 +98,7 @@ export function EvaluatorChecklistView({
             <ChecklistRow
               key={task.id}
               task={task}
-              action={checklistAction(task, { newObservationsDisabled })}
+              action={checklistAction(task, { newObservationsDisabled, canCreateObservations })}
               pending={pendingId === task.id}
               busy={pendingId !== null}
               error={errors[task.id]}
@@ -183,7 +195,9 @@ function ChecklistRow({
               ? 'Automatic'
               : action === 'needsFinalized'
                 ? 'Available once an observation is finalized'
-                : 'New observations are disabled'}
+                : action === 'observerOnly'
+                  ? 'Available once an observation is started'
+                  : 'New observations are disabled'}
           </span>
         )}
       </div>

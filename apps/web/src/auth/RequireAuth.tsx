@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { canCreateObservations } from '@ops/shared';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useAuth } from './AuthProvider';
 
@@ -8,20 +9,23 @@ import { useAuth } from './AuthProvider';
  * redirected to /sign-in with their intended destination preserved in
  * location state so we can bounce them back after login.
  *
- * Optionally `requireAdmin` or `requireSpecialAccess` enforces role-level
- * access. Failing those redirects to /unauthorized rather than the sign-in
+ * Optionally `requireAdmin`, `requireSpecialAccess` or `requireObserverRole`
+ * enforces role-level access. Failing those redirects to /unauthorized rather than the sign-in
  * screen — they're signed in, just not allowed to view the route.
  */
 export interface RequireAuthProps {
   children: ReactNode;
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
+  /** Role must be able to start observations (see canCreateObservations). */
+  requireObserverRole?: boolean;
 }
 
 export function RequireAuth({
   children,
   requireAdmin = false,
   requireSpecialAccess = false,
+  requireObserverRole = false,
 }: RequireAuthProps) {
   const { status } = useAuth();
   const claims = useEffectiveClaims();
@@ -40,6 +44,10 @@ export function RequireAuth({
   }
 
   if (requireSpecialAccess && !claims.hasSpecialAccess) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (requireObserverRole && !canCreateObservations(claims.role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

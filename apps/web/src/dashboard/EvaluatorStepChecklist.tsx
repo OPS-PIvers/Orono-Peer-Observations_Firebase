@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { addDoc, collection } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { COLLECTIONS, type SetStepCheckInput, type Staff } from '@ops/shared';
+import {
+  COLLECTIONS,
+  canCreateObservations,
+  type SetStepCheckInput,
+  type Staff,
+} from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db, functions } from '@/lib/firebase';
@@ -45,6 +51,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     observerEmail ? `${COLLECTIONS.staff}/${observerEmail}` : '',
   );
   const newObservationsDisabled = useNewObservationsDisabled();
+  const canCreate = canCreateObservations(useEffectiveClaims().role);
 
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -127,6 +134,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
         pendingId={pendingId}
         errors={errors}
         newObservationsDisabled={newObservationsDisabled}
+        canCreateObservations={canCreate}
         onToggle={(task) => void handleToggle(task)}
         onStart={(task) => setConfirming(task)}
       />

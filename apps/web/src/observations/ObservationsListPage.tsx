@@ -13,12 +13,14 @@ import {
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
+  canCreateObservations,
   isAdminRole,
   type Observation,
   type ObservationStatus,
   type Role,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -61,6 +63,9 @@ export function ObservationsListPage() {
   const { user, claims } = useAuth();
   const isAdmin = isAdminRole(claims.role);
   const newObservationsDisabled = useNewObservationsDisabled();
+  // Effective (dev-switcher-aware) role, so "Real" shows exactly what the
+  // signed-in user's own role allows.
+  const canCreate = canCreateObservations(useEffectiveClaims().role);
 
   // Status comes from the URL (?status=draft|finalized) so the sidebar's
   // In-progress / Finalized / All observations links land on the right view.
@@ -249,7 +254,7 @@ export function ObservationsListPage() {
           : 'Loading…'
       }
       actions={
-        newObservationsDisabled ? (
+        !canCreate ? undefined : newObservationsDisabled ? (
           <Button
             variant="outline"
             disabled
@@ -345,7 +350,9 @@ export function ObservationsListPage() {
             ) : observations?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  No observations yet. Click &quot;New observation&quot; to start one.
+                  {canCreate
+                    ? 'No observations yet. Click "New observation" to start one.'
+                    : 'No observations yet.'}
                 </TableCell>
               </TableRow>
             ) : combined.length === 0 ? (
