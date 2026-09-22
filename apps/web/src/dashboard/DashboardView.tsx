@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   isSummative,
+  staffCycleStatus,
   type DashboardQuickMaterial,
   type DashboardSectionsConfig,
   type ModuleColor,
@@ -8,6 +9,7 @@ import {
 } from '@ops/shared';
 import { downloadTextFile } from '@/lib/download';
 import { buildIcsEvent, icsFileName } from '@/lib/ics';
+import { cycleStatusLabel } from '@/utils/staffFormatting';
 import { DashboardIcon, type DashboardIconName } from './DashboardIcon';
 import {
   checkAttributionLabel,
@@ -319,7 +321,7 @@ function Hero(p: HeroProps) {
       <div className="dash-hero__top">
         <div className="dash-hero__copy">
           <span className="dash-hero__eyebrow">
-            {isSummative(p.staff) ? 'Summative cycle' : 'Formative cycle'} · {p.cycleYearLabel}
+            {cycleStatusLabel(staffCycleStatus(p.staff))} · {p.cycleYearLabel}
           </span>
           <h1 className="dash-hero__title">Welcome back, {p.firstName}.</h1>
           {p.showRoleChip ? (
