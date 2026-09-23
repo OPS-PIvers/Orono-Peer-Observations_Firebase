@@ -15,6 +15,7 @@ import {
   type ModuleProgress,
   type Role,
   type Staff,
+  displayYear,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -39,8 +40,7 @@ const DEFAULT_SECTIONS: DashboardSectionsConfig = {
 };
 
 function yearTierLabelFor(year: number): string {
-  if (year >= 4) return `Probationary Y${String(year - 3)}`;
-  return `Year ${String(year)}`;
+  return `Year ${String(displayYear(year))}`;
 }
 
 function currentSchoolYearLabel(now: Date = new Date()): string {

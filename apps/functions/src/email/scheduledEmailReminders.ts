@@ -14,6 +14,7 @@ import {
   type QuestionPhase,
   type Role,
   type WorkProductQuestion,
+  displayYear,
 } from '@ops/shared';
 import {
   APP_URL,
@@ -245,7 +246,8 @@ export const scheduledEmailReminders = onSchedule(
             rolesLookup,
             (obs['observedRole'] as string | undefined) ?? '',
           ),
-          observedYear: String(obs['observedYear'] ?? ''),
+          observedYear:
+            obs['observedYear'] == null ? '' : String(displayYear(Number(obs['observedYear']))),
           observationDate: formatDate(obs['observationDate']),
           observationName: (obs['observationName'] as string | undefined) ?? '',
           observationType: (obs['type'] as string | undefined) ?? '',

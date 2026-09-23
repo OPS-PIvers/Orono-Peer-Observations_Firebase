@@ -12,6 +12,7 @@ import {
   type TiptapDoc,
   type WorkProductAnswer,
   type WorkProductQuestion,
+  displayYear,
 } from '@ops/shared';
 import { ComponentTagMark } from './component-tag-mark.js';
 import { colorFor } from './component-colors.js';
@@ -113,10 +114,7 @@ export function renderObservationHtml(payload: RenderPayload): string {
   const observationDate = formatDate(observation.observationDate);
   const finalizedDate = observation.finalizedAt ? formatDate(observation.finalizedAt) : '';
 
-  const yearLabel =
-    observation.observedYear < 4
-      ? `Year ${String(observation.observedYear)}`
-      : `P${String(observation.observedYear - 3)}`;
+  const yearLabel = `Year ${String(displayYear(observation.observedYear))}`;
 
   const componentSections = rubric.domains
     .flatMap((domain) =>

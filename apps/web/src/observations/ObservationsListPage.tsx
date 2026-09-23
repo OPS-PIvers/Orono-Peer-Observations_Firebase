@@ -18,6 +18,7 @@ import {
   type Observation,
   type ObservationStatus,
   type Role,
+  displayYear,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
@@ -401,7 +402,8 @@ export function ObservationsListPage() {
                       <div className="text-muted-foreground text-xs">{o.observationName}</div>
                     ) : null}
                     <div className="text-muted-foreground text-xs">
-                      {roleDisplayName(roles, o.observedRole)} · Year {String(o.observedYear)}
+                      {roleDisplayName(roles, o.observedRole)} · Year{' '}
+                      {String(displayYear(o.observedYear))}
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">{o.observerEmail}</TableCell>

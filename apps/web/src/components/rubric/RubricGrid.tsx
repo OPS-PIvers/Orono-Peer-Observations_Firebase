@@ -14,13 +14,10 @@ import { useIsDesktop } from '@/hooks/useIsDesktop';
 import { cn } from '@/lib/utils';
 import { DomainSection } from './DomainSection';
 import { MobileComponentBody, RubricRow } from './RubricRow';
+import { PROFICIENCY_LABELS } from './proficiencyLabels';
 
-export const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
-  developing: 'Developing',
-  basic: 'Basic',
-  proficient: 'Proficient',
-  distinguished: 'Distinguished',
-};
+// Re-exported so existing `./RubricGrid` imports keep working.
+export { PROFICIENCY_LABELS };
 
 /** Shared Tailwind grid layout for the rubric matrix — component col + 4 descriptor cols. */
 export const RUBRIC_GRID_COLS = 'grid-cols-[280px_repeat(4,minmax(0,1fr))]';
