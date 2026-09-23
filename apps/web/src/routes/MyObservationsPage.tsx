@@ -347,14 +347,14 @@ function InProgressSection({
                 </div>
               </div>
               <ProgressPill
-                label="Planning"
+                label="Planning Questions"
                 to={`/observations/${o.id}#planning`}
                 answered={planning.answered}
                 total={planning.total}
                 locked={false}
               />
               <ProgressPill
-                label="Reflection"
+                label="Reflection Questions"
                 to={`/observations/${o.id}#reflection`}
                 answered={reflection.answered}
                 total={reflection.total}

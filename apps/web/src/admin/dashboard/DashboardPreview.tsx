@@ -12,6 +12,7 @@ import {
   type DashboardStep,
   type Staff,
   type StaffYear,
+  displayYear,
 } from '@ops/shared';
 import { DashboardView, type ModuleChip } from '@/dashboard/DashboardView';
 import { Eye, UserCog } from 'lucide-react';
@@ -89,7 +90,7 @@ export const DEFAULT_PERSONA: PreviewPersona = {
 };
 
 function yearTierLabel(year: number): string {
-  return year >= 4 ? `Probationary Y${String(year - 3)}` : `Year ${String(year)}`;
+  return `Year ${String(displayYear(year))}`;
 }
 
 export function DashboardPreview({

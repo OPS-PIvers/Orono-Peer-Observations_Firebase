@@ -4,7 +4,7 @@ import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { OBSERVATION_TYPES, type EmailTriggerType } from '@ops/shared';
+import { OBSERVATION_TYPES, displayYear, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, deleteDriveFolder } from '../lib/drive.js';
 import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
@@ -249,7 +249,7 @@ function asString(value: unknown): string {
 
 function formatYear(value: unknown): string {
   if (typeof value !== 'number') return '';
-  return value < 4 ? `Year ${String(value)}` : `P${String(value - 3)}`;
+  return `Year ${String(displayYear(value))}`;
 }
 
 function formatTimestamp(value: unknown): string {

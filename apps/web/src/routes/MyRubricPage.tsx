@@ -7,12 +7,18 @@ import {
   type Rubric,
   type Staff,
   roleYearMappingDocId,
+  displayYear,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { PageHeader } from '@/components/PageHeader';
-import { AssignmentToggle, RubricGrid, type AssignmentMode } from '@/components/rubric';
+import {
+  AssignmentToggle,
+  PrintRubricMenu,
+  RubricGrid,
+  type AssignmentMode,
+} from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
 import { roleDisplayName } from '@/utils/roleLookup';
 
@@ -121,7 +127,7 @@ export function MyRubricPage() {
   // ("My Rubric" was redundant with the sidebar entry it was launched
   // from). Dropping the subtitle saves a row of vertical space.
   const headerTitle = staff
-    ? `${roleLabel} · Year ${String(staff.year)}`
+    ? `${roleLabel} · Year ${String(displayYear(staff.year))}`
     : staffLoading
       ? 'Loading your role…'
       : 'No staff record found for your account.';
@@ -134,7 +140,17 @@ export function MyRubricPage() {
       title={headerTitle}
       variant="plain"
       actions={
-        rubric ? <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} /> : null
+        rubric ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} />
+            <PrintRubricMenu
+              rubric={rubric}
+              assignedComponentIds={assignedComponentIds}
+              title={headerTitle}
+              {...(staff?.name ? { subtitle: staff.name } : {})}
+            />
+          </div>
+        ) : null
       }
     >
       <div className="space-y-6">

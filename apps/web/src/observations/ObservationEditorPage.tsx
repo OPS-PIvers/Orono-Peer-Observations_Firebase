@@ -31,6 +31,7 @@ import {
   type TiptapDoc,
   type WorkProductQuestion,
   roleYearMappingDocId,
+  displayYear,
 } from '@ops/shared';
 import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
@@ -52,7 +53,13 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
-import { AssignmentToggle, DomainNav, RubricGrid, type AssignmentMode } from '@/components/rubric';
+import {
+  AssignmentToggle,
+  DomainNav,
+  PrintRubricMenu,
+  RubricGrid,
+  type AssignmentMode,
+} from '@/components/rubric';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { hasTiptapContent } from '@/utils/tiptapContent';
 import { ScriptEditor, type EvidenceCaptureRequest } from './ScriptEditor';
@@ -1108,9 +1115,20 @@ export function ObservationEditorPage() {
           // rubric snapshot — the snapshot only carries the components
           // actually in play, so there is no "full rubric" to flip to.
           actions={
-            rubricSnapshot ? undefined : (
-              <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} fullWidth />
-            )
+            <div className="flex items-center gap-2">
+              {rubricSnapshot ? null : (
+                <AssignmentToggle value={assignmentMode} onChange={setAssignmentMode} fullWidth />
+              )}
+              {rubric ? (
+                <PrintRubricMenu
+                  rubric={rubric}
+                  assignedComponentIds={assignedComponentIds}
+                  title={`${observedRoleLabel} · Year ${String(displayYear(observation.observedYear))}`}
+                  subtitle={observation.observedName}
+                  className="shrink-0"
+                />
+              ) : null}
+            </div>
           }
         />
 
@@ -1365,7 +1383,7 @@ function ObservationInfoPopover({
             </div>
             <div className="flex gap-1.5">
               <dt className="text-ops-gray w-12 shrink-0">Year</dt>
-              <dd className="font-medium">{String(year)}</dd>
+              <dd className="font-medium">{String(displayYear(Number(year)))}</dd>
             </div>
             <div className="flex gap-1.5">
               <dt className="text-ops-gray w-12 shrink-0">Type</dt>

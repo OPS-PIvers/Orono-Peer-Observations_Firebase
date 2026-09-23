@@ -381,7 +381,7 @@ export function MeetingNotesSection({
           active={active === 'pre'}
           hasContent={preObsDate !== undefined || hasTiptapContent(preObsNotes)}
           onClick={() => setActive((v) => (v === 'pre' ? null : 'pre'))}
-          label="Planning"
+          label="Planning Questions"
           date={dateLabel(preObsDate)}
           progress={progressLabel('pre', questions)}
           controls="meeting-panel-pre"
@@ -390,7 +390,7 @@ export function MeetingNotesSection({
           active={active === 'post'}
           hasContent={postObsDate !== undefined || hasTiptapContent(postObsNotes)}
           onClick={() => setActive((v) => (v === 'post' ? null : 'post'))}
-          label="Reflection"
+          label="Reflection Questions"
           date={dateLabel(postObsDate)}
           progress={progressLabel('post', questions)}
           controls="meeting-panel-post"

@@ -13,3 +13,5 @@ export {
   type AssignmentToggleProps,
 } from './AssignmentToggle';
 export { DomainNav, pulseElement, type DomainNavProps } from './DomainNav';
+export { PrintRubricMenu, type PrintRubricMenuProps } from './PrintRubricMenu';
+export { buildRubricPrintHtml, printHtmlDocument, type PrintScope } from './printRubric';

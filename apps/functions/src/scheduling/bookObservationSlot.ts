@@ -18,6 +18,7 @@ import {
   type SignupFieldAnswer,
   type Staff,
   type WindowInvitee,
+  displayYear,
 } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 import {
@@ -138,7 +139,7 @@ export async function createDraftObservationForBooking(args: {
       observedName: staff?.name ?? staffEmail,
       observedEmail: staffEmail,
       observedRole: staff?.role ?? '',
-      observedYear: staff ? String(staff.year) : '',
+      observedYear: staff ? String(displayYear(staff.year)) : '',
       observationName: window.defaultObservationName,
       observationType: window.defaultObservationType,
       slotDateLocal: formatChicagoDate(slotStart),

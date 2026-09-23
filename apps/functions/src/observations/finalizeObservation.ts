@@ -19,6 +19,7 @@ import {
   type Rubric,
   type RubricDomain,
   type WorkProductQuestion,
+  displayYear,
 } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -341,7 +342,7 @@ export const finalizeObservation = onCall(
             observedName: obs.observedName,
             observedEmail: obs.observedEmail,
             observedRole: role.displayName,
-            observedYear: String(obs.observedYear),
+            observedYear: String(displayYear(obs.observedYear)),
             observationDate: formatDateReadable(obs.observationDate),
             observationName: obs.observationName,
             observationType: obs.type,
