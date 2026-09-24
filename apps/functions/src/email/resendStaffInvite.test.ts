@@ -175,12 +175,27 @@ describe('resendStaffInvite — authorization', () => {
     expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
   });
 
-  it('allows a caller whose token role is an admin role', async () => {
+  it('allows a Full Access caller from the token role', async () => {
     const result = await run(
-      authedRequest('admin@orono.k12.mn.us', 'administrator', { email: TARGET_EMAIL }),
+      authedRequest('fa@orono.k12.mn.us', 'full-access', { email: TARGET_EMAIL }),
     );
     expect(result).toEqual({ sent: true });
     expect(state.sendTemplatedEmail).toHaveBeenCalledTimes(1);
+  });
+
+  // Resend lives in the Admin Console, which building Administrators only
+  // get with hasAdminAccess.
+  it('rejects a building Administrator without hasAdminAccess', async () => {
+    state.docs['staff/principal@orono.k12.mn.us'] = {
+      name: 'Principal',
+      role: 'administrator',
+      hasAdminAccess: false,
+      isActive: true,
+    };
+    await expect(
+      run(authedRequest('principal@orono.k12.mn.us', 'administrator', { email: TARGET_EMAIL })),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
   });
 
   // Regression test: hasAdminAccess-only admins (a non-admin professional

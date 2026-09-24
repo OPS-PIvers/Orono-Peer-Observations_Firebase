@@ -50,7 +50,7 @@ describe('/roles, /rubrics — read by all signed-in domain users; write admin-o
   });
 
   it('admin can write', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(setDoc(doc(db, 'roles/new'), { displayName: 'New' }));
     await assertSucceeds(setDoc(doc(db, 'rubrics/new'), { displayName: 'New' }));
   });
@@ -69,7 +69,7 @@ describe('/settings/roleYearMappings — read by all domain, write admin-only', 
   });
 
   it('admin can write', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'roleYearMappings/teacher_2'), { assignedComponentIds: ['2a'] }),
     );
@@ -97,7 +97,7 @@ describe('/workProductQuestions — all domain users read; admin write', () => {
   });
 
   it('admin can write', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(setDoc(doc(db, 'workProductQuestions/q2'), { text: 'X', order: 1 }));
   });
 });
@@ -118,7 +118,7 @@ describe('/emailTemplates — admin only', () => {
   });
 
   it('admin can read + write', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(getDoc(doc(db, 'emailTemplates/finalizedObservation')));
     await assertSucceeds(
       setDoc(doc(db, 'emailTemplates/finalizedObservation'), { subject: 'Updated' }),
@@ -147,7 +147,7 @@ describe('/appSettings — domain read, admin write', () => {
   });
 
   it('admin can write', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'appSettings/global'), { sessionDurationHours: 12 }, { merge: true }),
     );
@@ -160,7 +160,7 @@ describe('/auditLog — admin read, no client writes', () => {
   });
 
   it('admin can read', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(getDoc(doc(db, 'auditLog/log1')));
   });
 

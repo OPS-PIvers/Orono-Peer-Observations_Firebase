@@ -84,8 +84,12 @@ describe('staffHasAdminAccess', () => {
     expect(staffHasAdminAccess(null)).toBe(false);
   });
 
-  it('allows the administrator role', () => {
-    expect(staffHasAdminAccess(staff({ role: 'administrator' }))).toBe(true);
+  it('denies a building Administrator without hasAdminAccess', () => {
+    expect(staffHasAdminAccess(staff({ role: 'administrator' }))).toBe(false);
+  });
+
+  it('allows an Administrator who also has hasAdminAccess', () => {
+    expect(staffHasAdminAccess(staff({ role: 'administrator', hasAdminAccess: true }))).toBe(true);
   });
 
   it('allows the full-access role', () => {

@@ -4,7 +4,6 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
-  isAdminRole,
   type ComponentColor,
   type Observation,
   type Role,
@@ -12,6 +11,7 @@ import {
   type RubricComponent,
   type TiptapDoc,
 } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -36,12 +36,18 @@ export const backfillScriptTagColors = onCall(
   { region: 'us-central1', memory: '512MiB', timeoutSeconds: 540 },
   async (request): Promise<BackfillResponse> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
-    const callerRole = request.auth.token['role'] as string | undefined;
-    if (!isAdminRole(callerRole ?? null)) {
-      throw new HttpsError('permission-denied', 'Admins only');
-    }
+    const callerEmail = request.auth.token.email?.toLowerCase();
+    if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
     const db = getFirestore();
+    const allowed = await callerMeetsAccessLevel(db, {
+      email: callerEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      level: 'console',
+    });
+    if (!allowed) {
+      throw new HttpsError('permission-denied', 'Admins only');
+    }
 
     const [rolesSnap, rubricsSnap] = await Promise.all([
       db.collection(COLLECTIONS.roles).get(),

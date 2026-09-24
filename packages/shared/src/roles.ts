@@ -69,6 +69,20 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return role === SPECIAL_ROLES.administrator || role === SPECIAL_ROLES.fullAccess;
 }
 
+/** Whether a staff member may use the Admin Console and its console-only
+ *  data (rubrics, roles, settings, templates, roster-wide staff edits, the
+ *  migration callables). Narrower than `isAdminRole(role) || hasAdminAccess`
+ *  (the `isAdmin` claim): building Administrators keep `isAdmin` for managing
+ *  observations and their building's staff, but only get the console when
+ *  their staff doc also has `hasAdminAccess`. Mirrored by `isConsoleAdmin()`
+ *  in firestore.rules. */
+export function canOpenAdminConsole(
+  role: string | null | undefined,
+  hasAdminAccess: boolean | null | undefined,
+): boolean {
+  return role === SPECIAL_ROLES.fullAccess || hasAdminAccess === true;
+}
+
 /** Whether a role may start observations. Keyed on the role alone, NOT the
  *  `hasAdminAccess` staff flag: that flag grants the Admin Console to people
  *  whose own role is observed (e.g. a specialist), and must not turn them

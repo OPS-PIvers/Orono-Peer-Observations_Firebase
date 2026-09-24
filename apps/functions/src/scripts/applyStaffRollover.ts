@@ -7,7 +7,7 @@ import {
   COLLECTIONS,
   applyStaffRolloverInput,
   cycleStatusFields,
-  isAdminRole,
+  canOpenAdminConsole,
   rolloverEntryCycleStatus,
   type ApplyStaffRolloverResult,
   type Staff,
@@ -72,11 +72,11 @@ export const applyStaffRollover = onCall(
     // claim so hasAdminAccess grants (which rules honor via the isAdmin
     // claim) work here too.
     const callerRole = request.auth.token['role'] as string | undefined;
-    let isAdmin = isAdminRole(callerRole ?? null);
+    let isAdmin = canOpenAdminConsole(callerRole, false);
     if (!isAdmin) {
       const callerSnap = await db.doc(`${COLLECTIONS.staff}/${userEmail}`).get();
       const caller = callerSnap.exists ? (callerSnap.data() as Staff) : null;
-      isAdmin = !!caller && (isAdminRole(caller.role) || caller.hasAdminAccess);
+      isAdmin = !!caller && canOpenAdminConsole(caller.role, caller.hasAdminAccess);
     }
     if (!isAdmin) {
       throw new HttpsError('permission-denied', 'Only an admin can run the annual rollover.');

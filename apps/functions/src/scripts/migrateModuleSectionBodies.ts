@@ -2,7 +2,12 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, MODULE_CONTENT_SUBCOLLECTION, isAdminRole, type Staff } from '@ops/shared';
+import {
+  COLLECTIONS,
+  MODULE_CONTENT_SUBCOLLECTION,
+  canOpenAdminConsole,
+  type Staff,
+} from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -64,7 +69,7 @@ export const migrateModuleSectionBodies = onCall(
     const db = getFirestore();
     const callerSnap = await db.doc(`${COLLECTIONS.staff}/${userEmail}`).get();
     const caller = callerSnap.exists ? (callerSnap.data() as Staff) : null;
-    const isAdmin = !!caller && (isAdminRole(caller.role) || caller.hasAdminAccess);
+    const isAdmin = !!caller && canOpenAdminConsole(caller.role, caller.hasAdminAccess);
     if (!isAdmin) throw new HttpsError('permission-denied', 'Admin only');
 
     const result: MigrationResult = {
