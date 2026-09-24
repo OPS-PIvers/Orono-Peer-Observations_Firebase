@@ -3,6 +3,7 @@ import { Archive, X } from 'lucide-react';
 import { doc, getDoc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
+  isSpecialRole,
   isStaffYear,
   type Building,
   type ModuleDoc,
@@ -42,6 +43,14 @@ interface StaffDialogProps {
   onOpenChange: (open: boolean) => void;
   mode: 'create' | 'edit';
   existing: (Staff & { id: string }) | null;
+  /**
+   * Set when a building Administrator opens the dialog from /building-staff:
+   * their building names. Hides Module Access (incl. the Admin Console flag)
+   * and never writes those fields, drops Administrator / Peer Evaluator /
+   * Full Access from the role list, pre-fills a new record with their
+   * building, and requires a new record to keep one of them.
+   */
+  buildingScope?: string[];
 }
 
 interface FormState {
@@ -79,14 +88,24 @@ const ACTIVE_MODULES_CONSTRAINTS = [where('isActive', '==', true)];
 const SELECT_CLASSNAME =
   'border-input bg-background ring-offset-background focus-visible:ring-ring h-11 min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden';
 
-export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogProps) {
+export function StaffDialog({
+  open,
+  onOpenChange,
+  mode,
+  existing,
+  buildingScope,
+}: StaffDialogProps) {
   const [form, setForm] = useState<FormState>(empty);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: roles, loading: rolesLoading } = useFirestoreCollection<Role>(
+  const { data: allRoles, loading: rolesLoading } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
     ACTIVE_ROLES_CONSTRAINTS,
+  );
+  const roles = useMemo(
+    () => (buildingScope ? allRoles?.filter((r) => !isSpecialRole(r.roleId)) : allRoles),
+    [allRoles, buildingScope],
   );
   const { data: buildingsRaw, loading: buildingsLoading } = useFirestoreCollection<Building>(
     COLLECTIONS.buildings,
@@ -120,10 +139,10 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         hasAdminAccess: existing.hasAdminAccess,
       });
     } else if (mode === 'create') {
-      setForm(empty);
+      setForm(buildingScope?.length === 1 ? { ...empty, buildings: [...buildingScope] } : empty);
     }
     setError(null);
-  }, [mode, existing, open]);
+  }, [mode, existing, open, buildingScope]);
 
   const isUnmappedRole =
     form.role !== '' && (roles?.length ?? 0) > 0 && !roles?.some((r) => r.roleId === form.role);
@@ -190,6 +209,14 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
       setError('Year must be 1-6.');
       return;
     }
+    if (
+      buildingScope &&
+      mode === 'create' &&
+      !form.buildings.some((b) => buildingScope.includes(b))
+    ) {
+      setError(`Add ${buildingScope.join(' or ')} so this person shows up in your staff list.`);
+      return;
+    }
 
     setSubmitting(true);
     const email = form.email.trim().toLowerCase();
@@ -204,6 +231,15 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
         if (clash.exists()) {
           const prior = clash.data() as Partial<Staff>;
           const who = prior.name ?? email;
+          const priorBuildings = prior.buildings ?? [];
+          if (buildingScope && !priorBuildings.some((b) => buildingScope.includes(b))) {
+            setError(
+              `${who} is already on the roster${
+                priorBuildings.length > 0 ? ` at ${priorBuildings.join(', ')}` : ''
+              }. Ask a district admin to move them to your building — creating them here would overwrite their record.`,
+            );
+            return;
+          }
           setError(
             prior.isActive === false
               ? `${who} is already on the roster but archived. Set the Status filter to Archived to find and restore them — creating them here would overwrite their record.`
@@ -221,10 +257,13 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
           role: form.role.trim(),
           year: form.year,
           buildings: form.buildings,
-          modules: form.modules,
           ...cycleStatusFields(form.cycleStatus),
           isActive: form.isActive,
-          hasAdminAccess: form.hasAdminAccess,
+          // Building-scoped edits leave module and console access as they
+          // are (merge keeps the stored values); a scoped create starts empty.
+          ...(buildingScope && mode === 'edit'
+            ? {}
+            : { modules: form.modules, hasAdminAccess: form.hasAdminAccess }),
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
         },
@@ -429,53 +468,56 @@ export function StaffDialog({ open, onOpenChange, mode, existing }: StaffDialogP
 
           {/* Module Access — Admin Console Access + admin-defined modules,
               each a toggle with its colored chip, mirroring the table's
-              Module Access popover. Cycle status lives in the Status field. */}
-          <div className="grid gap-2">
-            <Label>Module Access</Label>
-            <p className="text-muted-foreground -mt-1 text-xs">
-              Toggle admin-console access and the modules this staff member can see.
-            </p>
-            <ul className="border-border bg-background divide-border divide-y overflow-hidden rounded-md border">
-              {accessRows.map((row) => (
-                <li key={row.id}>
-                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm">
-                    <PillChip color={row.color}>{row.name}</PillChip>
-                    <span className="text-muted-foreground flex-1 truncate text-xs">
-                      {row.description}
-                    </span>
-                    <Switch
-                      checked={row.checked}
-                      onCheckedChange={row.onToggle}
-                      aria-label={row.name}
-                    />
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {modules.length === 0 && !modulesLoading ? (
-              <p className="text-muted-foreground text-xs">
-                No modules configured yet. Add them in Admin → Modules to extend this list.
+              Module Access popover. Cycle status lives in the Status field.
+              Not offered to building-scoped editors. */}
+          {buildingScope ? null : (
+            <div className="grid gap-2">
+              <Label>Module Access</Label>
+              <p className="text-muted-foreground -mt-1 text-xs">
+                Toggle admin-console access and the modules this staff member can see.
               </p>
-            ) : null}
-            {/* Surface any unmapped module IDs from staff.modules that don't
+              <ul className="border-border bg-background divide-border divide-y overflow-hidden rounded-md border">
+                {accessRows.map((row) => (
+                  <li key={row.id}>
+                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm">
+                      <PillChip color={row.color}>{row.name}</PillChip>
+                      <span className="text-muted-foreground flex-1 truncate text-xs">
+                        {row.description}
+                      </span>
+                      <Switch
+                        checked={row.checked}
+                        onCheckedChange={row.onToggle}
+                        aria-label={row.name}
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {modules.length === 0 && !modulesLoading ? (
+                <p className="text-muted-foreground text-xs">
+                  No modules configured yet. Add them in Admin → Modules to extend this list.
+                </p>
+              ) : null}
+              {/* Surface any unmapped module IDs from staff.modules that don't
                 resolve to a module doc (e.g., a module was deleted while
                 assigned). */}
-            {form.modules
-              .filter((id) => !knownModuleIds.has(id))
-              .map((id) => (
-                <p key={id} className="text-muted-foreground text-xs">
-                  ⚠ Unknown module <code className="text-xs">{id}</code> is assigned but no longer
-                  exists.{' '}
-                  <button
-                    type="button"
-                    className="text-ops-blue underline"
-                    onClick={() => removeModule(id)}
-                  >
-                    Remove
-                  </button>
-                </p>
-              ))}
-          </div>
+              {form.modules
+                .filter((id) => !knownModuleIds.has(id))
+                .map((id) => (
+                  <p key={id} className="text-muted-foreground text-xs">
+                    ⚠ Unknown module <code className="text-xs">{id}</code> is assigned but no longer
+                    exists.{' '}
+                    <button
+                      type="button"
+                      className="text-ops-blue underline"
+                      onClick={() => removeModule(id)}
+                    >
+                      Remove
+                    </button>
+                  </p>
+                ))}
+            </div>
+          )}
 
           {error ? (
             <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">

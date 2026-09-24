@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { canCreateObservations } from '@ops/shared';
+import { SPECIAL_ROLES, canCreateObservations } from '@ops/shared';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useAdminConsoleAccess } from './adminConsoleAccess';
 import { useAuth } from './AuthProvider';
 
 /**
@@ -9,7 +10,8 @@ import { useAuth } from './AuthProvider';
  * redirected to /sign-in with their intended destination preserved in
  * location state so we can bounce them back after login.
  *
- * Optionally `requireAdmin`, `requireSpecialAccess` or `requireObserverRole`
+ * Optionally `requireAdmin` (Admin Console access — see useAdminConsoleAccess),
+ * `requireSpecialAccess`, `requireObserverRole` or `requireAdministrator`
  * enforces role-level access. Failing those redirects to /unauthorized rather than the sign-in
  * screen — they're signed in, just not allowed to view the route.
  */
@@ -19,6 +21,8 @@ export interface RequireAuthProps {
   requireSpecialAccess?: boolean;
   /** Role must be able to start observations (see canCreateObservations). */
   requireObserverRole?: boolean;
+  /** Role must be Administrator (building-scoped pages like /building-staff). */
+  requireAdministrator?: boolean;
 }
 
 export function RequireAuth({
@@ -26,12 +30,14 @@ export function RequireAuth({
   requireAdmin = false,
   requireSpecialAccess = false,
   requireObserverRole = false,
+  requireAdministrator = false,
 }: RequireAuthProps) {
   const { status } = useAuth();
   const claims = useEffectiveClaims();
   const location = useLocation();
+  const consoleAccess = useAdminConsoleAccess();
 
-  if (status === 'loading') {
+  if (status === 'loading' || (requireAdmin && consoleAccess.loading)) {
     return <LoadingSplash />;
   }
 
@@ -39,7 +45,7 @@ export function RequireAuth({
     return <Navigate to="/sign-in" replace state={{ from: location }} />;
   }
 
-  if (requireAdmin && !claims.isAdmin) {
+  if (requireAdmin && !consoleAccess.allowed) {
     return <Navigate to="/unauthorized" replace />;
   }
 
@@ -48,6 +54,10 @@ export function RequireAuth({
   }
 
   if (requireObserverRole && !canCreateObservations(claims.role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (requireAdministrator && claims.role !== SPECIAL_ROLES.administrator) {
     return <Navigate to="/unauthorized" replace />;
   }
 
