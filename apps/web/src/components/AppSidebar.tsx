@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   User,
+  UserCog,
   Users,
 } from 'lucide-react';
 import {
@@ -27,6 +28,7 @@ import {
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -101,13 +103,14 @@ const OBS_CHILDREN: NavSubItem[] = [
 interface NavFlags {
   hasWorkProduct: boolean;
   hasInstructionalRound: boolean;
-  isAdmin: boolean;
+  /** Admin Console access (useAdminConsoleAccess), not the raw isAdmin claim. */
+  canOpenConsole: boolean;
 }
 
 function buildNavItems(
   role: string | null,
   onSignOut: () => void,
-  flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, isAdmin: false },
+  flags: NavFlags = { hasWorkProduct: false, hasInstructionalRound: false, canOpenConsole: false },
   rubricDomains: NavSubItem[] = [],
 ): NavConfig {
   const metaItems: NavItem[] = [
@@ -123,9 +126,10 @@ function buildNavItems(
       ? { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric', children: rubricDomains }
       : { icon: LayoutGrid, label: 'My Rubric', href: '/my-rubric' };
 
-  // Role-specific layouts come first — Administrators are also `isAdmin`,
-  // so checking `role` ahead of `flags.isAdmin` is what wires up their
-  // building-scoped /my-staff link.
+  // Role-specific layouts come first — Administrators also carry the
+  // `isAdmin` claim, so checking `role` first is what wires up their
+  // building-scoped /my-staff and /building-staff links. They only get the
+  // Admin Console when their staff doc also has `hasAdminAccess`.
   const dashboardItem: NavItem = { icon: Sparkles, label: 'My Dashboard', href: '/dashboard' };
 
   if (role === SPECIAL_ROLES.administrator) {
@@ -133,9 +137,10 @@ function buildNavItems(
       dashboardItem,
       myRubricItem,
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
+      { icon: UserCog, label: 'Building Staff', href: '/building-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
     ];
-    if (flags.isAdmin) {
+    if (flags.canOpenConsole) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
     }
     return { main, meta: metaItems };
@@ -148,7 +153,7 @@ function buildNavItems(
       { icon: Users, label: 'Staff', href: '/staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
     ];
-    if (flags.isAdmin) {
+    if (flags.canOpenConsole) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
     }
     return { main, meta: metaItems };
@@ -157,7 +162,7 @@ function buildNavItems(
   // Full Access role, or a non-special role with `hasAdminAccess: true`
   // (the dev-admin escape hatch). No /staff sidebar link — they can
   // reach the directory via Admin Console → Staff.
-  if (flags.isAdmin) {
+  if (flags.canOpenConsole) {
     return {
       main: [
         dashboardItem,
@@ -267,6 +272,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   const location = useLocation();
   const navigate = useNavigate();
   const inAdmin = location.pathname.startsWith('/admin');
+  const { allowed: canOpenConsole } = useAdminConsoleAccess();
 
   // Resolve the user's rubric so we can surface its domains as sub-items
   // under "My Rubric". Mirrors the role → rubric chain used by MyRubricPage.
@@ -342,7 +348,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
       {
         hasWorkProduct,
         hasInstructionalRound,
-        isAdmin: claims.isAdmin,
+        canOpenConsole,
       },
       rubricDomainItems,
     );
@@ -352,7 +358,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
     return config;
   }, [
     claims.role,
-    claims.isAdmin,
+    canOpenConsole,
     handleSignOut,
     hasWorkProduct,
     hasInstructionalRound,

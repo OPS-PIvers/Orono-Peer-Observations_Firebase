@@ -37,17 +37,20 @@ interface ShellProps {
   requireAdmin?: boolean;
   requireSpecialAccess?: boolean;
   requireObserverRole?: boolean;
+  requireAdministrator?: boolean;
 }
 function StandardShell({
   requireAdmin = false,
   requireSpecialAccess = false,
   requireObserverRole = false,
+  requireAdministrator = false,
 }: ShellProps) {
   return (
     <RequireAuth
       requireAdmin={requireAdmin}
       requireSpecialAccess={requireSpecialAccess}
       requireObserverRole={requireObserverRole}
+      requireAdministrator={requireAdministrator}
     >
       <Layout />
     </RequireAuth>
@@ -88,6 +91,12 @@ export function App() {
                 <Route path="/staff" element={<L.StaffDirectoryPage />} />
                 <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
                 <Route path="/my-staff" element={<L.MyStaffPage />} />
+              </Route>
+
+              {/* Building Administrators only — staff editing scoped to their
+                  building(s), in place of the Admin Console. */}
+              <Route element={<StandardShell requireAdministrator />}>
+                <Route path="/building-staff" element={<L.BuildingStaffPage />} />
               </Route>
 
               {/* Starting observations: observer roles only. hasSpecialAccess
