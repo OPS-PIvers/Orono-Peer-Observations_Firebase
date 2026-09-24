@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+// The module under test also exports a hook that reaches Firestore; stub the
+// SDK bootstrap so importing it doesn't need a real API key (CI has none).
+vi.mock('@/lib/firebase', () => ({ auth: {}, db: {}, storage: {}, functions: {} }));
+
 import { canOpenAdminConsole } from './adminConsoleAccess';
 
 describe('canOpenAdminConsole', () => {
