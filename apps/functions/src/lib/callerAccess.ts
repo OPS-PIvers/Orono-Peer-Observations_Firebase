@@ -1,5 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, isSpecialRole } from '@ops/shared';
+import { COLLECTIONS, canOpenAdminConsole, isAdminRole, isSpecialRole } from '@ops/shared';
 
 /**
  * Just the two /staff fields this module cares about, typed to reflect that a
@@ -14,12 +14,16 @@ interface StaffAccessFields {
 }
 
 /**
- * The two caller-authorization tiers used by admin-area callables:
- *  - `'admin'`   — admin-only actions (e.g. resendStaffInvite).
+ * The caller-authorization tiers used by admin-area callables:
+ *  - `'console'` — Admin Console actions (e.g. resendStaffInvite, rollover,
+ *    migrations): Full Access or hasAdminAccess (canOpenAdminConsole). A
+ *    building Administrator is `'admin'` but not `'console'`.
+ *  - `'admin'`   — the isAdmin claim (Administrator / Full Access /
+ *    hasAdminAccess).
  *  - `'special'` — PE-or-admin actions (e.g. sendManualEmail,
- *    sendBulkManualEmail). Every `'admin'` caller also satisfies `'special'`.
+ *    sendBulkManualEmail). Each tier satisfies the ones below it.
  */
-export type CallerAccessLevel = 'admin' | 'special';
+export type CallerAccessLevel = 'console' | 'admin' | 'special';
 
 /**
  * Whether `role`/`hasAdminAccess` satisfy `level`, mirroring the claim
@@ -32,6 +36,7 @@ function meetsAccessLevel(
   role: string | null | undefined,
   hasAdminAccess: boolean,
 ): boolean {
+  if (level === 'console') return canOpenAdminConsole(role, hasAdminAccess);
   const isAdmin = isAdminRole(role) || hasAdminAccess;
   return level === 'admin' ? isAdmin : isSpecialRole(role) || isAdmin;
 }

@@ -15,23 +15,32 @@ rules_version = '2';
 //     for BOTH read and write so a signed-in non-admin can't read or list
 //     another user's sensitive uploads.
 //
-// isAdmin = the isAdmin custom claim, not the role slug. (The role slug may be
-// e.g. "instructional-specialist" while isAdmin is still true.)
+// isConsoleAdmin = the isAdmin custom claim minus building Administrators,
+// who hold the claim for observation work but don't get the Admin Console
+// (see isConsoleAdmin in firestore.rules). Storage rules can't cheaply read
+// the staff doc, so an Administrator who also has hasAdminAccess can't upload
+// here either; a Full Access or other hasAdminAccess user can.
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isConsoleAdmin() {
+      return request.auth != null
+        && request.auth.token.isAdmin == true
+        && request.auth.token.role != 'administrator';
+    }
+
     // Branding assets: auth-readable, admin-writable.
     match /admin-uploads/branding/{path=**} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      allow write: if isConsoleAdmin();
     }
 
     // All other admin-uploads content: admin-only, read and write. A more
     // specific branding match above OR-grants auth read for that sub-path;
     // this rule governs everything else under admin-uploads/.
     match /admin-uploads/{path=**} {
-      allow read: if request.auth != null && request.auth.token.isAdmin == true;
-      allow write: if request.auth != null && request.auth.token.isAdmin == true;
+      allow read: if isConsoleAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     match /{path=**} {

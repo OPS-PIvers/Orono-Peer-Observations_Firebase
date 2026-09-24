@@ -53,7 +53,7 @@ describe('/modules/{id}/items — read gated by assignment, write admin-only', (
   });
 
   it('admin can read and write items', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(getDoc(doc(db, 'modules/mentor/items/i1')));
     await assertSucceeds(
       setDoc(doc(db, 'modules/mentor/items/i2'), {

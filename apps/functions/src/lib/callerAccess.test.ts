@@ -263,3 +263,41 @@ describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
     ).resolves.toBe(false);
   });
 });
+
+describe('callerMeetsAccessLevel — console level', () => {
+  it('allows Full Access from the token alone', async () => {
+    await expect(
+      callerMeetsAccessLevel(fakeDb({}), {
+        email: 'fa@orono.k12.mn.us',
+        tokenRole: 'full-access',
+        level: 'console',
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects a building Administrator without hasAdminAccess', async () => {
+    const db = fakeDb({
+      'staff/principal@orono.k12.mn.us': { role: 'administrator', hasAdminAccess: false },
+    });
+    await expect(
+      callerMeetsAccessLevel(db, {
+        email: 'principal@orono.k12.mn.us',
+        tokenRole: 'administrator',
+        level: 'console',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('allows an Administrator whose live staff doc has hasAdminAccess', async () => {
+    const db = fakeDb({
+      'staff/principal@orono.k12.mn.us': { role: 'administrator', hasAdminAccess: true },
+    });
+    await expect(
+      callerMeetsAccessLevel(db, {
+        email: 'principal@orono.k12.mn.us',
+        tokenRole: 'administrator',
+        level: 'console',
+      }),
+    ).resolves.toBe(true);
+  });
+});

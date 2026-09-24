@@ -46,7 +46,7 @@ describe('buildingSchedules rules', () => {
   });
 
   it('admin can write a schedule', async () => {
-    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('a', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'buildingSchedules/middle-school'), {
         buildingId: 'middle-school',
@@ -92,7 +92,7 @@ describe('signupFields rules', () => {
   });
 
   it('admin can create a field', async () => {
-    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('a', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'signupFields/f-2'), {
         fieldId: 'f-2',

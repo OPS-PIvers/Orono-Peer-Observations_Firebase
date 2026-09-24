@@ -8,7 +8,7 @@ import {
   COLLECTIONS,
   MAX_MODULE_FILE_BYTES,
   MODULE_SUBCOLLECTIONS,
-  isAdminRole,
+  canOpenAdminConsole,
   type Staff,
 } from '@ops/shared';
 import {
@@ -136,7 +136,7 @@ export function assertValidModuleFileRequest(
  * can't still upload. Pure + exported for unit tests.
  */
 export function staffHasAdminAccess(staff: Staff | null): boolean {
-  return !!staff && (isAdminRole(staff.role) || staff.hasAdminAccess);
+  return !!staff && canOpenAdminConsole(staff.role, staff.hasAdminAccess);
 }
 
 /**

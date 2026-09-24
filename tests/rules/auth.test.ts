@@ -73,7 +73,7 @@ describe('/staff', () => {
   });
 
   it('lets admins create + update staff', async () => {
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('admin', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'staff/new@orono.k12.mn.us'), {
         name: 'New',

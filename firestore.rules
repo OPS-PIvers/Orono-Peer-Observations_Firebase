@@ -15,6 +15,14 @@ rules_version = '2';
 //   request.auth.token.hasSpecialAccess     — true for Admin / Peer Eval / Full Access
 //   request.auth.token.isAdmin              — true for Administrator/Full Access roles or hasAdminAccess flag
 //
+// Two admin tiers:
+//   isAdmin()        — the claim. Managing observations/windows and, for
+//                      building Administrators, their own building's staff.
+//   isConsoleAdmin() — Full Access, or the hasAdminAccess staff flag. The
+//                      Admin Console's data: roster-wide staff edits, roles,
+//                      rubrics, buildings, modules, settings, templates, logs.
+//                      A building Administrator is isAdmin() but not this.
+//
 // Per the migration plan: in v1 admins can edit everything that's currently
 // sheet-editable plus a handful of code-locked items. Cloud Functions use
 // the Admin SDK which bypasses these rules, so privileged server-side
@@ -45,6 +53,19 @@ service cloud.firestore {
 
     function isAdmin() {
       return isFromOronoDomain() && request.auth.token.isAdmin == true;
+    }
+
+    // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
+    // Administrator with hasAdminAccess from one without, so only that case
+    // pays for a staff-doc read.
+    function isConsoleAdmin() {
+      return isAdmin()
+        && (role() != 'administrator'
+            || staffDocData().get('hasAdminAccess', false) == true);
+    }
+
+    function isBuildingAdmin() {
+      return isAdmin() && role() == 'administrator';
     }
 
     function isCurrentUserEmail(email) {
@@ -81,6 +102,33 @@ service cloud.firestore {
             || (auto.dimension == 'year' && auto.value == dy));
     }
 
+    // Building Administrators (/building-staff) may create and edit staff in
+    // their own building(s): never someone holding a special role, never to
+    // or from a special role, and only the fields that page writes — so no
+    // module or Admin Console access. Moving someone out of the building is
+    // allowed; pulling someone in from another building is not.
+    function buildingAdminCanWriteStaffData(data) {
+      return data.get('buildings', []).hasAny(staffDocData().get('buildings', []))
+        && !(data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access']);
+    }
+
+    function buildingAdminCanCreateStaff(email) {
+      return isBuildingAdmin()
+        && request.resource.data.get('email', '') == email
+        && buildingAdminCanWriteStaffData(request.resource.data)
+        && request.resource.data.get('hasAdminAccess', false) == false
+        && request.resource.data.get('modules', []).size() == 0;
+    }
+
+    function buildingAdminCanUpdateStaff() {
+      return isBuildingAdmin()
+        && buildingAdminCanWriteStaffData(resource.data)
+        && !(request.resource.data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access'])
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['name', 'role', 'year', 'buildings', 'cycleStatus', 'summativeYear',
+                      'isActive', 'updatedAt']);
+    }
+
     function unchanged(field) {
       // Use .get(field, null) so this works even when the field is absent
       // on either side of the update (e.g., finalizedAt on a Draft).
@@ -94,8 +142,10 @@ service cloud.firestore {
     }
 
     // --- /staff/{email} ------------------------------------------------------
-    // Own doc: read only. Admins: full read/write. Special-access (PE): read
-    // all (needed for the filter UI to list potential observees).
+    // Own doc: read only. Console admins: full read/write. Building
+    // Administrators: create/update in their building (see
+    // buildingAdminCanCreateStaff). Special-access (PE): read all (needed for
+    // the filter UI to list potential observees).
     match /staff/{email} {
       // Deliberately NOT readable by every domain user: a staff doc carries
       // sensitive HR-adjacent fields (year/summativeYear evaluation status,
@@ -105,11 +155,14 @@ service cloud.firestore {
       // the denormalized `observerName` on the observation doc instead.
       allow get: if isCurrentUserEmail(email) || hasSpecialAccess();
       allow list: if hasSpecialAccess();
-      allow create, update, delete: if isAdmin();
+      allow create: if isConsoleAdmin() || buildingAdminCanCreateStaff(email);
+      allow update: if isConsoleAdmin() || buildingAdminCanUpdateStaff();
+      allow delete: if isConsoleAdmin();
 
-      // Per-staff module completion. Only the owner (or admin) reads/writes.
+      // Per-staff module completion. The owner reads/writes; admins read.
       match /moduleProgress/{itemId} {
-        allow read, write: if isCurrentUserEmail(email) || isAdmin();
+        allow read: if isCurrentUserEmail(email) || isAdmin();
+        allow write: if isCurrentUserEmail(email) || isConsoleAdmin();
       }
 
       // Evaluator check-offs for dashboard steps not tied to an observation.
@@ -127,12 +180,12 @@ service cloud.firestore {
     // render the rubric for any user). Write: admin only.
     match /roles/{roleId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     match /buildings/{buildingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /modules/{moduleId} -------------------------------------------------
@@ -140,7 +193,7 @@ service cloud.firestore {
     // domain (clients render module chips + nav). Write: admin only.
     match /modules/{moduleId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- module items (collection-group rule) --------------------------------
@@ -162,19 +215,19 @@ service cloud.firestore {
         || (isFromOronoDomain()
             && (resource.data.moduleId in staffDocData().get('modules', [])
                 || matchesModuleAutoEnable(resource.data.moduleId)));
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     match /rubrics/{rubricId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /roleYearMappings/{mappingId} ---------------------------------------
     // Doc id convention: `${roleId}_${year}` (e.g. "teacher_1").
     match /roleYearMappings/{mappingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /workProductQuestions ----------------------------------------------
@@ -182,13 +235,15 @@ service cloud.firestore {
     // Writes are admin-only.
     match /workProductQuestions/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /emailTemplates -----------------------------------------------------
-    // Admin-only — they're not user-facing.
+    // Not user-facing. Admins read (the staff page's manual-email menu);
+    // console admins edit.
     match /emailTemplates/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /observationWindows/{windowId} -------------------------------------
@@ -257,15 +312,15 @@ service cloud.firestore {
     // Writes are admin-only (Admin Console → Building schedule editor).
     match /buildingSchedules/{buildingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
 
       // Archived year snapshots + the staged next-year draft ("Prepare next
       // year" flow on the Building schedule editor). Slot generation and the
       // booking UI only ever read the live parent doc, so these are
       // admin-only in both directions.
       match /versions/{versionId} {
-        allow read: if isAdmin();
-        allow write: if isAdmin();
+        allow read: if isConsoleAdmin();
+        allow write: if isConsoleAdmin();
       }
     }
 
@@ -274,7 +329,7 @@ service cloud.firestore {
     // signed-in (the booking form renders them); write admin-only.
     match /signupFields/{fieldId} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /appSettings --------------------------------------------------------
@@ -282,7 +337,7 @@ service cloud.firestore {
     // signed in (for app name, logo, banner). Writes are admin-only.
     match /appSettings/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // --- /observations/{observationId} --------------------------------------
@@ -413,18 +468,18 @@ service cloud.firestore {
     }
 
     // --- /auditLog -----------------------------------------------------------
-    // Read: admin only. No client ever writes — Cloud Functions use admin SDK.
+    // Read: console admin only. No client ever writes — Cloud Functions use admin SDK.
     match /auditLog/{id} {
-      allow read: if isAdmin();
+      allow read: if isConsoleAdmin();
       allow write: if false;
     }
 
     // --- /transcriptionJobs --------------------------------------------------
-    // Read: the requester and admins. Writes are server-only.
+    // Read: the requester and console admins. Writes are server-only.
     match /transcriptionJobs/{id} {
-      allow get: if isAdmin()
+      allow get: if isConsoleAdmin()
         || isCurrentUserEmail(resource.data.requestedBy);
-      allow list: if isAdmin()
+      allow list: if isConsoleAdmin()
         || isCurrentUserEmail(resource.data.requestedBy);
       allow write: if false;
     }
@@ -443,7 +498,7 @@ service cloud.firestore {
     // Dashboard surface).
     match /dashboardQuickMaterials/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if isAdmin();
+      allow write: if isConsoleAdmin();
     }
 
     // The dashboard feature config doc lives at /appSettings/dashboard and

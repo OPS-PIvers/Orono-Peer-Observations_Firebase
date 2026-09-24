@@ -54,7 +54,7 @@ export const resendStaffInvite = onCall(
     const isAdmin = await callerMeetsAccessLevel(db, {
       email: callerEmail,
       tokenRole: callerRole,
-      level: 'admin',
+      level: 'console',
     });
     if (!isAdmin) {
       throw new HttpsError('permission-denied', 'Only admins can resend invite emails');
