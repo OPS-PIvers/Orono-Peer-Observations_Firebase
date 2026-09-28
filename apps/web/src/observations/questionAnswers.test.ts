@@ -83,6 +83,7 @@ describe('answerEditability', () => {
         isObservedStaff: true,
         observationDate: obsDate,
         now: sameDay,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('editable');
   });
@@ -95,6 +96,7 @@ describe('answerEditability', () => {
         isObservedStaff: true,
         observationDate: obsDate,
         now: dayAfter,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('finalized');
   });
@@ -107,6 +109,7 @@ describe('answerEditability', () => {
         isObservedStaff: true,
         observationDate: obsDate,
         now: dayAfter,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('editable');
   });
@@ -120,6 +123,7 @@ describe('answerEditability', () => {
           isObservedStaff,
           observationDate: obsDate,
           now: sameDay,
+          reflectionUnlock: 'after-observation',
         }),
       ).toBe('locked-until-after');
     }
@@ -133,6 +137,7 @@ describe('answerEditability', () => {
         isObservedStaff: true,
         observationDate: null,
         now: dayAfter,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('locked-until-after');
   });
@@ -145,6 +150,7 @@ describe('answerEditability', () => {
         isObservedStaff: false,
         observationDate: obsDate,
         now: sameDay,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('not-answerer');
     expect(
@@ -154,6 +160,7 @@ describe('answerEditability', () => {
         isObservedStaff: false,
         observationDate: obsDate,
         now: dayAfter,
+        reflectionUnlock: 'after-observation',
       }),
     ).toBe('not-answerer');
   });

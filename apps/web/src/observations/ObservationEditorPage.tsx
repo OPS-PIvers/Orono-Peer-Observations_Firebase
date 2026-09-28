@@ -70,6 +70,7 @@ import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
 import { answerEditability, splitQuestionsByPhase } from './questionAnswers';
+import { useReflectionUnlock } from './useReflectionUnlock';
 import { AudioPopoverButton } from './AudioPopoverButton';
 import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
@@ -154,6 +155,7 @@ export function ObservationEditorPage() {
   const { user } = useAuth();
   const isAdminUser = useIsAdmin();
   const sidebarWidth = useSidebarWidth();
+  const reflectionUnlock = useReflectionUnlock();
 
   const {
     data: observation,
@@ -532,6 +534,7 @@ export function ObservationEditorPage() {
         isObservedStaff,
         observationDate,
         now,
+        reflectionUnlock,
       });
     return {
       pre: { questions: pre, editability: editabilityFor('pre') },
@@ -547,7 +550,16 @@ export function ObservationEditorPage() {
       onRetrySave: answers.retry,
       isOnline,
     };
-  }, [observation, questionBank, isObservedStaff, answers, isOnline, canEdit, captureEvidence]);
+  }, [
+    observation,
+    questionBank,
+    isObservedStaff,
+    reflectionUnlock,
+    answers,
+    isOnline,
+    canEdit,
+    captureEvidence,
+  ]);
 
   // Draft sharing switchboard (see SharingPopover). Only the observed staff
   // member viewing a Draft is ever withheld anything; the observer and

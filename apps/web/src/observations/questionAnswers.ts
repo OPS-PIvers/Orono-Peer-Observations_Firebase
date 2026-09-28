@@ -2,6 +2,7 @@ import {
   OBSERVATION_STATUS,
   type Observation,
   type QuestionPhase,
+  type ReflectionUnlockMode,
   type WorkProductAnswer,
   type WorkProductQuestion,
   postQuestionsUnlocked,
@@ -59,8 +60,8 @@ export function answerProgress(
  * - `editable`: the viewer is the observed staff member and the phase is open.
  * - `not-answerer`: anyone else (the evaluator, an admin) — answers render
  *   read-only for them; the questions are the teacher's to answer.
- * - `locked-until-after`: Reflection before the calendar day after the
- *   observation date (or with no date at all) — see `postQuestionsUnlocked`.
+ * - `locked-until-after`: Reflection while the district's unlock mode keeps
+ *   it closed (the day after the observation) — see `postQuestionsUnlocked`.
  * - `finalized`: Planning after finalize. Planning answers are printed in the
  *   PDF, so revising them would make the app and the permanent record
  *   disagree. Reflection stays editable after finalize on purpose — the
@@ -74,6 +75,7 @@ export interface AnswerEditabilityInput {
   isObservedStaff: boolean;
   observationDate: Date | null;
   now: Date;
+  reflectionUnlock: ReflectionUnlockMode;
 }
 
 export function answerEditability({
@@ -82,8 +84,9 @@ export function answerEditability({
   isObservedStaff,
   observationDate,
   now,
+  reflectionUnlock,
 }: AnswerEditabilityInput): AnswerEditability {
-  if (phase === 'post' && !postQuestionsUnlocked(observationDate, now)) {
+  if (phase === 'post' && !postQuestionsUnlocked(observationDate, now, reflectionUnlock)) {
     return 'locked-until-after';
   }
   if (!isObservedStaff) return 'not-answerer';

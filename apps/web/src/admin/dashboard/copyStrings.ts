@@ -198,7 +198,7 @@ export const SHOW_WHEN_LABELS: Record<string, string> = {
   postObsDatePassed: 'When the post-observation date passes',
   finalized: 'When the observation is finalized',
   acknowledged: 'When the staff member acknowledges',
-  postQuestionsUnlocked: 'When the Reflection questions open (day after the observation)',
+  postQuestionsUnlocked: 'When the Reflection questions open',
 };
 
 export const DONE_WHEN_LABELS: Record<string, string> = {
@@ -214,7 +214,7 @@ export const DONE_WHEN_LABELS: Record<string, string> = {
   postObsDatePassed: 'When the post-observation date passes',
   finalized: 'When the observation is finalized',
   acknowledged: 'When the staff member acknowledges',
-  postQuestionsUnlocked: 'When the Reflection questions open (day after the observation)',
+  postQuestionsUnlocked: 'When the Reflection questions open',
 };
 
 export const DATE_SOURCE_LABELS: Record<string, string> = {

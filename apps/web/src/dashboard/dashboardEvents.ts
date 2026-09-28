@@ -4,6 +4,7 @@ import {
   postQuestionsUnlocked,
   questionPhase,
   questionType,
+  resolveReflectionUnlock,
   workProductAnswerHasText,
   type AppSettings,
   type BooleanEvent,
@@ -184,9 +185,11 @@ export const EVENT_EVALUATORS: Record<BooleanEvent, Evaluator> = {
   // Same gate the observation page uses for the Reflection panel: the raw
   // observationDate, not the "genuinely scheduled" one — the two must agree
   // or the card would send the teacher to a locked panel.
-  postQuestionsUnlocked: (_ctx, obs, now) => {
+  postQuestionsUnlocked: (ctx, obs, now) => {
     const d = toDate(obs?.observationDate);
-    return { satisfied: postQuestionsUnlocked(d, now), date: d };
+    const mode = resolveReflectionUnlock(ctx.appSettings?.reflectionUnlock);
+    // No observation, nothing to reflect on — even when Reflection is always open.
+    return { satisfied: obs != null && postQuestionsUnlocked(d, now, mode), date: d };
   },
 };
 
