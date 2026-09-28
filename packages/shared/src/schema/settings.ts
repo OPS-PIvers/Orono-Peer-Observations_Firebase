@@ -3,6 +3,7 @@ import { email, isoDate } from './common.js';
 import { staffYear } from './staff.js';
 import { componentId } from './rubric.js';
 import { pillColor } from './pillColor.js';
+import { DEFAULT_REFLECTION_UNLOCK, REFLECTION_UNLOCK_MODES } from './workProductQuestion.js';
 
 /**
  * /settings/roleYearMappings/{roleId}_{year} — which components a given
@@ -314,6 +315,9 @@ export const appSettings = z.object({
   /** Pill colors for the Year column in the Staff table (display years 1-3).
    *  Unset entries fall back to built-in defaults. Set on the Role/Year page. */
   yearColors: z.object({ 1: pillColor, 2: pillColor, 3: pillColor }).partial().default({}),
+  /** When staff can answer their Reflection questions. Set on the Observation
+   *  Questions page; read through `resolveReflectionUnlock`. */
+  reflectionUnlock: z.enum(REFLECTION_UNLOCK_MODES).default(DEFAULT_REFLECTION_UNLOCK),
   updatedAt: isoDate,
   updatedBy: email.optional(),
 });

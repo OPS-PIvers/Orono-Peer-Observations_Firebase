@@ -39,6 +39,7 @@ import {
   type WorkProductQuestion,
 } from '@ops/shared';
 import { answerProgress, splitQuestionsByPhase } from '@/observations/questionAnswers';
+import { useReflectionUnlock } from '@/observations/useReflectionUnlock';
 import { toJsDate } from '@/utils/staffFormatting';
 import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
@@ -310,6 +311,7 @@ function InProgressSection({
   questionBank: (WorkProductQuestion & { id: string })[];
 }) {
   const now = new Date();
+  const reflectionUnlock = useReflectionUnlock();
   return (
     <section className="mb-6" aria-label="Observations in progress">
       <h2 className="font-heading text-ops-blue-dark mb-2 text-sm font-semibold tracking-wide uppercase">
@@ -327,7 +329,7 @@ function InProgressSection({
           const planning = answerProgress(pre, answers);
           const reflection = answerProgress(post, answers);
           const observationDate = toJsDate(o.observationDate);
-          const reflectionOpen = postQuestionsUnlocked(observationDate, now);
+          const reflectionOpen = postQuestionsUnlocked(observationDate, now, reflectionUnlock);
           const heading = o.observationName || `${o.type} observation`;
           return (
             <li

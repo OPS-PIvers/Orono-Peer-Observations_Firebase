@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Observation } from '@ops/shared';
+import type { AppSettings, Observation } from '@ops/shared';
 import {
   EVENT_EVALUATORS,
   resolveObservation,
@@ -23,6 +23,8 @@ function obs(partial: Partial<Observation>): Observation {
     ...partial,
   } as unknown as Observation;
 }
+
+const DATE_GATED = { reflectionUnlock: 'after-observation' } as unknown as AppSettings;
 
 function ctx(partial: Partial<DeriveContext>): DeriveContext {
   return {
@@ -119,14 +121,21 @@ describe('EVENT_EVALUATORS', () => {
     expect(r.date).toEqual(PAST);
   });
 
-  it('postQuestionsUnlocked opens the calendar day after the observation date', () => {
+  it('postQuestionsUnlocked opens the calendar day after the observation date when date-gated', () => {
     // NOW is 2026-03-01T00:00Z; day-granularity comparison in local time.
+    const gated = ctx({ appSettings: DATE_GATED });
     const sameDay = obs({ observationDate: NOW });
     const yesterday = obs({ observationDate: new Date(NOW.getTime() - 24 * 60 * 60 * 1000) });
-    expect(EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), sameDay, NOW).satisfied).toBe(false);
-    const r = EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), yesterday, NOW);
+    expect(EVENT_EVALUATORS.postQuestionsUnlocked(gated, sameDay, NOW).satisfied).toBe(false);
+    const r = EVENT_EVALUATORS.postQuestionsUnlocked(gated, yesterday, NOW);
     expect(r.satisfied).toBe(true);
     expect(r.date).toEqual(yesterday.observationDate);
+    expect(EVENT_EVALUATORS.postQuestionsUnlocked(gated, null, NOW).satisfied).toBe(false);
+  });
+
+  it('postQuestionsUnlocked is always satisfied under the default setting', () => {
+    const sameDay = obs({ observationDate: NOW });
+    expect(EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), sameDay, NOW).satisfied).toBe(true);
     expect(EVENT_EVALUATORS.postQuestionsUnlocked(ctx({}), null, NOW).satisfied).toBe(false);
   });
 

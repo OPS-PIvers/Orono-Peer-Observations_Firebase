@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STEPS, dashboardStep, type DashboardStep, type Observation } from '@ops/shared';
+import {
+  DEFAULT_STEPS,
+  dashboardStep,
+  type AppSettings,
+  type DashboardStep,
+  type Observation,
+} from '@ops/shared';
 import {
   checkAttributionLabel,
   checkpointToIcsEvent,
@@ -23,6 +29,8 @@ function obs(partial: Partial<Observation>): Observation {
     ...partial,
   } as unknown as Observation;
 }
+
+const DATE_GATED = { reflectionUnlock: 'after-observation' } as unknown as AppSettings;
 
 function ctx(partial: Partial<DeriveContext>): DeriveContext {
   return {
@@ -253,19 +261,23 @@ describe('deriveCheckpoints (seed behavior)', () => {
     expect(planning?.ctaUrl).toBe('/observations/wp#planning');
   });
 
-  it('shows Reflection only once the post questions unlock, deep-linking to its panel', () => {
+  it('shows Reflection only once date-gated post questions unlock, deep-linking to its panel', () => {
     const yesterday = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
     const questions = [{ questionId: 'p1', type: 'standard' as const, phase: 'post' as const }];
     const before = deriveCheckpoints(
       DEFAULT_STEPS,
-      ctx({ standardDraft: obs({ observationDate: FUTURE }), questions }),
+      ctx({ standardDraft: obs({ observationDate: FUTURE }), questions, appSettings: DATE_GATED }),
       NOW,
     );
     expect(before.find((c) => c.id === 'postObs')).toBeUndefined();
 
     const after = deriveCheckpoints(
       DEFAULT_STEPS,
-      ctx({ standardDraft: obs({ observationDate: yesterday }), questions }),
+      ctx({
+        standardDraft: obs({ observationDate: yesterday }),
+        questions,
+        appSettings: DATE_GATED,
+      }),
       NOW,
     );
     const reflection = after.find((c) => c.id === 'postObs');
@@ -318,14 +330,26 @@ describe('deriveCheckpoints (generic slots)', () => {
   });
 
   it('hides date-gated cards until their date is actually set', () => {
-    // A bare draft (no dates) must not emit the observation card or the
-    // Reflection card — there is nothing the staff member can act on yet.
-    // Planning does show: its questions are answerable from day one.
-    const cards = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW);
+    // A bare draft (no dates) must not emit the observation card, nor the
+    // Reflection card when Reflection is date-gated — there is nothing the
+    // staff member can act on yet. Planning does show: its questions are
+    // answerable from day one.
+    const cards = deriveCheckpoints(
+      DEFAULT_STEPS,
+      ctx({ standardDraft: obs({}), appSettings: DATE_GATED }),
+      NOW,
+    );
     const ids = cards.map((c) => c.id);
     expect(ids).toContain('preObs');
     expect(ids).not.toContain('observation');
     expect(ids).not.toContain('postObs');
+  });
+
+  it('shows Reflection on a bare draft when Reflection is always open', () => {
+    const ids = deriveCheckpoints(DEFAULT_STEPS, ctx({ standardDraft: obs({}) }), NOW).map(
+      (c) => c.id,
+    );
+    expect(ids).toContain('postObs');
   });
 
   it('falls back to "Awaiting date" when shown with no concrete date', () => {

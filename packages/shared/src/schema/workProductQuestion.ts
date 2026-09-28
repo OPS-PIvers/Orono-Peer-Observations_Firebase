@@ -46,7 +46,7 @@ export const workProductQuestion = z.object({
   /**
    * When the teacher answers this question, relative to the observation
    * itself. `pre` questions are answerable from the moment the observation is
-   * created; `post` questions unlock once the observation date has passed (see
+   * created; `post` questions unlock per the district's Reflection setting (see
    * `postQuestionsUnlocked`). Defaults to 'pre' so every question written
    * before the split keeps its existing always-available behaviour.
    */
@@ -67,19 +67,47 @@ export const QUESTION_PHASES = ['pre', 'post'] as const;
 export type QuestionPhase = (typeof QUESTION_PHASES)[number];
 
 /**
+ * When a staff member's Reflection (post) questions open, district-wide.
+ * Set in the admin Observation Questions page; stored on `/appSettings/global`.
+ *   - 'always'            — open from the moment the observation exists, so a
+ *                           teacher can draft reflections at their own pace.
+ *   - 'after-observation' — open the calendar day after the observation date.
+ */
+export const REFLECTION_UNLOCK_MODES = ['always', 'after-observation'] as const;
+export type ReflectionUnlockMode = (typeof REFLECTION_UNLOCK_MODES)[number];
+
+/** Peer evaluators asked for Reflection to be available up front (Sept 2026). */
+export const DEFAULT_REFLECTION_UNLOCK: ReflectionUnlockMode = 'always';
+
+/**
+ * The mode to apply, given whatever `/appSettings/global` holds. A settings
+ * doc that has not loaded yet, predates the field, or holds an unknown value
+ * falls back to {@link DEFAULT_REFLECTION_UNLOCK}.
+ */
+export function resolveReflectionUnlock(stored: unknown): ReflectionUnlockMode {
+  return (REFLECTION_UNLOCK_MODES as readonly unknown[]).includes(stored)
+    ? (stored as ReflectionUnlockMode)
+    : DEFAULT_REFLECTION_UNLOCK;
+}
+
+/**
  * Are a staff member's post-observation questions open yet?
  *
- * The gate is the observation date, not the status: an observation stays
+ * In 'always' mode they are open unconditionally. In 'after-observation' mode
+ * the gate is the observation date, not the status: an observation stays
  * `Draft` until the evaluator finalizes it, which can be days later, and the
  * teacher's post-reflection is meant to be written while the lesson is fresh.
  * Comparing calendar days (not timestamps) means the questions open the moment
  * the day after the observation begins, rather than 24 hours after whatever
- * time was stored.
- *
- * An observation with no date recorded keeps its post questions closed — there
- * is nothing to be "after" yet.
+ * time was stored. An observation with no date recorded keeps its post
+ * questions closed in that mode — there is nothing to be "after" yet.
  */
-export function postQuestionsUnlocked(observationDate: Date | null, now: Date): boolean {
+export function postQuestionsUnlocked(
+  observationDate: Date | null,
+  now: Date,
+  mode: ReflectionUnlockMode,
+): boolean {
+  if (mode === 'always') return true;
   if (!observationDate) return false;
   const day = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   return day(now) > day(observationDate);
