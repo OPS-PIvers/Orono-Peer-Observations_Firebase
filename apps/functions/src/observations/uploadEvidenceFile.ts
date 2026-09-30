@@ -10,6 +10,7 @@ import {
   deleteDriveFolder,
   ensureObservationFolder,
   getDriveClient,
+  shareObservationFolderWithObserver,
   uploadFileToFolder,
 } from '../lib/drive.js';
 
@@ -150,6 +151,10 @@ export const uploadEvidenceFile = onCall(
         folderId = winningFolderId;
       }
     }
+
+    // Evidence links in the app point at this folder, so the observer needs
+    // Reader on it (best-effort; never fails the upload).
+    await shareObservationFolderWithObserver({ folderId, observerEmail: obs.observerEmail });
 
     // Upload file to Drive
     const buffer = Buffer.from(base64Data, 'base64');
