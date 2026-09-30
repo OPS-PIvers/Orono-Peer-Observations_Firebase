@@ -1,8 +1,8 @@
 name: Claude PR review
 
 # Reviews every non-draft PR with Claude Sonnet 5.5 and posts findings as
-# PR comments. Auth comes from CLAUDE_CODE_OAUTH_TOKEN (Claude subscription,
-# created with `claude setup-token`) or ANTHROPIC_API_KEY — set either one.
+# PR comments. Auth: CLAUDE_CODE_OAUTH_TOKEN (Max subscription, created with
+# `claude setup-token`), same setup as SpartBoard's claude-review.yml.
 # Review-only: it cannot push, merge, or deploy.
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
   id-token: write
 
 concurrency:
@@ -32,12 +33,11 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Claude review
+        id: claude_review
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Temporary: surface Claude's output in the job log to debug a failing run.
-          show_full_output: true
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -64,3 +64,18 @@ jobs:
             --model claude-sonnet-5-5
             --max-turns 30
             --allowedTools "Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+
+      # The action hides Claude's output, so report the outcome (and any auth
+      # or API error) here without exposing the whole conversation.
+      - name: Report review result
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude_review.outputs.execution_file }}
+        run: |
+          FILE="${EXECUTION_FILE:-${RUNNER_TEMP}/claude-execution-output.json}"
+          if [ ! -f "$FILE" ]; then
+            echo "::warning title=Claude review did not run::No execution log. This workflow file differs from main's copy, or the job was skipped."
+            exit 0
+          fi
+          jq -s 'flatten(1) | map(select(.type == "result")) | last
+                 | {is_error, num_turns, api_error_status, result: ((.result // "") | tostring | .[0:200])}' "$FILE"
