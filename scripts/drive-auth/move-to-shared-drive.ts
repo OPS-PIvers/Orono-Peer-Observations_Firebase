@@ -2,9 +2,13 @@
  * Move observation Drive folders from the My Drive parent folder into the
  * district Shared Drive (docs/DRIVE_ACCESS_PLAN.md, phase 5).
  *
- * Moving keeps folder and file IDs, so `driveFolderId`, `pdfDriveFileId`,
- * evidence/audio IDs and every emailed link keep working. Per-folder shares
- * (observer, observed staff) move with the folder.
+ * Drive refuses to move a *folder* from My Drive into a Shared Drive, so each
+ * observation folder is recreated in the Shared Drive instead: a new folder
+ * with the same name and direct shares, the files moved into it (file moves
+ * are allowed and keep their IDs, so `pdfDriveFileId`, evidence/audio IDs and
+ * emailed PDF links keep working), then the observation's `driveFolderId` is
+ * repointed and the emptied old folder trashed. Old *folder* links stop
+ * resolving; the app always builds folder links from `driveFolderId`.
  *
  * Acts as the Drive uploader (DRIVE_OAUTH_REFRESH_TOKEN, latest version),
  * which must be a Manager of the Shared Drive. Items it doesn't own (e.g.
@@ -25,7 +29,13 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { config as loadDotenv } from 'dotenv';
+import type { Firestore } from 'firebase-admin/firestore';
 import { google, type drive_v3 } from 'googleapis';
+import { COLLECTIONS } from '@ops/shared';
+import { initFirestore } from '../import/firebase.js';
+
+loadDotenv();
 
 const PROJECT = 'peer-evaluator-rubric';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -145,12 +155,116 @@ async function moveItem(
   }
 }
 
+/**
+ * Recreate one observation folder in the Shared Drive. Idempotent: the new
+ * folder is tagged with the source folder's ID, so a re-run reuses it and
+ * just moves whatever is still left in the old folder.
+ */
+async function recreateFolder(
+  drive: drive_v3.Drive,
+  db: Firestore,
+  item: drive_v3.Schema$File,
+  targetParent: string,
+  uploader: string,
+  apply: boolean,
+): Promise<boolean> {
+  const tag = apply ? '' : '[dry-run] ';
+  const sourceId = item.id ?? '';
+  const obsSnap = await db
+    .collection(COLLECTIONS.observations)
+    .where('driveFolderId', '==', sourceId)
+    .get();
+  const files = await listChildren(drive, sourceId);
+  const perms = await drive.permissions.list({
+    fileId: sourceId,
+    fields: 'permissions(type,role,emailAddress,domain,permissionDetails(inherited))',
+  });
+  // Direct shares only: the owner and anything inherited from the old parent
+  // don't carry over. The service account can't be shared inside an
+  // Orono-only Shared Drive, and the app doesn't need it on folders.
+  const shares = (perms.data.permissions ?? []).filter(
+    (p) =>
+      p.role !== 'owner' &&
+      p.emailAddress?.toLowerCase() !== uploader &&
+      p.emailAddress?.toLowerCase() !== SERVICE_ACCOUNT &&
+      p.permissionDetails?.some((d) => !d.inherited),
+  );
+  console.log(
+    `${tag}recreate ${item.name ?? sourceId}: ${String(files.length)} files, shares [${shares
+      .map((p) => `${p.emailAddress ?? p.domain ?? p.type ?? ''}:${p.role ?? ''}`)
+      .join(', ')}], observations [${obsSnap.docs.map((d) => d.id).join(', ') || 'none'}]`,
+  );
+  if (!apply) return true;
+
+  try {
+    const existing = await drive.files.list({
+      q: `'${targetParent}' in parents and trashed = false and appProperties has { key='sourceFolderId' and value='${sourceId}' }`,
+      fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    let newId = existing.data.files?.[0]?.id ?? null;
+    if (!newId) {
+      const created = await drive.files.create({
+        requestBody: {
+          name: item.name ?? sourceId,
+          mimeType: FOLDER_MIME,
+          parents: [targetParent],
+          appProperties: { sourceFolderId: sourceId },
+        },
+        fields: 'id',
+        supportsAllDrives: true,
+      });
+      newId = created.data.id ?? null;
+    }
+    if (!newId) throw new Error('folder creation returned no id');
+
+    for (const p of shares) {
+      await drive.permissions.create({
+        fileId: newId,
+        sendNotificationEmail: false,
+        supportsAllDrives: true,
+        requestBody:
+          p.type === 'domain'
+            ? { type: 'domain', role: p.role ?? 'reader', domain: p.domain ?? '' }
+            : {
+                type: p.type ?? 'user',
+                role: p.role ?? 'reader',
+                emailAddress: p.emailAddress ?? '',
+              },
+      });
+    }
+    for (const f of files) {
+      if (!f.id) continue;
+      await drive.files.update({
+        fileId: f.id,
+        addParents: newId,
+        removeParents: sourceId,
+        supportsAllDrives: true,
+        fields: 'id',
+      });
+    }
+    for (const doc of obsSnap.docs) {
+      await doc.ref.update({ driveFolderId: newId });
+    }
+    if ((await listChildren(drive, sourceId)).length === 0) {
+      await drive.files.update({ fileId: sourceId, requestBody: { trashed: true } });
+    }
+    console.log(`  → ${newId}`);
+    return true;
+  } catch (err) {
+    console.error(`  failed: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   const driveId = arg('drive');
   const apply = process.argv.includes('--apply');
   if (!driveId) throw new Error('Usage: --drive=<sharedDriveId> [--apply]');
 
   const { drive, email } = await uploaderDrive();
+  const db = initFirestore('prod');
   // The old My Drive parent. After the cutover DRIVE_PARENT_FOLDER_ID points
   // at the Shared Drive, so pass the old folder explicitly with --from.
   const oldParent = arg('from') ?? readEnvValue('DRIVE_PARENT_FOLDER_ID');
@@ -211,7 +325,12 @@ async function main(): Promise<void> {
       }
       continue;
     }
-    if (await moveItem(drive, item, oldParent, observationsId, apply)) moved++;
+    const ok =
+      item.mimeType === FOLDER_MIME
+        ? observationsId !== null &&
+          (await recreateFolder(drive, db, item, observationsId, email, apply))
+        : await moveItem(drive, item, oldParent, observationsId, apply);
+    if (ok || !apply) moved++;
     else failed++;
   }
 
