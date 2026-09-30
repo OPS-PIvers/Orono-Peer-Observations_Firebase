@@ -329,6 +329,16 @@ describe('observations: update', () => {
     await assertFails(updateDoc(doc(db, 'observations/obs1'), { evilField: 'nope' }));
   });
 
+  it('observer CANNOT write recording metadata or ids directly (server-only)', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/obs1'), {
+        'audioRecordings.f1': { recordedAt: new Date(), durationSec: 5, label: 'x' },
+      }),
+    );
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { audioDriveFileIds: [] }));
+  });
+
   it('observer CANNOT rebind scheduling linkage on a Draft', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertFails(updateDoc(doc(db, 'observations/obs1'), { windowId: 'w-hijack' }));

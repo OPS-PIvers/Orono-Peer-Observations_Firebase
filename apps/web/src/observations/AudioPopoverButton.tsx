@@ -8,6 +8,9 @@ export interface AudioPopoverButtonProps {
   observationId: string;
   audioFileIds: Observation['audioDriveFileIds'];
   transcripts: Observation['transcripts'];
+  /** Per-recording metadata; absent on docs written before it existed. */
+  recordings: Observation['audioRecordings'] | undefined;
+  observedName: string;
   readOnly: boolean;
   /** Appends a completed transcript into the observation's script doc.
    *  Omit to hide the per-recording "Insert into script" action. */
@@ -29,6 +32,8 @@ export function AudioPopoverButton({
   observationId,
   audioFileIds,
   transcripts,
+  recordings,
+  observedName,
   readOnly,
   onInsertTranscript,
 }: AudioPopoverButtonProps) {
@@ -98,6 +103,8 @@ export function AudioPopoverButton({
           observationId={observationId}
           audioFileIds={audioFileIds}
           transcripts={transcripts}
+          recordings={recordings}
+          observedName={observedName}
           readOnly={readOnly}
           onPhaseChange={setPhase}
           onInsertTranscript={onInsertTranscript}

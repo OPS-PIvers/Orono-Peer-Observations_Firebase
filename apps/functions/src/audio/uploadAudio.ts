@@ -3,7 +3,7 @@ import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -13,6 +13,7 @@ import {
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
+import { parseDurationSec, parseRecordedAt } from './recordingHeaders.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -35,13 +36,15 @@ const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
  *   Authorization: Bearer <Firebase ID token>
  *   X-Observation-Id: <observation doc ID>
  *   Content-Type: audio/webm | audio/mp4 | audio/ogg | application/octet-stream
+ *   X-Audio-Duration-Sec: <seconds recorded> (optional, display metadata)
+ *   X-Audio-Recorded-At: <ISO time recording started> (optional)
  *
  * On success: 200 { audioFileId, fileName }
  *
  * The function appends the new fileId to `observation.audioDriveFileIds`
- * so the editor's onSnapshot picks it up and renders the new recording in
- * the audio list. Transcription is requested separately (see
- * requestTranscription).
+ * and writes its `audioRecordings` entry, so the editor's onSnapshot picks
+ * it up and renders the new recording in the audio list. Transcription is
+ * requested separately (see requestTranscription).
  */
 export const uploadAudio = onRequest(
   {
@@ -151,12 +154,22 @@ export const uploadAudio = onRequest(
       const ext = mimeTypeToExt(mimeType);
       const filename = `audio-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${ext}`;
       const uploaded = await uploadFileToFolder({ folderId, filename, mimeType, body });
+      const recordedAt = parseRecordedAt(req.header('x-audio-recorded-at'));
 
-      await obsRef.update({
-        audioDriveFileIds: FieldValue.arrayUnion(uploaded.fileId),
-        driveFolderId: folderId,
-        lastModifiedAt: FieldValue.serverTimestamp(),
-      });
+      await obsRef.update(
+        'audioDriveFileIds',
+        FieldValue.arrayUnion(uploaded.fileId),
+        new FieldPath('audioRecordings', uploaded.fileId),
+        {
+          recordedAt: recordedAt ?? FieldValue.serverTimestamp(),
+          durationSec: parseDurationSec(req.header('x-audio-duration-sec')),
+          label: '',
+        },
+        'driveFolderId',
+        folderId,
+        'lastModifiedAt',
+        FieldValue.serverTimestamp(),
+      );
 
       res.json({
         audioFileId: uploaded.fileId,

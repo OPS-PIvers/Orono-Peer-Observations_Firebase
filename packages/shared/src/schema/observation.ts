@@ -25,6 +25,9 @@ import { OBSERVATION_STATUS, OBSERVATION_TYPES } from '../constants.js';
  * text lands in `transcripts[audioFileId]`.
  */
 
+/** Longest label an observer can give an audio recording. */
+export const RECORDING_LABEL_MAX = 80;
+
 export const observationStatus = z.enum([OBSERVATION_STATUS.draft, OBSERVATION_STATUS.finalized]);
 export const observationType = z.enum([
   OBSERVATION_TYPES.standard,
@@ -131,6 +134,20 @@ export const observationRubricSnapshot = z.object({
 });
 export type ObservationRubricSnapshot = z.infer<typeof observationRubricSnapshot>;
 
+/** Display metadata for one audio recording, stored at
+ *  `audioRecordings[driveFileId]`. Written server-side only: `uploadAudio`
+ *  on upload, `renameRecording` for the label, `backfillRecordingMetadata`
+ *  for recordings made before this map existed (recordedAt from the Drive
+ *  file's createdTime; duration unknown). */
+export const audioRecordingMeta = z.object({
+  recordedAt: isoDate,
+  /** Whole seconds, measured on the client while recording; null when unknown. */
+  durationSec: z.number().int().nonnegative().nullable().default(null),
+  /** Observer-chosen name; empty means "Recording N". */
+  label: z.string().trim().max(RECORDING_LABEL_MAX).default(''),
+});
+export type AudioRecordingMeta = z.infer<typeof audioRecordingMeta>;
+
 export const observation = z.object({
   observationId: z.string().min(1),
 
@@ -179,6 +196,10 @@ export const observation = z.object({
   // Audio + transcripts
   audioDriveFileIds: z.array(z.string()).default([]),
   transcripts: z.record(z.string(), z.string()).default({}),
+  /** Per-recording display metadata, keyed by Drive file id — see
+   *  audioRecordingMeta. Legacy recordings have no entry until the
+   *  backfillRecordingMetadata callable fills one from Drive. */
+  audioRecordings: z.record(z.string(), audioRecordingMeta).optional(),
 
   // Drive linkage (set on first attachment / on finalize)
   driveFolderId: z.string().nullable().default(null),
@@ -241,6 +262,26 @@ export const removeEvidenceFileInput = z.object({
   driveFileId: z.string().min(1),
 });
 export type RemoveEvidenceFileInput = z.infer<typeof removeEvidenceFileInput>;
+
+/** Identifies one audio recording on an observation. Input for the
+ *  removeRecording and getRecordingDriveLink callables. */
+export const recordingRefInput = z.object({
+  observationId: z.string().min(1),
+  audioFileId: z.string().min(1),
+});
+export type RecordingRefInput = z.infer<typeof recordingRefInput>;
+
+/** Input for the renameRecording callable. An empty label clears it. */
+export const renameRecordingInput = recordingRefInput.extend({
+  label: z.string().trim().max(RECORDING_LABEL_MAX),
+});
+export type RenameRecordingInput = z.infer<typeof renameRecordingInput>;
+
+/** Input for the backfillRecordingMetadata callable. */
+export const backfillRecordingMetadataInput = z.object({
+  observationId: z.string().min(1),
+});
+export type BackfillRecordingMetadataInput = z.infer<typeof backfillRecordingMetadataInput>;
 
 /** Partial used by autosave. Server validates that mutating fields are
  *  allowed in the current status (e.g., no finalize-only fields can move

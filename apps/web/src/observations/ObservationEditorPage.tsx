@@ -72,6 +72,7 @@ import { useWorkProductAnswers } from './useWorkProductAnswers';
 import { answerEditability, splitQuestionsByPhase } from './questionAnswers';
 import { useReflectionUnlock } from './useReflectionUnlock';
 import { AudioPopoverButton } from './AudioPopoverButton';
+import { recordingTitle } from './recordings';
 import { appendTranscriptToScriptDoc } from './insert-transcript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
 import { computeUnscoredComponents, type ActiveComponent } from './unscoredComponents';
@@ -714,7 +715,9 @@ export function ObservationEditorPage() {
       if (!transcript || transcript.trim().length === 0) return;
       const recordingIndex = observation.audioDriveFileIds.indexOf(audioFileId);
       const label =
-        recordingIndex >= 0 ? `Transcript — Recording ${String(recordingIndex + 1)}` : 'Transcript';
+        recordingIndex >= 0
+          ? `Transcript — ${recordingTitle(observation.audioRecordings?.[audioFileId], recordingIndex)}`
+          : 'Transcript';
       const next: EditorDraft = {
         ...draftRef.current,
         scriptDoc: appendTranscriptToScriptDoc(draftRef.current.scriptDoc, transcript, label),
@@ -1271,6 +1274,8 @@ function EditorToolbar({
               observationId={observation.id}
               audioFileIds={observation.audioDriveFileIds}
               transcripts={observation.transcripts}
+              recordings={observation.audioRecordings}
+              observedName={observation.observedName}
               readOnly={!canEdit}
               onInsertTranscript={onInsertTranscript}
             />
