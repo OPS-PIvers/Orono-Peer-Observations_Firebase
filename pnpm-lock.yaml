@@ -8,20 +8,20 @@ overrides:
   uuid: ^14.0.0
   google-auth-library: ^10.9.1
   '@tootallnate/once': ^3.0.1
-  protobufjs: ^7.5.8
+  protobufjs: ^7.6.5
   '@protobufjs/utf8': ^1.1.1
   hono: ^4.12.34
   ws@7: ^7.5.11
   ws@8: ^8.21.0
   basic-ftp: ^5.3.1
-  fast-uri: ^3.1.5
+  fast-uri: ^3.1.7
   fast-xml-builder: ^1.1.7
-  ip-address: ^10.3.1
-  brace-expansion@1: ^1.1.16
-  brace-expansion@2: ^2.1.2
-  brace-expansion@5: ^5.0.7
+  ip-address: ^10.5.1
+  brace-expansion@1: ^1.1.18
+  brace-expansion@2: ^2.1.4
+  brace-expansion@5: ^5.0.9
   tmp: ^0.2.6
-  qs: ^6.15.2
+  qs: ^6.16.0
   websocket-driver: ^0.7.5
   form-data@2: ^2.5.6
   form-data@4: ^4.0.6
@@ -33,11 +33,17 @@ overrides:
   browserslist: ^4.28.7
   esbuild: ^0.28.1
   tar: ^7.5.18
-  undici: ^6.27.0
+  undici: ^6.28.1
   morgan: ^1.12.0
   csv-parse: ^7.0.2
   ts-deepmerge: ^8.0.0
   '@hono/node-server': ^2.0.11
+  '@grpc/grpc-js@<1.14.4': ^1.14.4
+  nanoid@<3.3.18: ^3.3.18
+  stream-json: ^3.5.0
+  '@opentelemetry/core@<2.8.0': ^2.8.0
+  body-parser@1: ^1.20.6
+  body-parser@2: ^2.3.0
 
 importers:
 
@@ -86,8 +92,8 @@ importers:
         specifier: ^13.10.0
         version: 13.10.0(@firebase/app-compat@0.5.18)(@firebase/app@0.16.2)
       firebase-tools:
-        specifier: ^15.31.0
-        version: 15.31.0(@types/node@22.20.4)
+        specifier: ^15.32.0
+        version: 15.32.0(@types/node@22.20.4)
       globals:
         specifier: ^17.12.0
         version: 17.12.0
@@ -1179,10 +1185,6 @@ packages:
     resolution: {integrity: sha512-7VZM+SVdEcUUqSQeNI3zM8Qs/BhQKZndPo2h5VkYkAM8Iz0wJIa8mKV5ekQGqG8UUsnkQ0NMxIxwkIHYvj0qOw==}
     engines: {node: '>=12.10.0'}
 
-  '@grpc/grpc-js@1.9.16':
-    resolution: {integrity: sha512-wE4Ut/olIzfKqp631XrG+wbF0v1vWFN4YL9FyXC2LJiG33DsV7PLzURjrCvY/6je2ntdRkeLpPDluzSRGaVltQ==}
-    engines: {node: ^8.13.0 || >=10.10.0}
-
   '@grpc/proto-loader@0.7.15':
     resolution: {integrity: sha512-tMXdRCfYVixjuFK+Hk0Q1s38gV9zDiDJfWL3h1rv4Qc39oILCu1TRTDt7+fGUI8K4G1Fj125Hx/ru3azECWTyQ==}
     engines: {node: '>=6'}
@@ -1585,15 +1587,11 @@ packages:
     resolution: {integrity: sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==}
     engines: {node: '>=8.0.0'}
 
-  '@opentelemetry/core@1.30.1':
-    resolution: {integrity: sha512-OOCM2C/QIURhJMuKaekP3TRBxBKxG/TWWA0TL2J6nXUtDnuCtccy49LUJF8xPFXMX+0LMcxFpCo8M9cGY1W6rQ==}
-    engines: {node: '>=14'}
+  '@opentelemetry/core@2.11.0':
+    resolution: {integrity: sha512-7YP44XH0tV6+Mb54x2YGf84i7yi+31MBZlE8JwvozkxyTvXbSp10X7cI7YE49ChJ3shMJoBmCJF3+1QFBJctGA==}
+    engines: {node: ^18.19.0 || >=20.6.0}
     peerDependencies:
       '@opentelemetry/api': '>=1.0.0 <1.10.0'
-
-  '@opentelemetry/semantic-conventions@1.28.0':
-    resolution: {integrity: sha512-lp4qAiMTD4sNWW4DbKLBkfiMZ4jbAboJIGOQr5DvciMRI494OapieI9qiODpOt0XBr1LjIDy1xAGAnVs5supTA==}
-    engines: {node: '>=14'}
 
   '@opentelemetry/semantic-conventions@1.39.0':
     resolution: {integrity: sha512-R5R9tb2AXs2IRLNKLBJDynhkfmx7mX0vi8NkhZb3gUkPWHn6HXk5J8iQ/dql0U3ApfWym4kXXmBDRGO+oeOfjg==}
@@ -4137,8 +4135,8 @@ packages:
       graphql:
         optional: true
 
-  firebase-tools@15.31.0:
-    resolution: {integrity: sha512-n0bsjrKsKxMweyGtuOtrZPe34JNrVZaD7iZTa3YhOSXwFSsCPZ6tV/Inn4CGM62at7773iT5visGbVbPKtG9jQ==}
+  firebase-tools@15.32.0:
+    resolution: {integrity: sha512-yp0SOQFALo3q2K2/pBmWTrAM4C0503zK3UJ5IDQzr4o7i+5RKh3ZPX4RTkumCFt3STtI7EuR61M8tDJjNZmTYg==}
     engines: {node: '>=20.0.0 || >=22.0.0 || >=24.0.0'}
     hasBin: true
 
@@ -7819,7 +7817,7 @@ snapshots:
       '@firebase/logger': 0.5.2
       '@firebase/util': 1.15.3
       '@firebase/webchannel-wrapper': 1.0.7
-      '@grpc/grpc-js': 1.9.16
+      '@grpc/grpc-js': 1.14.5
       '@grpc/proto-loader': 0.7.15
       re2js: 2.8.6
       tslib: 2.8.1
@@ -8043,7 +8041,7 @@ snapshots:
       '@google-cloud/projectify': 5.2.0
       '@google-cloud/promisify': 5.1.0
       '@opentelemetry/api': 1.9.1
-      '@opentelemetry/core': 1.30.1(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.11.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.39.0
       arrify: 2.0.1
       extend: 3.0.2
@@ -8095,11 +8093,6 @@ snapshots:
     dependencies:
       '@grpc/proto-loader': 0.8.1
       '@js-sdsl/ordered-map': 4.4.2
-
-  '@grpc/grpc-js@1.9.16':
-    dependencies:
-      '@grpc/proto-loader': 0.7.15
-      '@types/node': 26.6.3
 
   '@grpc/proto-loader@0.7.15':
     dependencies:
@@ -8537,12 +8530,10 @@ snapshots:
 
   '@opentelemetry/api@1.9.1': {}
 
-  '@opentelemetry/core@1.30.1(@opentelemetry/api@1.9.1)':
+  '@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
-      '@opentelemetry/semantic-conventions': 1.28.0
-
-  '@opentelemetry/semantic-conventions@1.28.0': {}
+      '@opentelemetry/semantic-conventions': 1.39.0
 
   '@opentelemetry/semantic-conventions@1.39.0': {}
 
@@ -9477,6 +9468,7 @@ snapshots:
   '@types/node@26.6.3':
     dependencies:
       undici-types: 8.9.0
+    optional: true
 
   '@types/qs@6.15.1': {}
 
@@ -11296,7 +11288,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  firebase-tools@15.31.0(@types/node@22.20.4):
+  firebase-tools@15.32.0(@types/node@22.20.4):
     dependencies:
       '@apphosting/common': 0.0.8
       '@electric-sql/pglite': 0.3.16
@@ -14458,7 +14450,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@8.9.0: {}
+  undici-types@8.9.0:
+    optional: true
 
   undici@6.29.0: {}
 
