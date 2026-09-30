@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   canCreateObservations,
+  creatableObservationTypes,
   type SetStepCheckInput,
   type Staff,
 } from '@ops/shared';
@@ -51,7 +52,9 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     observerEmail ? `${COLLECTIONS.staff}/${observerEmail}` : '',
   );
   const newObservationsDisabled = useNewObservationsDisabled();
-  const canCreate = canCreateObservations(useEffectiveClaims().role);
+  const effectiveRole = useEffectiveClaims().role;
+  const canCreate = canCreateObservations(effectiveRole);
+  const creatableTypes = creatableObservationTypes(effectiveRole);
 
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -135,6 +138,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
         errors={errors}
         newObservationsDisabled={newObservationsDisabled}
         canCreateObservations={canCreate}
+        creatableTypes={creatableTypes}
         onToggle={(task) => void handleToggle(task)}
         onStart={(task) => setConfirming(task)}
       />

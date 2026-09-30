@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { canOpenAdminConsole, isAdminRole, isSpecialRole, SPECIAL_ROLES } from './roles.js';
+import { OBSERVATION_TYPES } from './constants.js';
+import {
+  canOpenAdminConsole,
+  creatableObservationTypes,
+  isAdminRole,
+  isSpecialRole,
+  SPECIAL_ROLES,
+} from './roles.js';
 
 describe('isSpecialRole', () => {
   it('matches all special-access roles', () => {
@@ -37,5 +44,19 @@ describe('canOpenAdminConsole', () => {
     expect(canOpenAdminConsole(SPECIAL_ROLES.administrator, undefined)).toBe(false);
     expect(canOpenAdminConsole(SPECIAL_ROLES.peerEvaluator, false)).toBe(false);
     expect(canOpenAdminConsole(null, null)).toBe(false);
+  });
+});
+
+describe('creatableObservationTypes', () => {
+  it('limits building Administrators to Standard', () => {
+    expect(creatableObservationTypes(SPECIAL_ROLES.administrator)).toEqual([
+      OBSERVATION_TYPES.standard,
+    ]);
+  });
+
+  it('allows every type for peer evaluators and full access', () => {
+    const all = Object.values(OBSERVATION_TYPES);
+    expect(creatableObservationTypes(SPECIAL_ROLES.peerEvaluator)).toEqual(all);
+    expect(creatableObservationTypes(SPECIAL_ROLES.fullAccess)).toEqual(all);
   });
 });

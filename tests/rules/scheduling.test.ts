@@ -198,6 +198,31 @@ describe('observationWindows rules', () => {
     );
   });
 
+  it('building Administrator can create a Standard window but not a Work Product one', async () => {
+    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
+    const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
+    const base = {
+      observerEmail: ADMIN_EMAIL,
+      bookingMode: 'direct',
+      invitedEmails: [],
+      status: 'open',
+    };
+    await assertSucceeds(
+      setDoc(doc(db, 'observationWindows/adm-std'), {
+        ...base,
+        windowId: 'adm-std',
+        defaultObservationType: 'Standard',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db, 'observationWindows/adm-wp'), {
+        ...base,
+        windowId: 'adm-wp',
+        defaultObservationType: 'Work Product',
+      }),
+    );
+  });
+
   it('PE cannot create a window for a different observer', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertFails(

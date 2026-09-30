@@ -489,12 +489,12 @@ function styles(primaryColor: string): string {
     .component-id { font-family: 'Roboto Mono', monospace; color: var(--ops-blue); margin-right: 0.4em; }
     .proficiency-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.4em;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.3em;
       margin: 0.6em 0;
     }
     .proficiency-cell {
-      padding: 0.5em 0.7em;
+      padding: 0.4em 0.5em;
       border: 1px solid var(--ops-gray-lighter);
       border-radius: 3px;
       background: white;
@@ -503,10 +503,10 @@ function styles(primaryColor: string): string {
       background: var(--ops-blue-lighter);
       border-color: var(--ops-blue);
       border-width: 2px;
-      padding: calc(0.5em - 1px) calc(0.7em - 1px);
+      padding: calc(0.4em - 1px) calc(0.5em - 1px);
     }
-    .proficiency-label { font-weight: 600; font-size: 10pt; margin: 0 0 0.2em; color: var(--ops-blue-dark); }
-    .proficiency-text { font-size: 9.5pt; color: var(--ops-gray-dark); margin: 0; }
+    .proficiency-label { font-weight: 600; font-size: 9pt; margin: 0 0 0.2em; color: var(--ops-blue-dark); }
+    .proficiency-text { font-size: 8pt; line-height: 1.35; color: var(--ops-gray-dark); margin: 0; }
     .lookfors ul { padding-left: 1.2em; margin: 0.3em 0; }
     .lookfors li { margin: 0.15em 0; font-size: 10pt; }
     .notes-body { font-size: 10pt; }

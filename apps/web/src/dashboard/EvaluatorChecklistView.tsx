@@ -16,7 +16,9 @@ import { checkAttributionLabel, type CheckpointWithStatus } from './deriveCheckp
  *                          new observation creation.
  *   - `observerOnly`     — would be `start`, but the viewer's role can't
  *                          start observations (e.g. an Admin Console user
- *                          whose own role is observed).
+ *                          whose own role is observed), or can't start this
+ *                          step's observation type (a building Administrator
+ *                          and a Work Product / Instructional Round step).
  */
 export type ChecklistAction =
   | 'auto'
@@ -28,12 +30,23 @@ export type ChecklistAction =
 
 export function checklistAction(
   task: CheckpointWithStatus,
-  opts: { newObservationsDisabled: boolean; canCreateObservations: boolean },
+  opts: {
+    newObservationsDisabled: boolean;
+    canCreateObservations: boolean;
+    /** Types the viewer may create; omitted means every type. */
+    creatableTypes?: readonly ObservationType[];
+  },
 ): ChecklistAction {
   if (!task.completionMode || task.completionMode === 'auto') return 'auto';
   if (task.checkScope !== 'observation' || task.observationId) return 'toggle';
   if (task.watchedKind === 'standardFinalized') return 'needsFinalized';
   if (!opts.canCreateObservations) return 'observerOnly';
+  if (
+    opts.creatableTypes &&
+    !opts.creatableTypes.includes(observationTypeForWatchedKind(task.watchedKind))
+  ) {
+    return 'observerOnly';
+  }
   return opts.newObservationsDisabled ? 'creationDisabled' : 'start';
 }
 
@@ -54,6 +67,7 @@ export interface EvaluatorChecklistViewProps {
   errors: Record<string, string>;
   newObservationsDisabled: boolean;
   canCreateObservations: boolean;
+  creatableTypes?: readonly ObservationType[];
   onToggle: (task: CheckpointWithStatus) => void;
   onStart: (task: CheckpointWithStatus) => void;
 }
@@ -70,6 +84,7 @@ export function EvaluatorChecklistView({
   errors,
   newObservationsDisabled,
   canCreateObservations,
+  creatableTypes,
   onToggle,
   onStart,
 }: EvaluatorChecklistViewProps) {
@@ -98,7 +113,11 @@ export function EvaluatorChecklistView({
             <ChecklistRow
               key={task.id}
               task={task}
-              action={checklistAction(task, { newObservationsDisabled, canCreateObservations })}
+              action={checklistAction(task, {
+                newObservationsDisabled,
+                canCreateObservations,
+                ...(creatableTypes ? { creatableTypes } : {}),
+              })}
               pending={pendingId === task.id}
               busy={pendingId !== null}
               error={errors[task.id]}

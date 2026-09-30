@@ -175,6 +175,49 @@ describe('observations: create', () => {
     );
   });
 
+  describe('observation type by role', () => {
+    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
+    function newObs(observerEmail: string, type: string) {
+      return {
+        observerEmail,
+        observedEmail: OBSERVED_EMAIL,
+        observedName: 'X',
+        observedRole: 'Teacher',
+        observedYear: 1,
+        status: 'Draft',
+        type,
+        observationName: '',
+        createdAt: new Date(),
+        lastModifiedAt: new Date(),
+      };
+    }
+
+    it('building Administrator can create a Standard observation', async () => {
+      const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
+      await assertSucceeds(
+        setDoc(doc(db, 'observations/adm-std'), newObs(ADMIN_EMAIL, 'Standard')),
+      );
+    });
+
+    it('building Administrator CANNOT create Work Product or Instructional Round', async () => {
+      const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
+      await assertFails(
+        setDoc(doc(db, 'observations/adm-wp'), newObs(ADMIN_EMAIL, 'Work Product')),
+      );
+      await assertFails(
+        setDoc(doc(db, 'observations/adm-ir'), newObs(ADMIN_EMAIL, 'Instructional Round')),
+      );
+    });
+
+    it('PE can still create Work Product and Instructional Round', async () => {
+      const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+      await assertSucceeds(setDoc(doc(db, 'observations/pe-wp'), newObs(PE_EMAIL, 'Work Product')));
+      await assertSucceeds(
+        setDoc(doc(db, 'observations/pe-ir'), newObs(PE_EMAIL, 'Instructional Round')),
+      );
+    });
+  });
+
   it('teacher cannot create observations', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher()).firestore();
     await assertFails(
