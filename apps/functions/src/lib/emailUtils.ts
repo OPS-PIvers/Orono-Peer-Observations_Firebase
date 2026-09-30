@@ -105,6 +105,16 @@ export async function isEmailSuppressed(
   return !prefs[category];
 }
 
+/** A file attached to an outgoing email, in the Trigger Email extension's
+ *  (nodemailer) attachment shape. Stored inline on the /mail doc, so keep it
+ *  well under Firestore's 1 MiB document limit. */
+export interface EmailAttachment {
+  filename: string;
+  content: string;
+  encoding: 'base64';
+  contentType: string;
+}
+
 /** Outcome of a sendEmail call, so callers (e.g. sendManualEmail) can tell
  *  a queued send from one fully suppressed by recipient preferences. */
 export interface SendEmailResult {
@@ -243,8 +253,10 @@ export async function sendEmail(args: {
    *  /appSettings.replyToEmail default when omitted; omitted entirely from
    *  the /mail doc when neither is set. */
   replyTo?: string;
+  attachments?: EmailAttachment[];
 }): Promise<SendEmailResult> {
-  const { db, to, subject, html, mailDocId, triggerType, auditDetails, replyTo } = args;
+  const { db, to, subject, html, mailDocId, triggerType, auditDetails, replyTo, attachments } =
+    args;
   const requested = (Array.isArray(to) ? to : [to]).filter(Boolean);
 
   const suppressed: string[] = [];
@@ -324,6 +336,7 @@ export async function sendEmail(args: {
         subject,
         html: wrappedHtml,
         ...(resolvedReplyTo ? { replyTo: resolvedReplyTo } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       },
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -347,6 +360,9 @@ export async function sendEmail(args: {
       subject,
       mailDocId,
       ...(suppressed.length > 0 ? { suppressed } : {}),
+      ...(attachments && attachments.length > 0
+        ? { attachments: attachments.map((a) => a.filename) }
+        : {}),
       // Persist the security-relevant rewrite, not just the log line, so a
       // stored body that still carries an unsafe href is discoverable after
       // the fact rather than only in Cloud Logging retention.
@@ -392,6 +408,22 @@ export function resendWindowInviteMailDocId(
 }
 
 /**
+ * Append `block.html` to a rendered template body unless the template already
+ * references `{{<block.unlessUses>}}` — so a required call to action (e.g. the
+ * finalized email's "Acknowledge receipt" button) is always present, without
+ * doubling up when an admin has placed it in the template themselves.
+ */
+export function withRequiredBlock(
+  templateBodyHtml: string,
+  renderedHtml: string,
+  block: { html: string; unlessUses: string } | undefined,
+): string {
+  if (!block) return renderedHtml;
+  if (templateBodyHtml.includes(`{{${block.unlessUses}}}`)) return renderedHtml;
+  return `${renderedHtml}\n${block.html}`;
+}
+
+/**
  * High-level helper: load the active template for a trigger type,
  * substitute variables, and send. Returns false if no active template.
  */
@@ -402,8 +434,13 @@ export async function sendTemplatedEmail(args: {
   vars: TemplateVars;
   mailDocId: string;
   auditDetails?: Record<string, unknown>;
+  attachments?: EmailAttachment[];
+  /** Appended after the template body unless the template uses
+   *  `{{<unlessUses>}}` itself — see withRequiredBlock. Already-rendered
+   *  HTML; not variable-substituted. */
+  requiredBlock?: { html: string; unlessUses: string };
 }): Promise<boolean> {
-  const { db, triggerType, to, vars, mailDocId, auditDetails } = args;
+  const { db, triggerType, to, vars, mailDocId, auditDetails, attachments, requiredBlock } = args;
 
   const template = await loadActiveTemplate(db, triggerType);
   if (!template) {
@@ -427,7 +464,11 @@ export async function sendTemplatedEmail(args: {
   };
 
   const subject = substituteVariables(template.subject, fullVars);
-  const html = substituteVariables(template.bodyHtml, fullVars);
+  const html = withRequiredBlock(
+    template.bodyHtml,
+    substituteVariables(template.bodyHtml, fullVars),
+    requiredBlock,
+  );
 
   await sendEmail({
     db,
@@ -437,6 +478,7 @@ export async function sendTemplatedEmail(args: {
     mailDocId,
     triggerType,
     ...(auditDetails !== undefined ? { auditDetails } : {}),
+    ...(attachments !== undefined ? { attachments } : {}),
   });
   return true;
 }

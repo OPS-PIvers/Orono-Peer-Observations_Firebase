@@ -5,25 +5,20 @@ import { ALLOWED_EMAIL_DOMAIN } from '@ops/shared';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
-
-interface SignInLocationState {
-  /** Set by AuthProvider's PLAT-09 session-timeout enforcement when the
-   *  configured session duration was exceeded and the user was force
-   *  signed-out. */
-  sessionExpired?: boolean;
-}
+import { postSignInPath, type SignInLocationState } from './postSignInPath';
 
 export function SignInScreen() {
   const { status } = useAuth();
   const location = useLocation();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const sessionExpired = (location.state as SignInLocationState | null)?.sessionExpired === true;
+  const locationState = location.state as SignInLocationState | null;
+  const sessionExpired = locationState?.sessionExpired === true;
 
-  // If the user already has a session (e.g., a stale tab where
-  // AuthProvider just resolved an existing token), bounce off /sign-in.
+  // Once there's a session (just signed in, or a stale tab where
+  // AuthProvider resolved an existing token), go where the user was headed.
   if (status === 'signed-in') {
-    return <Navigate to="/" replace />;
+    return <Navigate to={postSignInPath(locationState)} replace />;
   }
   if (status === 'loading') {
     return (

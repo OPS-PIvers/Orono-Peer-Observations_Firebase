@@ -301,6 +301,10 @@ export function ObservationEditorPage() {
 
   const [acknowledging, setAcknowledging] = useState(false);
   const [acknowledgeError, setAcknowledgeError] = useState<string | null>(null);
+  // The finalized email's "Acknowledge receipt" button links here with
+  // ?ack=1; that opens a one-click confirm prompt (dismissible).
+  const ackRequested = new URLSearchParams(location.search).get('ack') === '1';
+  const [ackPromptDismissed, setAckPromptDismissed] = useState(false);
 
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -472,6 +476,7 @@ export function ObservationEditorPage() {
   // stored lowercased, but Firebase Auth's User#email preserves input case.
   const isObservedStaff = observation?.observedEmail === user?.email?.toLowerCase();
   const showAcknowledge = isReadOnly && isObservedStaff && !observation.acknowledgedAt;
+  const showAckPrompt = showAcknowledge && ackRequested && !ackPromptDismissed;
   // Admins may also edit Drafts (firestore.rules allows admin updates of any
   // field) — most importantly after reopening a finalized observation to fix
   // a mistake, when the admin isn't necessarily the original observer.
@@ -851,10 +856,20 @@ export function ObservationEditorPage() {
         acknowledgedBy: user?.email?.toLowerCase() ?? '',
         lastModifiedAt: serverTimestamp(),
       });
+      dismissAckPrompt();
     } catch (err) {
       setAcknowledgeError(err instanceof Error ? err.message : 'Acknowledge failed');
     } finally {
       setAcknowledging(false);
+    }
+  }
+
+  // Close the email-link prompt and drop ?ack=1 so a reload or a shared URL
+  // doesn't reopen it.
+  function dismissAckPrompt() {
+    setAckPromptDismissed(true);
+    if (ackRequested) {
+      void navigate({ pathname: location.pathname, hash: location.hash }, { replace: true });
     }
   }
 
@@ -1102,6 +1117,49 @@ export function ObservationEditorPage() {
             ) : null}
           </div>
         ) : null}
+
+        <Dialog
+          open={showAckPrompt}
+          onOpenChange={(open) => {
+            if (!open) dismissAckPrompt();
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Acknowledge receipt?</DialogTitle>
+              <DialogDescription>
+                Confirm that you received your finalized observation
+                {observation.observerName ? ` from ${observation.observerName}` : ''}. Your observer
+                is notified that you acknowledged it.
+              </DialogDescription>
+            </DialogHeader>
+            {acknowledgeError ? (
+              <p
+                role="alert"
+                className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm"
+              >
+                {acknowledgeError}
+              </p>
+            ) : null}
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={dismissAckPrompt}>
+                Not now
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleAcknowledge()}
+                disabled={acknowledging}
+              >
+                {acknowledging ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {acknowledging ? 'Acknowledging…' : 'Acknowledge receipt'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {isBookedObservation ? (
           <SignupDetailsCard

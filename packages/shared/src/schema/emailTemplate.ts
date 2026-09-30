@@ -12,6 +12,8 @@ export const EMAIL_TRIGGER_TYPES = [
   'observation.created.workProduct',
   'observation.created.instructionalRound',
   'observation.finalized',
+  /** To the observer when the observed staff member acknowledges receipt. */
+  'observation.acknowledged',
   'staff.created',
   'roleYearMapping.updated',
   'scheduled.preObservation',
@@ -21,6 +23,9 @@ export const EMAIL_TRIGGER_TYPES = [
   'scheduled.reminderPlanning',
   'scheduled.reminderReflection',
   'scheduled.reminderOverdueFinalize',
+  /** One reminder to the observed staff member N days after finalize while
+   *  the observation is still unacknowledged. */
+  'scheduled.reminderAcknowledge',
   'scheduling.windowInvite',
   'scheduling.bookingConfirmation',
   'scheduling.assignmentNotice',
@@ -78,11 +83,13 @@ export const EMAIL_TRIGGER_CATEGORY: Partial<Record<EmailTriggerType, EmailPrefe
   'observation.created.workProduct': 'observationNotices',
   'observation.created.instructionalRound': 'observationNotices',
   'observation.finalized': 'observationNotices',
+  'observation.acknowledged': 'observationNotices',
   'scheduled.preObservation': 'reminders',
   'scheduled.reminderIncomplete': 'reminders',
   'scheduled.reminderPlanning': 'reminders',
   'scheduled.reminderReflection': 'reminders',
   'scheduled.reminderOverdueFinalize': 'reminders',
+  'scheduled.reminderAcknowledge': 'reminders',
   'scheduling.windowInvite': 'schedulingUpdates',
   'scheduling.assignmentNotice': 'schedulingUpdates',
   'scheduling.windowExpired': 'schedulingUpdates',
@@ -152,12 +159,14 @@ export type EmailRecipientType = (typeof EMAIL_RECIPIENT_TYPES)[number];
  *   - scheduled.reminderPlanning     → always sends to obs.observedEmail
  *   - scheduled.reminderReflection   → always sends to obs.observedEmail
  *   - scheduled.reminderOverdueFinalize → always sends to obs.observerEmail
+ *   - scheduled.reminderAcknowledge  → always sends to obs.observedEmail
  */
 export const FIXED_RECIPIENT_TRIGGER_TYPES = [
   'scheduled.reminderIncomplete',
   'scheduled.reminderPlanning',
   'scheduled.reminderReflection',
   'scheduled.reminderOverdueFinalize',
+  'scheduled.reminderAcknowledge',
 ] as const satisfies readonly EmailTriggerType[];
 
 /** True for trigger types whose recipient the admin cannot actually change
@@ -174,6 +183,7 @@ export const FIXED_RECIPIENT_DESCRIPTION: Partial<Record<EmailTriggerType, strin
   'scheduled.reminderPlanning': 'the observed staff member',
   'scheduled.reminderReflection': 'the observed staff member',
   'scheduled.reminderOverdueFinalize': 'the observing peer evaluator',
+  'scheduled.reminderAcknowledge': 'the observed staff member',
 };
 
 /**
@@ -198,6 +208,11 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   // Drive links (set on finalization)
   'pdfDriveLink',
   'driveFolderLink',
+  /** Finalized emails: signs the staff member in and asks them to confirm
+   *  receipt. Appended automatically when a template doesn't use it. */
+  'acknowledgeLink',
+  /** observation.acknowledged: when the staff member confirmed receipt. */
+  'acknowledgedDate',
   // App
   'appName',
   'signInLink',
@@ -276,6 +291,8 @@ export const emailTemplate = z.object({
    * the weekly nudge while Reflection questions are unanswered.
    * For scheduled.reminderOverdueFinalize: days after observationDate (with
    * the observation still Draft) to start the weekly nudge.
+   * For scheduled.reminderAcknowledge: days after finalize (still
+   * unacknowledged) to send the single reminder.
    */
   scheduledDays: z.number().int().positive().default(3),
   /** When false, the trigger is suppressed and nothing is sent. */

@@ -7,7 +7,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { OBSERVATION_TYPES, displayYear, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, deleteDriveFolder } from '../lib/drive.js';
-import { formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
+import { APP_URL, formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -141,6 +141,11 @@ export const onObservationWritten = onDocumentWritten(
       }
     }
 
+    // Acknowledged: tell the observer the staff member confirmed receipt.
+    if (beforeData && isNewlyAcknowledged(beforeData, afterData)) {
+      await sendAcknowledgedEmail(event.params.observationId, afterData);
+    }
+
     // Sheet sync (only when MASTER_LOG_SHEET_ID is configured)
     if (!sheetId) {
       logger.info('onObservationWritten: MASTER_LOG_SHEET_ID unset, skipping sheet sync');
@@ -159,6 +164,50 @@ export const onObservationWritten = onDocumentWritten(
     }
   },
 );
+
+/** True when this write is the staff member acknowledging the observation
+ *  (acknowledgedAt went from unset to set). A reopen clears it, so a
+ *  re-finalized observation can be acknowledged — and notified — again. */
+export function isNewlyAcknowledged(before: ObsLike, after: ObsLike): boolean {
+  return before['acknowledgedAt'] == null && after['acknowledgedAt'] != null;
+}
+
+async function sendAcknowledgedEmail(observationId: string, data: ObsLike): Promise<void> {
+  const observerEmail = (data['observerEmail'] as string | undefined) ?? '';
+  if (!observerEmail) return;
+  const observerName = (data['observerName'] as string | undefined) ?? '';
+  try {
+    await sendTemplatedEmail({
+      db: getFirestore(),
+      triggerType: 'observation.acknowledged',
+      to: observerEmail,
+      vars: {
+        observerName: observerName || (observerEmail.split('@')[0] ?? ''),
+        observerEmail,
+        observedName: (data['observedName'] as string | undefined) ?? '',
+        observedEmail: (data['observedEmail'] as string | undefined) ?? '',
+        observationDate: formatDate(data['observationDate']),
+        observationName: (data['observationName'] as string | undefined) ?? '',
+        observationType: (data['type'] as string | undefined) ?? '',
+        acknowledgedDate: formatDate(data['acknowledgedAt']),
+        observationLink: `${APP_URL}/observations/${encodeURIComponent(observationId)}`,
+      },
+      // One notice per finalize cycle: keyed on finalizedAt so a reopened and
+      // re-finalized observation's second acknowledgment gets its own send.
+      mailDocId: `acknowledged-${observationId}-${timestampKey(data['finalizedAt'])}`,
+      auditDetails: { observationId, triggerType: 'observation.acknowledged' },
+    });
+  } catch (err) {
+    logger.error('onObservationWritten: acknowledged email failed (non-fatal)', err);
+  }
+}
+
+/** Millisecond key for a Firestore Timestamp/Date, or 'none'. */
+function timestampKey(value: unknown): string {
+  if (value instanceof Timestamp) return String(value.toMillis());
+  if (value instanceof Date) return String(value.getTime());
+  return 'none';
+}
 
 function hasMeaningfulChange(before: ObsLike, after: ObsLike): boolean {
   for (const field of MEANINGFUL_FIELDS) {

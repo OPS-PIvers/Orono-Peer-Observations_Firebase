@@ -218,6 +218,9 @@ export const observation = z.object({
    *  staff member, and only after `status === 'Finalized'`. */
   acknowledgedAt: isoDate.nullable().default(null),
   acknowledgedBy: email.optional(),
+  /** When the one "please acknowledge" reminder went out (server-written by
+   *  scheduledEmailReminders; cleared on reopen). */
+  acknowledgeReminderSentAt: isoDate.nullable().optional(),
 
   // Scheduling linkage (set server-side when an observation is created from
   // a booked slot; null/empty for manually-created observations).
