@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   canCreateObservations,
+  canObserve,
   creatableObservationTypes,
   type SetStepCheckInput,
   type Staff,
@@ -11,6 +12,7 @@ import {
 import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db, functions } from '@/lib/firebase';
 import { newDraftObservationDoc } from '@/observations/newObservationDoc';
@@ -53,7 +55,14 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
   );
   const newObservationsDisabled = useNewObservationsDisabled();
   const effectiveRole = useEffectiveClaims().role;
-  const canCreate = canCreateObservations(effectiveRole);
+  const observerScope = useObserverScope();
+  // A building Administrator can only start observations of summative staff
+  // in their buildings; otherwise these steps wait for another observer.
+  const canCreate =
+    canCreateObservations(effectiveRole) &&
+    !observerScope.loading &&
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+    canObserve(observerScope, { ...staff, buildings: staff.buildings ?? [] });
   const creatableTypes = creatableObservationTypes(effectiveRole);
 
   const [pendingId, setPendingId] = useState<string | null>(null);

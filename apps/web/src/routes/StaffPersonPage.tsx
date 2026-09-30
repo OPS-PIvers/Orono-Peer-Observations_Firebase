@@ -10,6 +10,7 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   canCreateObservations,
+  observeBlockReason,
   staffCycleStatus,
   type EmailTemplate,
   type Observation,
@@ -18,6 +19,7 @@ import {
   type Staff,
 } from '@ops/shared';
 import { useDocument } from '@/hooks/useDocument';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db, functions } from '@/lib/firebase';
@@ -138,6 +140,7 @@ export function StaffPersonPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const newObservationsDisabled = useNewObservationsDisabled();
   const canCreate = canCreateObservations(useEffectiveClaims().role);
+  const observerScope = useObserverScope();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -250,6 +253,18 @@ export function StaffPersonPage() {
     );
   }
 
+  // Why a new observation can't start here, or null when it can. Building
+  // Administrators only observe summative staff in their buildings.
+  const createBlocked = newObservationsDisabled
+    ? 'New observation creation is currently disabled by an administrator.'
+    : observerScope.loading
+      ? 'Loading…'
+      : observeBlockReason(observerScope, {
+          ...staffMember,
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+          buildings: staffMember.buildings ?? [],
+        });
+
   const tabs: { id: ObsTab; label: string; count: number }[] = [
     { id: 'all', label: 'All', count: allObs.length },
     { id: OBSERVATION_STATUS.draft, label: 'Draft', count: draftObs.length },
@@ -327,18 +342,17 @@ export function StaffPersonPage() {
           </div>
 
           {canCreate ? (
-            <Button
-              variant="onDark"
-              onClick={() => setDialogOpen(true)}
-              disabled={newObservationsDisabled}
-              title={
-                newObservationsDisabled
-                  ? 'New observation creation is currently disabled by an administrator.'
-                  : undefined
-              }
-            >
-              New Observation
-            </Button>
+            // A disabled button fires no hover events, so the reason lives
+            // on a wrapper.
+            <span title={createBlocked ?? undefined}>
+              <Button
+                variant="onDark"
+                onClick={() => setDialogOpen(true)}
+                disabled={createBlocked !== null}
+              >
+                New Observation
+              </Button>
+            </span>
           ) : null}
         </div>
       }
@@ -376,17 +390,11 @@ export function StaffPersonPage() {
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
           {canCreate ? (
-            <Button
-              onClick={() => setDialogOpen(true)}
-              disabled={newObservationsDisabled}
-              title={
-                newObservationsDisabled
-                  ? 'New observation creation is currently disabled by an administrator.'
-                  : undefined
-              }
-            >
-              Start first observation
-            </Button>
+            <span title={createBlocked ?? undefined}>
+              <Button onClick={() => setDialogOpen(true)} disabled={createBlocked !== null}>
+                Start first observation
+              </Button>
+            </span>
           ) : null}
         </div>
       ) : (

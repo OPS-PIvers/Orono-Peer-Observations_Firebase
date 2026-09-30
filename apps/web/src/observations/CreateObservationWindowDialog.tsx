@@ -4,6 +4,7 @@ import {
   APP_SETTINGS_DOC_ID,
   BOOKING_MODES,
   COLLECTIONS,
+  canObserve,
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_TYPES,
   creatableObservationTypes,
@@ -20,6 +21,7 @@ import {
 import { functions } from '@/lib/firebase';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,7 +100,20 @@ export function CreateObservationWindowDialog({
   const { data: settingsDoc } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
   const settings = settingsDoc?.scheduling ?? DEFAULT_SCHEDULING_SETTINGS;
 
-  const { data: staff } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const { data: allStaff } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  // A building Administrator can only invite staff they can observe (the
+  // window callables enforce the same rule).
+  const observerScope = useObserverScope();
+  const staff = useMemo(
+    () =>
+      observerScope.loading
+        ? null
+        : (allStaff?.filter((s) =>
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+            canObserve(observerScope, { ...s, buildings: s.buildings ?? [] }),
+          ) ?? null),
+    [allStaff, observerScope],
+  );
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: buildings } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
   const { data: signupFields } = useFirestoreCollection<SignupField>(COLLECTIONS.signupFields);

@@ -12,6 +12,7 @@ import {
   type ObservationPreference,
   type ObservationSlot,
   type ObservationWindow,
+  type Staff,
 } from '@ops/shared';
 import { peConflicts } from './engine/timeWindows.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
@@ -21,6 +22,7 @@ import {
   nextWindowStatus,
 } from './bookObservationSlot.js';
 import { toDate } from './engine/schedulingEmail.js';
+import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -60,6 +62,19 @@ export const assignObservationFromPreference = onCall(
     const windowRef = db.collection(COLLECTIONS.observationWindows).doc(input.windowId);
     const slotRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.slots).doc(input.slotId);
     const prefRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.preferences).doc(staffEmail);
+
+    // A building Administrator's window only assigns staff they can still
+    // observe (see bookObservationSlot).
+    const [scopeWindowSnap, assigneeSnap] = await Promise.all([
+      windowRef.get(),
+      db.collection(COLLECTIONS.staff).doc(staffEmail).get(),
+    ]);
+    if (scopeWindowSnap.exists && assigneeSnap.exists) {
+      const scopeWindow = scopeWindowSnap.data() as ObservationWindow;
+      assertCanObserveAll(await loadObserverScope(db, scopeWindow.observerEmail), [
+        assigneeSnap.data() as Staff,
+      ]);
+    }
 
     let bookedSlotData: ObservationSlot | null = null;
     let bookedWindowData: ObservationWindow | null = null;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
+  canObserve,
   type Building,
   type ObservationWindow,
   type Role,
@@ -11,6 +12,7 @@ import {
 } from '@ops/shared';
 import { functions } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -70,7 +72,20 @@ export function EditObservationWindowDialog({
   window: win,
   onSaved,
 }: EditObservationWindowDialogProps) {
-  const { data: staff } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const { data: allStaff } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  // A building Administrator can only invite staff they can observe (the
+  // window callables enforce the same rule).
+  const observerScope = useObserverScope();
+  const staff = useMemo(
+    () =>
+      observerScope.loading
+        ? null
+        : (allStaff?.filter((s) =>
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+            canObserve(observerScope, { ...s, buildings: s.buildings ?? [] }),
+          ) ?? null),
+    [allStaff, observerScope],
+  );
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: buildings } = useFirestoreCollection<Building>(COLLECTIONS.buildings);
 
