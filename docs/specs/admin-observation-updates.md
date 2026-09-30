@@ -1,12 +1,14 @@
 # Admin observation updates — spec (from grill session, 2026-09-30)
 
 ## 1. Building admins create Standard observations only
+
 - `CreateObservationDialog.tsx` and `CreateObservationWindowDialog.tsx`: for role `administrator`, hide the type picker and always use `Standard`.
 - Hide the Work Product and Instructional Round badges, filters and labels in the admin's views: `StaffPersonPage`, `ObservationsListPage`, `NewObservationPage`, `ObservationEditorPage` and the admin's sidebar.
 - `firestore.rules`: when a building admin creates an observation, the rules require `type == 'Standard'`. Add a rules test.
 - `bookObservationSlot`: an admin-owned window must produce Standard observations.
 
 ## 2. Building-specific planning and reflection questions
+
 - New data: each question set is scoped to one of:
   - the district admin default, or
   - a single building. A building set has the setting "Applies to: Admin observations only | All observations in this building".
@@ -21,10 +23,12 @@
 - Draft observations show the live set. Once the teacher answers, each answer keeps the question text it was written against, so later edits never change or orphan past responses.
 
 ## 3. Script tags visible in component notes
+
 - The Notes chip gets a tag icon with a count badge (desktop `CellChip` and mobile `MobileSectionRow`). It shows whenever `extractTaggedSpansForComponent` returns more than 0 tags and never clears on view. It is separate from the red dot for manual notes.
 - `NotesPanel` opens on the "Script tags (N)" tab when tags exist.
 
 ## 4. Recordings list in the audio popover
+
 - Every recording is listed with its recorded date/time, duration and an editable label. Each has these actions: Play, Download, View in Drive, Rename and Delete.
 - New per-recording metadata on the observation, keyed by Drive file ID: `{recordedAt, durationSec, label}`. Duration is measured on the client and sent with the upload. For existing recordings, fall back to the Drive file's `createdTime`.
 - **Download:** fetch from `getAudio`, then save the blob as `<teacher>-<date>-<label>.webm`.
@@ -35,6 +39,7 @@
 - **Rename:** a callable, or add the metadata field to the observer's update whitelist.
 
 ## 5. "View as" a staff member (read-only)
+
 - Building admins can view as any staff member in their assigned buildings who doesn't hold a special role. They start it from My Staff or Building Staff. Console admins can view as anyone.
 - While viewing as someone, the app renders what that person sees: their dashboard, observations and sidebar. A persistent banner shows with an Exit button.
 - All writes are blocked in the UI. Rules are unchanged: the admin keeps their own identity, and reads rely on their existing access.
@@ -42,9 +47,11 @@
 - To confirm during build: can the admin's read access cover every read that staff views need? This matters especially for staff-only queries such as `where observedEmail == me`, which will be rewritten to use the viewed person's email.
 
 ## 6. PDF rubric layout
+
 - Change `apps/pdf-renderer/src/template.ts` `.proficiency-grid` to 4 columns (one row per component) in portrait. Tighten the font size and padding so all four levels fit.
 
 ## 7. Finalized-observation email with acknowledgment
+
 - Keep the existing `observation.finalized` email from observations@. Add an "Acknowledge receipt" button that links to `/observations/:id?ack=1`.
 - After sign-in, the page shows a confirmation prompt. One click runs the existing acknowledge logic.
 - Notify the observer by email when the staff member acknowledges, via a new template trigger `observation.acknowledged`.
