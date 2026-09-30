@@ -26,6 +26,7 @@ if (getApps().length === 0) initializeApp();
  * district only manages a single parent folder / service-account share.
  */
 const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
+const MODULES_FOLDER_ID = defineString('DRIVE_MODULES_FOLDER_ID', { default: '' });
 
 interface UploadModuleFileRequest {
   moduleId?: string;
@@ -93,6 +94,8 @@ async function ensureModuleFolder(parentFolderId: string): Promise<string> {
       `and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: 'files(id)',
     pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
   const found = existing.data.files?.[0]?.id;
   if (found) return found;
@@ -103,6 +106,7 @@ async function ensureModuleFolder(parentFolderId: string): Promise<string> {
       parents: [parentFolderId],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
   if (!created.data.id) throw new Error('Modules Drive folder creation returned no id');
   return created.data.id;
@@ -152,6 +156,7 @@ async function shareModuleFileWithDomain(fileId: string): Promise<void> {
   const existing = await drive.permissions.list({
     fileId,
     fields: 'permissions(id,type,domain,role)',
+    supportsAllDrives: true,
   });
   const already = existing.data.permissions?.some(
     (p) => p.type === 'domain' && p.domain === ALLOWED_EMAIL_DOMAIN && p.role === 'reader',
@@ -161,6 +166,7 @@ async function shareModuleFileWithDomain(fileId: string): Promise<void> {
     fileId,
     sendNotificationEmail: false,
     requestBody: { type: 'domain', role: 'reader', domain: ALLOWED_EMAIL_DOMAIN },
+    supportsAllDrives: true,
   });
 }
 
@@ -205,7 +211,11 @@ export const uploadModuleFile = onCall(
     const itemSnap = await itemRef.get();
     if (!itemSnap.exists) throw new HttpsError('not-found', 'Module item not found');
 
-    const folderId = await ensureModuleFolder(PARENT_FOLDER_ID.value());
+    // A dedicated Modules folder (the Shared Drive layout) keeps district
+    // resources out of the restricted observations tree; without one, fall
+    // back to a Modules subfolder of the observations parent.
+    const folderId =
+      MODULES_FOLDER_ID.value() || (await ensureModuleFolder(PARENT_FOLDER_ID.value()));
 
     const { fileId } = await uploadFileToFolder({
       folderId,
@@ -243,7 +253,7 @@ export const uploadModuleFile = onCall(
       });
     } catch (err) {
       try {
-        await (await getDriveClient()).files.delete({ fileId });
+        await (await getDriveClient()).files.delete({ fileId, supportsAllDrives: true });
       } catch (cleanupErr) {
         logger.warn('uploadModuleFile: orphan cleanup failed', { fileId, cleanupErr });
       }
