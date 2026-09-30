@@ -90,13 +90,14 @@ export function App() {
                 <Route path="/observations" element={<L.ObservationsListPage />} />
                 <Route path="/staff" element={<L.StaffDirectoryPage />} />
                 <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
-                <Route path="/my-staff" element={<L.MyStaffPage />} />
               </Route>
 
-              {/* Building Administrators only — staff editing scoped to their
-                  building(s), in place of the Admin Console. */}
+              {/* Building Administrators only — their building's staff, with
+                  editing scoped to it in place of the Admin Console. */}
               <Route element={<StandardShell requireAdministrator />}>
-                <Route path="/building-staff" element={<L.BuildingStaffPage />} />
+                <Route path="/my-staff" element={<L.MyStaffPage />} />
+                {/* Merged into My Staff; kept so old links still land. */}
+                <Route path="/building-staff" element={<Navigate to="/my-staff" replace />} />
               </Route>
 
               {/* Starting observations: observer roles only. hasSpecialAccess

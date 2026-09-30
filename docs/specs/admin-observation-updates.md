@@ -40,7 +40,7 @@
 
 ## 5. "View as" a staff member (read-only)
 
-- Building admins can view as any staff member in their assigned buildings who doesn't hold a special role. They start it from My Staff or Building Staff. Console admins can view as anyone.
+- Building admins can view as any staff member in their assigned buildings who doesn't hold a special role. They start it from My Staff. Console admins can view as anyone.
 - While viewing as someone, the app renders what that person sees: their dashboard, observations and sidebar. A persistent banner shows with an Exit button.
 - All writes are blocked in the UI. Rules are unchanged: the admin keeps their own identity, and reads rely on their existing access.
 - Each view-as session start is written to the audit log.

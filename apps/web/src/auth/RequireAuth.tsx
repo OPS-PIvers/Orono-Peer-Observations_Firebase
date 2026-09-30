@@ -21,7 +21,7 @@ export interface RequireAuthProps {
   requireSpecialAccess?: boolean;
   /** Role must be able to start observations (see canCreateObservations). */
   requireObserverRole?: boolean;
-  /** Role must be Administrator (building-scoped pages like /building-staff). */
+  /** Role must be Administrator (building-scoped pages like /my-staff). */
   requireAdministrator?: boolean;
 }
 

@@ -44,13 +44,20 @@ interface StaffDialogProps {
   mode: 'create' | 'edit';
   existing: (Staff & { id: string }) | null;
   /**
-   * Set when a building Administrator opens the dialog from /building-staff:
+   * Set when a building Administrator opens the dialog from /my-staff:
    * their building names. Hides Module Access (incl. the Admin Console flag)
    * and never writes those fields, drops Administrator / Peer Evaluator /
    * Full Access from the role list, pre-fills a new record with their
    * building, and requires a new record to keep one of them.
    */
   buildingScope?: string[];
+  /**
+   * Edit mode only: return a warning when saving `next` would have a side
+   * effect worth a second click (My Staff: dropping someone off the
+   * administrator's evaluation list). The first Save shows the warning and
+   * the button becomes "Save anyway".
+   */
+  confirmChange?: (next: Staff & { id: string }) => string | null;
 }
 
 interface FormState {
@@ -94,10 +101,12 @@ export function StaffDialog({
   mode,
   existing,
   buildingScope,
+  confirmChange,
 }: StaffDialogProps) {
   const [form, setForm] = useState<FormState>(empty);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const { data: allRoles, loading: rolesLoading } = useFirestoreCollection<Role>(
     COLLECTIONS.roles,
@@ -143,6 +152,11 @@ export function StaffDialog({
     }
     setError(null);
   }, [mode, existing, open, buildingScope]);
+
+  // Any further change to the form needs a fresh confirmation.
+  useEffect(() => {
+    setWarning(null);
+  }, [form]);
 
   const isUnmappedRole =
     form.role !== '' && (roles?.length ?? 0) > 0 && !roles?.some((r) => r.roleId === form.role);
@@ -216,6 +230,22 @@ export function StaffDialog({
     ) {
       setError(`Add ${buildingScope.join(' or ')} so this person shows up in your staff list.`);
       return;
+    }
+
+    if (mode === 'edit' && existing && confirmChange && warning === null) {
+      const message = confirmChange({
+        ...existing,
+        name: form.name.trim(),
+        role: form.role.trim(),
+        year: form.year,
+        buildings: form.buildings,
+        ...cycleStatusFields(form.cycleStatus),
+        isActive: form.isActive,
+      });
+      if (message) {
+        setWarning(message);
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -524,6 +554,14 @@ export function StaffDialog({
               {error}
             </div>
           ) : null}
+          {warning ? (
+            <div
+              role="alert"
+              className="rounded-md border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            >
+              {warning}
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -542,7 +580,13 @@ export function StaffDialog({
             Cancel
           </Button>
           <Button onClick={() => void save()} disabled={submitting}>
-            {submitting ? 'Saving…' : mode === 'create' ? 'Create' : 'Save'}
+            {submitting
+              ? 'Saving…'
+              : mode === 'create'
+                ? 'Create'
+                : warning
+                  ? 'Save anyway'
+                  : 'Save'}
           </Button>
         </DialogFooter>
       </DialogContent>
