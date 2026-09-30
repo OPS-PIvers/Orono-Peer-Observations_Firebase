@@ -47,6 +47,7 @@
     "backfill:cycle-status:prod": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod",
     "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
     "drive:transfer": "tsx scripts/drive-auth/transfer-drive-ownership.ts",
+    "drive:migrate": "tsx scripts/drive-auth/move-to-shared-drive.ts",
     "prepare": "husky"
   },
   "devDependencies": {

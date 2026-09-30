@@ -188,7 +188,7 @@ export const uploadEvidenceFile = onCall(
     } catch (err) {
       try {
         const drive = await getDriveClient();
-        await drive.files.delete({ fileId });
+        await drive.files.delete({ fileId, supportsAllDrives: true });
       } catch (cleanupErr) {
         logger.warn('uploadEvidenceFile: orphan cleanup failed', { fileId, cleanupErr });
       }

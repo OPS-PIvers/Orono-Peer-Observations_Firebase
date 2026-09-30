@@ -89,6 +89,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
       const meta = await drive.files.get({
         fileId: job.audioDriveFileId,
         fields: 'mimeType, size, name',
+        supportsAllDrives: true,
       });
       const mimeType = meta.data.mimeType ?? 'audio/webm';
       const sizeBytes = meta.data.size ? Number(meta.data.size) : 0;
