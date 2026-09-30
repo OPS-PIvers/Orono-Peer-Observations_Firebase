@@ -249,6 +249,47 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     isSystem: true,
   },
   {
+    templateId: 'observation-acknowledged',
+    name: 'Observation Acknowledged',
+    description:
+      'Sent to the observer when the observed staff member confirms they received their finalized observation.',
+    subject: '{{observedName}} acknowledged their observation — {{appName}}',
+    bodyHtml: `<p>Hi {{observerName}},</p>
+<p>{{observedName}} confirmed on {{acknowledgedDate}} that they received their finalized observation from {{observationDate}}.</p>
+${ctaRow('{{observationLink}}', 'View the observation')}
+<p>— {{appName}}</p>`,
+    variables: [
+      'observerName',
+      'observedName',
+      'observationDate',
+      'acknowledgedDate',
+      'observationLink',
+      'appName',
+    ],
+    triggerType: 'observation.acknowledged',
+    recipient: 'observer',
+    scheduledDays: 3,
+    isActive: true,
+    isSystem: true,
+  },
+  {
+    templateId: 'acknowledge-reminder',
+    name: 'Reminder: Acknowledge Your Observation',
+    description:
+      'Sent once to the observed staff member N days after finalize if they have not yet acknowledged receipt.',
+    subject: 'Reminder: Please Acknowledge Your Observation — {{appName}}',
+    bodyHtml: `<p>Hi {{observedName}},</p>
+<p>Your observation with {{observerName}} from {{observationDate}} was finalized, but we haven't received your acknowledgment yet.</p>
+${ctaRow('{{acknowledgeLink}}', 'Acknowledge receipt')}
+<p>— {{appName}}</p>`,
+    variables: ['observedName', 'observerName', 'observationDate', 'acknowledgeLink', 'appName'],
+    triggerType: 'scheduled.reminderAcknowledge',
+    recipient: 'observed',
+    scheduledDays: 7,
+    isActive: true,
+    isSystem: true,
+  },
+  {
     templateId: 'staff-invite',
     name: 'New Staff System Invitation',
     description: 'Sent to newly added staff members, welcoming them to the system.',

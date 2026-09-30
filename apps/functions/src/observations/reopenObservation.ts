@@ -88,6 +88,8 @@ export const reopenObservation = onCall(
         // re-finalization.
         acknowledgedAt: null,
         acknowledgedBy: FieldValue.delete(),
+        // Re-arm the one acknowledge reminder for the next finalize.
+        acknowledgeReminderSentAt: FieldValue.delete(),
         // Drop the finalize-time rubric snapshot — while Draft the editor
         // resolves the live rubric again, and re-finalizing re-captures it.
         rubricSnapshot: null,

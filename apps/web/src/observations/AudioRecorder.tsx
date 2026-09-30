@@ -2,23 +2,45 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Check,
+  Download,
+  ExternalLink,
   FileInput,
   Loader2,
   Mic,
+  Pencil,
+  Play,
   RefreshCw,
   Sparkles,
   Square,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { getIdToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
-import type { TranscriptionJob } from '@ops/shared';
+import { RECORDING_LABEL_MAX, type AudioRecordingMeta, type TranscriptionJob } from '@ops/shared';
 import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAuth } from '@/auth/AuthProvider';
 import { useGeminiAccess } from '@/hooks/useGeminiAccess';
 import { cn } from '@/lib/utils';
 import { useTranscriptionJobs } from './useTranscriptionJobs';
+import {
+  fetchRecordingBlob,
+  formatRecordedAt,
+  formatRecordingDuration,
+  recordingDownloadName,
+  recordingTitle,
+  saveBlob,
+} from './recordings';
 
 interface RequestTranscriptionResponse {
   jobId?: string;
@@ -29,10 +51,33 @@ const requestTranscriptionFn = httpsCallable<
   RequestTranscriptionResponse
 >(functions, 'requestTranscription');
 
+interface RecordingRef {
+  observationId: string;
+  audioFileId: string;
+}
+const removeRecordingFn = httpsCallable<RecordingRef, { ok: true }>(functions, 'removeRecording');
+const renameRecordingFn = httpsCallable<RecordingRef & { label: string }, { ok: true }>(
+  functions,
+  'renameRecording',
+);
+const getRecordingDriveLinkFn = httpsCallable<RecordingRef, { webViewLink: string }>(
+  functions,
+  'getRecordingDriveLink',
+);
+const backfillRecordingMetadataFn = httpsCallable<{ observationId: string }, { filled: number }>(
+  functions,
+  'backfillRecordingMetadata',
+);
+
 export interface AudioRecorderProps {
   observationId: string;
   audioFileIds: string[];
   transcripts: Record<string, string>;
+  /** Per-recording date/duration/label, keyed by Drive file id. Missing on
+   *  legacy docs and for recordings made before the map existed. */
+  recordings?: Record<string, AudioRecordingMeta> | undefined;
+  /** Observed staff member's name, used to name downloaded files. */
+  observedName: string;
   readOnly?: boolean;
   onUploaded?: (audioFileId: string) => void;
   /** Notifies the parent when recording phase changes — used by the
@@ -60,6 +105,8 @@ export function AudioRecorder({
   observationId,
   audioFileIds,
   transcripts,
+  recordings,
+  observedName,
   readOnly = false,
   onUploaded,
   onPhaseChange,
@@ -90,6 +137,20 @@ export function AudioRecorder({
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Wall-clock start of the current recording, sent with the upload so the
+   *  list shows when it was recorded and how long it runs. */
+  const startedAtRef = useRef<Date | null>(null);
+
+  // Recordings made before per-recording metadata existed have no entry;
+  // ask the server once per mount to fill them from Drive. Best-effort —
+  // the list still renders (without date/duration) if this fails.
+  const backfillRequestedRef = useRef(false);
+  const needsBackfill = audioFileIds.some((id) => !recordings?.[id]);
+  useEffect(() => {
+    if (!needsBackfill || backfillRequestedRef.current) return;
+    backfillRequestedRef.current = true;
+    backfillRecordingMetadataFn({ observationId }).catch(() => undefined);
+  }, [needsBackfill, observationId]);
 
   const requestTranscription = useCallback(
     async (audioFileId: string) => {
@@ -170,6 +231,7 @@ export function AudioRecorder({
         stopTracks();
       };
       recorder.start(1000);
+      startedAtRef.current = new Date();
       recorderRef.current = recorder;
       setPhase('recording');
       setElapsed(0);
@@ -209,6 +271,13 @@ export function AudioRecorder({
         return;
       }
       const idToken = await getIdToken(user);
+      const startedAt = startedAtRef.current;
+      const timing: Record<string, string> = startedAt
+        ? {
+            'X-Audio-Recorded-At': startedAt.toISOString(),
+            'X-Audio-Duration-Sec': String(Math.round((Date.now() - startedAt.getTime()) / 1000)),
+          }
+        : {};
       const response = await fetch(functionsHttpUrl('uploadAudio'), {
         method: 'POST',
         headers: {
@@ -216,6 +285,7 @@ export function AudioRecorder({
           'X-Observation-Id': observationId,
           'X-Audio-Mime-Type': mimeType,
           'Content-Type': mimeType,
+          ...timing,
         },
         body: blob,
       });
@@ -271,6 +341,8 @@ export function AudioRecorder({
         observationId={observationId}
         audioFileIds={audioFileIds}
         transcripts={transcripts}
+        recordings={recordings ?? {}}
+        observedName={observedName}
         jobsByAudioFileId={jobsByAudioFileId}
         requestError={requestError}
         onTranscribe={(id) => void requestTranscription(id)}
@@ -358,6 +430,8 @@ function RecordingsList({
   observationId,
   audioFileIds,
   transcripts,
+  recordings,
+  observedName,
   jobsByAudioFileId,
   requestError,
   onTranscribe,
@@ -369,6 +443,8 @@ function RecordingsList({
   observationId: string;
   audioFileIds: string[];
   transcripts: Record<string, string>;
+  recordings: Record<string, AudioRecordingMeta>;
+  observedName: string;
   jobsByAudioFileId: Record<string, TranscriptionJob>;
   requestError: Record<string, string>;
   onTranscribe: (audioFileId: string) => void;
@@ -377,6 +453,26 @@ function RecordingsList({
   onInsert: ((audioFileId: string) => void) | null;
   insertedIds: Set<string>;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; title: string } | null>(
+    null,
+  );
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Confirmed via the shared Dialog (not window.confirm), like evidence removal.
+  async function handleDelete(audioFileId: string) {
+    setConfirmingDelete(null);
+    setDeletingId(audioFileId);
+    setDeleteError(null);
+    try {
+      await removeRecordingFn({ observationId, audioFileId });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete the recording');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (audioFileIds.length === 0) {
     return (
       <p className="text-muted-foreground py-2 text-xs">
@@ -385,117 +481,362 @@ function RecordingsList({
     );
   }
   return (
-    <ul className="divide-border divide-y">
-      {audioFileIds.map((fileId, i) => {
-        const transcript = transcripts[fileId];
-        const job = jobsByAudioFileId[fileId];
-        const isTranscribing = job?.status === 'Pending' || job?.status === 'Running';
-        const isFailed = job?.status === 'Failed';
-        // A request-time failure (callable rejected outright) takes
-        // priority since it means no job doc exists to explain itself.
-        // Every message here is about transcription, so none shows when
-        // the feature is hidden from this user.
-        const errMsg = !transcriptionEnabled
-          ? undefined
-          : (requestError[fileId] ??
-            (isFailed ? (job.error ?? 'Transcription failed') : undefined));
-        const isInserted = insertedIds.has(fileId);
-        return (
-          <li key={fileId} className="py-3">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-muted-foreground text-xs">
-                Recording {String(i + 1)}
-                {!transcriptionEnabled
-                  ? null
-                  : transcript
-                    ? ' · transcript ready'
-                    : isTranscribing
-                      ? job.status === 'Running'
-                        ? ' · transcribing…'
-                        : ' · queued…'
-                      : isFailed
-                        ? ' · transcription failed'
-                        : ' · no transcript yet'}
-              </span>
-              {!readOnly && transcriptionEnabled ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    onTranscribe(fileId);
-                  }}
-                  disabled={isTranscribing}
-                  className="h-7 text-xs"
-                  title={
-                    transcript ? 'Re-transcribe this recording' : 'Generate transcript with Gemini'
-                  }
-                >
-                  {isTranscribing ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : transcript ? (
-                    <RefreshCw className="h-3 w-3" />
-                  ) : isFailed ? (
-                    <RefreshCw className="h-3 w-3" />
-                  ) : (
-                    <Sparkles className="h-3 w-3" />
-                  )}
-                  {isTranscribing
-                    ? job.status === 'Running'
-                      ? 'Transcribing…'
-                      : 'Queued…'
-                    : transcript
-                      ? 'Re-transcribe'
-                      : isFailed
-                        ? 'Retry'
-                        : 'Transcribe'}
-                </Button>
+    <>
+      {deleteError ? (
+        <p role="alert" className="text-destructive mb-2 flex items-start gap-1 text-xs">
+          <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          <span>{deleteError}</span>
+        </p>
+      ) : null}
+      <ul className="divide-border divide-y">
+        {audioFileIds.map((fileId, i) => (
+          <RecordingItem
+            key={fileId}
+            observationId={observationId}
+            audioFileId={fileId}
+            title={recordingTitle(recordings[fileId], i)}
+            meta={recordings[fileId]}
+            observedName={observedName}
+            transcript={transcripts[fileId]}
+            job={jobsByAudioFileId[fileId]}
+            requestError={requestError[fileId]}
+            onTranscribe={onTranscribe}
+            transcriptionEnabled={transcriptionEnabled}
+            readOnly={readOnly}
+            onInsert={onInsert}
+            isInserted={insertedIds.has(fileId)}
+            deleting={deletingId === fileId}
+            onDelete={(title) => setConfirmingDelete({ id: fileId, title })}
+          />
+        ))}
+      </ul>
+      <Dialog
+        open={confirmingDelete !== null}
+        onOpenChange={(open) => (open ? null : setConfirmingDelete(null))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {confirmingDelete?.title ?? 'recording'}?</DialogTitle>
+            <DialogDescription>
+              The recording and its transcript are removed from this observation, and the audio file
+              moves to the Drive trash, where it can be restored for about 30 days.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setConfirmingDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              type="button"
+              onClick={() => {
+                if (confirmingDelete) void handleDelete(confirmingDelete.id);
+              }}
+            >
+              Delete recording
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function RecordingItem({
+  observationId,
+  audioFileId,
+  title,
+  meta,
+  observedName,
+  transcript,
+  job,
+  requestError,
+  onTranscribe,
+  transcriptionEnabled,
+  readOnly,
+  onInsert,
+  isInserted,
+  deleting,
+  onDelete,
+}: {
+  observationId: string;
+  audioFileId: string;
+  title: string;
+  meta: AudioRecordingMeta | undefined;
+  observedName: string;
+  transcript: string | undefined;
+  job: TranscriptionJob | undefined;
+  requestError: string | undefined;
+  onTranscribe: (audioFileId: string) => void;
+  transcriptionEnabled: boolean;
+  readOnly: boolean;
+  onInsert: ((audioFileId: string) => void) | null;
+  isInserted: boolean;
+  deleting: boolean;
+  onDelete: (title: string) => void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [draftLabel, setDraftLabel] = useState('');
+  const [busy, setBusy] = useState<null | 'rename' | 'download' | 'drive'>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const labelInputRef = useRef<HTMLInputElement | null>(null);
+  // Move focus into the name field when Rename opens it.
+  useEffect(() => {
+    if (renaming) labelInputRef.current?.focus();
+  }, [renaming]);
+
+  const isTranscribing = job?.status === 'Pending' || job?.status === 'Running';
+  const isFailed = job?.status === 'Failed';
+  // A request-time failure (callable rejected outright) takes priority
+  // since it means no job doc exists to explain itself. Every message here
+  // is about transcription, so none shows when the feature is hidden.
+  const errMsg = !transcriptionEnabled
+    ? undefined
+    : (requestError ?? (isFailed ? (job.error ?? 'Transcription failed') : undefined));
+
+  const details = [formatRecordedAt(meta), formatRecordingDuration(meta?.durationSec)].filter(
+    (d): d is string => d !== null,
+  );
+  const transcriptStatus = !transcriptionEnabled
+    ? null
+    : transcript
+      ? 'transcript ready'
+      : isTranscribing
+        ? job.status === 'Running'
+          ? 'transcribing…'
+          : 'queued…'
+        : isFailed
+          ? 'transcription failed'
+          : 'no transcript yet';
+  if (transcriptStatus) details.push(transcriptStatus);
+
+  async function run(kind: 'rename' | 'download' | 'drive', action: () => Promise<void>) {
+    setBusy(kind);
+    setActionError(null);
+    try {
+      await action();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function saveLabel() {
+    void run('rename', async () => {
+      await renameRecordingFn({ observationId, audioFileId, label: draftLabel.trim() });
+      setRenaming(false);
+    });
+  }
+
+  function download() {
+    void run('download', async () => {
+      const blob = await fetchRecordingBlob(observationId, audioFileId);
+      saveBlob(
+        blob,
+        recordingDownloadName({ observedName, meta, title, mimeType: blob.type || 'audio/webm' }),
+      );
+    });
+  }
+
+  function viewInDrive() {
+    // Open the tab synchronously (inside the click) so popup blockers allow
+    // it, then point it at the link once the callable returns.
+    const tab = window.open('', '_blank');
+    void run('drive', async () => {
+      try {
+        const { data } = await getRecordingDriveLinkFn({ observationId, audioFileId });
+        if (tab) tab.location.href = data.webViewLink;
+        else window.open(data.webViewLink, '_blank', 'noopener');
+      } catch (err) {
+        tab?.close();
+        throw err;
+      }
+    });
+  }
+
+  return (
+    <li className="py-3">
+      {renaming ? (
+        <form
+          className="mb-2 flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveLabel();
+          }}
+        >
+          <Input
+            value={draftLabel}
+            onChange={(e) => setDraftLabel(e.target.value)}
+            maxLength={RECORDING_LABEL_MAX}
+            placeholder={title}
+            aria-label={`Name for ${title}`}
+            className="h-8 text-sm"
+            ref={labelInputRef}
+          />
+          <Button type="submit" size="sm" className="h-8" disabled={busy === 'rename'}>
+            {busy === 'rename' ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            onClick={() => setRenaming(false)}
+          >
+            Cancel
+          </Button>
+        </form>
+      ) : (
+        <div className="mb-1">
+          <p className="text-sm font-medium">{title}</p>
+          {details.length > 0 ? (
+            <p className="text-muted-foreground text-xs">{details.join(' · ')}</p>
+          ) : null}
+        </div>
+      )}
+
+      <div className="mb-2 flex flex-wrap items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={download}
+          disabled={busy !== null}
+          aria-label={`Download ${title}`}
+        >
+          {busy === 'download' ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Download className="h-3 w-3" />
+          )}
+          Download
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={viewInDrive}
+          disabled={busy !== null}
+          aria-label={`View in Drive: ${title}`}
+        >
+          {busy === 'drive' ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <ExternalLink className="h-3 w-3" />
+          )}
+          View in Drive
+        </Button>
+        {!readOnly ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => {
+                setDraftLabel(meta?.label ?? '');
+                setRenaming(true);
+              }}
+              disabled={busy !== null || renaming}
+              aria-label={`Rename ${title}`}
+            >
+              <Pencil className="h-3 w-3" />
+              Rename
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive h-7 px-2 text-xs"
+              onClick={() => onDelete(title)}
+              disabled={busy !== null || deleting}
+              aria-label={`Delete ${title}`}
+            >
+              {deleting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+              Delete
+            </Button>
+          </>
+        ) : null}
+        {!readOnly && transcriptionEnabled ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onTranscribe(audioFileId);
+            }}
+            disabled={isTranscribing}
+            className="h-7 px-2 text-xs"
+            title={transcript ? 'Re-transcribe this recording' : 'Generate transcript with Gemini'}
+          >
+            {isTranscribing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : transcript || isFailed ? (
+              <RefreshCw className="h-3 w-3" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {isTranscribing
+              ? job.status === 'Running'
+                ? 'Transcribing…'
+                : 'Queued…'
+              : transcript
+                ? 'Re-transcribe'
+                : isFailed
+                  ? 'Retry'
+                  : 'Transcribe'}
+          </Button>
+        ) : null}
+      </div>
+
+      <RecordingPlayer
+        observationId={observationId}
+        audioFileId={audioFileId}
+        recordingLabel={title}
+      />
+      {actionError ? (
+        <p role="alert" className="text-destructive mt-1 flex items-start gap-1 text-xs">
+          <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          <span>{actionError}</span>
+        </p>
+      ) : null}
+      {errMsg ? (
+        <p className="text-destructive mt-1 flex items-start gap-1 text-xs">
+          <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          <span>{errMsg}</span>
+        </p>
+      ) : null}
+      {transcriptionEnabled && transcript ? (
+        <details className="mt-2" open>
+          <summary className="text-muted-foreground cursor-pointer text-xs">Transcript</summary>
+          <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
+          {!readOnly && onInsert ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onInsert(audioFileId);
+                }}
+                className="h-7 text-xs"
+                title="Append this transcript to the observation script so it can be tagged as rubric evidence"
+              >
+                <FileInput className="h-3 w-3" />
+                {isInserted ? 'Insert into script again' : 'Insert into script'}
+              </Button>
+              {isInserted ? (
+                <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+                  <Check className="h-3 w-3" />
+                  Added to script
+                </span>
               ) : null}
             </div>
-            <RecordingPlayer
-              observationId={observationId}
-              audioFileId={fileId}
-              recordingLabel={`Recording ${String(i + 1)}`}
-            />
-            {errMsg ? (
-              <p className="text-destructive mt-1 flex items-start gap-1 text-xs">
-                <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                <span>{errMsg}</span>
-              </p>
-            ) : null}
-            {transcriptionEnabled && transcript ? (
-              <details className="mt-2" open>
-                <summary className="text-muted-foreground cursor-pointer text-xs">
-                  Transcript
-                </summary>
-                <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
-                {!readOnly && onInsert ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        onInsert(fileId);
-                      }}
-                      className="h-7 text-xs"
-                      title="Append this transcript to the observation script so it can be tagged as rubric evidence"
-                    >
-                      <FileInput className="h-3 w-3" />
-                      {isInserted ? 'Insert into script again' : 'Insert into script'}
-                    </Button>
-                    {isInserted ? (
-                      <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                        <Check className="h-3 w-3" />
-                        Added to script
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-              </details>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+          ) : null}
+        </details>
+      ) : null}
+    </li>
   );
 }
 
@@ -528,13 +869,7 @@ function RecordingPlayer({
     setLoading(true);
     setError(null);
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Not signed in');
-      const idToken = await getIdToken(user);
-      const url = `${functionsHttpUrl('getAudio')}?observationId=${encodeURIComponent(observationId)}&audioFileId=${encodeURIComponent(audioFileId)}`;
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${idToken}` } });
-      if (!response.ok) throw new Error(`Fetch failed: ${String(response.status)}`);
-      const blob = await response.blob();
+      const blob = await fetchRecordingBlob(observationId, audioFileId);
       setSrc(URL.createObjectURL(blob));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audio');
@@ -558,8 +893,9 @@ function RecordingPlayer({
   if (src) {
     return (
       <div className="flex items-center gap-2">
+        {/* Autoplay: the element only mounts after the user pressed Play. */}
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- voice recording, no captions available */}
-        <audio ref={audioRef} controls src={src} className="w-full min-w-0 flex-1" />
+        <audio ref={audioRef} controls autoPlay src={src} className="w-full min-w-0 flex-1" />
         <select
           value={playbackRate}
           onChange={(e) => {
@@ -585,9 +921,11 @@ function RecordingPlayer({
         size="sm"
         onClick={() => void loadAudio()}
         disabled={loading}
-        className={cn('text-xs', loading && 'opacity-60')}
+        className={cn('h-7 text-xs', loading && 'opacity-60')}
+        aria-label={`Play ${recordingLabel}`}
       >
-        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Load audio'}
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+        Play
       </Button>
       {error ? <span className="text-destructive text-xs">{error}</span> : null}
     </div>

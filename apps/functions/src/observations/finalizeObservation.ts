@@ -32,7 +32,17 @@ import {
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
-import { formatDate as formatDateReadable, sendTemplatedEmail } from '../lib/emailUtils.js';
+import {
+  APP_URL,
+  formatDate as formatDateReadable,
+  sendTemplatedEmail,
+} from '../lib/emailUtils.js';
+import {
+  acknowledgeBlockHtml,
+  acknowledgeLinkFor,
+  pdfAttachment,
+  reportFileName,
+} from '../lib/acknowledgeEmail.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -335,10 +345,16 @@ export const finalizeObservation = onCall(
         },
       });
 
-      // Send finalized email (non-blocking — failure doesn't roll back finalization)
+      // Send finalized email (non-blocking — failure doesn't roll back finalization).
+      // The PDF rides along as an attachment when it fits; otherwise the
+      // acknowledge block links to it. The block (with the "Acknowledge
+      // receipt" button) is appended unless the template places
+      // {{acknowledgeLink}} itself.
       try {
         const pdfLink = webViewLink || `https://drive.google.com/file/d/${pdfFileId}/view`;
         const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
+        const acknowledgeLink = acknowledgeLinkFor(APP_URL, observationId);
+        const attachment = pdfAttachment(pdfBuffer, reportFileName(obs.observedName));
         await sendTemplatedEmail({
           db,
           triggerType: 'observation.finalized',
@@ -355,9 +371,19 @@ export const finalizeObservation = onCall(
             observationType: obs.type,
             pdfDriveLink: pdfLink,
             driveFolderLink: folderUrl,
+            acknowledgeLink,
           },
           mailDocId: `finalized-${observationId}`,
           auditDetails: { observationId, triggerType: 'observation.finalized' },
+          ...(attachment ? { attachments: [attachment] } : {}),
+          requiredBlock: {
+            html: acknowledgeBlockHtml({
+              acknowledgeLink,
+              pdfLink,
+              pdfAttached: attachment !== null,
+            }),
+            unlessUses: 'acknowledgeLink',
+          },
         });
       } catch (emailErr) {
         logger.error('finalizeObservation: email send failed (non-fatal)', emailErr);

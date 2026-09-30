@@ -18,6 +18,8 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   observationLink: 'Observation page link',
   pdfDriveLink: 'PDF report link',
   driveFolderLink: 'Drive folder link',
+  acknowledgeLink: 'Acknowledge receipt link',
+  acknowledgedDate: 'Date acknowledged',
   appName: 'App name',
   signInLink: 'Sign-in link',
   staffName: "Staff member's name",

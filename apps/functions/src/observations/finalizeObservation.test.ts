@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import type { CallableRequest } from 'firebase-functions/v2/https';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES } from '@ops/shared';
 
@@ -76,6 +77,7 @@ vi.mock('../lib/pdfRenderer.js', () => ({
 }));
 
 vi.mock('../lib/emailUtils.js', () => ({
+  APP_URL: 'https://app.test',
   formatDate: () => 'formatted-date',
   sendTemplatedEmail: (...a: unknown[]) => h.sendTemplatedEmail?.(...a),
 }));
@@ -349,8 +351,20 @@ describe('finalizeObservation — finalize flow', () => {
     expect(finalUpdate?.['pdfDriveFileId']).toBe('pdf-1');
     // audit entry
     expect(rec.auditAdds[0]?.['action']).toBe('observation.finalize');
-    // email sent
+    // email sent, with the PDF attached and the Acknowledge receipt button
     expect(h.sendTemplatedEmail).toHaveBeenCalledOnce();
+    const emailArgs = vi.mocked(h.sendTemplatedEmail as Mock).mock.calls[0]?.[0] as {
+      vars: Record<string, string>;
+      attachments?: { contentType: string; content: string }[];
+      requiredBlock?: { html: string; unlessUses: string };
+    };
+    expect(emailArgs.vars['acknowledgeLink']).toMatch(
+      /^https:\/\/app\.test\/observations\/.+\?ack=1$/,
+    );
+    expect(emailArgs.attachments?.[0]?.contentType).toBe('application/pdf');
+    expect(emailArgs.attachments?.[0]?.content).toBe(Buffer.from('pdf').toString('base64'));
+    expect(emailArgs.requiredBlock?.unlessUses).toBe('acknowledgeLink');
+    expect(emailArgs.requiredBlock?.html).toContain('Acknowledge receipt');
   });
 
   it('replaces the existing PDF in place on re-finalize (stable fileId)', async () => {

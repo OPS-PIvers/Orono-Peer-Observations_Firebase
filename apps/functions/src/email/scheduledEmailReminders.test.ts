@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isoYearWeek,
+  needsAcknowledgeReminder,
   phaseReminderMailDocId,
   unansweredQuestionIds,
 } from './scheduledEmailReminders.js';
@@ -88,5 +89,26 @@ describe('phaseReminderMailDocId', () => {
     expect(phaseReminderMailDocId('post', 'obs1', '2026-W32')).toBe(
       'incomplete-reflection-obs1-2026-W32',
     );
+  });
+});
+
+describe('needsAcknowledgeReminder', () => {
+  const finalized = {
+    status: 'Finalized',
+    observedEmail: 'teacher@orono.k12.mn.us',
+    acknowledgedAt: null,
+  };
+
+  it('reminds an unacknowledged finalized observation once', () => {
+    expect(needsAcknowledgeReminder(finalized)).toBe(true);
+    expect(needsAcknowledgeReminder({ ...finalized, acknowledgeReminderSentAt: new Date() })).toBe(
+      false,
+    );
+  });
+
+  it('skips acknowledged, draft and recipient-less observations', () => {
+    expect(needsAcknowledgeReminder({ ...finalized, acknowledgedAt: new Date() })).toBe(false);
+    expect(needsAcknowledgeReminder({ ...finalized, status: 'Draft' })).toBe(false);
+    expect(needsAcknowledgeReminder({ ...finalized, observedEmail: '' })).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { Timestamp, getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -21,8 +21,29 @@ import {
   formatDate,
   loadActiveTemplate,
   sendEmail,
+  sendTemplatedEmail,
   substituteVariables,
 } from '../lib/emailUtils.js';
+import { acknowledgeBlockHtml, acknowledgeLinkFor } from '../lib/acknowledgeEmail.js';
+
+/**
+ * How far back past the reminder's N-day mark an unacknowledged observation
+ * still qualifies. Bounds the query, and means turning the reminder on
+ * doesn't email everyone with an old unacknowledged observation.
+ */
+export const ACK_REMINDER_WINDOW_DAYS = 14;
+
+/** Whether an unacknowledged Finalized observation still needs its one
+ *  acknowledge reminder. */
+export function needsAcknowledgeReminder(obs: Record<string, unknown>): boolean {
+  return (
+    obs['status'] === OBSERVATION_STATUS.finalized &&
+    obs['acknowledgedAt'] == null &&
+    obs['acknowledgeReminderSentAt'] == null &&
+    typeof obs['observedEmail'] === 'string' &&
+    obs['observedEmail'] !== ''
+  );
+}
 
 /** Build a slug → displayName map from the /roles collection so reminder
  *  emails can render a human-readable role even though observations now
@@ -195,6 +216,8 @@ export function isoYearWeek(utcNow: Date): string {
  *      observation type.
  *   3. Overdue-finalize reminders N+ days after a Draft observation's date
  *      has passed, repeating weekly to the *observer* until finalized.
+ *   4. One acknowledge reminder to the observed staff member N days after
+ *      finalize, if they haven't acknowledged receipt yet.
  *
  * Runs at 07:00 America/Chicago. The N values come from each template's
  * scheduledDays field so admins can tune them without a deploy.
@@ -413,6 +436,77 @@ export const scheduledEmailReminders = onSchedule(
       logger.info('scheduledEmailReminders: overdue processed', {
         count: overdueSnap.size,
         daysPast,
+      });
+    }
+
+    // ── 4. Acknowledge reminder ───────────────────────────────────────
+    // A single nudge to the observed staff member, N days after finalize,
+    // while the observation is unacknowledged. acknowledgeReminderSentAt
+    // marks it sent (reopen clears it, so a re-finalized observation gets
+    // its own reminder).
+    const ackTemplate = await loadActiveTemplate(db, 'scheduled.reminderAcknowledge');
+    if (ackTemplate) {
+      const days = ackTemplate.scheduledDays;
+      const { start: cutoff } = chicagoMidnight(today, -days);
+      const { start: windowStart } = chicagoMidnight(today, -(days + ACK_REMINDER_WINDOW_DAYS));
+      const ackSnap = await db
+        .collection(COLLECTIONS.observations)
+        .where('status', '==', OBSERVATION_STATUS.finalized)
+        .where('finalizedAt', '>=', Timestamp.fromDate(windowStart))
+        .where('finalizedAt', '<', Timestamp.fromDate(cutoff))
+        .get();
+
+      let sent = 0;
+      for (const docSnap of ackSnap.docs) {
+        const obs = docSnap.data();
+        if (!needsAcknowledgeReminder(obs)) continue;
+        const observedEmail = obs['observedEmail'] as string;
+        const observerEmail = (obs['observerEmail'] as string | undefined) ?? '';
+        const pdfFileId = obs['pdfDriveFileId'] as string | null | undefined;
+        const pdfLink = pdfFileId ? `https://drive.google.com/file/d/${pdfFileId}/view` : null;
+        const acknowledgeLink = acknowledgeLinkFor(APP_URL, docSnap.id);
+        // Denormalized display name; legacy docs fall back to the email's local part.
+        const storedObserverName = (obs['observerName'] as string | undefined)?.trim() ?? '';
+        const observerName =
+          storedObserverName !== '' ? storedObserverName : (observerEmail.split('@')[0] ?? '');
+        try {
+          await sendTemplatedEmail({
+            db,
+            triggerType: 'scheduled.reminderAcknowledge',
+            to: observedEmail,
+            vars: {
+              observedName: (obs['observedName'] as string | undefined) ?? '',
+              observedEmail,
+              observerName,
+              observerEmail,
+              observationDate: formatDate(obs['observationDate']),
+              observationName: (obs['observationName'] as string | undefined) ?? '',
+              observationType: (obs['type'] as string | undefined) ?? '',
+              pdfDriveLink: pdfLink ?? '',
+              acknowledgeLink,
+            },
+            mailDocId: `ack-reminder-${docSnap.id}-${String(
+              (obs['finalizedAt'] as Timestamp).toMillis(),
+            )}`,
+            auditDetails: {
+              observationId: docSnap.id,
+              triggerType: 'scheduled.reminderAcknowledge',
+            },
+            requiredBlock: {
+              html: acknowledgeBlockHtml({ acknowledgeLink, pdfLink, pdfAttached: false }),
+              unlessUses: 'acknowledgeLink',
+            },
+          });
+          await docSnap.ref.update({ acknowledgeReminderSentAt: FieldValue.serverTimestamp() });
+          sent += 1;
+        } catch (err) {
+          logger.error('scheduledEmailReminders: acknowledge reminder failed', err);
+        }
+      }
+      logger.info('scheduledEmailReminders: acknowledge processed', {
+        count: ackSnap.size,
+        sent,
+        days,
       });
     }
   },

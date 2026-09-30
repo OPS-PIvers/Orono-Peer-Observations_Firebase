@@ -52,6 +52,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'observation.created.workProduct': 'Work Product Created',
   'observation.created.instructionalRound': 'IR Created',
   'observation.finalized': 'Observation Finalized',
+  'observation.acknowledged': 'Observation Acknowledged',
   'staff.created': 'New Staff Added',
   'roleYearMapping.updated': 'Subdomains Assigned',
   'scheduled.preObservation': 'Scheduled: Pre-Observation',
@@ -59,6 +60,7 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduled.reminderPlanning': 'Scheduled: Planning Questions Reminder',
   'scheduled.reminderReflection': 'Scheduled: Reflection Questions Reminder',
   'scheduled.reminderOverdueFinalize': 'Scheduled: Overdue Finalize Reminder',
+  'scheduled.reminderAcknowledge': 'Scheduled: Acknowledge Reminder',
   'scheduling.windowInvite': 'Scheduling: Window Invite',
   'scheduling.bookingConfirmation': 'Scheduling: Booking Confirmed',
   'scheduling.assignmentNotice': 'Scheduling: Time Assigned',
@@ -67,6 +69,13 @@ const TRIGGER_LABELS: Record<EmailTriggerType, string> = {
   'scheduling.windowExpired': 'Scheduling: Window Expired',
   'scheduling.bookingScheduleChanged': 'Scheduling: Bell Schedule Changed',
 };
+
+/** Triggers whose send path appends the "Acknowledge receipt" button when the
+ *  template doesn't place {{acknowledgeLink}} (see functions acknowledgeEmail.ts). */
+const ACK_BUTTON_TRIGGERS: ReadonlySet<EmailTriggerType> = new Set([
+  'observation.finalized',
+  'scheduled.reminderAcknowledge',
+]);
 
 const RECIPIENT_LABELS: Record<EmailRecipientType, string> = {
   observed: 'To: Staff',
@@ -122,7 +131,19 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observationType',
     'pdfDriveLink',
     'driveFolderLink',
+    'acknowledgeLink',
     'signInLink',
+    'appName',
+  ],
+  'observation.acknowledged': [
+    'observerName',
+    'observedName',
+    'observedEmail',
+    'observationDate',
+    'observationName',
+    'observationType',
+    'acknowledgedDate',
+    'observationLink',
     'appName',
   ],
   'staff.created': ['staffName', 'staffEmail', 'staffRole', 'signInLink', 'appName'],
@@ -180,6 +201,16 @@ const TRIGGER_VARIABLES: Record<EmailTriggerType, TemplateVariable[]> = {
     'observationName',
     'observationType',
     'signInLink',
+    'appName',
+  ],
+  'scheduled.reminderAcknowledge': [
+    'observedName',
+    'observerName',
+    'observationDate',
+    'observationName',
+    'observationType',
+    'pdfDriveLink',
+    'acknowledgeLink',
     'appName',
   ],
   'scheduling.windowInvite': [
@@ -283,6 +314,8 @@ const SAMPLE_VARS: Record<TemplateVariable, string> = {
   observationType: 'Standard',
   pdfDriveLink: 'https://drive.google.com/file/d/example/view',
   driveFolderLink: 'https://drive.google.com/drive/folders/example',
+  acknowledgeLink: 'https://observations.orono.k12.mn.us/observations/sample?ack=1',
+  acknowledgedDate: 'May 22, 2026',
   appName: 'Orono Peer Observations',
   signInLink: 'https://observations.orono.k12.mn.us',
   staffName: 'Alex Smith',
@@ -828,6 +861,12 @@ function TemplateRow({
             onChange={(html) => onFormChange({ ...editForm, bodyHtml: html })}
             variables={relevantVars}
           />
+          {ACK_BUTTON_TRIGGERS.has(triggerType) ? (
+            <p className="text-muted-foreground -mt-2 text-xs">
+              An <strong>Acknowledge receipt</strong> button is added below this message
+              automatically, unless you insert the Acknowledge receipt link yourself.
+            </p>
+          ) : null}
 
           {/* Preview — sandboxed iframe prevents script execution */}
           {editForm.bodyHtml ? (

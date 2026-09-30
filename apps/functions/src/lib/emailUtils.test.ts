@@ -712,6 +712,63 @@ describe('sendTemplatedEmail', () => {
     expect(msg.html).toContain('Hello Jane');
   });
 
+  it('appends a required block and attachments unless the template places the variable', async () => {
+    const templateWith = (bodyHtml: string) =>
+      makeDb({
+        docs: { [appSettingsPath]: {} },
+        templates: [
+          {
+            id: 't1',
+            triggerType: 'observation.finalized',
+            isActive: true,
+            subject: 'S',
+            bodyHtml,
+          },
+        ],
+      });
+    const block = { html: '<p>ACK-BLOCK</p>', unlessUses: 'acknowledgeLink' };
+    const attachment = {
+      filename: 'r.pdf',
+      content: 'JVBERg==',
+      encoding: 'base64' as const,
+      contentType: 'application/pdf',
+    };
+
+    const plain = templateWith('<p>Hi</p>');
+    await sendTemplatedEmail({
+      db: plain.db,
+      triggerType: 'observation.finalized',
+      to: 'a@orono.k12.mn.us',
+      vars: { acknowledgeLink: 'https://x/ack' },
+      mailDocId: 'm-ack1',
+      requiredBlock: block,
+      attachments: [attachment],
+    });
+    const msg = plain.writes.mailSets[0]?.data['message'] as {
+      html: string;
+      attachments?: unknown[];
+    };
+    expect(msg.html).toContain('ACK-BLOCK');
+    expect(msg.attachments).toEqual([attachment]);
+
+    const custom = templateWith('<p><a href="{{acknowledgeLink}}">Ack</a></p>');
+    await sendTemplatedEmail({
+      db: custom.db,
+      triggerType: 'observation.finalized',
+      to: 'a@orono.k12.mn.us',
+      vars: { acknowledgeLink: 'https://x/ack' },
+      mailDocId: 'm-ack2',
+      requiredBlock: block,
+    });
+    const customMsg = custom.writes.mailSets[0]?.data['message'] as {
+      html: string;
+      attachments?: unknown[];
+    };
+    expect(customMsg.html).not.toContain('ACK-BLOCK');
+    expect(customMsg.html).toContain('https://x/ack');
+    expect(customMsg.attachments).toBeUndefined();
+  });
+
   it('sanitizes an unsafe href that arrives through a substituted variable', async () => {
     // Ordering guard: substitution runs before the send-time sanitize, so a
     // protocol smuggled in via an /appSettings value (not the template body)
