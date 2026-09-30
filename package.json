@@ -46,6 +46,7 @@
     "backfill:cycle-status:emulator": "tsx scripts/backfill/backfill-cycle-status.ts --target=emulator",
     "backfill:cycle-status:prod": "tsx scripts/backfill/backfill-cycle-status.ts --target=prod",
     "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
+    "drive:transfer": "tsx scripts/drive-auth/transfer-drive-ownership.ts",
     "prepare": "husky"
   },
   "devDependencies": {
