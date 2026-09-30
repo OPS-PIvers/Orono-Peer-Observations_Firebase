@@ -19,6 +19,7 @@ import {
 import { APP_URL, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow } from './engine/slotGeneration.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
+import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
 import { formatYMD } from './engine/schedulingEmail.js';
 import { loadSchedulingSettings, nextWindowStatus } from './bookObservationSlot.js';
 
@@ -101,6 +102,15 @@ export const updateObservationWindow = onCall(
 
     const staffRefs = dedupedAdds.map((inv) => db.collection(COLLECTIONS.staff).doc(inv.email));
     const staffSnaps = staffRefs.length > 0 ? await db.getAll(...staffRefs) : [];
+
+    // The window's observer (not necessarily the caller, when a console admin
+    // edits it) must be able to observe everyone added.
+    if (dedupedAdds.length > 0) {
+      assertCanObserveAll(
+        await loadObserverScope(db, window.observerEmail),
+        staffSnaps.filter((s) => s.exists).map((s) => s.data() as Staff),
+      );
+    }
 
     const addedInvitees: WindowInvitee[] = [];
     for (const [i, entry] of dedupedAdds.entries()) {

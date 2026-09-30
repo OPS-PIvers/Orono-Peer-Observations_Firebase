@@ -192,6 +192,25 @@ describe('observations: create', () => {
       };
     }
 
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const fs = ctx.firestore();
+        await setDoc(doc(fs, 'staff', ADMIN_EMAIL), {
+          email: ADMIN_EMAIL,
+          role: 'administrator',
+          buildings: ['OMS'],
+        });
+        await setDoc(doc(fs, 'staff', OBSERVED_EMAIL), {
+          email: OBSERVED_EMAIL,
+          role: 'teacher',
+          year: 2,
+          cycleStatus: 'high',
+          buildings: ['OMS'],
+          isActive: true,
+        });
+      });
+    });
+
     it('building Administrator can create a Standard observation', async () => {
       const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
       await assertSucceeds(
@@ -207,6 +226,81 @@ describe('observations: create', () => {
       await assertFails(
         setDoc(doc(db, 'observations/adm-ir'), newObs(ADMIN_EMAIL, 'Instructional Round')),
       );
+    });
+
+    describe('who a building Administrator may observe', () => {
+      async function seedObserved(email: string, fields: Record<string, unknown>) {
+        await testEnv.withSecurityRulesDisabled(async (ctx) => {
+          await setDoc(doc(ctx.firestore(), 'staff', email), {
+            email,
+            role: 'teacher',
+            year: 2,
+            cycleStatus: 'high',
+            buildings: ['OMS'],
+            isActive: true,
+            ...fields,
+          });
+        });
+      }
+      function obsOf(observedEmail: string) {
+        return { ...newObs(ADMIN_EMAIL, 'Standard'), observedEmail };
+      }
+      const adminDb = () =>
+        testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
+
+      it('allows Probationary staff in their building, including legacy docs', async () => {
+        await seedObserved('p@orono.k12.mn.us', { cycleStatus: 'probationary' });
+        await seedObserved('legacy@orono.k12.mn.us', { cycleStatus: null, year: 4 });
+        await assertSucceeds(setDoc(doc(adminDb(), 'observations/a1'), obsOf('p@orono.k12.mn.us')));
+        await assertSucceeds(
+          setDoc(doc(adminDb(), 'observations/a2'), obsOf('legacy@orono.k12.mn.us')),
+        );
+      });
+
+      it('denies staff in another building', async () => {
+        await seedObserved('far@orono.k12.mn.us', { buildings: ['OHS'] });
+        await assertFails(setDoc(doc(adminDb(), 'observations/a3'), obsOf('far@orono.k12.mn.us')));
+      });
+
+      it('denies non-summative staff', async () => {
+        await seedObserved('dev@orono.k12.mn.us', { cycleStatus: 'developing' });
+        await seedObserved('y1@orono.k12.mn.us', { cycleStatus: null, year: 1 });
+        await assertFails(setDoc(doc(adminDb(), 'observations/a4'), obsOf('dev@orono.k12.mn.us')));
+        await assertFails(setDoc(doc(adminDb(), 'observations/a5'), obsOf('y1@orono.k12.mn.us')));
+      });
+
+      it('denies archived staff and people with no staff doc', async () => {
+        await seedObserved('gone@orono.k12.mn.us', { isActive: false });
+        await assertFails(setDoc(doc(adminDb(), 'observations/a6'), obsOf('gone@orono.k12.mn.us')));
+        await assertFails(
+          setDoc(doc(adminDb(), 'observations/a7'), obsOf('nobody@orono.k12.mn.us')),
+        );
+      });
+
+      it('cannot retarget an existing observation at someone else', async () => {
+        await seedObserved('dev@orono.k12.mn.us', { cycleStatus: 'developing' });
+        await seedDraftObs('mine', { observerEmail: ADMIN_EMAIL });
+        await assertFails(
+          updateDoc(doc(adminDb(), 'observations/mine'), { observedEmail: 'dev@orono.k12.mn.us' }),
+        );
+        await assertSucceeds(
+          updateDoc(doc(adminDb(), 'observations/mine'), { observationName: 'Renamed' }),
+        );
+      });
+
+      it('still lets a Peer Evaluator observe anyone', async () => {
+        await seedObserved('far@orono.k12.mn.us', {
+          buildings: ['OHS'],
+          cycleStatus: 'developing',
+        });
+        const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+        await assertSucceeds(
+          setDoc(doc(db, 'observations/pe-far'), {
+            ...newObs(PE_EMAIL, 'Standard'),
+            observedEmail: 'far@orono.k12.mn.us',
+          }),
+        );
+      });
     });
 
     it('PE can still create Work Product and Instructional Round', async () => {

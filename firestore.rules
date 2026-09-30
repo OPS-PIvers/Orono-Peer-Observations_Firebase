@@ -102,7 +102,7 @@ service cloud.firestore {
             || (auto.dimension == 'year' && auto.value == dy));
     }
 
-    // Building Administrators (/building-staff) may create and edit staff in
+    // Building Administrators (/my-staff) may create and edit staff in
     // their own building(s): never someone holding a special role, never to
     // or from a special role, and only the fields that page writes — so no
     // module or Admin Console access. Moving someone out of the building is
@@ -127,6 +127,21 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'year', 'buildings', 'cycleStatus', 'summativeYear',
                       'isActive', 'updatedAt']);
+    }
+
+    // Building Administrators may only start observations of active,
+    // summative (Probationary or High Cycle) staff in one of their own
+    // buildings. Mirrors observeBlockReason in @ops/shared; the status
+    // derivation mirrors staffCycleStatus like matchesModuleAutoEnable.
+    function adminCanObserve(email) {
+      let s = get(/databases/$(database)/documents/staff/$(email)).data;
+      let y = s.get('year', 1);
+      let stored = s.get('cycleStatus', null);
+      let legacy = y >= 4 ? 'probationary' : (s.get('summativeYear', false) ? 'high' : (y == 1 ? 'planning' : 'developing'));
+      let status = stored in ['planning', 'developing', 'high', 'probationary'] ? stored : legacy;
+      return s.get('isActive', true) == true
+        && s.get('buildings', []).hasAny(staffDocData().get('buildings', []))
+        && status in ['high', 'probationary'];
     }
 
     function unchanged(field) {
@@ -383,9 +398,13 @@ service cloud.firestore {
         && request.resource.data.status == 'Draft'
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.
-        && (role() != 'administrator' || request.resource.data.type == 'Standard');
+        && (role() != 'administrator' || request.resource.data.type == 'Standard')
+        // ...and only of staff they can observe (see adminCanObserve).
+        && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail));
 
-      allow update: if isAdmin()
+      // A building Administrator can't retarget an observation at someone
+      // else, which would sidestep the adminCanObserve check on create.
+      allow update: if (isAdmin() && (role() != 'administrator' || unchanged('observedEmail')))
         || (
           isCurrentUserEmail(resource.data.observerEmail)
           && resource.data.status == 'Draft'

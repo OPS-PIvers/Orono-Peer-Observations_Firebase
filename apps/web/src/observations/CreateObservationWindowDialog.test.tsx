@@ -47,6 +47,10 @@ vi.mock('@/dev/DevModeContext', () => ({
   useEffectiveClaims: () => ({ role: effectiveRole.current }),
 }));
 
+vi.mock('@/hooks/useObserverScope', () => ({
+  useObserverScope: () => ({ role: effectiveRole.current, buildings: [], loading: false }),
+}));
+
 vi.mock('@/hooks/useFirestoreDoc', () => ({
   useFirestoreDoc: useFirestoreDocMock,
 }));

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
-import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, SPECIAL_ROLES, canObserve, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,8 +32,23 @@ import { CreateObservationDialog } from './CreateObservationDialog';
  */
 export function NewObservationPage() {
   const navigate = useNavigate();
-  const { data: staff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const { data: allStaff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const scope = useObserverScope();
+  const scoped = scope.role === SPECIAL_ROLES.administrator;
+  // Building Administrators only see the staff they can observe (active,
+  // Probationary or High Cycle, in their buildings); other observer roles
+  // see everyone. Held as null until the observer's buildings load.
+  const staff = useMemo(
+    () =>
+      allStaff && !scope.loading
+        ? allStaff.filter((s) =>
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+            canObserve(scope, { ...s, buildings: s.buildings ?? [] }),
+          )
+        : null,
+    [allStaff, scope],
+  );
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -86,6 +102,8 @@ export function NewObservationPage() {
     <PageHeader
       title="New observation"
       subtitle={`Pick the staff member you're observing.${
+        scoped ? ' Showing Probationary and High Cycle staff in your building.' : ''
+      }${
         staff ? ` ${String(filtered.length)} of ${String(staff.length)} match.` : ' Loading staff…'
       }`}
       actions={
@@ -181,7 +199,7 @@ export function NewObservationPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && !staff ? (
+            {(loading || scope.loading) && !staff ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={`skeleton-${String(i)}`}>
                   <TableCell>
