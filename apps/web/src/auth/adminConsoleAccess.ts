@@ -8,7 +8,7 @@ import { useAuth } from './AuthProvider';
  * building Administrators carry `isAdmin` so rules and callables let them
  * manage observations and staff, but the console itself (rubrics, roles,
  * email templates, settings) is district/developer territory. They get the
- * building-scoped /building-staff page instead. An Administrator who also has
+ * building-scoped /my-staff page instead. An Administrator who also has
  * the `hasAdminAccess` staff flag still gets the console.
  */
 export function canOpenAdminConsole(

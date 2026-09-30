@@ -1,5 +1,5 @@
 /**
- * StaffDialog — building-scoped mode (/building-staff). A building
+ * StaffDialog — building-scoped mode (/my-staff). A building
  * Administrator must not be able to grant module or Admin Console access or
  * hand out an observer role, and their edits must not clobber those fields.
  */

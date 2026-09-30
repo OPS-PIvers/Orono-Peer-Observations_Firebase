@@ -15,7 +15,6 @@ import {
   Settings,
   Sparkles,
   User,
-  UserCog,
   Users,
 } from 'lucide-react';
 import {
@@ -95,6 +94,7 @@ export function useSidebar() {
 // ─── Nav item builder ────────────────────────────────────────────────────────
 
 const OBS_CHILDREN: NavSubItem[] = [
+  { label: 'New observation', href: '/observations/new' },
   { label: 'In-progress', href: '/observations?status=draft' },
   { label: 'Finalized', href: '/observations?status=finalized' },
   { label: 'All observations', href: '/observations' },
@@ -128,7 +128,7 @@ function buildNavItems(
 
   // Role-specific layouts come first — Administrators also carry the
   // `isAdmin` claim, so checking `role` first is what wires up their
-  // building-scoped /my-staff and /building-staff links. They only get the
+  // building-scoped /my-staff link. They only get the
   // Admin Console when their staff doc also has `hasAdminAccess`.
   const dashboardItem: NavItem = { icon: Sparkles, label: 'My Dashboard', href: '/dashboard' };
 
@@ -137,7 +137,6 @@ function buildNavItems(
       dashboardItem,
       myRubricItem,
       { icon: Building2, label: 'My Staff', href: '/my-staff' },
-      { icon: UserCog, label: 'Building Staff', href: '/building-staff' },
       { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
     ];
     if (flags.canOpenConsole) {
@@ -237,6 +236,21 @@ function isExactChildActive(
   const hrefSearch = new URLSearchParams(hrefQuery ?? '').toString();
   const locSearch = new URLSearchParams(location.search).toString();
   return hrefSearch === locSearch;
+}
+
+/** The one child to highlight: the longest matching path wins, so
+ *  /observations/new lights "New observation" and not also "All
+ *  observations" (whose /observations prefix matches it too). */
+function activeChildHref(
+  children: NavSubItem[],
+  location: { pathname: string; hash: string; search: string },
+): string | null {
+  const pathLength = (href: string) => (href.split(/[?#]/)[0] ?? href).length;
+  return (
+    children
+      .filter((c) => isExactChildActive(c.href, location))
+      .sort((a, b) => pathLength(b.href) - pathLength(a.href))[0]?.href ?? null
+  );
 }
 
 /**
@@ -596,6 +610,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
   }
 
   if (item.children) {
+    const activeHref = activeChildHref(item.children, location);
     return (
       <div>
         <button
@@ -623,7 +638,7 @@ function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: 
         {showLabels && sectionOpen && (
           <ul className="mt-0.5 ml-7 border-l border-white/10">
             {item.children.map((child) => {
-              const childActive = isExactChildActive(child.href, location);
+              const childActive = child.href === activeHref;
               return (
                 <li key={child.href}>
                   <Link
