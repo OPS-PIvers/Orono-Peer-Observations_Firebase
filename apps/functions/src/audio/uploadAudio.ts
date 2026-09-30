@@ -9,6 +9,7 @@ import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   ensureObservationFolder,
+  shareObservationFolderWithObserver,
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
@@ -144,6 +145,9 @@ export const uploadAudio = onRequest(
         parentFolderId: PARENT_FOLDER_ID.value(),
         existingFolderId: obs.driveFolderId,
       });
+      // Best-effort Reader grant so the observer can play back recordings
+      // from Drive; never fails the upload.
+      await shareObservationFolderWithObserver({ folderId, observerEmail: obs.observerEmail });
       const ext = mimeTypeToExt(mimeType);
       const filename = `audio-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${ext}`;
       const uploaded = await uploadFileToFolder({ folderId, filename, mimeType, body });
