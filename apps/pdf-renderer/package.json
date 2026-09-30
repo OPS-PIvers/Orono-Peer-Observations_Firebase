@@ -19,19 +19,19 @@
     "docker:run": "docker run --rm -p 8080:8080 pdf-renderer:dev"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.11",
+    "@hono/node-server": "^2.1.1",
     "@ops/shared": "workspace:*",
-    "@tiptap/core": "^3.30.4",
-    "@tiptap/extension-link": "^3.30.4",
-    "@tiptap/html": "^3.30.4",
-    "@tiptap/starter-kit": "^3.30.4",
-    "hono": "^4.12.34",
-    "puppeteer": "^25.10.0"
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/html": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "hono": "^4.13.10",
+    "puppeteer": "^25.12.0"
   },
   "devDependencies": {
-    "@types/node": "^22.10.10",
-    "tsup": "^8.5.0",
-    "tsx": "^4.20.6",
+    "@types/node": "^22.20.4",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }
