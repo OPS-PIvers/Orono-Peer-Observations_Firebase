@@ -3,11 +3,13 @@ import { addDoc, collection } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_TYPES,
+  creatableObservationTypes,
   type ObservationType,
   type Role,
   type Staff,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { db } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -26,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { newDraftObservationDoc } from './newObservationDoc';
+import { OBSERVATION_TYPE_OPTION_LABELS } from './observationTypeLabels';
 
 export interface CreateObservationDialogProps {
   open: boolean;
@@ -53,6 +56,9 @@ export function CreateObservationDialog({
   // on, block creation at this shared funnel so both entry points (the staff
   // page button and the New Observation staff picker) are covered.
   const newObservationsDisabled = useNewObservationsDisabled();
+  // Building Administrators run Standard observations only, so the picker
+  // is hidden when there is nothing to choose.
+  const allowedTypes = creatableObservationTypes(useEffectiveClaims().role);
   const [type, setType] = useState<ObservationType>(OBSERVATION_TYPES.standard);
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +93,7 @@ export function CreateObservationDialog({
           observerEmail,
           observerName: observerStaff?.name ?? '',
           staff,
-          type,
+          type: allowedTypes.includes(type) ? type : OBSERVATION_TYPES.standard,
           observationName: name,
         }),
       );
@@ -112,19 +118,23 @@ export function CreateObservationDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
-          <div className="grid gap-2">
-            <Label htmlFor="obs-type">Type</Label>
-            <select
-              id="obs-type"
-              value={type}
-              onChange={(e) => setType(e.target.value as ObservationType)}
-              className="border-input bg-background h-11 rounded-md border px-3 text-sm"
-            >
-              <option value={OBSERVATION_TYPES.standard}>Standard observation</option>
-              <option value={OBSERVATION_TYPES.workProduct}>Work product</option>
-              <option value={OBSERVATION_TYPES.instructionalRound}>Instructional round</option>
-            </select>
-          </div>
+          {allowedTypes.length > 1 ? (
+            <div className="grid gap-2">
+              <Label htmlFor="obs-type">Type</Label>
+              <select
+                id="obs-type"
+                value={type}
+                onChange={(e) => setType(e.target.value as ObservationType)}
+                className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+              >
+                {allowedTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {OBSERVATION_TYPE_OPTION_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className="grid gap-2">
             <Label htmlFor="obs-name">Name (optional)</Label>

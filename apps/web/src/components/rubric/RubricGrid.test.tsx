@@ -323,6 +323,40 @@ describe('<RubricGrid> edit mode', () => {
     expect(document.querySelector('[contenteditable]')).not.toBeNull();
   });
 
+  it('shows a persistent script-tag count on the Notes chip and opens on the Script tab', async () => {
+    const tagged = (text: string, componentId: string) => ({
+      type: 'paragraph',
+      content: [{ type: 'text', text, marks: [{ type: 'componentTag', attrs: { componentId } }] }],
+    });
+    const scriptDoc: TiptapDoc = {
+      type: 'doc',
+      content: [tagged('Grouped by readiness.', '1a'), tagged('Checked for understanding.', '1a')],
+    };
+    const manualNotes: TiptapDoc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Manual note' }] }],
+    };
+    render(
+      <RubricGrid
+        rubric={makeRubric()}
+        mode={editMode({ scriptDoc, notes: { '1a': manualNotes } })}
+        storageScope="test-edit-script-tags"
+      />,
+    );
+
+    // Only 1a has tags, so exactly one chip carries the badge.
+    expect(screen.getAllByLabelText('2 script tags')).toHaveLength(1);
+    const chip = screen.getByRole('button', { name: /Notes.*2 script tags/ });
+
+    await userEvent.click(chip);
+    expect(screen.getByRole('button', { name: 'Script tags (2)' })).toBeInTheDocument();
+    expect(screen.getByText('Mirrored from the script — read only')).toBeInTheDocument();
+
+    // Viewing the notes never clears the indicator.
+    await userEvent.click(chip);
+    expect(screen.getAllByLabelText('2 script tags')).toHaveLength(1);
+  });
+
   it('does NOT auto-open the notes panel even when the component has notes', () => {
     const notesDoc: TiptapDoc = {
       type: 'doc',

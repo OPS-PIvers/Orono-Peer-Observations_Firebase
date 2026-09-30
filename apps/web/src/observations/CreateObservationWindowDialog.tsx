@@ -6,6 +6,7 @@ import {
   COLLECTIONS,
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_TYPES,
+  creatableObservationTypes,
   type AppSettings,
   type BookingMode,
   type Building,
@@ -17,6 +18,7 @@ import {
   type Staff,
 } from '@ops/shared';
 import { functions } from '@/lib/firebase';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { Button } from '@/components/ui/button';
@@ -33,6 +35,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { yearLabel } from '@/utils/staffFormatting';
+import { OBSERVATION_TYPE_OPTION_LABELS } from './observationTypeLabels';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from '@/admin/staff/StaffFilterBar';
 
 interface CreateObservationWindowResult {
@@ -120,6 +123,8 @@ export function CreateObservationWindowDialog({
   const [observationType, setObservationType] = useState<ObservationType>(
     OBSERVATION_TYPES.standard,
   );
+  // Building Administrators' windows book Standard observations only.
+  const allowedTypes = creatableObservationTypes(useEffectiveClaims().role);
   const [observationName, setObservationName] = useState('');
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
@@ -331,7 +336,9 @@ export function CreateObservationWindowDialog({
       travelBufferMinutes: travelBuffer,
       perDayCap: bookingMode === 'day-preference' ? perDayCap : null,
       signupFieldIds: [...selectedFieldIds],
-      defaultObservationType: observationType,
+      defaultObservationType: allowedTypes.includes(observationType)
+        ? observationType
+        : OBSERVATION_TYPES.standard,
       defaultObservationName: observationName.trim(),
       calendarEventTitle: eventTitle.trim(),
       calendarEventDescription: eventDescription.trim(),
@@ -501,19 +508,23 @@ export function CreateObservationWindowDialog({
 
           {/* Defaults */}
           <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="window-obs-type">Default observation type</Label>
-              <select
-                id="window-obs-type"
-                value={observationType}
-                onChange={(e) => setObservationType(e.target.value as ObservationType)}
-                className="border-input bg-background h-11 rounded-md border px-3 text-sm"
-              >
-                <option value={OBSERVATION_TYPES.standard}>Standard observation</option>
-                <option value={OBSERVATION_TYPES.workProduct}>Work product</option>
-                <option value={OBSERVATION_TYPES.instructionalRound}>Instructional round</option>
-              </select>
-            </div>
+            {allowedTypes.length > 1 ? (
+              <div className="grid gap-2">
+                <Label htmlFor="window-obs-type">Default observation type</Label>
+                <select
+                  id="window-obs-type"
+                  value={observationType}
+                  onChange={(e) => setObservationType(e.target.value as ObservationType)}
+                  className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                >
+                  {allowedTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {OBSERVATION_TYPE_OPTION_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div className="grid gap-2">
               <Label htmlFor="window-obs-name">Default observation name (optional)</Label>
               <Input

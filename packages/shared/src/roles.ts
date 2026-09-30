@@ -1,3 +1,5 @@
+import { OBSERVATION_TYPES, type ObservationType } from './constants.js';
+
 /**
  * Role definitions.
  *
@@ -89,4 +91,14 @@ export function canOpenAdminConsole(
  *  into observers. Mirrored by the observation create rule in firestore.rules. */
 export function canCreateObservations(role: string | null | undefined): boolean {
   return isSpecialRole(role);
+}
+
+/** Observation types a role may create. Building Administrators run
+ *  Standard observations only — Work Product and Instructional Round are
+ *  peer-evaluator workflows. Keyed on the role alone (like
+ *  `canCreateObservations`). Mirrored by the observation create rule in
+ *  firestore.rules and by `bookObservationSlot`. */
+export function creatableObservationTypes(role: string | null | undefined): ObservationType[] {
+  if (role === SPECIAL_ROLES.administrator) return [OBSERVATION_TYPES.standard];
+  return Object.values(OBSERVATION_TYPES);
 }

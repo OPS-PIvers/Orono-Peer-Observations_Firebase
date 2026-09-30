@@ -259,7 +259,10 @@ service cloud.firestore {
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
       allow create: if hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
-        && request.resource.data.observerEmail == request.auth.token.email;
+        && request.resource.data.observerEmail == request.auth.token.email
+        // Building Administrators' windows book Standard observations only.
+        && (role() != 'administrator'
+            || request.resource.data.defaultObservationType == 'Standard');
       // Delete: admin or the observer. Unchanged.
       allow delete: if isAdmin()
         || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email);
@@ -377,7 +380,10 @@ service cloud.firestore {
       allow create: if hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
-        && request.resource.data.status == 'Draft';
+        && request.resource.data.status == 'Draft'
+        // Building Administrators run Standard observations only. Mirrors
+        // creatableObservationTypes() in @ops/shared.
+        && (role() != 'administrator' || request.resource.data.type == 'Standard');
 
       allow update: if isAdmin()
         || (

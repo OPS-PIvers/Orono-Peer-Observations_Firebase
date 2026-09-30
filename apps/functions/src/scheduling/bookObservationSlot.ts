@@ -8,9 +8,11 @@ import {
   DEFAULT_SCHEDULING_SETTINGS,
   OBSERVATION_SLOT_STATUS,
   OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
   bookObservationSlotInput,
+  creatableObservationTypes,
   type Building,
   type ObservationSlot,
   type ObservationWindow,
@@ -71,8 +73,19 @@ export async function createDraftObservationForBooking(args: {
 }): Promise<string> {
   const { db, window, slot, staffEmail, signupDetails, scheduling, emailTrigger } = args;
 
-  const staffSnap = await db.collection(COLLECTIONS.staff).doc(staffEmail).get();
+  const [staffSnap, observerSnap] = await Promise.all([
+    db.collection(COLLECTIONS.staff).doc(staffEmail).get(),
+    db.collection(COLLECTIONS.staff).doc(window.observerEmail.toLowerCase()).get(),
+  ]);
   const staff = staffSnap.exists ? (staffSnap.data() as Staff) : null;
+  // A building Administrator's window books Standard observations only, even
+  // if the window predates that rule or was written with another type.
+  const observerRole = observerSnap.exists ? (observerSnap.data() as Staff).role : null;
+  const observationType = creatableObservationTypes(observerRole).includes(
+    window.defaultObservationType,
+  )
+    ? window.defaultObservationType
+    : OBSERVATION_TYPES.standard;
 
   const slotStart = toDate(slot.startUTC);
   const slotEnd = toDate(slot.endUTC);
@@ -92,7 +105,7 @@ export async function createDraftObservationForBooking(args: {
     observedYear: staff?.year ?? 1,
     observedBuildings: staff?.buildings ?? [],
     status: OBSERVATION_STATUS.draft,
-    type: window.defaultObservationType,
+    type: observationType,
     observationName: window.defaultObservationName,
     observationData: {},
     componentNotes: {},
@@ -141,7 +154,7 @@ export async function createDraftObservationForBooking(args: {
       observedRole: staff?.role ?? '',
       observedYear: staff ? String(displayYear(staff.year)) : '',
       observationName: window.defaultObservationName,
-      observationType: window.defaultObservationType,
+      observationType,
       slotDateLocal: formatChicagoDate(slotStart),
       slotStartLocal: formatChicagoTime(slotStart),
       slotEndLocal: formatChicagoTime(slotEnd),

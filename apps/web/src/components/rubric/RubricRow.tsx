@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck } from 'lucide-react';
+import { Check, ChevronDown, FileText, Paperclip, Search, SquareCheck, Tag } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import {
   PROFICIENCY_LEVELS,
@@ -79,6 +79,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
   const evidenceFiles: DriveFileRef[] =
     mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
   const notesHasContent = hasTiptapContent(notesDoc);
+  const scriptTagCount = useScriptTagCount(mode, component.id);
   const selectedLookForCount = mode.kind === 'edit' ? entry.selectedLookForIds.length : 0;
 
   const [active, setActive] = useState<ActivePanel>(null);
@@ -241,6 +242,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
           icon={<FileText className="h-3 w-3" />}
           label="Notes"
           hasContent={notesHasContent}
+          {...(scriptTagCount > 0 ? { tagCount: scriptTagCount } : {})}
           ariaControls={panelId}
         />
       )}
@@ -550,6 +552,7 @@ function MobileSectionRow({
   badge,
   badgeText,
   hasContent,
+  tagCount,
   expanded,
   onToggle,
   bodyPadding = true,
@@ -562,6 +565,8 @@ function MobileSectionRow({
   /** A short text badge (e.g. the saved rating like "Proficient"). */
   badgeText?: string;
   hasContent?: boolean;
+  /** Number of script spans tagged to this component (Notes row only). */
+  tagCount?: number;
   expanded: boolean;
   onToggle: () => void;
   /** Pad/tint the expanded body. Set false when children manage their own layout. */
@@ -607,6 +612,7 @@ function MobileSectionRow({
             {badge}
           </span>
         ) : null}
+        {tagCount !== undefined ? <ScriptTagBadge count={tagCount} className="ml-1" /> : null}
         {hasContent ? (
           <span className="bg-ops-red ml-1 h-1.5 w-1.5 rounded-full" aria-label="Has content" />
         ) : null}
@@ -628,6 +634,7 @@ function CellChip({
   count,
   badge,
   hasContent,
+  tagCount,
   ariaControls,
 }: {
   active: boolean;
@@ -637,6 +644,8 @@ function CellChip({
   count?: number;
   badge?: number;
   hasContent?: boolean;
+  /** Number of script spans tagged to this component (Notes chip only). */
+  tagCount?: number;
   ariaControls?: string;
 }) {
   return (
@@ -670,6 +679,12 @@ function CellChip({
           {badge}
         </span>
       ) : null}
+      {tagCount !== undefined ? (
+        <ScriptTagBadge
+          count={tagCount}
+          className={active ? 'text-ops-blue-dark bg-ops-blue-lighter' : 'bg-white/20 text-white'}
+        />
+      ) : null}
       {hasContent && badge === undefined ? (
         <span
           className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-ops-red' : 'bg-ops-red-light')}
@@ -677,6 +692,38 @@ function CellChip({
         />
       ) : null}
     </button>
+  );
+}
+
+// ─── Script tag indicator ─────────────────────────────────────────────────────
+
+/**
+ * Count of script spans tagged to this component. Derived from the live
+ * `scriptDoc`, so the indicator persists for as long as the tags exist —
+ * viewing the notes never clears it.
+ */
+function useScriptTagCount(mode: RubricGridMode, componentId: string): number {
+  const scriptDoc = mode.kind === 'edit' ? mode.scriptDoc : undefined;
+  return useMemo(
+    () => extractTaggedSpansForComponent(scriptDoc, componentId).length,
+    [scriptDoc, componentId],
+  );
+}
+
+function ScriptTagBadge({ count, className }: { count: number; className?: string }) {
+  const label = `${String(count)} script ${count === 1 ? 'tag' : 'tags'}`;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-full px-1 text-[10px] leading-4 font-semibold',
+        className ?? 'bg-ops-blue-lighter text-ops-blue-dark',
+      )}
+      aria-label={label}
+      title={label}
+    >
+      <Tag className="h-2.5 w-2.5" aria-hidden="true" />
+      {count}
+    </span>
   );
 }
 
@@ -710,13 +757,11 @@ function NotesPanel({
     () => buildScriptNotesDoc(taggedSpans, componentId),
     [taggedSpans, componentId],
   );
-  const manualHasContent = hasTiptapContent(notesDoc);
 
-  // Default: Manual when the user already typed something, otherwise
-  // Script when there's at least one tagged span (let the evidence speak
-  // first), otherwise fall back to Manual so the user has a place to type.
-  const initialView: 'script' | 'manual' =
-    manualHasContent || taggedSpans.length === 0 ? 'manual' : 'script';
+  // Default: Script whenever at least one span is tagged, so the tagged
+  // evidence is the first thing seen; otherwise Manual so the user has a
+  // place to type.
+  const initialView: 'script' | 'manual' = taggedSpans.length > 0 ? 'script' : 'manual';
   const [view, setView] = useState<'script' | 'manual'>(initialView);
 
   return (
@@ -1064,6 +1109,7 @@ export function MobileComponentBody({
   const evidenceFiles: DriveFileRef[] =
     mode.kind === 'edit' ? (mode.evidenceLinks[component.id] ?? []) : [];
   const notesHasContent = hasTiptapContent(notesDoc);
+  const scriptTagCount = useScriptTagCount(mode, component.id);
   const selectedLookForCount = mode.kind === 'edit' ? entry.selectedLookForIds.length : 0;
   const selectedLevel = mode.kind === 'edit' ? entry.proficiency : null;
   const interactive = mode.kind === 'edit' && !mode.readOnly;
@@ -1193,6 +1239,7 @@ export function MobileComponentBody({
           icon={<FileText className="h-4 w-4" />}
           label="Notes"
           hasContent={notesHasContent}
+          {...(scriptTagCount > 0 ? { tagCount: scriptTagCount } : {})}
           expanded={section === 'notes'}
           onToggle={() => toggleSection('notes')}
         >

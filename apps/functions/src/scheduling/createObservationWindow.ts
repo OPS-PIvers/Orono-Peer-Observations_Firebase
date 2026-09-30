@@ -10,6 +10,7 @@ import {
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
   createObservationWindowInput,
+  creatableObservationTypes,
   isAdminRole,
   isSpecialRole,
   type Building,
@@ -64,6 +65,13 @@ export const createObservationWindow = onCall(
       throw new HttpsError('invalid-argument', parsed.error.issues[0]?.message ?? 'Invalid input');
     }
     const input = parsed.data;
+
+    if (!creatableObservationTypes(callerRole).includes(input.defaultObservationType)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Building administrators can only schedule Standard observations',
+      );
+    }
 
     if (input.endDate < input.startDate) {
       throw new HttpsError('invalid-argument', 'endDate must be on or after startDate');

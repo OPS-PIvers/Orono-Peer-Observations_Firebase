@@ -23,7 +23,8 @@ import type { UseFirestoreCollectionResult } from '@/hooks/useFirestoreCollectio
 
 // Hoisted so the vi.mock factories below (lifted to the top of the file by
 // Vitest) can reference them without hitting the TDZ.
-const { useFirestoreDocMock, mockCallable } = vi.hoisted(() => ({
+const { useFirestoreDocMock, mockCallable, effectiveRole } = vi.hoisted(() => ({
+  effectiveRole: { current: 'peer-evaluator' },
   useFirestoreDocMock: vi.fn<(docPath: string) => UseFirestoreDocResult<AppSettings>>(),
   mockCallable: vi.fn(() =>
     Promise.resolve({ data: { windowId: 'w1', slotCount: 0, inviteeCount: 0 } }),
@@ -40,6 +41,10 @@ vi.mock('@/lib/firebase', () => ({
   storage: {},
   functions: {},
   functionsHttpUrl: vi.fn(),
+}));
+
+vi.mock('@/dev/DevModeContext', () => ({
+  useEffectiveClaims: () => ({ role: effectiveRole.current }),
 }));
 
 vi.mock('@/hooks/useFirestoreDoc', () => ({
@@ -84,6 +89,7 @@ function settingsDoc(scheduling: AppSettings['scheduling']): AppSettings & { id:
 beforeEach(() => {
   useFirestoreDocMock.mockReset();
   mockCallable.mockClear();
+  effectiveRole.current = 'peer-evaluator';
 });
 
 describe('CreateObservationWindowDialog — per-day cap seeding', () => {
@@ -147,5 +153,30 @@ describe('CreateObservationWindowDialog — per-day cap seeding', () => {
 
     const capInput = screen.getByLabelText<HTMLInputElement>(/per-day cap/i);
     expect(capInput.value).toBe('3');
+  });
+});
+
+describe('CreateObservationWindowDialog — observation type', () => {
+  function renderFresh() {
+    useFirestoreDocMock.mockReturnValue({
+      data: settingsDoc(DEFAULT_SCHEDULING_SETTINGS),
+      loading: false,
+      error: null,
+    });
+    render(<CreateObservationWindowDialog open onOpenChange={vi.fn()} onCreated={vi.fn()} />);
+  }
+
+  it('offers every type to a peer evaluator', () => {
+    renderFresh();
+    const select = screen.getByLabelText<HTMLSelectElement>(/default observation type/i);
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(
+      Object.values(OBSERVATION_TYPES),
+    );
+  });
+
+  it('hides the type picker for a building Administrator', () => {
+    effectiveRole.current = 'administrator';
+    renderFresh();
+    expect(screen.queryByLabelText(/default observation type/i)).not.toBeInTheDocument();
   });
 });

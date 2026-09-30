@@ -87,6 +87,15 @@ describe('checklistAction', () => {
       checklistAction(task({ observationId: null }), { ...opts, canCreateObservations: false }),
     ).toBe('observerOnly');
   });
+  it("doesn't offer to start a type the viewer can't create", () => {
+    const standardOnly = { ...opts, creatableTypes: ['Standard'] as const };
+    expect(
+      checklistAction(task({ observationId: null, watchedKind: 'workProduct' }), standardOnly),
+    ).toBe('observerOnly');
+    expect(
+      checklistAction(task({ observationId: null, watchedKind: 'anyDraftFirst' }), standardOnly),
+    ).toBe('start');
+  });
 });
 
 describe('observationTypeForWatchedKind', () => {
