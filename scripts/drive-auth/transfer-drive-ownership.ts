@@ -172,8 +172,8 @@ async function main(): Promise<void> {
         if (confirm) {
           await drive.permissions.create({
             fileId: item.id,
+            // Drive requires the notification email on ownership transfers.
             transferOwnership: true,
-            sendNotificationEmail: false,
             requestBody: { type: 'user', role: 'owner', emailAddress: newOwner },
           });
         }
