@@ -1,8 +1,18 @@
 name: Deploy — dev preview
 
+# Deploys after the CI workflow succeeds on dev-paul, like production does on
+# main, so a commit that fails typecheck / lint / tests never ships. That
+# matters beyond the preview channel: this job also deploys Firestore rules,
+# indexes, Storage rules and Functions, which are project-wide (live).
+# workflow_run triggers are read from the default branch, so this file takes
+# effect from main. Manual fallback: Actions → "Deploy — dev preview" → Run
+# workflow (deploys dev-paul's current head).
 on:
-  push:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
     branches: [dev-paul]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,8 +33,13 @@ jobs:
     name: Hosting preview channel (dev-paul)
     runs-on: ubuntu-latest
     environment: dev
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The exact commit CI passed (workflow_run), or dev-paul's head
+          # for a manual run.
+          ref: ${{ github.event.workflow_run.head_sha || 'dev-paul' }}
 
       - uses: pnpm/action-setup@v6
         with:
