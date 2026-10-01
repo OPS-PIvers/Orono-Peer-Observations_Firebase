@@ -296,6 +296,7 @@ export function MyStaffPage() {
       },
       {
         key: 'status',
+        align: 'center',
         header: 'Status',
         headClassName: 'w-36',
         sortAccessor: (r) => cycleStatusOrder(staffCycleStatus(r)),
@@ -315,6 +316,7 @@ export function MyStaffPage() {
       },
       {
         key: 'year',
+        align: 'center',
         header: 'Year',
         headClassName: 'w-20',
         sortAccessor: (r) => r.year,
@@ -356,11 +358,12 @@ export function MyStaffPage() {
           ? 'New observations are turned off'
           : null;
       return (
-        <div className="flex items-center justify-end gap-2">
-          {observable ? (
-            // A disabled button fires no hover events, so the reason lives
-            // on a wrapper.
-            <span title={blocked ?? undefined}>
+        <div className="flex items-center justify-center gap-2">
+          {/* Fixed-width slot so View All lines up whether or not New shows.
+              The title lives on the wrapper because a disabled button fires
+              no hover events. */}
+          <span className="flex w-14 justify-end" title={blocked ?? undefined}>
+            {observable ? (
               <Button
                 size="sm"
                 disabled={blocked !== null}
@@ -372,8 +375,8 @@ export function MyStaffPage() {
               >
                 New
               </Button>
-            </span>
-          ) : null}
+            ) : null}
+          </span>
           <Button variant="outline" size="sm" asChild>
             <Link
               to={`/staff/${encodeURIComponent(r.email.toLowerCase())}`}
