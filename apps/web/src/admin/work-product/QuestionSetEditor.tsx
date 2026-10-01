@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/dialog';
 import { bulkMergePerRow } from '@/admin/_shared/bulkWrite';
 import { GripHandle, SortableItem } from '@/admin/dashboard/SortableItem';
+import { useIsViewingAs } from '@/dev/DevModeContext';
 import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
 
 const TYPE_LABELS: Record<QuestionType, string> = {
@@ -75,6 +76,7 @@ export function QuestionSetEditor({ setId, buildingId, copySource }: QuestionSet
     error,
   } = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
   const allTypes = setId === GLOBAL_QUESTION_SET;
+  const isViewingAs = useIsViewingAs();
   const [draft, setDraft] = useState('');
   const [newType, setNewType] = useState<QuestionType>('standard');
   const [newPhase, setNewPhase] = useState<QuestionPhase>('pre');
@@ -189,7 +191,14 @@ export function QuestionSetEditor({ setId, buildingId, copySource }: QuestionSet
   }
 
   return (
-    <>
+    // Dev view-as is read-only: a disabled fieldset turns off every input,
+    // button and drag handle at once, so the page can't look editable.
+    <fieldset disabled={isViewingAs} className="min-w-0">
+      {isViewingAs ? (
+        <p className="text-muted-foreground mb-3 text-sm">
+          Read-only while viewing as someone else.
+        </p>
+      ) : null}
       {error ? (
         <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3">
           Failed to load questions: {error.message}
@@ -384,6 +393,6 @@ export function QuestionSetEditor({ setId, buildingId, copySource }: QuestionSet
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </fieldset>
   );
 }

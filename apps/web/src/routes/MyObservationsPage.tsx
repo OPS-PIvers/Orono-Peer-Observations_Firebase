@@ -45,7 +45,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
-import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { assertWritable } from '@/dev/viewAsGuard';
 
 // Cap the query — staff never have more than a few dozen observations.
@@ -66,6 +66,7 @@ function formatDate(value: Observation['finalizedAt'] | undefined): string {
 
 export function MyObservationsPage() {
   const emailLower = useEffectiveEmail();
+  const isViewingAs = useIsViewingAs();
   const queryClient = useQueryClient();
 
   const constraints = useMemo(
@@ -279,7 +280,7 @@ export function MyObservationsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={ackMutation.isPending}
+                          disabled={ackMutation.isPending || isViewingAs}
                           onClick={() => ackMutation.mutate(o.id)}
                           aria-label={`Acknowledge ${heading}`}
                         >

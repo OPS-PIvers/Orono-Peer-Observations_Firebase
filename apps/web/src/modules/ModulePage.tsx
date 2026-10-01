@@ -11,7 +11,7 @@ import {
   type ModuleProgress,
   type Staff,
 } from '@ops/shared';
-import { useEffectiveClaims, useEffectiveEmail } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
@@ -24,6 +24,7 @@ import { assertWritable } from '@/dev/viewAsGuard';
 export function ModulePage() {
   const { moduleId = '' } = useParams();
   const claims = useEffectiveClaims();
+  const isViewingAs = useIsViewingAs();
   const emailLower = useEffectiveEmail();
 
   const { data: module, loading: moduleLoading } = useFirestoreDoc<ModuleDoc>(
@@ -162,6 +163,7 @@ export function ModulePage() {
                 items={items ?? []}
                 doneItemIds={doneItemIds}
                 onToggleDone={toggleDone}
+                readOnly={isViewingAs}
               />
             );
           })

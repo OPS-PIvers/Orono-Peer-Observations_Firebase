@@ -91,11 +91,14 @@ export function MaterialsSection({
   items,
   doneItemIds,
   onToggleDone,
+  readOnly = false,
 }: {
   section: ModuleSection;
   items: ModuleItem[];
   doneItemIds: Set<string>;
   onToggleDone: (item: ModuleItem, done: boolean) => void;
+  /** Dev view-as: show progress without letting it change. */
+  readOnly?: boolean;
 }) {
   const materials = sectionItems(items, section.id, 'material');
   return (
@@ -126,6 +129,7 @@ export function MaterialsSection({
                     variant={done ? 'outline' : 'default'}
                     size="sm"
                     className="shrink-0"
+                    disabled={readOnly}
                     onClick={() => onToggleDone(m, !done)}
                   >
                     {done ? 'Undo' : 'Mark done'}

@@ -36,7 +36,7 @@ import {
   yearLabel,
   yearStatusLabel,
 } from '@/utils/staffFormatting';
-import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { assertWritable } from '@/dev/viewAsGuard';
 
 /** Domain-id → chart stroke color, mirroring RubricGridEditor's
@@ -494,6 +494,7 @@ const updateEmailPreferencesFn = httpsCallable<UpdateEmailPreferencesInput, Emai
 
 /** Calendar integration section: connect/disconnect Google Calendar OAuth. */
 function CalendarIntegrationSection({ email }: { email: string }) {
+  const isViewingAs = useIsViewingAs();
   const [status, setStatus] = useState<CalendarConnectionStatusResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -585,12 +586,16 @@ function CalendarIntegrationSection({ email }: { email: string }) {
 
           <div className="flex flex-wrap gap-2">
             {isConnected ? (
-              <Button variant="outline" onClick={() => void handleDisconnect()} disabled={busy}>
+              <Button
+                variant="outline"
+                onClick={() => void handleDisconnect()}
+                disabled={busy || isViewingAs}
+              >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Disconnect
               </Button>
             ) : (
-              <Button onClick={handleConnect} disabled={!email}>
+              <Button onClick={handleConnect} disabled={!email || isViewingAs}>
                 {isRevoked ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
               </Button>
             )}
@@ -612,6 +617,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
  *  updateEmailPreferences callable (own /staff doc is client-read-only, so a
  *  callable is the only self-service write path — see firestore.rules). */
 function EmailPreferencesSection({ staff }: { staff: Staff }) {
+  const isViewingAs = useIsViewingAs();
   const [prefs, setPrefs] = useState<EmailPreferences>({
     ...DEFAULT_EMAIL_PREFERENCES,
     ...staff.emailPreferences,
@@ -664,7 +670,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
               <Switch
                 id={`email-pref-${category}`}
                 checked={prefs[category]}
-                disabled={savingCategory === category}
+                disabled={savingCategory === category || isViewingAs}
                 onCheckedChange={(checked) => void handleToggle(category, checked)}
                 aria-label={label}
               />
