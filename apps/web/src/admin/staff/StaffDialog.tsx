@@ -71,6 +71,8 @@ interface FormState {
   isActive: boolean;
   hasAdminAccess: boolean;
   canViewAs: boolean;
+  canViewAsEdit: boolean;
+  isDemo: boolean;
 }
 
 const empty: FormState = {
@@ -84,6 +86,8 @@ const empty: FormState = {
   isActive: true,
   hasAdminAccess: false,
   canViewAs: false,
+  canViewAsEdit: false,
+  isDemo: false,
 };
 
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
@@ -150,6 +154,10 @@ export function StaffDialog({
         hasAdminAccess: existing.hasAdminAccess,
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
         canViewAs: existing.canViewAs ?? false,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+        canViewAsEdit: existing.canViewAsEdit ?? false,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+        isDemo: existing.isDemo ?? false,
       });
     } else if (mode === 'create') {
       setForm(buildingScope?.length === 1 ? { ...empty, buildings: [...buildingScope] } : empty);
@@ -203,6 +211,30 @@ export function StaffDialog({
       color: ADMIN_PILL_COLOR,
       checked: form.canViewAs,
       onToggle: () => setForm((f) => ({ ...f, canViewAs: !f.canViewAs })),
+    },
+    {
+      id: 'view-as-edit-access',
+      name: 'View As + Edit',
+      description:
+        'While viewing as an Administrator or Peer Evaluator, can turn on Edits to demo the app. Changes are limited to demo people.',
+      color: ADMIN_PILL_COLOR,
+      checked: form.canViewAsEdit,
+      // Edit implies View As.
+      onToggle: () =>
+        setForm((f) => ({
+          ...f,
+          canViewAsEdit: !f.canViewAsEdit,
+          canViewAs: !f.canViewAsEdit ? true : f.canViewAs,
+        })),
+    },
+    {
+      id: 'demo-person',
+      name: 'Demo person',
+      description:
+        'A practice account for walkthroughs. View As + Edit sessions may change their records; no email about them is sent.',
+      color: ADMIN_PILL_COLOR,
+      checked: form.isDemo,
+      onToggle: () => setForm((f) => ({ ...f, isDemo: !f.isDemo })),
     },
     ...modules.map((m) => {
       const cls = MODULE_COLOR_CLASSES[m.color];
@@ -310,6 +342,8 @@ export function StaffDialog({
                 modules: form.modules,
                 hasAdminAccess: form.hasAdminAccess,
                 canViewAs: form.canViewAs,
+                canViewAsEdit: form.canViewAsEdit,
+                isDemo: form.isDemo,
               }),
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),

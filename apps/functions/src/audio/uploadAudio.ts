@@ -15,6 +15,7 @@ import {
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt } from './recordingHeaders.js';
 import { observationAccessFor } from '@ops/shared';
+import { isDemoEditSession, isDemoStaff } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -69,9 +70,11 @@ export const uploadAudio = onRequest(
       return;
     }
     let userEmail: string | null = null;
+    let demoEdit = false;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
       userEmail = decoded.email?.toLowerCase() ?? null;
+      demoEdit = isDemoEditSession({ token: decoded });
     } catch (err) {
       logger.warn('uploadAudio: invalid token', err);
       res.status(401).send('Invalid token');
@@ -111,6 +114,11 @@ export const uploadAudio = onRequest(
       driveFolderId: string | null;
     };
     // The observers record: owner or co-observer.
+    // A demo-edit session (View As + Edit) only records on demo staff.
+    if (demoEdit && !(await isDemoStaff(db, obs.observedEmail))) {
+      res.status(403).send('Only demo staff can be changed while editing as someone else');
+      return;
+    }
     const access = observationAccessFor(obs, userEmail, false);
     if (access !== 'owner' && access !== 'coObserver') {
       res.status(403).send('Not your observation');

@@ -34,6 +34,8 @@ export const SAMPLE_STAFF: Staff = {
   isActive: true,
   hasAdminAccess: false,
   canViewAs: false,
+  canViewAsEdit: false,
+  isDemo: false,
   emailPreferences: DEFAULT_EMAIL_PREFERENCES,
   lastSignInAt: PAST,
   createdAt: new Date(),

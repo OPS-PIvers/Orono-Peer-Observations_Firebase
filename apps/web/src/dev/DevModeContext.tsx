@@ -14,6 +14,7 @@ import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '@/lib/firebase';
 import { setViewAsGuard } from './viewAsGuard';
+import { useDemoEditSession } from './useDemoEditSession';
 
 const recordViewAsFn = httpsCallable<{ email: string }, { ok: true }>(functions, 'recordViewAs');
 
@@ -35,6 +36,11 @@ interface DevModeContextValue {
   /** Lowercased email of whoever the app is rendering as. */
   effectiveEmail: string;
   isDevUser: boolean;
+  /** May turn on Edits while viewing as an Administrator / PE (canViewAsEdit). */
+  canEditAs: boolean;
+  /** Set when this whole session is a View As + Edit session: the real
+   *  person driving it. Writes are confined to demo staff by the rules. */
+  demoEditBy: string | null;
 }
 
 const DevModeContext = createContext<DevModeContextValue | null>(null);
@@ -84,7 +90,15 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
   );
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
   const grantedViewAs = realStaff?.canViewAs === true && (realStaff.isActive ?? true);
-  const isDevUser = grantedViewAs || (claims.isAdmin && !isSpecialRole(claims.role));
+  const demoEditBy = useDemoEditSession();
+  // Not inside a demo-edit session: that account isn't the viewer's own.
+  const isDevUser =
+    !demoEditBy && (grantedViewAs || (claims.isAdmin && !isSpecialRole(claims.role)));
+  const canEditAs =
+    isDevUser &&
+    realStaff?.canViewAsEdit === true &&
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+    (realStaff.isActive ?? true);
   const viewAsEmail = isDevUser && stored && stored !== realEmail ? stored : null;
 
   const { data: viewAsStaff, loading } = useFirestoreDoc<Staff>(
@@ -147,6 +161,8 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
       effectiveClaims,
       effectiveEmail: viewAsEmail ?? realEmail,
       isDevUser,
+      canEditAs,
+      demoEditBy,
     }),
     [
       viewAsEmail,
@@ -157,6 +173,8 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
       effectiveClaims,
       realEmail,
       isDevUser,
+      canEditAs,
+      demoEditBy,
     ],
   );
 

@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -63,6 +64,8 @@ interface ApplyScriptTagsResponse {
  */
 export const applyScriptTags = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 60,
@@ -87,7 +90,7 @@ export const applyScriptTags = onCall(
     // Fail fast on a cheap non-transactional read. This is a courtesy check
     // only — nothing it learns is trusted at write time. The transaction below
     // re-establishes every invariant from its own reads.
-    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole);
+    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
 
     const result = await db.runTransaction(async (tx): Promise<ApplyScriptTagsResponse> => {
       // ── Reads first. Firestore rejects any read that follows a write in the

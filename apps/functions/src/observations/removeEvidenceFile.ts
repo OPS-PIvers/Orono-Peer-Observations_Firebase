@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -39,6 +40,8 @@ if (getApps().length === 0) initializeApp();
  */
 export const removeEvidenceFile = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -67,6 +70,7 @@ export const removeEvidenceFile = onCall(
     const access = await callerObservationAccess(db, obs, {
       email: userEmail,
       tokenRole: request.auth.token['role'] as string | undefined,
+      auth: request.auth,
     });
     if (!canEditObservationContent(access)) {
       throw new HttpsError('permission-denied', 'Only the observers can remove evidence');

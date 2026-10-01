@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, type CalendarConnectionStatusResult } from '@ops/shared';
@@ -11,7 +12,13 @@ if (getApps().length === 0) initializeApp();
  * to 'disconnected'.
  */
 export const getCalendarConnectionStatus = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
+  {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
+    region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
   async (request): Promise<CalendarConnectionStatusResult> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const callerEmail = request.auth.token.email?.toLowerCase();

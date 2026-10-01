@@ -83,8 +83,7 @@ export function decideRateLimit(
   windowMs: number,
   nowMs: number,
 ): { decision: RateLimitDecision; nextCount: number; windowStartMs: number } {
-  const inWindow =
-    existing !== null && nowMs - existing.windowStart.toMillis() < windowMs;
+  const inWindow = existing !== null && nowMs - existing.windowStart.toMillis() < windowMs;
   const windowStartMs = inWindow ? existing.windowStart.toMillis() : nowMs;
   const priorCount = inWindow ? existing.count : 0;
   const allowed = priorCount < max;

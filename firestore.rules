@@ -74,6 +74,17 @@ service cloud.firestore {
             && staffDocData().get('isActive', true) == true);
     }
 
+    // Demo-edit sessions (View As + Edit): the signed-in user is being
+    // driven by someone else via a custom token carrying `demoEditBy`. Such
+    // a session may only write demo staff's records; every other write is
+    // refused. See DEMO_EDIT_CLAIM in @ops/shared.
+    function notDemoEdit() {
+      return request.auth == null || request.auth.token.get('demoEditBy', null) == null;
+    }
+    function isDemoStaff(email) {
+      return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
+    }
+
     function isBuildingAdmin() {
       return isAdmin() && role() == 'administrator';
     }
@@ -128,6 +139,8 @@ service cloud.firestore {
         && buildingAdminCanWriteStaffData(request.resource.data)
         && request.resource.data.get('hasAdminAccess', false) == false
         && request.resource.data.get('canViewAs', false) == false
+        && request.resource.data.get('canViewAsEdit', false) == false
+        && request.resource.data.get('isDemo', false) == false
         && request.resource.data.get('modules', []).size() == 0;
     }
 
@@ -181,14 +194,18 @@ service cloud.firestore {
       // the denormalized `observerName` on the observation doc instead.
       allow get: if isCurrentUserEmail(email) || hasSpecialAccess() || canReadAll();
       allow list: if hasSpecialAccess() || canReadAll();
-      allow create: if isConsoleAdmin() || buildingAdminCanCreateStaff(email);
-      allow update: if isConsoleAdmin() || buildingAdminCanUpdateStaff();
-      allow delete: if isConsoleAdmin();
+      allow create: if (isConsoleAdmin() || buildingAdminCanCreateStaff(email))
+        && notDemoEdit();
+      allow update: if (isConsoleAdmin() || buildingAdminCanUpdateStaff())
+        && (notDemoEdit() || isDemoStaff(email));
+      allow delete: if (isConsoleAdmin())
+        && notDemoEdit();
 
       // Per-staff module completion. The owner reads/writes; admins read.
       match /moduleProgress/{itemId} {
         allow read: if isCurrentUserEmail(email) || isAdmin() || canReadAll();
-        allow write: if isCurrentUserEmail(email) || isConsoleAdmin();
+        allow write: if (isCurrentUserEmail(email) || isConsoleAdmin())
+          && notDemoEdit();
       }
 
       // Evaluator check-offs for dashboard steps not tied to an observation.
@@ -206,12 +223,14 @@ service cloud.firestore {
     // render the rubric for any user). Write: admin only.
     match /roles/{roleId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     match /buildings/{buildingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /modules/{moduleId} -------------------------------------------------
@@ -219,7 +238,8 @@ service cloud.firestore {
     // domain (clients render module chips + nav). Write: admin only.
     match /modules/{moduleId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- module items (collection-group rule) --------------------------------
@@ -241,19 +261,22 @@ service cloud.firestore {
         || (isFromOronoDomain()
             && (resource.data.moduleId in staffDocData().get('modules', [])
                 || matchesModuleAutoEnable(resource.data.moduleId)));
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     match /rubrics/{rubricId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /roleYearMappings/{mappingId} ---------------------------------------
     // Doc id convention: `${roleId}_${year}` (e.g. "teacher_1").
     match /roleYearMappings/{mappingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /workProductQuestions ----------------------------------------------
@@ -276,12 +299,16 @@ service cloud.firestore {
       }
 
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
-      allow create: if isBuildingAdmin() && inOwnBuildingSet(request.resource.data);
-      allow update: if isBuildingAdmin()
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
+      allow create: if (isBuildingAdmin() && inOwnBuildingSet(request.resource.data))
+        && notDemoEdit();
+      allow update: if (isBuildingAdmin()
         && inOwnBuildingSet(resource.data)
-        && inOwnBuildingSet(request.resource.data);
-      allow delete: if isBuildingAdmin() && inOwnBuildingSet(resource.data);
+        && inOwnBuildingSet(request.resource.data))
+        && notDemoEdit();
+      allow delete: if (isBuildingAdmin() && inOwnBuildingSet(resource.data))
+        && notDemoEdit();
     }
 
     // --- /emailTemplates -----------------------------------------------------
@@ -289,7 +316,8 @@ service cloud.firestore {
     // console admins edit.
     match /emailTemplates/{id} {
       allow read: if isAdmin() || canReadAll();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /observationWindows/{windowId} -------------------------------------
@@ -304,15 +332,17 @@ service cloud.firestore {
       allow get, list: if hasSpecialAccess()
         || canReadAll()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
-      allow create: if hasSpecialAccess()
+      allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
         // Building Administrators' windows book Standard observations only.
         && (role() != 'administrator'
-            || request.resource.data.defaultObservationType == 'Standard');
+            || request.resource.data.defaultObservationType == 'Standard'))
+        && notDemoEdit();
       // Delete: admin or the observer. Unchanged.
-      allow delete: if isAdmin()
-        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email);
+      allow delete: if (isAdmin()
+        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email))
+        && notDemoEdit();
       // Update: admin may change anything. The observer may only touch a small
       // set of cosmetic/booking-default fields on their own window. The
       // authoritative accounting/invite/status fields (invitedEmails, invitees,
@@ -320,7 +350,7 @@ service cloud.firestore {
       // are mutated only inside callable Cloud Functions (Admin SDK, which
       // bypasses these rules) — the web client never writes the window doc
       // directly, so this allowlist can't break any legitimate client flow.
-      allow update: if isAdmin()
+      allow update: if (isAdmin()
         || (
           isFromOronoDomain()
           && resource.data.observerEmail == request.auth.token.email
@@ -332,7 +362,8 @@ service cloud.firestore {
                 'gcalSendUpdates',
                 'updatedAt'
               ])
-        );
+        ))
+        && notDemoEdit();
 
       // Slots: readable by anyone who can read the parent window; never
       // client-writable (mutated only inside the booking transaction).
@@ -362,7 +393,8 @@ service cloud.firestore {
     // Writes are admin-only (Admin Console → Building schedule editor).
     match /buildingSchedules/{buildingId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
 
       // Archived year snapshots + the staged next-year draft ("Prepare next
       // year" flow on the Building schedule editor). Slot generation and the
@@ -370,7 +402,8 @@ service cloud.firestore {
       // admin-only in both directions.
       match /versions/{versionId} {
         allow read: if canReadAll();
-        allow write: if isConsoleAdmin();
+        allow write: if (isConsoleAdmin())
+          && notDemoEdit();
       }
     }
 
@@ -379,7 +412,8 @@ service cloud.firestore {
     // signed-in (the booking form renders them); write admin-only.
     match /signupFields/{fieldId} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /appSettings --------------------------------------------------------
@@ -387,7 +421,8 @@ service cloud.firestore {
     // signed in (for app name, logo, banner). Writes are admin-only.
     match /appSettings/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // --- /observations/{observationId} --------------------------------------
@@ -465,7 +500,7 @@ service cloud.firestore {
       // observerEmail == me or coObserverEmails array-contains me.
       allow list: if ownsObs() || isObservedObs() || coObservesObs() || canReadAll();
 
-      allow create: if hasSpecialAccess()
+      allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
         && request.resource.data.status == 'Draft'
@@ -474,9 +509,10 @@ service cloud.firestore {
         // creatableObservationTypes() in @ops/shared.
         && (role() != 'administrator' || request.resource.data.type == 'Standard')
         // ...and only of staff they can observe (see adminCanObserve).
-        && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail));
+        && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail)))
+        && (notDemoEdit() || isDemoStaff(request.resource.data.observedEmail));
 
-      allow update: if (
+      allow update: if ((
           // Owner: Draft content, the teacher-visibility switchboard and who
           // co-observes. The owner can't add themselves or the observed
           // teacher as a co-observer.
@@ -516,9 +552,11 @@ service cloud.firestore {
           && changedKeys().hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         )
         // Oversight can correct anything except who was observed.
-        || (isConsoleAdmin() && unchanged('observedEmail'));
+        || (isConsoleAdmin() && unchanged('observedEmail')))
+        && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
-      allow delete: if (ownsObs() && resource.data.status == 'Draft') || isConsoleAdmin();
+      allow delete: if ((ownsObs() && resource.data.status == 'Draft') || isConsoleAdmin())
+        && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
       // Evaluator check-offs for dashboard steps tied to this observation.
       // Read: special access, or the observed staff member (any status —
@@ -585,7 +623,8 @@ service cloud.firestore {
     // Dashboard surface).
     match /dashboardQuickMaterials/{id} {
       allow read: if isFromOronoDomain();
-      allow write: if isConsoleAdmin();
+      allow write: if (isConsoleAdmin())
+        && notDemoEdit();
     }
 
     // The dashboard feature config doc lives at /appSettings/dashboard and

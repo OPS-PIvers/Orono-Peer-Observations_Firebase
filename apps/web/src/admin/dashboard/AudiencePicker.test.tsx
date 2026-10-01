@@ -60,6 +60,8 @@ function staff(partial: Partial<Staff>): Staff {
     isActive: true,
     hasAdminAccess: false,
     canViewAs: false,
+    canViewAsEdit: false,
+    isDemo: false,
     emailPreferences: DEFAULT_EMAIL_PREFERENCES,
     lastSignInAt: null,
     createdAt: now,

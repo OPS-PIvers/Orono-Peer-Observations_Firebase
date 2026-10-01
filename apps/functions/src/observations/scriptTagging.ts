@@ -268,6 +268,7 @@ export async function loadTaggingContext(
   observationId: string,
   userEmail: string,
   callerRole: string | undefined,
+  auth?: { token: Record<string, unknown> } | null,
 ): Promise<TaggingContext> {
   const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
   const obsSnap = await obsRef.get();
@@ -277,6 +278,7 @@ export async function loadTaggingContext(
   const access = await callerObservationAccess(db, obs, {
     email: userEmail,
     tokenRole: callerRole,
+    auth,
   });
   const oversight = access === 'oversight';
   assertObservationTaggable(obs, userEmail, oversight);

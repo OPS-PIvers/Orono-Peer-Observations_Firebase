@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
@@ -72,6 +73,8 @@ export const regenerateObservationPdf = onCall(
   // exposure — not copied from onObservationWritten's maxInstances: 1, which
   // exists there solely to respect the Sheets API's 60-writes/min quota.
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -101,6 +104,7 @@ export const regenerateObservationPdf = onCall(
     const access = await callerObservationAccess(db, obs, {
       email: userEmail,
       tokenRole: callerRole,
+      auth: request.auth,
     });
     if (!canManageObservation(access)) {
       throw new HttpsError(

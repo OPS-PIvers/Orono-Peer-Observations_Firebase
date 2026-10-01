@@ -44,6 +44,7 @@ export const AUDIT_ACTIONS = {
   stepCheckSet: 'step_check_set',
   stepCheckCleared: 'step_check_cleared',
   viewAsStarted: 'view_as_started',
+  viewAsEditStarted: 'view_as_edit_started',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
@@ -65,6 +66,8 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
 
 export const uploadEvidenceFile = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -99,6 +102,7 @@ export const uploadEvidenceFile = onCall(
     const access = await callerObservationAccess(db, obs, {
       email: userEmail,
       tokenRole: request.auth.token['role'] as string | undefined,
+      auth: request.auth,
     });
     if (!canEditObservationContent(access)) {
       throw new HttpsError('permission-denied', 'Only the observers can upload evidence');

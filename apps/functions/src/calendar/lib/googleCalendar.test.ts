@@ -42,9 +42,8 @@ vi.mock('firebase-admin/app', () => ({
   initializeApp: vi.fn(),
 }));
 
-const { buildObservationEventContent, toDate, overlapsBusy, createObservationEvent } = await import(
-  './googleCalendar.js'
-);
+const { buildObservationEventContent, toDate, overlapsBusy, createObservationEvent } =
+  await import('./googleCalendar.js');
 const { Timestamp } = await import('firebase-admin/firestore');
 
 beforeEach(() => {
@@ -246,9 +245,7 @@ describe('createObservationEvent', () => {
       observerCal: observer.cal,
       observedCal: null,
     });
-    expect(observer.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ sendUpdates: 'all' }),
-    );
+    expect(observer.insert).toHaveBeenCalledWith(expect.objectContaining({ sendUpdates: 'all' }));
   });
 
   it('defaults sendUpdates to "none" for any non-"all" value', async () => {
@@ -259,9 +256,7 @@ describe('createObservationEvent', () => {
       observerCal: observer.cal,
       observedCal: null,
     });
-    expect(observer.insert).toHaveBeenCalledWith(
-      expect.objectContaining({ sendUpdates: 'none' }),
-    );
+    expect(observer.insert).toHaveBeenCalledWith(expect.objectContaining({ sendUpdates: 'none' }));
   });
 
   it('targets the stored primary calendar id when configured', async () => {

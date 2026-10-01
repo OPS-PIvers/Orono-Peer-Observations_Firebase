@@ -13,6 +13,7 @@ import {
   type EmailTemplate,
   type EmailTriggerType,
 } from '@ops/shared';
+import { isDemoStaff } from './callable.js';
 
 export const APP_URL = 'https://observations.orono.k12.mn.us';
 const FROM_EMAIL = 'observations@orono.k12.mn.us';
@@ -81,7 +82,10 @@ async function loadEmailBranding(
  * emailPreferences field, so an unknown/legacy recipient is never silently
  * suppressed.
  */
-async function loadEmailPreferences(db: Firestore, recipientEmail: string): Promise<EmailPreferences> {
+async function loadEmailPreferences(
+  db: Firestore,
+  recipientEmail: string,
+): Promise<EmailPreferences> {
   const snap = await db.doc(`${COLLECTIONS.staff}/${recipientEmail.toLowerCase()}`).get();
   const prefs = snap.data()?.['emailPreferences'] as Partial<EmailPreferences> | undefined;
   return { ...DEFAULT_EMAIL_PREFERENCES, ...prefs };
@@ -442,19 +446,39 @@ export async function sendTemplatedEmail(args: {
 }): Promise<boolean> {
   const { db, triggerType, to, vars, mailDocId, auditDetails, attachments, requiredBlock } = args;
 
+  // Demo people (isDemo, e.g. Sample Teacher) are for walkthrough videos:
+  // nothing about them is emailed — not to them, and not to the real staff
+  // (an observer, say) on the same message. Logged as suppressed instead.
+  const involved = [
+    ...(Array.isArray(to) ? to : [to]),
+    vars['observedEmail'],
+    vars['staffEmail'],
+    auditDetails?.['observedEmail'],
+  ].filter((e): e is string => typeof e === 'string' && e.includes('@'));
+  for (const email of new Set(involved.map((e) => e.toLowerCase()))) {
+    if (await isDemoStaff(db, email)) {
+      await db.collection(COLLECTIONS.auditLog).add({
+        timestamp: FieldValue.serverTimestamp(),
+        userEmail: FROM_EMAIL,
+        action: AUDIT_ACTIONS.emailSuppressed,
+        target: `mail/${mailDocId}`,
+        details: { to, mailDocId, triggerType, reason: 'demo', demoEmail: email, ...auditDetails },
+      });
+      logger.info('emailUtils: suppressed email involving a demo person', { triggerType, email });
+      return false;
+    }
+  }
+
   const template = await loadActiveTemplate(db, triggerType);
   if (!template) {
     logger.info('emailUtils: no active template for trigger', { triggerType });
     return false;
   }
 
-  const appSettingsSnap = await db
-    .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
-    .get();
+  const appSettingsSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
   const branding = appSettingsSnap.data()?.['branding'] as { appName?: string } | undefined;
   const appName: string = branding?.appName ?? 'Orono Peer Observations';
-  const signupLink: string =
-    (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
+  const signupLink: string = (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
 
   const fullVars: TemplateVars = {
     appName,

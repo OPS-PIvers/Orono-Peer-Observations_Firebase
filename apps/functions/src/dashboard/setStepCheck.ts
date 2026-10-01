@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import {
@@ -19,6 +20,7 @@ import {
 } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { assertDemoEditTarget } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -100,7 +102,11 @@ export async function handleSetStepCheck(
     }
     // Only that observation's observers (owner or co-observer) or oversight
     // check off its steps — not every PE or building Administrator.
-    const access = await callerObservationAccess(db, obs, { email: callerEmail, tokenRole });
+    const access = await callerObservationAccess(db, obs, {
+      email: callerEmail,
+      tokenRole,
+      auth: caller,
+    });
     if (!canEditObservationContent(access)) {
       throw new HttpsError(
         'permission-denied',
@@ -112,6 +118,7 @@ export async function handleSetStepCheck(
     if (observationId) {
       throw new HttpsError('invalid-argument', 'This step is not tied to an observation.');
     }
+    await assertDemoEditTarget(db, caller, staffEmail);
     const staffSnap = await db.doc(`${COLLECTIONS.staff}/${staffEmail}`).get();
     if (!staffSnap.exists) throw new HttpsError('not-found', 'Staff member not found');
     path = `${COLLECTIONS.staff}/${staffEmail}/${STAFF_SUBCOLLECTIONS.stepChecks}/${stepId}`;
@@ -156,6 +163,12 @@ export async function handleSetStepCheck(
 }
 
 export const setStepCheck = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
+  {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
+    region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
   (request) => handleSetStepCheck(getFirestore(), request.auth, request.data),
 );
