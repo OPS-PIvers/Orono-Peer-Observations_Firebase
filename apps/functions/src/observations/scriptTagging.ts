@@ -268,7 +268,7 @@ export async function loadTaggingContext(
   observationId: string,
   userEmail: string,
   callerRole: string | undefined,
-  auth?: { token: Record<string, unknown> } | null,
+  auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<TaggingContext> {
   const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
   const obsSnap = await obsRef.get();

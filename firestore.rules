@@ -286,7 +286,7 @@ service cloud.firestore {
     // Reflection sets: Standard questions whose setId is building-<id> for a
     // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
-      function isBuildingAdmin() {
+      function hasAdministratorRole() {
         return isFromOronoDomain() && role() == 'administrator';
       }
       function inOwnBuildingSet(data) {
@@ -301,13 +301,13 @@ service cloud.firestore {
       allow read: if isFromOronoDomain();
       allow write: if (isConsoleAdmin())
         && notDemoEdit();
-      allow create: if (isBuildingAdmin() && inOwnBuildingSet(request.resource.data))
+      allow create: if (hasAdministratorRole() && inOwnBuildingSet(request.resource.data))
         && notDemoEdit();
-      allow update: if (isBuildingAdmin()
+      allow update: if (hasAdministratorRole()
         && inOwnBuildingSet(resource.data)
         && inOwnBuildingSet(request.resource.data))
         && notDemoEdit();
-      allow delete: if (isBuildingAdmin() && inOwnBuildingSet(resource.data))
+      allow delete: if (hasAdministratorRole() && inOwnBuildingSet(resource.data))
         && notDemoEdit();
     }
 

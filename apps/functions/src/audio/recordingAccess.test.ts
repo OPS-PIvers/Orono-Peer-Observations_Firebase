@@ -5,7 +5,7 @@ import type { RecordingObservation } from './recordingAccess.js';
 
 process.env['FIREBASE_CONFIG'] = JSON.stringify({ projectId: 'test' });
 process.env['GCLOUD_PROJECT'] = 'test';
-const { requireObserverOnDraft, requireRecording, requireRecordingReader } =
+const { canReadRecording, requireObserverOnDraft, requireRecording, requireRecordingReader } =
   await import('./recordingAccess.js');
 
 const OBSERVER = 'pe@orono.k12.mn.us';
@@ -112,5 +112,21 @@ describe('requireRecordingReader', () => {
     await expect(
       requireRecordingReader(dbWithStaff({ role: 'teacher' }), request('teacher'), obs(), other),
     ).rejects.toThrow(/Not authorized/);
+  });
+});
+
+describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
+  const demoAuth = {
+    token: { email: OBSERVER, role: 'peer-evaluator', demoEditBy: 'viewer@x.org' },
+  };
+
+  it("can't play a real teacher's recording, even the observer's own", async () => {
+    await expect(canReadRecording(dbWithStaff({}), obs(), OBSERVER, demoAuth)).resolves.toBe(false);
+  });
+
+  it("can play a demo person's recording", async () => {
+    await expect(
+      canReadRecording(dbWithStaff({ isDemo: true }), obs(), OBSERVER, demoAuth),
+    ).resolves.toBe(true);
   });
 });

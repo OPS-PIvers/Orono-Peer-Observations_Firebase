@@ -22,8 +22,9 @@ export async function callerObservationAccess(
     email: string;
     tokenRole: string | null | undefined;
     /** The caller's auth: a demo-edit session only reaches demo staff's
-     *  observations (see lib/callable.ts). */
-    auth?: { token: Record<string, unknown> } | null | undefined;
+     *  observations (see lib/callable.ts). Required so no caller can forget
+     *  it; pass null only where there is genuinely no request. */
+    auth: { token: Record<string, unknown> } | null | undefined;
   },
 ): Promise<ObservationAccess> {
   if (isDemoEditSession(args.auth) && !(await isDemoStaff(db, obs.observedEmail))) return null;

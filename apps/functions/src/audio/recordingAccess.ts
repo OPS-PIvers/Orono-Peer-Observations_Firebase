@@ -69,9 +69,7 @@ export async function requireRecordingReader(
   obs: RecordingObservation,
   email: string,
 ): Promise<void> {
-  if (await canReadRecording(db, obs, email, request.auth?.token['role'] as string | undefined)) {
-    return;
-  }
+  if (await canReadRecording(db, obs, email, request.auth)) return;
   throw new HttpsError('permission-denied', 'Not authorized to access this recording');
 }
 
@@ -79,9 +77,12 @@ export async function canReadRecording(
   db: Firestore,
   obs: RecordingObservation,
   email: string,
-  tokenRole: string | undefined,
+  /** The caller's auth, so a demo-edit session only reaches demo staff's
+   *  recordings (callerObservationAccess). */
+  auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<boolean> {
-  const access = await callerObservationAccess(db, obs, { email, tokenRole });
+  const tokenRole = typeof auth?.token['role'] === 'string' ? auth.token['role'] : undefined;
+  const access = await callerObservationAccess(db, obs, { email, tokenRole, auth });
   if (access === 'owner' || access === 'coObserver' || access === 'oversight') return true;
   return access === 'observed' && obs.status === OBSERVATION_STATUS.finalized;
 }

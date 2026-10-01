@@ -47,11 +47,14 @@ export const getAudio = onRequest(
       return;
     }
     let userEmail: string | null = null;
-    let role: string | undefined;
+    // The decoded token as an auth object, so canReadRecording applies the
+    // same demo-edit confinement as the callables (this is onRequest, so the
+    // onCall wrapper's default-deny doesn't cover it).
+    let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
       userEmail = decoded.email?.toLowerCase() ?? null;
-      role = decoded['role'] as string | undefined;
+      callerAuth = { token: decoded };
     } catch (err) {
       logger.warn('getAudio: invalid token', err);
       res.status(401).send('Invalid token');
@@ -92,7 +95,7 @@ export const getAudio = onRequest(
 
     // Observers (owner or co-observer), oversight, or the observed staff
     // member once finalized. Other PEs and building Administrators can't.
-    if (!(await canReadRecording(db, obs, userEmail, role))) {
+    if (!(await canReadRecording(db, obs, userEmail, callerAuth))) {
       res.status(403).send('Not authorized to access this audio');
       return;
     }

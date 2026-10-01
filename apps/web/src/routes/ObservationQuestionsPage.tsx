@@ -56,7 +56,6 @@ export function ObservationQuestionsPage() {
     };
   }, [questions]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
   const appliesTo = building?.questionsAppliesTo ?? 'admin';
 
   return (
