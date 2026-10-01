@@ -40,7 +40,11 @@ function loadViewAs(): string | null {
   try {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw?.includes('@') ? raw.toLowerCase() : null;
+    const email = raw?.includes('@') ? raw.toLowerCase() : null;
+    // Block writes until the provider's layout effect confirms (or clears)
+    // this for a dev user — fail closed.
+    setViewAsGuard(email);
+    return email;
   } catch {
     return null;
   }
@@ -79,8 +83,8 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
   );
   const viewAsLoading = viewAsEmail !== null && loading && !viewAsStaff;
 
-  // Before effects run so a write in the very first commit is still blocked.
-  setViewAsGuard(viewAsEmail);
+  // Layout effect: set before any child's useEffect can write. The stored
+  // value is applied at module load (see loadViewAs) for the first commit.
   useLayoutEffect(() => {
     setViewAsGuard(viewAsEmail);
   }, [viewAsEmail]);

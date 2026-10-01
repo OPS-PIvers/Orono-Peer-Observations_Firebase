@@ -243,7 +243,7 @@ export const finalizeObservation = onCall(
             .map((a) => ({
               questionId: a.questionId,
               text: a.questionText ?? '',
-              phase: 'post' as const,
+              phase: a.questionPhase ?? ('post' as const),
             })),
         ];
       }

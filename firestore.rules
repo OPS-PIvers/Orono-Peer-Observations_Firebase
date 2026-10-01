@@ -258,7 +258,7 @@ service cloud.firestore {
       function inOwnBuildingSet(data) {
         return data.get('type', '') == 'standard'
           && data.get('buildingId', '') is string
-          && data.get('buildingId', '') != ''
+          && data.get('buildingId', '').matches('^[a-z0-9-]+$')
           && data.get('setId', '') == 'building-' + data.get('buildingId', '')
           && get(/databases/$(database)/documents/buildings/$(data.get('buildingId', ''))).data.displayName
                in staffDocData().get('buildings', []);

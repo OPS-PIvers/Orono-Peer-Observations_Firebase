@@ -41,6 +41,7 @@ import { useObserverObservations } from '@/observations/useObserverObservations'
 import { EvaluatorStepChecklist } from '@/dashboard/EvaluatorStepChecklist';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 import { showsObservationTypes } from '@/observations/observationTypeLabels';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
 
 type ObsTab = 'all' | ObservationStatus;
 
@@ -138,8 +139,11 @@ export function StaffPersonPage() {
   const { role: myRole } = useEffectiveClaims();
   const canCreate = canCreateObservations(myRole);
   const isViewingAs = useIsViewingAs();
-  // Building Administrators reach this page from My Staff and go back there.
+  // Building Administrators reach this page from My Staff and go back there,
+  // and only see their own buildings' staff here unless they also have
+  // Admin Console oversight.
   const isBuildingAdmin = myRole === SPECIAL_ROLES.administrator;
+  const { allowed: hasOversight } = useAdminConsoleAccess();
   const backTo = isBuildingAdmin ? '/my-staff' : '/staff';
   const backLabel = isBuildingAdmin ? 'Back to My Staff' : 'Back to Staff';
   const observerScope = useObserverScope();
@@ -261,6 +265,7 @@ export function StaffPersonPage() {
   // scope). The page is otherwise district-wide for observers.
   if (
     isBuildingAdmin &&
+    !hasOversight &&
     !observerScope.loading &&
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
     !(staffMember.buildings ?? []).some((b) => observerScope.buildings.includes(b))

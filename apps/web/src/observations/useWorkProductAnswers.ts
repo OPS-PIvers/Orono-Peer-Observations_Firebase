@@ -44,13 +44,15 @@ export interface WorkProductAnswersState {
  * The write replaces the whole array (rules cannot diff array entries), so
  * this must be the only live surface editing a given observation's answers.
  */
+const NO_QUESTIONS: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
+
 export function useWorkProductAnswers(
   observation: (Observation & { id: string }) | null | undefined,
   canAnswer: boolean,
   /** The observation's live questions: each saved answer keeps its
    *  question's text and phase, so later question edits never change or
    *  orphan it. */
-  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [],
+  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = NO_QUESTIONS,
 ): WorkProductAnswersState {
   const questionsRef = useRef(questions);
   useEffect(() => {
@@ -114,9 +116,19 @@ export function useWorkProductAnswers(
     for (const [questionId, answer] of Object.entries(localRef.current)) {
       const previous = storedRef.current.get(questionId);
       const question = questionsRef.current.find((q) => q.questionId === questionId);
+      // An answer keeps the wording it was written against: only an answer
+      // edited now takes the live question's text; an untouched one keeps
+      // its stored snapshot (or gains one if it predates snapshots).
+      const edited = dirty.has(questionId);
+      const questionText = edited
+        ? (question?.text ?? previous?.questionText)
+        : (previous?.questionText ?? question?.text);
+      const phase = edited
+        ? question
+          ? questionPhase(question)
+          : previous?.questionPhase
+        : (previous?.questionPhase ?? (question ? questionPhase(question) : undefined));
       // Firestore rejects undefined fields, so only include what's known.
-      const questionText = question?.text ?? previous?.questionText;
-      const phase = question ? questionPhase(question) : previous?.questionPhase;
       const snapshot = {
         ...(questionText ? { questionText } : {}),
         ...(phase ? { questionPhase: phase } : {}),
