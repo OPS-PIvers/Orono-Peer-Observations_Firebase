@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
 import * as L from '@/lazyRoutes';
 import { NotFound } from '@/routes/NotFound';
-import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
+import { NotForAdministrators, RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
 import { Unauthorized } from '@/routes/Unauthorized';
 
 // Dev-only sign-in helper. Lazy-loaded so production bundles tree-shake
@@ -71,9 +71,23 @@ export function App() {
               {/* Authenticated routes (no special access required) */}
               <Route element={<StandardShell />}>
                 <Route path="/" element={<RoleAwareRedirect />} />
-                <Route path="/dashboard" element={<L.StaffDashboardPage />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <NotForAdministrators>
+                      <L.StaffDashboardPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route path="/my-observations" element={<L.MyObservationsPage />} />
-                <Route path="/my-rubric" element={<L.MyRubricPage />} />
+                <Route
+                  path="/my-rubric"
+                  element={
+                    <NotForAdministrators>
+                      <L.MyRubricPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route path="/profile" element={<L.ProfilePage />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
@@ -90,24 +104,44 @@ export function App() {
                 <Route path="/observations" element={<L.ObservationsListPage />} />
                 <Route path="/staff" element={<L.StaffDirectoryPage />} />
                 <Route path="/staff/:email" element={<KeyedStaffPersonPage />} />
-                <Route path="/my-staff" element={<L.MyStaffPage />} />
               </Route>
 
-              {/* Building Administrators only — staff editing scoped to their
-                  building(s), in place of the Admin Console. */}
+              {/* Building Administrators only — their building's staff, with
+                  editing scoped to it in place of the Admin Console. */}
               <Route element={<StandardShell requireAdministrator />}>
-                <Route path="/building-staff" element={<L.BuildingStaffPage />} />
+                <Route path="/my-staff" element={<L.MyStaffPage />} />
+                <Route path="/observation-questions" element={<L.ObservationQuestionsPage />} />
+                {/* Merged into My Staff; kept so old links still land. */}
+                <Route path="/building-staff" element={<Navigate to="/my-staff" replace />} />
               </Route>
 
               {/* Starting observations: observer roles only. hasSpecialAccess
                   alone isn't enough — the hasAdminAccess flag grants it to
                   observed roles too. */}
               <Route element={<StandardShell requireObserverRole />}>
-                <Route path="/observations/new" element={<L.NewObservationPage />} />
-                <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
+                <Route
+                  path="/observations/new"
+                  element={
+                    <NotForAdministrators>
+                      <L.NewObservationPage />
+                    </NotForAdministrators>
+                  }
+                />
+                <Route
+                  path="/observations/windows"
+                  element={
+                    <NotForAdministrators>
+                      <L.MyObservationWindowsPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route
                   path="/observations/windows/:windowId/assign"
-                  element={<L.AssignPreferencesPage />}
+                  element={
+                    <NotForAdministrators>
+                      <L.AssignPreferencesPage />
+                    </NotForAdministrators>
+                  }
                 />
               </Route>
 

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -22,6 +23,7 @@ import {
 } from '@ops/shared';
 import { APP_URL, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow } from './engine/slotGeneration.js';
+import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
 import { formatYMD } from './engine/schedulingEmail.js';
 
 if (getApps().length === 0) initializeApp();
@@ -103,6 +105,12 @@ export const createObservationWindow = onCall(
 
     const staffRefs = dedupedInvitees.map((inv) => db.collection(COLLECTIONS.staff).doc(inv.email));
     const staffSnaps = staffRefs.length > 0 ? await db.getAll(...staffRefs) : [];
+
+    // Building Administrators can only invite staff they can observe.
+    assertCanObserveAll(
+      await loadObserverScope(db, userEmail),
+      staffSnaps.filter((s) => s.exists).map((s) => s.data() as Staff),
+    );
 
     const invitees: WindowInvitee[] = [];
     const invitedEmails: string[] = [];

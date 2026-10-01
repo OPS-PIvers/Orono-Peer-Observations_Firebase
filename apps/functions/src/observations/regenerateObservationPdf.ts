@@ -1,13 +1,14 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
+  canManageObservation,
   COLLECTIONS,
   OBSERVATION_STATUS,
-  isAdminRole,
   roleYearMappingDocId,
   toDate as sharedToDate,
   type DriveFileRef,
@@ -28,6 +29,7 @@ import {
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -71,6 +73,8 @@ export const regenerateObservationPdf = onCall(
   // exposure — not copied from onObservationWritten's maxInstances: 1, which
   // exists there solely to respect the Sheets API's 60-writes/min quota.
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -92,16 +96,20 @@ export const regenerateObservationPdf = onCall(
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
 
     const snap = await obsRef.get();
     if (!snap.exists) throw new HttpsError('not-found', 'Observation not found');
     const obs = { id: snap.id, ...snap.data() } as unknown as Observation & { id: string };
 
-    if (!isAdmin && obs.observerEmail !== userEmail) {
+    const access = await callerObservationAccess(db, obs, {
+      email: userEmail,
+      tokenRole: callerRole,
+      auth: request.auth,
+    });
+    if (!canManageObservation(access)) {
       throw new HttpsError(
         'permission-denied',
-        'Only the observer or an admin can regenerate the PDF.',
+        'Only the observer or a district admin can regenerate the PDF.',
       );
     }
     if (obs.status !== OBSERVATION_STATUS.finalized) {

@@ -291,7 +291,7 @@ describe('applyScriptTags — input & auth guards', () => {
         suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
       },
     } as unknown as Partial<CallableRequest>;
-    await expect(run(req)).rejects.toThrow(/Only the observer or an admin/);
+    await expect(run(req)).rejects.toThrow(/Only the observers/);
     expect(rec.txUpdates).toHaveLength(0);
   });
 

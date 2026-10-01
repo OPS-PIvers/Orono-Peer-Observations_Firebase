@@ -51,6 +51,7 @@ function makeObservation(
     observationId: id,
     observerEmail: 'observer@orono.k12.mn.us',
     observerName: 'Observer Name',
+    coObserverEmails: [],
     observedEmail: 'staff@orono.k12.mn.us',
     observedName: 'Staff Name',
     observedRole: 'teacher',

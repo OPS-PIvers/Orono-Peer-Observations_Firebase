@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
@@ -49,6 +50,8 @@ interface SuggestScriptTagsResponse {
  */
 export const suggestScriptTags = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     secrets: [GEMINI_API_KEY],
     memory: '512MiB',
@@ -76,7 +79,7 @@ export const suggestScriptTags = onCall(
     assertScriptAutoTagAvailable(feature, userEmail);
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole);
+    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
 
     const raw = await callGeminiForTags(
       ctx.activeComponents,

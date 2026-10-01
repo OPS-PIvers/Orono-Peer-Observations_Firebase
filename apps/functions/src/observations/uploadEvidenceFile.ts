@@ -1,9 +1,10 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, type Observation, type Staff } from '@ops/shared';
+import { canEditObservationContent, COLLECTIONS, type Observation } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
@@ -13,6 +14,7 @@ import {
   shareObservationFolderWithObserver,
   uploadFileToFolder,
 } from '../lib/drive.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -64,6 +66,8 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set([
 
 export const uploadEvidenceFile = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -93,15 +97,15 @@ export const uploadEvidenceFile = onCall(
 
     const obs = obsSnap.data() as unknown as Observation;
 
-    // Derive admin status from the live staff doc rather than the cached
-    // ID token. ID tokens live ~1 hour, so a user who lost admin access
-    // in the last hour would otherwise still pass the check.
-    const staffSnap = await db.doc(`${COLLECTIONS.staff}/${userEmail}`).get();
-    const staff = staffSnap.exists ? (staffSnap.data() as Staff) : null;
-    const isAdmin = !!staff && (isAdminRole(staff.role) || staff.hasAdminAccess);
-
-    if (!isAdmin && obs.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or admin can upload evidence');
+    // Owner, co-observer, or oversight. Oversight is derived from the live
+    // staff doc rather than the cached ID token (tokens live ~1 hour).
+    const access = await callerObservationAccess(db, obs, {
+      email: userEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      auth: request.auth,
+    });
+    if (!canEditObservationContent(access)) {
+      throw new HttpsError('permission-denied', 'Only the observers can upload evidence');
     }
     if (obs.status !== 'Draft') {
       throw new HttpsError(

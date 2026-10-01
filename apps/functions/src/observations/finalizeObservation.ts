@@ -1,14 +1,17 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { defineString } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  canManageObservation,
   COLLECTIONS,
+  displayYear,
   OBSERVATION_STATUS,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
-  isAdminRole,
+  questionsForObservation,
   questionPhase,
   roleYearMappingDocId,
   workProductAnswerHasText,
@@ -19,7 +22,6 @@ import {
   type Rubric,
   type RubricDomain,
   type WorkProductQuestion,
-  displayYear,
 } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -43,6 +45,7 @@ import {
   pdfAttachment,
   reportFileName,
 } from '../lib/acknowledgeEmail.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -97,6 +100,8 @@ export const finalizeObservation = onCall(
   // exposure — not copied from onObservationWritten's maxInstances: 1, which
   // exists there solely to respect the Sheets API's 60-writes/min quota.
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -123,9 +128,18 @@ export const finalizeObservation = onCall(
     const obs = { id: obsSnap.id, ...obsSnap.data() } as unknown as Observation & { id: string };
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin && obs.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or an admin can finalize.');
+    // Owner or oversight only: a co-observer edits the draft but the owner
+    // finalizes it, and building Administrators get no override.
+    const access = await callerObservationAccess(db, obs, {
+      email: userEmail,
+      tokenRole: callerRole,
+      auth: request.auth,
+    });
+    if (!canManageObservation(access)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only the observer who created this observation can finalize it.',
+      );
     }
 
     // Atomically claim the finalize transition. Re-reads the observation
@@ -202,10 +216,11 @@ export const finalizeObservation = onCall(
       const snapshotDomains = resolveSnapshotDomains(rubric.domains, activeComponentIds);
 
       // Every observation type stores its reflection answers as Q&A keyed on
-      // questionId. Fetch the matching question bank so the PDF can print each
-      // answer under its question text. Every question of the type is fetched
-      // (not just active ones) so answers to since-deactivated questions still
-      // make it into the permanent record.
+      // questionId. Fetch the observation's question set so the PDF can print
+      // each answer under its question text. Every question of the set is
+      // fetched (not just active ones) so answers to since-deactivated
+      // questions still make it into the permanent record; an answer whose
+      // question was deleted prints under the text it was written against.
       const questionType = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
       let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
       {
@@ -213,16 +228,28 @@ export const finalizeObservation = onCall(
           .collection(COLLECTIONS.workProductQuestions)
           .where('type', '==', questionType)
           .get();
-        const answeredIds = new Set(
-          (obs.workProductAnswers ?? [])
-            .filter((a) => workProductAnswerHasText(a.answer))
-            .map((a) => a.questionId),
+        const answered = (obs.workProductAnswers ?? []).filter((a) =>
+          workProductAnswerHasText(a.answer),
         );
-        workProductQuestions = questionsSnap.docs
-          .map((doc) => doc.data() as WorkProductQuestion)
-          .filter((q) => q.isActive || answeredIds.has(q.questionId))
-          .sort((a, b) => a.order - b.order)
-          .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) }));
+        const answeredIds = new Set(answered.map((a) => a.questionId));
+        const inSet = questionsForObservation(
+          questionsSnap.docs.map((doc) => doc.data() as WorkProductQuestion),
+          obs,
+        );
+        const known = new Set(inSet.map((q) => q.questionId));
+        workProductQuestions = [
+          ...inSet
+            .filter((q) => q.isActive || answeredIds.has(q.questionId))
+            .sort((a, b) => a.order - b.order)
+            .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) })),
+          ...answered
+            .filter((a) => !known.has(a.questionId) && a.questionText)
+            .map((a) => ({
+              questionId: a.questionId,
+              text: a.questionText ?? '',
+              phase: a.questionPhase ?? ('post' as const),
+            })),
+        ];
       }
 
       // Thread admin-configured branding into the PDF so the archived

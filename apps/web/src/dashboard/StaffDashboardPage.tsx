@@ -27,6 +27,8 @@ import { DashboardView, type ModuleChip } from './DashboardView';
 import { type CheckpointWithStatus, extractFirstName } from './deriveCheckpoints';
 import { deriveModuleTasks } from './deriveModuleTasks';
 import { useStaffCheckpoints } from './useStaffCheckpoints';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
+import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -52,7 +54,8 @@ function currentSchoolYearLabel(now: Date = new Date()): string {
 
 export function StaffDashboardPage() {
   const { user } = useAuth();
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const emailLower = useEffectiveEmail();
+  const isViewingAs = useIsViewingAs();
   const queryClient = useQueryClient();
 
   const staffPath = emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '';
@@ -106,6 +109,7 @@ export function StaffDashboardPage() {
 
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
+      assertWritable();
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
         acknowledgedAt: serverTimestamp(),
         acknowledgedBy: emailLower,
@@ -183,8 +187,10 @@ export function StaffDashboardPage() {
       quickMaterials={visibleQuickMaterials}
       peerEvaluator={peerEvaluator}
       onAcknowledge={(id) => ackMutation.mutate(id)}
-      acknowledging={ackMutation.isPending}
+      // Disabled outright while viewing as someone (dev view-as is read-only).
+      acknowledging={ackMutation.isPending || isViewingAs}
       onCompleteModuleItem={(moduleId, itemId) => {
+        if (isViewAsActive()) return;
         const ref = doc(
           db,
           COLLECTIONS.staff,

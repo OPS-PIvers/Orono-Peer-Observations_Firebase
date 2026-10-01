@@ -234,9 +234,7 @@ export async function shareWithUser(args: {
     supportsAllDrives: true,
   });
   const lower = args.email.toLowerCase();
-  const match = existing.data.permissions?.find(
-    (p) => p.emailAddress?.toLowerCase() === lower,
-  );
+  const match = existing.data.permissions?.find((p) => p.emailAddress?.toLowerCase() === lower);
   if (match?.role === args.role) return;
   if (match?.id) {
     await drive.permissions.update({
@@ -347,9 +345,7 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
     await Promise.all(
       (page.data.files ?? []).map((f) =>
         f.id
-          ? drive.files
-              .delete({ fileId: f.id, supportsAllDrives: true })
-              .catch((err: unknown) => {
+          ? drive.files.delete({ fileId: f.id, supportsAllDrives: true }).catch((err: unknown) => {
               logger.warn('deleteDriveFolder: failed to delete child', {
                 folderId,
                 fileId: f.id,

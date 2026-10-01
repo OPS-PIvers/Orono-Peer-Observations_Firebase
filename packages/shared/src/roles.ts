@@ -102,3 +102,9 @@ export function creatableObservationTypes(role: string | null | undefined): Obse
   if (role === SPECIAL_ROLES.administrator) return [OBSERVATION_TYPES.standard];
   return Object.values(OBSERVATION_TYPES);
 }
+
+/** Custom-token claim marking a demo-edit session: the signed-in user is
+ *  being driven by this (real) person's View As + Edit grant. Such sessions
+ *  may only change demo staff's records (firestore.rules notDemoEdit, the
+ *  functions' callable wrapper). */
+export const DEMO_EDIT_CLAIM = 'demoEditBy';

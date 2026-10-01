@@ -13,8 +13,9 @@ import { type Page, expect, test } from '@playwright/test';
  * outside the emulator environment.
  */
 
-/** Seeded administrator — has special access, can create observations. */
-const SEED_ADMIN_EMAIL = 'admin.seed@orono.k12.mn.us';
+/** Seeded Peer Evaluator — the New observation page is theirs (building
+ *  Administrators start observations from My Staff and are redirected). */
+const SEED_PE_EMAIL = 'pe.alpha@orono.k12.mn.us';
 /** Seeded teacher to observe — provisioned by scripts/seed-dev.ts. */
 const SEED_TEACHER_NAME = 'Teacher One';
 const SEED_TEACHER_EMAIL = 'teacher.one@orono.k12.mn.us';
@@ -63,7 +64,7 @@ async function devSignIn(page: Page, email: string): Promise<void> {
 
 test.describe('new observation page', () => {
   test.beforeEach(async ({ page }) => {
-    await devSignIn(page, SEED_ADMIN_EMAIL);
+    await devSignIn(page, SEED_PE_EMAIL);
   });
 
   test('renders the staff picker', async ({ page }) => {
@@ -83,7 +84,7 @@ test.describe('new observation page', () => {
 
 test.describe('observation create -> edit -> autosave', () => {
   test('creates a draft observation and autosaves an edit', async ({ page, baseURL }) => {
-    await devSignIn(page, SEED_ADMIN_EMAIL);
+    await devSignIn(page, SEED_PE_EMAIL);
 
     await page.goto('/observations/new');
 

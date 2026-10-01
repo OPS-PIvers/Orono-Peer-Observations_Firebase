@@ -10,6 +10,7 @@ import {
   downloadFile,
   getDriveClient,
 } from '../lib/drive.js';
+import { canReadRecording } from './recordingAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -46,13 +47,14 @@ export const getAudio = onRequest(
       return;
     }
     let userEmail: string | null = null;
-    let role: string | undefined;
-    let hasSpecialAccess = false;
+    // The decoded token as an auth object, so canReadRecording applies the
+    // same demo-edit confinement as the callables (this is onRequest, so the
+    // onCall wrapper's default-deny doesn't cover it).
+    let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
       userEmail = decoded.email?.toLowerCase() ?? null;
-      role = decoded['role'] as string | undefined;
-      hasSpecialAccess = decoded['hasSpecialAccess'] === true;
+      callerAuth = { token: decoded };
     } catch (err) {
       logger.warn('getAudio: invalid token', err);
       res.status(401).send('Invalid token');
@@ -82,6 +84,7 @@ export const getAudio = onRequest(
     const obs = obsSnap.data() as {
       observerEmail: string;
       observedEmail: string;
+      coObserverEmails?: string[];
       status: string;
       audioDriveFileIds: string[];
     };
@@ -90,10 +93,9 @@ export const getAudio = onRequest(
       return;
     }
 
-    const isAdmin = role === 'Administrator' || role === 'Full Access' || hasSpecialAccess;
-    const isObserver = obs.observerEmail === userEmail;
-    const isObservedFinalized = obs.observedEmail === userEmail && obs.status === 'Finalized';
-    if (!isAdmin && !isObserver && !isObservedFinalized) {
+    // Observers (owner or co-observer), oversight, or the observed staff
+    // member once finalized. Other PEs and building Administrators can't.
+    if (!(await canReadRecording(db, obs, userEmail, callerAuth))) {
       res.status(403).send('Not authorized to access this audio');
       return;
     }

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
@@ -11,8 +11,12 @@ export function Unauthorized() {
 
   // As soon as claims grant access (e.g. after Refresh access or a background
   // token update), leave this page and let RoleAwareRedirect send the user
-  // to the right destination.
+  // to the right destination. Only when access was gained here: a signed-in
+  // Administrator or PE turned away from a page they can't open (say
+  // /admin) must see the denial, not be bounced home without a word.
+  const hadAccessOnArrival = useRef(claims.isAdmin || claims.hasSpecialAccess);
   useEffect(() => {
+    if (hadAccessOnArrival.current) return;
     if (claims.isAdmin || claims.hasSpecialAccess) {
       void navigate('/', { replace: true });
     }
@@ -58,6 +62,11 @@ export function Unauthorized() {
         {announcement}
       </span>
       <div className="flex flex-wrap justify-center gap-3">
+        <Button asChild>
+          <Link to="/" replace>
+            Go to home
+          </Link>
+        </Button>
         <Button onClick={() => void signOut()} variant="outline">
           Sign out
         </Button>

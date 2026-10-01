@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { SPECIAL_ROLES, canCreateObservations } from '@ops/shared';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useDevMode } from '@/dev/DevModeContext';
 import { useAdminConsoleAccess } from './adminConsoleAccess';
 import { useAuth } from './AuthProvider';
 
@@ -21,7 +21,7 @@ export interface RequireAuthProps {
   requireSpecialAccess?: boolean;
   /** Role must be able to start observations (see canCreateObservations). */
   requireObserverRole?: boolean;
-  /** Role must be Administrator (building-scoped pages like /building-staff). */
+  /** Role must be Administrator (building-scoped pages like /my-staff). */
   requireAdministrator?: boolean;
 }
 
@@ -33,11 +33,11 @@ export function RequireAuth({
   requireAdministrator = false,
 }: RequireAuthProps) {
   const { status } = useAuth();
-  const claims = useEffectiveClaims();
+  const { effectiveClaims: claims, viewAsLoading } = useDevMode();
   const location = useLocation();
   const consoleAccess = useAdminConsoleAccess();
 
-  if (status === 'loading' || (requireAdmin && consoleAccess.loading)) {
+  if (status === 'loading' || viewAsLoading || (requireAdmin && consoleAccess.loading)) {
     return <LoadingSplash />;
   }
 

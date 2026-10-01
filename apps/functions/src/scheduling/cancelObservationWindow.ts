@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
@@ -8,10 +9,10 @@ import {
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
   cancelObservationWindowInput,
-  isAdminRole,
   type ObservationSlot,
   type ObservationWindow,
 } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -44,7 +45,13 @@ export const cancelObservationWindow = onCall(
     const window = windowSnap.data() as ObservationWindow;
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
+    // District oversight only (Full Access / hasAdminAccess). Building
+    // Administrators manage their own windows, like any observer.
+    const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
+      email: userEmail,
+      tokenRole: callerRole,
+      level: 'console',
+    });
     if (!isAdmin && window.observerEmail !== userEmail) {
       throw new HttpsError('permission-denied', 'Only the observer or an admin can cancel.');
     }

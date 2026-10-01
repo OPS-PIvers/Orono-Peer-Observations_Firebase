@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { addDoc, collection } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
+  OBSERVATION_TYPES,
   COLLECTIONS,
   canCreateObservations,
+  canObserve,
   creatableObservationTypes,
   type SetStepCheckInput,
   type Staff,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db, functions } from '@/lib/firebase';
 import { newDraftObservationDoc } from '@/observations/newObservationDoc';
@@ -26,6 +28,9 @@ import {
 import type { CheckpointWithStatus } from './deriveCheckpoints';
 import { EvaluatorChecklistView, observationTypeForWatchedKind } from './EvaluatorChecklistView';
 import { useStaffCheckpoints } from './useStaffCheckpoints';
+import { assertWritable } from '@/dev/viewAsGuard';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useQuestionSetResolution } from '@/observations/useQuestionSetResolution';
 
 const setStepCheckFn = httpsCallable<SetStepCheckInput, { ok: true; path: string }>(
   functions,
@@ -45,15 +50,30 @@ function errorMessage(err: unknown, fallback: string): string {
  * optimistic state to reconcile.
  */
 export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
-  const { tasks } = useStaffCheckpoints(staff.email, { includeHidden: true });
-  const { user } = useAuth();
-  const observerEmail = user?.email?.toLowerCase() ?? '';
+  const viewerEmail = useEffectiveEmail();
+  const { allowed: oversight, loading: oversightLoading } = useAdminConsoleAccess();
+  // An observer's checklist reflects only their own observations of this
+  // teacher; console admins see every observer's.
+  const { tasks } = useStaffCheckpoints(
+    oversightLoading ? '' : staff.email,
+    { includeHidden: true },
+    oversight ? null : viewerEmail,
+  );
+  const observerEmail = viewerEmail;
   const { data: observerStaff } = useFirestoreDoc<Staff>(
     observerEmail ? `${COLLECTIONS.staff}/${observerEmail}` : '',
   );
   const newObservationsDisabled = useNewObservationsDisabled();
   const effectiveRole = useEffectiveClaims().role;
-  const canCreate = canCreateObservations(effectiveRole);
+  const isViewingAs = useIsViewingAs();
+  const observerScope = useObserverScope();
+  // A building Administrator can only start observations of summative staff
+  // in their buildings; otherwise these steps wait for another observer.
+  const canCreate =
+    canCreateObservations(effectiveRole) &&
+    !observerScope.loading &&
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+    canObserve(observerScope, { ...staff, buildings: staff.buildings ?? [] });
   const creatableTypes = creatableObservationTypes(effectiveRole);
 
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -68,6 +88,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
   }
 
   async function writeCheck(task: CheckpointWithStatus, observationId: string | null) {
+    assertWritable();
     await setStepCheckFn({
       staffEmail: staff.email.toLowerCase(),
       stepId: task.key,
@@ -91,7 +112,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
   }
 
-  async function handleStartAndCheck(task: CheckpointWithStatus) {
+  async function handleStartAndCheck(task: CheckpointWithStatus, questionSetId: string) {
     setConfirming(null);
     if (!observerEmail) {
       setError(task.id, 'Missing observer context.');
@@ -101,6 +122,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     setError(task.id, null);
     let observationId: string;
     try {
+      assertWritable();
       const ref = await addDoc(
         collection(db, COLLECTIONS.observations),
         newDraftObservationDoc({
@@ -108,6 +130,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
           observerName: observerStaff?.name ?? '',
           staff,
           type: observationTypeForWatchedKind(task.watchedKind),
+          questionSetId,
         }),
       );
       observationId = ref.id;
@@ -128,19 +151,38 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
   }
 
+  // Steps for observation types this viewer never runs are someone else's
+  // workflow: a building Administrator doesn't see the Work Product /
+  // Instructional Round steps, which belong to peer evaluators.
+  const visibleTasks = tasks.filter(
+    (t) =>
+      t.key === 'module' || creatableTypes.includes(observationTypeForWatchedKind(t.watchedKind)),
+  );
+
   const confirmType = confirming ? observationTypeForWatchedKind(confirming.watchedKind) : null;
+  const [chosenBuildingId, setChosenBuildingId] = useState<string | null>(null);
+  const questionSet = useQuestionSetResolution(
+    confirming ? staff : null,
+    confirmType ?? OBSERVATION_TYPES.standard,
+    chosenBuildingId,
+  );
+  const confirmSetId = questionSet && 'setId' in questionSet ? questionSet.setId : null;
 
   return (
     <>
       <EvaluatorChecklistView
-        tasks={tasks}
+        tasks={visibleTasks}
         pendingId={pendingId}
         errors={errors}
         newObservationsDisabled={newObservationsDisabled}
         canCreateObservations={canCreate}
         creatableTypes={creatableTypes}
+        readOnly={isViewingAs}
         onToggle={(task) => void handleToggle(task)}
-        onStart={(task) => setConfirming(task)}
+        onStart={(task) => {
+          setChosenBuildingId(null);
+          setConfirming(task);
+        }}
       />
       {confirming ? (
         <Dialog open onOpenChange={(open) => (open ? null : setConfirming(null))}>
@@ -152,11 +194,34 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
                 you as the observer, then marks “{confirming.title}” complete on their dashboard.
               </DialogDescription>
             </DialogHeader>
+            {questionSet && 'choose' in questionSet ? (
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Planning and Reflection questions</span>
+                <select
+                  value={chosenBuildingId ?? ''}
+                  onChange={(e) => setChosenBuildingId(e.target.value || null)}
+                  className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                >
+                  <option value="">Choose a building…</option>
+                  {questionSet.choose.map((b) => (
+                    <option key={b.buildingId} value={b.buildingId}>
+                      {b.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setConfirming(null)}>
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void handleStartAndCheck(confirming)}>
+              <Button
+                type="button"
+                disabled={!confirmSetId}
+                onClick={() => {
+                  if (confirmSetId) void handleStartAndCheck(confirming, confirmSetId);
+                }}
+              >
                 Start observation &amp; mark done
               </Button>
             </DialogFooter>

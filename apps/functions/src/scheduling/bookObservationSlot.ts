@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
@@ -31,7 +32,9 @@ import {
 import { peConflicts } from './engine/timeWindows.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
 import { meetsLeadTime } from './engine/bookingRules.js';
+import { blockedStaff, loadObserverScope } from './observeScope.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
+import { resolveObservationQuestionSet } from '../lib/questionSets.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -87,6 +90,14 @@ export async function createDraftObservationForBooking(args: {
     ? window.defaultObservationType
     : OBSERVATION_TYPES.standard;
 
+  const questionSetId = await resolveObservationQuestionSet(db, {
+    observerRole,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- raw Admin SDK reads skip schema defaults
+    observerBuildings: observerSnap.exists ? ((observerSnap.data() as Staff).buildings ?? []) : [],
+    staffBuildings: staff?.buildings ?? [],
+    type: observationType,
+  });
+
   const slotStart = toDate(slot.startUTC);
   const slotEnd = toDate(slot.endUTC);
 
@@ -106,6 +117,7 @@ export async function createDraftObservationForBooking(args: {
     observedBuildings: staff?.buildings ?? [],
     status: OBSERVATION_STATUS.draft,
     type: observationType,
+    questionSetId,
     observationName: window.defaultObservationName,
     observationData: {},
     componentNotes: {},
@@ -272,6 +284,25 @@ export const bookObservationSlot = onCall(
           }
           calendarConflictWarning = true;
         }
+      }
+    }
+
+    // A building Administrator's window only books staff they can still
+    // observe: status or building may have changed since the invite.
+    // Checked before the transaction (like the calendar gate); the observer
+    // can't change on a window, so there's nothing to re-validate inside.
+    const [scopeWindowSnap, bookerSnap] = await Promise.all([
+      windowRef.get(),
+      db.collection(COLLECTIONS.staff).doc(userEmail).get(),
+    ]);
+    if (scopeWindowSnap.exists && bookerSnap.exists) {
+      const scopeWindow = scopeWindowSnap.data() as ObservationWindow;
+      const scope = await loadObserverScope(db, scopeWindow.observerEmail);
+      if (blockedStaff(scope, [bookerSnap.data() as Staff]).length > 0) {
+        throw new HttpsError(
+          'failed-precondition',
+          `${scopeWindow.observerName || 'This observer'} can no longer schedule an observation with you. Please contact them directly.`,
+        );
       }
     }
 

@@ -1,17 +1,18 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
+  canEditObservationContent,
   COLLECTIONS,
-  isAdminRole,
   removeEvidenceFileInput,
   type DriveFileRef,
   type Observation,
-  type Staff,
 } from '@ops/shared';
 import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -39,6 +40,8 @@ if (getApps().length === 0) initializeApp();
  */
 export const removeEvidenceFile = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -63,16 +66,16 @@ export const removeEvidenceFile = onCall(
 
     const obs = obsSnap.data() as unknown as Observation;
 
-    // Derive admin status from the live staff doc rather than the cached
-    // ID token, same rationale as uploadEvidenceFile.
-    const staffSnap = await db.doc(`${COLLECTIONS.staff}/${userEmail}`).get();
-    const staff = staffSnap.exists ? (staffSnap.data() as Staff) : null;
-    const isAdmin = !!staff && (isAdminRole(staff.role) || staff.hasAdminAccess);
-
-    if (!isAdmin && obs.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or admin can remove evidence');
+    // Owner, co-observer, or oversight (live staff doc, not the cached token).
+    const access = await callerObservationAccess(db, obs, {
+      email: userEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      auth: request.auth,
+    });
+    if (!canEditObservationContent(access)) {
+      throw new HttpsError('permission-denied', 'Only the observers can remove evidence');
     }
-    if (!isAdmin && obs.status !== 'Draft') {
+    if (access !== 'oversight' && obs.status !== 'Draft') {
       throw new HttpsError(
         'failed-precondition',
         'Cannot remove evidence from a finalized observation',

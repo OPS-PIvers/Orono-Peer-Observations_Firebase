@@ -1,9 +1,8 @@
 import {
   OBSERVATION_STATUS,
-  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   postQuestionsUnlocked,
   questionPhase,
-  questionType,
+  questionsForObservation,
   resolveReflectionUnlock,
   workProductAnswerHasText,
   type AppSettings,
@@ -75,7 +74,10 @@ export interface EventResult {
 /** The slice of a question the dashboard needs. `type` / `phase` may be
  *  missing on docs written before those fields existed — read them through
  *  `questionType` / `questionPhase`. */
-export type ActiveQuestion = Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'>;
+export type ActiveQuestion = Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'> & {
+  /** The question set (see questionsForObservation); absent = district set. */
+  setId?: string;
+};
 
 export function toDate(value: Date | null | undefined): Date | null {
   if (!value) return null;
@@ -220,10 +222,9 @@ export function responseProgress(
   openPanel: StepOpenPanel | null,
 ): { answered: number; total: number } {
   if (!obs) return { answered: 0, total: 0 };
-  const type = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
   const phase = openPanel === 'planning' ? 'pre' : openPanel === 'reflection' ? 'post' : null;
-  const questions = ctx.questions.filter(
-    (q) => questionType(q) === type && (phase === null || questionPhase(q) === phase),
+  const questions = questionsForObservation(ctx.questions, obs).filter(
+    (q) => phase === null || questionPhase(q) === phase,
   );
   const answeredIds = new Set(
     (obs.workProductAnswers ?? [])

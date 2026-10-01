@@ -19,7 +19,6 @@ import {
   type Staff,
   type UpdateEmailPreferencesInput,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { PROFICIENCY_LABELS } from '@/components/rubric/RubricGrid';
 import { Button } from '@/components/ui/button';
@@ -37,6 +36,8 @@ import {
   yearLabel,
   yearStatusLabel,
 } from '@/utils/staffFormatting';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 /** Domain-id → chart stroke color, mirroring RubricGridEditor's
  *  `DOMAIN_ACCENTS` (border-l-ops-blue/red/blue-light/red-light) so a given
@@ -493,6 +494,7 @@ const updateEmailPreferencesFn = httpsCallable<UpdateEmailPreferencesInput, Emai
 
 /** Calendar integration section: connect/disconnect Google Calendar OAuth. */
 function CalendarIntegrationSection({ email }: { email: string }) {
+  const isViewingAs = useIsViewingAs();
   const [status, setStatus] = useState<CalendarConnectionStatusResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -518,6 +520,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
   const handleConnect = () => {
     setError(null);
     try {
+      assertWritable();
       beginCalendarConnect(email, '/profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the connection.');
@@ -528,6 +531,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
     setBusy(true);
     setError(null);
     try {
+      assertWritable();
       const { data } = await disconnectGoogleCalendarFn({});
       setStatus(data);
     } catch (err) {
@@ -582,12 +586,16 @@ function CalendarIntegrationSection({ email }: { email: string }) {
 
           <div className="flex flex-wrap gap-2">
             {isConnected ? (
-              <Button variant="outline" onClick={() => void handleDisconnect()} disabled={busy}>
+              <Button
+                variant="outline"
+                onClick={() => void handleDisconnect()}
+                disabled={busy || isViewingAs}
+              >
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Disconnect
               </Button>
             ) : (
-              <Button onClick={handleConnect} disabled={!email}>
+              <Button onClick={handleConnect} disabled={!email || isViewingAs}>
                 {isRevoked ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
               </Button>
             )}
@@ -609,6 +617,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
  *  updateEmailPreferences callable (own /staff doc is client-read-only, so a
  *  callable is the only self-service write path — see firestore.rules). */
 function EmailPreferencesSection({ staff }: { staff: Staff }) {
+  const isViewingAs = useIsViewingAs();
   const [prefs, setPrefs] = useState<EmailPreferences>({
     ...DEFAULT_EMAIL_PREFERENCES,
     ...staff.emailPreferences,
@@ -626,6 +635,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
     setSavingCategory(category);
     setPrefs((p) => ({ ...p, [category]: checked }));
     try {
+      assertWritable();
       const { data } = await updateEmailPreferencesFn({ [category]: checked });
       setPrefs(data);
     } catch (err) {
@@ -660,7 +670,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
               <Switch
                 id={`email-pref-${category}`}
                 checked={prefs[category]}
-                disabled={savingCategory === category}
+                disabled={savingCategory === category || isViewingAs}
                 onCheckedChange={(checked) => void handleToggle(category, checked)}
                 aria-label={label}
               />
@@ -680,8 +690,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
 }
 
 export function ProfilePage() {
-  const { user } = useAuth();
-  const email = user?.email?.toLowerCase() ?? '';
+  const email = useEffectiveEmail();
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staff, loading: staffLoading } = useDocument<Staff>(staffDocRef);

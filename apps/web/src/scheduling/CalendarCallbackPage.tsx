@@ -12,6 +12,7 @@ import {
   clearStashedOAuthState,
   readStashedOAuthState,
 } from './connectCalendar';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 const connectGoogleCalendarFn = httpsCallable<
   ConnectGoogleCalendarInput,
@@ -80,6 +81,7 @@ export function CalendarCallbackPage() {
 
     void (async () => {
       try {
+        assertWritable();
         await connectGoogleCalendarFn({
           authorizationCode: code,
           redirectUri: calendarRedirectUri(),

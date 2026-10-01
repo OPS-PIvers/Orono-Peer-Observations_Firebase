@@ -68,6 +68,8 @@ export interface EvaluatorChecklistViewProps {
   newObservationsDisabled: boolean;
   canCreateObservations: boolean;
   creatableTypes?: readonly ObservationType[];
+  /** Every control disabled (dev view-as). */
+  readOnly?: boolean;
   onToggle: (task: CheckpointWithStatus) => void;
   onStart: (task: CheckpointWithStatus) => void;
 }
@@ -85,6 +87,7 @@ export function EvaluatorChecklistView({
   newObservationsDisabled,
   canCreateObservations,
   creatableTypes,
+  readOnly = false,
   onToggle,
   onStart,
 }: EvaluatorChecklistViewProps) {
@@ -119,7 +122,7 @@ export function EvaluatorChecklistView({
                 ...(creatableTypes ? { creatableTypes } : {}),
               })}
               pending={pendingId === task.id}
-              busy={pendingId !== null}
+              busy={readOnly || pendingId !== null}
               error={errors[task.id]}
               onToggle={onToggle}
               onStart={onStart}

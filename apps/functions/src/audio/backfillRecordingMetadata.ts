@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -11,6 +12,7 @@ import {
   requireRecording,
   requireRecordingReader,
 } from './recordingAccess.js';
+import { assertDemoEditTarget } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -24,6 +26,8 @@ if (getApps().length === 0) initializeApp();
  */
 export const backfillRecordingMetadata = onCall(
   {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
@@ -40,6 +44,7 @@ export const backfillRecordingMetadata = onCall(
 
     const db = getFirestore();
     const { ref, obs } = await loadObservation(db, observationId);
+    await assertDemoEditTarget(db, request.auth, obs.observedEmail);
     await requireRecordingReader(db, request, obs, email);
 
     const missing = (obs.audioDriveFileIds ?? []).filter((id) => !obs.audioRecordings?.[id]);

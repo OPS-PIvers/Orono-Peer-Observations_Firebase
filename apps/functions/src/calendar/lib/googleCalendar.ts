@@ -94,9 +94,7 @@ export async function exchangeCodeForTokens(
     refreshToken: tokens.refresh_token,
     accessToken: tokens.access_token ?? null,
     accessTokenExpiresAt:
-      typeof tokens.expiry_date === 'number'
-        ? new Date(tokens.expiry_date).toISOString()
-        : null,
+      typeof tokens.expiry_date === 'number' ? new Date(tokens.expiry_date).toISOString() : null,
     scopes,
     googleAccountEmail,
   };
@@ -129,9 +127,7 @@ function isInvalidGrant(err: unknown): boolean {
  *     `status:'revoked'` so the next connect prompt is shown.
  * On a refreshed access token, persists it back to the doc.
  */
-export async function getCalendarClientFor(
-  email: string,
-): Promise<calendar_v3.Calendar | null> {
+export async function getCalendarClientFor(email: string): Promise<calendar_v3.Calendar | null> {
   const ref = tokensRef(email);
   const snap = await ref.get();
   if (!snap.exists) return null;
@@ -414,7 +410,10 @@ export async function deleteObservationEvent(email: string, eventId: string): Pr
     const status = (err as { code?: number }).code;
     // 404/410 — already gone; treat as success.
     if (status === 404 || status === 410) return;
-    logger.warn('deleteObservationEvent: delete failed (best-effort)', { email: email.toLowerCase(), err });
+    logger.warn('deleteObservationEvent: delete failed (best-effort)', {
+      email: email.toLowerCase(),
+      err,
+    });
   }
 }
 
@@ -436,6 +435,9 @@ export async function updateObservationEvent(
       requestBody: patch,
     });
   } catch (err) {
-    logger.warn('updateObservationEvent: patch failed (best-effort)', { email: email.toLowerCase(), err });
+    logger.warn('updateObservationEvent: patch failed (best-effort)', {
+      email: email.toLowerCase(),
+      err,
+    });
   }
 }

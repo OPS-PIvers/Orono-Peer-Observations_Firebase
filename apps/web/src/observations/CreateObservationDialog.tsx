@@ -29,6 +29,8 @@ import {
 } from '@/components/ui/dialog';
 import { newDraftObservationDoc } from './newObservationDoc';
 import { OBSERVATION_TYPE_OPTION_LABELS } from './observationTypeLabels';
+import { assertWritable } from '@/dev/viewAsGuard';
+import { useQuestionSetResolution } from './useQuestionSetResolution';
 
 export interface CreateObservationDialogProps {
   open: boolean;
@@ -60,6 +62,13 @@ export function CreateObservationDialog({
   // is hidden when there is nothing to choose.
   const allowedTypes = creatableObservationTypes(useEffectiveClaims().role);
   const [type, setType] = useState<ObservationType>(OBSERVATION_TYPES.standard);
+  const effectiveType = allowedTypes.includes(type) ? type : OBSERVATION_TYPES.standard;
+  const [chosenBuildingId, setChosenBuildingId] = useState<string | null>(null);
+  const questionSet = useQuestionSetResolution(
+    open ? staff : null,
+    effectiveType,
+    chosenBuildingId,
+  );
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +78,7 @@ export function CreateObservationDialog({
   useEffect(() => {
     if (open) {
       setType(OBSERVATION_TYPES.standard);
+      setChosenBuildingId(null);
       setName('');
       setError(null);
     }
@@ -84,17 +94,23 @@ export function CreateObservationDialog({
       setError('Missing observer context.');
       return;
     }
+    if (!questionSet || !('setId' in questionSet)) {
+      setError("Pick which building's questions to use.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
+      assertWritable();
       const ref = await addDoc(
         collection(db, COLLECTIONS.observations),
         newDraftObservationDoc({
           observerEmail,
           observerName: observerStaff?.name ?? '',
           staff,
-          type: allowedTypes.includes(type) ? type : OBSERVATION_TYPES.standard,
+          type: effectiveType,
           observationName: name,
+          questionSetId: questionSet.setId,
         }),
       );
       onOpenChange(false);
@@ -133,6 +149,28 @@ export function CreateObservationDialog({
                   </option>
                 ))}
               </select>
+            </div>
+          ) : null}
+
+          {questionSet && 'choose' in questionSet ? (
+            <div className="grid gap-2">
+              <Label htmlFor="obs-question-set">Planning and Reflection questions</Label>
+              <select
+                id="obs-question-set"
+                value={chosenBuildingId ?? ''}
+                onChange={(e) => setChosenBuildingId(e.target.value || null)}
+                className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+              >
+                <option value="">Choose a building…</option>
+                {questionSet.choose.map((b) => (
+                  <option key={b.buildingId} value={b.buildingId}>
+                    {b.displayName}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">
+                {staff.name} is in more than one building with its own questions.
+              </p>
             </div>
           ) : null}
 
@@ -175,7 +213,12 @@ export function CreateObservationDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
             Cancel
           </Button>
-          <Button onClick={() => void create()} disabled={submitting || newObservationsDisabled}>
+          <Button
+            onClick={() => void create()}
+            disabled={
+              submitting || newObservationsDisabled || !questionSet || !('setId' in questionSet)
+            }
+          >
             {submitting ? 'Creating…' : 'Create observation'}
           </Button>
         </DialogFooter>

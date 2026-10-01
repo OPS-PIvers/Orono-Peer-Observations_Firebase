@@ -1,15 +1,15 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   OBSERVATION_STATUS,
-  isAdminRole,
   reopenObservationInput,
   type Observation,
-  type Staff,
 } from '@ops/shared';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -47,20 +47,18 @@ export const reopenObservation = onCall(
 
     const db = getFirestore();
 
-    // Admin-only. Check the live staff doc rather than only the token role
-    // claim so hasAdminAccess grants (which rules honor via the isAdmin
-    // claim) work here too.
+    // Oversight only (Full Access or hasAdminAccess, from the live staff
+    // doc). Building Administrators don't reopen, even their own.
     const callerRole = request.auth.token['role'] as string | undefined;
-    let isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin) {
-      const callerSnap = await db.doc(`${COLLECTIONS.staff}/${userEmail}`).get();
-      const caller = callerSnap.exists ? (callerSnap.data() as Staff) : null;
-      isAdmin = !!caller && (isAdminRole(caller.role) || caller.hasAdminAccess);
-    }
-    if (!isAdmin) {
+    const isOversight = await callerMeetsAccessLevel(db, {
+      email: userEmail,
+      tokenRole: callerRole,
+      level: 'console',
+    });
+    if (!isOversight) {
       throw new HttpsError(
         'permission-denied',
-        'Only an admin can reopen a finalized observation.',
+        'Only a district admin can reopen a finalized observation.',
       );
     }
 

@@ -9,21 +9,23 @@ import type {
 } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  canEditObservationContent,
+  canUseGeminiFeature,
   COLLECTIONS,
   OBSERVATION_STATUS,
-  canUseGeminiFeature,
-  isAdminRole,
+  observationAccessFor,
   resolveGeminiFeature,
   roleYearMappingDocId,
   type ComponentColor,
-  type ResolvedGeminiFeature,
   type Observation,
+  type ResolvedGeminiFeature,
   type Role,
   type RoleYearMapping,
   type Rubric,
   type RubricComponent,
   type TiptapDoc,
 } from '@ops/shared';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 /**
  * Shared machinery for the two-step script auto-tag flow:
@@ -160,13 +162,12 @@ export function transactionReader(tx: Transaction): TaggingReader {
  * admin) in the window between the review dialog opening and Apply.
  */
 export function assertObservationTaggable(
-  obs: Pick<Observation, 'status' | 'observerEmail'>,
+  obs: Pick<Observation, 'status' | 'observerEmail' | 'observedEmail' | 'coObserverEmails'>,
   userEmail: string,
-  callerRole: string | undefined,
+  oversight: boolean,
 ): void {
-  const isAdmin = isAdminRole(callerRole ?? null);
-  if (!isAdmin && obs.observerEmail !== userEmail) {
-    throw new HttpsError('permission-denied', 'Only the observer or an admin can auto-tag.');
+  if (!canEditObservationContent(observationAccessFor(obs, userEmail, oversight))) {
+    throw new HttpsError('permission-denied', 'Only the observers can auto-tag.');
   }
   if (obs.status !== OBSERVATION_STATUS.draft) {
     throw new HttpsError(
@@ -248,6 +249,8 @@ export interface TaggingContext extends ActiveComponentSet {
   scriptDoc: TiptapDoc;
   /** One flattened string per top-level textblock, as Gemini sees them. */
   paragraphs: string[];
+  /** Caller has oversight (console admin), for the in-transaction recheck. */
+  oversight: boolean;
 }
 
 /**
@@ -265,13 +268,20 @@ export async function loadTaggingContext(
   observationId: string,
   userEmail: string,
   callerRole: string | undefined,
+  auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<TaggingContext> {
   const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
   const obsSnap = await obsRef.get();
   if (!obsSnap.exists) throw new HttpsError('not-found', 'Observation not found');
   const obs = obsSnap.data() as unknown as Observation;
 
-  assertObservationTaggable(obs, userEmail, callerRole);
+  const access = await callerObservationAccess(db, obs, {
+    email: userEmail,
+    tokenRole: callerRole,
+    auth,
+  });
+  const oversight = access === 'oversight';
+  assertObservationTaggable(obs, userEmail, oversight);
 
   const scriptDoc = obs.scriptDoc;
   if (!scriptDoc) {
@@ -283,7 +293,7 @@ export async function loadTaggingContext(
   }
 
   const components = await resolveActiveComponents(db, directReader, obs);
-  return { obsRef, scriptDoc, paragraphs, ...components };
+  return { obsRef, scriptDoc, paragraphs, oversight, ...components };
 }
 
 // ─── Tiptap doc walking ──────────────────────────────────────────────────────

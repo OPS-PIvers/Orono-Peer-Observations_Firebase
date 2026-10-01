@@ -65,3 +65,5 @@ export { disconnectGoogleCalendar } from './calendar/auth/disconnectGoogleCalend
 export { getCalendarConnectionStatus } from './calendar/auth/getCalendarConnectionStatus.js';
 export { onObservationBooked } from './calendar/onObservationBooked.js';
 export { setStepCheck } from './dashboard/setStepCheck.js';
+export { recordViewAs } from './auth/recordViewAs.js';
+export { startViewAsEdit } from './auth/startViewAsEdit.js';

@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -59,70 +60,78 @@ const SIGN_IN_STAMP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
  * client-side, so the stamp/audit writes below MUST be idempotent against
  * rapid repeats on their own — see the staleness gate.
  */
-export const syncMyClaims = onCall({ region: 'us-central1', memory: '256MiB' }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Sign in required');
-  }
-  const email = request.auth.token.email?.toLowerCase();
-  if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
-    throw new HttpsError(
-      'permission-denied',
-      `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts.`,
-    );
-  }
+export const syncMyClaims = onCall(
+  {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
+    region: 'us-central1',
+    memory: '256MiB',
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required');
+    }
+    const email = request.auth.token.email?.toLowerCase();
+    if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+      throw new HttpsError(
+        'permission-denied',
+        `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts.`,
+      );
+    }
 
-  const db = getFirestore();
-  const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
-  const staffSnap = await staffRef.get();
-  const staffData = staffSnap.exists ? staffSnap.data() : null;
-  const role = (staffData?.['role'] as string | undefined) ?? null;
-  const hasAdminAccess = (staffData?.['hasAdminAccess'] as boolean | undefined) ?? false;
-  const isAdmin = isAdminRole(role) || hasAdminAccess;
-  const hasSpecialAccess = isSpecialRole(role) || isAdmin;
+    const db = getFirestore();
+    const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
+    const staffSnap = await staffRef.get();
+    const staffData = staffSnap.exists ? staffSnap.data() : null;
+    const role = (staffData?.['role'] as string | undefined) ?? null;
+    const hasAdminAccess = (staffData?.['hasAdminAccess'] as boolean | undefined) ?? false;
+    const isAdmin = isAdminRole(role) || hasAdminAccess;
+    const hasSpecialAccess = isSpecialRole(role) || isAdmin;
 
-  await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
-  logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
+    await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
+    logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
 
-  // Adoption telemetry — see the note in the header comment. Only stamped
-  // when a /staff doc exists (a signed-in account with no roster entry has
-  // nothing to stamp). `updatedAt` is deliberately left alone: it tracks
-  // admin edits to the roster, not the person's own activity.
-  //
-  // Staleness gate: this callable has an unbounded number of call sites
-  // (see header comment — "Refresh access" plus direct callable invocation
-  // have no cooldown of their own), so skip the writes entirely when the
-  // existing stamp is still fresh. This makes repeated calls within the
-  // cooldown a cheap no-op instead of fabricating new sign-in events/audit
-  // rows for a sign-in that never happened.
-  if (staffSnap.exists) {
-    const existingStamp = staffData?.['lastSignInAt'] as
-      | { toMillis?: () => number }
-      | null
-      | undefined;
-    const existingMs =
-      existingStamp && typeof existingStamp.toMillis === 'function'
-        ? existingStamp.toMillis()
-        : null;
-    const isStale = existingMs === null || Date.now() - existingMs >= SIGN_IN_STAMP_COOLDOWN_MS;
+    // Adoption telemetry — see the note in the header comment. Only stamped
+    // when a /staff doc exists (a signed-in account with no roster entry has
+    // nothing to stamp). `updatedAt` is deliberately left alone: it tracks
+    // admin edits to the roster, not the person's own activity.
+    //
+    // Staleness gate: this callable has an unbounded number of call sites
+    // (see header comment — "Refresh access" plus direct callable invocation
+    // have no cooldown of their own), so skip the writes entirely when the
+    // existing stamp is still fresh. This makes repeated calls within the
+    // cooldown a cheap no-op instead of fabricating new sign-in events/audit
+    // rows for a sign-in that never happened.
+    if (staffSnap.exists) {
+      const existingStamp = staffData?.['lastSignInAt'] as
+        | { toMillis?: () => number }
+        | null
+        | undefined;
+      const existingMs =
+        existingStamp && typeof existingStamp.toMillis === 'function'
+          ? existingStamp.toMillis()
+          : null;
+      const isStale = existingMs === null || Date.now() - existingMs >= SIGN_IN_STAMP_COOLDOWN_MS;
 
-    if (isStale) {
-      try {
-        await staffRef.update({ lastSignInAt: FieldValue.serverTimestamp() });
-        await db.collection(COLLECTIONS.auditLog).add({
-          timestamp: FieldValue.serverTimestamp(),
-          userEmail: email,
-          action: AUDIT_ACTIONS.signIn,
-          target: `${COLLECTIONS.staff}/${email}`,
-          details: {},
-        });
-      } catch (err) {
-        logger.warn('syncMyClaims: failed to stamp lastSignInAt / write sign_in audit entry', {
-          email,
-          err,
-        });
+      if (isStale) {
+        try {
+          await staffRef.update({ lastSignInAt: FieldValue.serverTimestamp() });
+          await db.collection(COLLECTIONS.auditLog).add({
+            timestamp: FieldValue.serverTimestamp(),
+            userEmail: email,
+            action: AUDIT_ACTIONS.signIn,
+            target: `${COLLECTIONS.staff}/${email}`,
+            details: {},
+          });
+        } catch (err) {
+          logger.warn('syncMyClaims: failed to stamp lastSignInAt / write sign_in audit entry', {
+            email,
+            err,
+          });
+        }
       }
     }
-  }
 
-  return { role, hasSpecialAccess, isAdmin };
-});
+    return { role, hasSpecialAccess, isAdmin };
+  },
+);

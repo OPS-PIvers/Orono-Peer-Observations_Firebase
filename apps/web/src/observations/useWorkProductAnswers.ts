@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Observation, type TiptapDoc, type WorkProductAnswer } from '@ops/shared';
+import {
+  COLLECTIONS,
+  questionPhase,
+  type Observation,
+  type TiptapDoc,
+  type WorkProductAnswer,
+  type WorkProductQuestion,
+} from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
@@ -37,10 +44,20 @@ export interface WorkProductAnswersState {
  * The write replaces the whole array (rules cannot diff array entries), so
  * this must be the only live surface editing a given observation's answers.
  */
+const NO_QUESTIONS: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
+
 export function useWorkProductAnswers(
   observation: (Observation & { id: string }) | null | undefined,
   canAnswer: boolean,
+  /** The observation's live questions: each saved answer keeps its
+   *  question's text and phase, so later question edits never change or
+   *  orphan it. */
+  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = NO_QUESTIONS,
 ): WorkProductAnswersState {
+  const questionsRef = useRef(questions);
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
   const stored = useMemo(() => {
     const map = new Map<string, WorkProductAnswer>();
     for (const a of observation?.workProductAnswers ?? []) map.set(a.questionId, a);
@@ -98,10 +115,33 @@ export function useWorkProductAnswers(
     const next: WorkProductAnswer[] = [];
     for (const [questionId, answer] of Object.entries(localRef.current)) {
       const previous = storedRef.current.get(questionId);
+      const question = questionsRef.current.find((q) => q.questionId === questionId);
+      // An answer keeps the wording it was written against: only an answer
+      // edited now takes the live question's text; an untouched one keeps
+      // its stored snapshot (or gains one if it predates snapshots).
+      const edited = dirty.has(questionId);
+      const questionText = edited
+        ? (question?.text ?? previous?.questionText)
+        : (previous?.questionText ?? question?.text);
+      const phase = edited
+        ? question
+          ? questionPhase(question)
+          : previous?.questionPhase
+        : (previous?.questionPhase ?? (question ? questionPhase(question) : undefined));
+      // Firestore rejects undefined fields, so only include what's known.
+      const snapshot = {
+        ...(questionText ? { questionText } : {}),
+        ...(phase ? { questionPhase: phase } : {}),
+      };
       if (dirty.has(questionId)) {
-        next.push({ questionId, answer, updatedAt: now });
+        next.push({ questionId, ...snapshot, answer, updatedAt: now });
       } else if (previous) {
-        next.push({ questionId, answer: previous.answer, updatedAt: previous.updatedAt });
+        next.push({
+          questionId,
+          ...snapshot,
+          answer: previous.answer,
+          updatedAt: previous.updatedAt,
+        });
       }
       // Never stored and never edited (an empty editor that only ever
       // mounted): nothing to persist.

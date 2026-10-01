@@ -25,6 +25,8 @@ export interface ColumnDef<T> {
   cellClassName?: string;
   /** className applied to <TableHead> on desktop only. */
   headClassName?: string;
+  /** Center the header (sort button included) and cells on desktop. */
+  align?: 'center';
   /**
    * Pure value for sorting. Strings sort case-insensitively, numbers
    * numerically. Returning null/undefined sinks the row to the bottom
@@ -70,6 +72,8 @@ interface AdminDataViewProps<T> {
   empty?: ReactNode;
   /** Trailing per-row content (e.g. a DropdownMenu kebab). */
   rowActions?: ((row: T) => ReactNode) | undefined;
+  /** Desktop header over the row-actions column; blank when omitted. */
+  rowActionsHeader?: ReactNode;
   selection?: AdminDataViewSelection;
   sort?: AdminDataViewSort | null;
   onSortChange?: (next: AdminDataViewSort | null) => void;
@@ -141,6 +145,7 @@ function DesktopTable<T>({
   onRowClick,
   empty,
   rowActions,
+  rowActionsHeader,
   selection,
   sort,
   onSortChange,
@@ -208,10 +213,11 @@ function DesktopTable<T>({
                       ? 'none'
                       : undefined
                 }
-                className={col.headClassName}
+                className={cn(col.headClassName, col.align === 'center' && 'text-center')}
               >
                 {col.sortAccessor && onSortChange ? (
                   <SortableHeader
+                    centered={col.align === 'center'}
                     label={col.header}
                     active={sort?.key === col.key}
                     direction={sort?.key === col.key ? sort.direction : null}
@@ -230,7 +236,11 @@ function DesktopTable<T>({
                 )}
               </TableHead>
             ))}
-            {rowActions ? <TableHead className="w-10" /> : null}
+            {rowActions ? (
+              <TableHead className={rowActionsHeader ? 'text-center' : 'w-10'}>
+                {rowActionsHeader}
+              </TableHead>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -340,7 +350,7 @@ function DesktopRowImpl<T>({
       {columns.map((col) => (
         <TableCell
           key={col.key}
-          className={col.cellClassName}
+          className={cn(col.cellClassName, col.align === 'center' && 'text-center')}
           onClick={editing && col.editCell ? (e) => e.stopPropagation() : undefined}
         >
           {editing && col.editCell ? col.editCell(row) : col.cell(row)}
@@ -363,7 +373,9 @@ function SortableHeader({
   active,
   direction,
   onClick,
+  centered = false,
 }: {
+  centered?: boolean;
   label: ReactNode;
   active: boolean;
   direction: SortDirection | null;
@@ -380,6 +392,7 @@ function SortableHeader({
       }
       className={cn(
         'flex items-center gap-1 rounded-sm text-left font-medium transition-colors',
+        centered && 'mx-auto justify-center',
         'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden',
         'hover:text-foreground',
         active && 'text-foreground',

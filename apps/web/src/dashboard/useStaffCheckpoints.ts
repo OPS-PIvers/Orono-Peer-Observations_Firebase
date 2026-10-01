@@ -7,6 +7,7 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   questionPhase,
+  questionSetId,
   questionType,
   resolveSteps,
   type AppSettings,
@@ -51,6 +52,10 @@ export interface StaffCheckpointsResult {
 export function useStaffCheckpoints(
   email: string,
   options: DeriveOptions = {},
+  /** Observer viewing someone else's checklist: count only observations
+   *  they created (the /observations rules hide everyone else's). Null for
+   *  the teacher's own dashboard and for console admins. */
+  observerEmail: string | null = null,
 ): StaffCheckpointsResult {
   const emailLower = email.toLowerCase();
 
@@ -64,18 +69,19 @@ export function useStaffCheckpoints(
     () =>
       emailLower
         ? [
+            ...(observerEmail ? [where('observerEmail', '==', observerEmail)] : []),
             where('observedEmail', '==', emailLower),
             where('status', '==', OBSERVATION_STATUS.finalized),
             orderBy('finalizedAt', 'desc'),
             limit(10),
           ]
         : [],
-    [emailLower],
+    [emailLower, observerEmail],
   );
   const { data: finalizedObs } = useFirestoreCollection<Observation>(
     emailLower ? COLLECTIONS.observations : '',
     finalizedConstraints,
-    [emailLower],
+    [emailLower, observerEmail ?? ''],
   );
 
   const windowConstraints = useMemo(
@@ -100,9 +106,12 @@ export function useStaffCheckpoints(
     [myWindows, emailLower],
   );
 
-  const { observation: standardDraft } = useActiveStandardObservation(emailLower);
-  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower);
-  const { observation: irDraft } = useActiveInstructionalRoundObservation(emailLower);
+  const { observation: standardDraft } = useActiveStandardObservation(emailLower, observerEmail);
+  const { observation: wpDraft } = useActiveWorkProductObservation(emailLower, observerEmail);
+  const { observation: irDraft } = useActiveInstructionalRoundObservation(
+    emailLower,
+    observerEmail,
+  );
   const wpQuestions = useFirestoreCollection<WorkProductQuestion>(COLLECTIONS.workProductQuestions);
 
   const finalizedStandard = useMemo(
@@ -116,7 +125,12 @@ export function useStaffCheckpoints(
     () =>
       (wpQuestions.data ?? [])
         .filter((q) => q.isActive)
-        .map((q) => ({ questionId: q.questionId, type: questionType(q), phase: questionPhase(q) })),
+        .map((q) => ({
+          questionId: q.questionId,
+          type: questionType(q),
+          phase: questionPhase(q),
+          setId: questionSetId(q),
+        })),
     [wpQuestions.data],
   );
 

@@ -1,4 +1,5 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -9,6 +10,8 @@ import {
   resolveGeminiFeature,
 } from '@ops/shared';
 import { RATE_LIMIT_KEYS, checkRateLimit, rateLimitsFromSettings } from '../lib/rateLimit.js';
+import { observationAccessFor } from '@ops/shared';
+import { assertDemoEditTarget } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -33,7 +36,12 @@ interface RequestData {
  * user might want to re-transcribe after editing.
  */
 export const requestTranscription = onCall(
-  { region: 'us-central1', memory: '256MiB' },
+  {
+    // Demo-edit sessions allowed; confined to demo staff below.
+    allowDemoEdit: true,
+    region: 'us-central1',
+    memory: '256MiB',
+  },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required');
@@ -73,8 +81,15 @@ export const requestTranscription = onCall(
     if (!obsSnap.exists) {
       throw new HttpsError('not-found', 'Observation not found');
     }
-    const obs = obsSnap.data() as { observerEmail: string; audioDriveFileIds: string[] };
-    if (obs.observerEmail !== userEmail) {
+    const obs = obsSnap.data() as {
+      observerEmail: string;
+      observedEmail: string;
+      coObserverEmails?: string[];
+      audioDriveFileIds: string[];
+    };
+    await assertDemoEditTarget(db, request.auth, obs.observedEmail);
+    const access = observationAccessFor(obs, userEmail, false);
+    if (access !== 'owner' && access !== 'coObserver') {
       throw new HttpsError('permission-denied', 'Not your observation');
     }
     if (!obs.audioDriveFileIds.includes(audioFileId)) {

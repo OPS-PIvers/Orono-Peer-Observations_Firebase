@@ -6,14 +6,14 @@ import { PageErrorBoundary } from '@/components/ErrorBoundary';
 import { GlobalBanner } from '@/components/GlobalBanner';
 import { OfflineIndicator } from '@/components/OfflineIndicator';
 import { TopLoadingBar } from '@/components/TopLoadingBar';
-import { useAuth } from '@/auth/AuthProvider';
+import { useDevMode } from '@/dev/DevModeContext';
+import { ViewAsBanner } from '@/dev/ViewAsBanner';
 import { cn } from '@/lib/utils';
 import { ActiveObservationTypesProvider } from '@/observations/ActiveObservationTypesContext';
 
 export function Layout() {
   const { pcExpanded, togglePc, mobileOpen, openMobile, closeMobile } = useSidebar();
-  const { user, claims } = useAuth();
-  const lowerEmail = user?.email?.toLowerCase() ?? '';
+  const { effectiveClaims: claims, effectiveEmail: lowerEmail } = useDevMode();
   const { pathname } = useLocation();
   // Hide footer on the observation editor — its sticky script drawer
   // owns the bottom of the viewport and a footer above it reads as
@@ -46,6 +46,8 @@ export function Layout() {
             pcExpanded ? 'xl:ml-60' : 'xl:ml-14',
           )}
         >
+          {/* In the content column: the fixed sidebar would cover it at full width. */}
+          <ViewAsBanner />
           <main className="relative flex-1 overflow-y-auto">
             <PageErrorBoundary>
               <Suspense fallback={<TopLoadingBar />}>

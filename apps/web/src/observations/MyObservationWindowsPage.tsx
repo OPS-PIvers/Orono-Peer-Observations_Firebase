@@ -8,7 +8,8 @@ import {
   type CancelObservationWindowInput,
   type ObservationWindow,
 } from '@ops/shared';
-import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useGoBack } from '@/hooks/useGoBack';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -25,6 +26,8 @@ import {
 } from '@/components/ui/table';
 import { CreateObservationWindowDialog } from './CreateObservationWindowDialog';
 import { EditObservationWindowDialog } from './EditObservationWindowDialog';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface CancelResult {
   ok: true;
@@ -61,9 +64,11 @@ function statusBadgeClass(status: ObservationWindow['status']): string {
 
 export function MyObservationWindowsPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const isAdmin = useIsAdmin();
-  const myEmail = user?.email?.toLowerCase() ?? '';
+  // Every window district-wide: console admins only. Building Administrators
+  // see the windows they opened, like any observer.
+  const { allowed: isAdmin } = useAdminConsoleAccess();
+  const goBack = useGoBack('/');
+  const myEmail = useEffectiveEmail();
 
   const { data: windows, loading } = useFirestoreCollection<ObservationWindow>(
     COLLECTIONS.observationWindows,
@@ -114,6 +119,7 @@ export function MyObservationWindowsPage() {
     setError(null);
     setCancellingId(w.id);
     try {
+      assertWritable();
       await cancelObservationWindowFn({ windowId: w.windowId, reason: reason.trim() });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel the window.');
@@ -131,7 +137,7 @@ export function MyObservationWindowsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate('/observations/new')}
+            onClick={goBack}
             className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
           >
             <ChevronLeft className="h-4 w-4" />

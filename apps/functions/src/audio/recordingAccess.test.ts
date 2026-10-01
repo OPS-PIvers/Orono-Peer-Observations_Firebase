@@ -5,7 +5,7 @@ import type { RecordingObservation } from './recordingAccess.js';
 
 process.env['FIREBASE_CONFIG'] = JSON.stringify({ projectId: 'test' });
 process.env['GCLOUD_PROJECT'] = 'test';
-const { requireObserverOnDraft, requireRecording, requireRecordingReader } =
+const { canReadRecording, requireObserverOnDraft, requireRecording, requireRecordingReader } =
   await import('./recordingAccess.js');
 
 const OBSERVER = 'pe@orono.k12.mn.us';
@@ -80,13 +80,53 @@ describe('requireRecordingReader', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('allows peer evaluators and admins, not other staff', async () => {
+  it('allows oversight and co-observers, not other PEs, building admins or staff', async () => {
     const other = 'someone@orono.k12.mn.us';
     await expect(
-      requireRecordingReader(dbWithStaff(null), request('peer-evaluator'), obs(), other),
+      requireRecordingReader(dbWithStaff(null), request('full-access'), obs(), other),
     ).resolves.toBeUndefined();
+    await expect(
+      requireRecordingReader(
+        dbWithStaff(null),
+        request('administrator'),
+        { ...obs(), coObserverEmails: [other] },
+        other,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      requireRecordingReader(
+        dbWithStaff({ role: 'peer-evaluator' }),
+        request('peer-evaluator'),
+        obs(),
+        other,
+      ),
+    ).rejects.toThrow(/Not authorized/);
+    await expect(
+      requireRecordingReader(
+        dbWithStaff({ role: 'administrator' }),
+        request('administrator'),
+        obs(),
+        other,
+      ),
+    ).rejects.toThrow(/Not authorized/);
     await expect(
       requireRecordingReader(dbWithStaff({ role: 'teacher' }), request('teacher'), obs(), other),
     ).rejects.toThrow(/Not authorized/);
+  });
+});
+
+describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
+  const demoAuth = {
+    token: { email: OBSERVER, role: 'peer-evaluator', demoEditBy: 'viewer@x.org' },
+  };
+
+  it("can't play a real teacher's recording, even the observer's own", async () => {
+    await expect(canReadRecording(dbWithStaff({}), obs(), OBSERVER, demoAuth)).resolves.toBe(false);
+  });
+
+  it("can play a demo person's recording", async () => {
+    await expect(
+      canReadRecording(dbWithStaff({ isDemo: true }), obs(), OBSERVER, demoAuth),
+    ).resolves.toBe(true);
   });
 });

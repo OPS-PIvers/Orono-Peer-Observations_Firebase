@@ -57,6 +57,9 @@ function makeStaff(overrides: Partial<Staff> = {}): Staff & { id: string } {
     summativeYear: false,
     isActive: true,
     hasAdminAccess: false,
+    canViewAs: false,
+    canViewAsEdit: false,
+    isDemo: false,
     emailPreferences: {
       observationNotices: true,
       reminders: true,

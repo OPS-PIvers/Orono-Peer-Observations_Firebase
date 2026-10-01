@@ -51,6 +51,16 @@ export const workProductQuestion = z.object({
    * before the split keeps its existing always-available behaviour.
    */
   phase: z.enum(['pre', 'post']).default('pre'),
+  /**
+   * Which question set this belongs to (see resolveQuestionSetId):
+   * GLOBAL_QUESTION_SET (the district set, every type — and every question
+   * written before sets existed), ADMIN_DEFAULT_QUESTION_SET, or a
+   * building's set (buildingQuestionSetId). Building and admin sets hold
+   * Standard questions only.
+   */
+  setId: z.string().default('global'),
+  /** The building, for a building set (rules check the editor's buildings). */
+  buildingId: z.string().optional(),
   createdAt: isoDate,
   updatedAt: isoDate,
 });
@@ -130,4 +140,102 @@ export function questionPhase(q: Pick<WorkProductQuestion, 'phase'>): QuestionPh
 
 export function questionType(q: Pick<WorkProductQuestion, 'type'>): QuestionType {
   return (q as Partial<Pick<WorkProductQuestion, 'type'>>).type ?? 'work-product';
+}
+
+// ─── Question sets ───────────────────────────────────────────────────────────
+
+/** The district set: Peer Evaluator observations, every non-Standard type,
+ *  and every observation created before question sets existed. */
+export const GLOBAL_QUESTION_SET = 'global';
+/** The district default for building Administrators' observations when
+ *  their building has no set of its own. */
+export const ADMIN_DEFAULT_QUESTION_SET = 'district-admin';
+
+export function buildingQuestionSetId(buildingId: string): string {
+  return `building-${buildingId}`;
+}
+
+/** `setId` off a raw Firestore question (see questionPhase on why). */
+export function questionSetId(q: { setId?: string | undefined }): string {
+  return q.setId ?? GLOBAL_QUESTION_SET;
+}
+
+/** The questions an observation shows: its type's questions in its set. */
+export function questionsForObservation<
+  Q extends Pick<WorkProductQuestion, 'type'> & { setId?: string | undefined },
+>(
+  questions: readonly Q[],
+  obs: { type: ObservationType; questionSetId?: string | undefined },
+): Q[] {
+  const type = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
+  const setId = obs.questionSetId ?? GLOBAL_QUESTION_SET;
+  return questions.filter((q) => questionType(q) === type && questionSetId(q) === setId);
+}
+
+export interface QuestionSetBuilding {
+  buildingId: string;
+  displayName: string;
+  questionsAppliesTo?: 'admin' | 'all' | undefined;
+}
+
+export type QuestionSetResolution =
+  | { setId: string }
+  /** More than one of the teacher's buildings qualifies: the observer picks. */
+  | { choose: QuestionSetBuilding[] };
+
+/**
+ * Which question set a new observation uses (spec: admin-observation-updates
+ * §2). Only Standard observations use building / admin sets.
+ *
+ * - Building Administrator: the chosen building's set (defaulted when only
+ *   one of the teacher's buildings is theirs), else the district admin
+ *   default, else the district set.
+ * - Anyone else: the teacher's building set when that building applies its
+ *   set to all observations; the observer picks if several do; otherwise
+ *   the district set.
+ *
+ * `setsWithQuestions` holds the set ids that have at least one active
+ * Standard question; an empty set never wins.
+ */
+export function resolveQuestionSetId(args: {
+  observerRole: string | null | undefined;
+  type: ObservationType;
+  /** Buildings the observed teacher is in. */
+  teacherBuildings: readonly QuestionSetBuilding[];
+  /** For an Administrator: their buildings' display names. */
+  observerBuildingNames?: readonly string[];
+  /** The observer's pick when there was a choice. */
+  chosenBuildingId?: string | null | undefined;
+  setsWithQuestions: ReadonlySet<string>;
+}): QuestionSetResolution {
+  const { observerRole, type, teacherBuildings, setsWithQuestions } = args;
+  if (type !== OBSERVATION_TYPES.standard) return { setId: GLOBAL_QUESTION_SET };
+  const hasSet = (b: QuestionSetBuilding) =>
+    setsWithQuestions.has(buildingQuestionSetId(b.buildingId));
+
+  if (observerRole === 'administrator') {
+    const mine = teacherBuildings.filter((b) =>
+      (args.observerBuildingNames ?? []).includes(b.displayName),
+    );
+    const chosen =
+      mine.find((b) => b.buildingId === args.chosenBuildingId) ??
+      (mine.length === 1 ? mine[0] : undefined);
+    if (!chosen && mine.filter(hasSet).length > 1) return { choose: mine.filter(hasSet) };
+    const building = chosen ?? mine.find(hasSet);
+    if (building && hasSet(building)) return { setId: buildingQuestionSetId(building.buildingId) };
+    return {
+      setId: setsWithQuestions.has(ADMIN_DEFAULT_QUESTION_SET)
+        ? ADMIN_DEFAULT_QUESTION_SET
+        : GLOBAL_QUESTION_SET,
+    };
+  }
+
+  const qualifying = teacherBuildings.filter((b) => b.questionsAppliesTo === 'all' && hasSet(b));
+  const chosen = qualifying.find((b) => b.buildingId === args.chosenBuildingId);
+  if (chosen) return { setId: buildingQuestionSetId(chosen.buildingId) };
+  if (qualifying.length === 1 && qualifying[0]) {
+    return { setId: buildingQuestionSetId(qualifying[0].buildingId) };
+  }
+  if (qualifying.length > 1) return { choose: qualifying };
+  return { setId: GLOBAL_QUESTION_SET };
 }

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
-import { COLLECTIONS, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, canObserve, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { useObserverScope } from '@/hooks/useObserverScope';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CreateObservationDialog } from './CreateObservationDialog';
+import { useGoBack } from '@/hooks/useGoBack';
 
 /**
  * Staff selector for starting a new observation.
@@ -31,8 +33,24 @@ import { CreateObservationDialog } from './CreateObservationDialog';
  */
 export function NewObservationPage() {
   const navigate = useNavigate();
-  const { data: staff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
+  const goBack = useGoBack('/');
+  const { data: allStaff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+  const scope = useObserverScope();
+  // Only staff this observer may observe (canObserve). Building
+  // Administrators don't use this page (they start from My Staff), so for
+  // Peer Evaluators and Full Access that's everyone. Held as null until the
+  // observer's scope loads.
+  const staff = useMemo(
+    () =>
+      allStaff && !scope.loading
+        ? allStaff.filter((s) =>
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+            canObserve(scope, { ...s, buildings: s.buildings ?? [] }),
+          )
+        : null,
+    [allStaff, scope],
+  );
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -101,7 +119,7 @@ export function NewObservationPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -181,7 +199,7 @@ export function NewObservationPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && !staff ? (
+            {(loading || scope.loading) && !staff ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={`skeleton-${String(i)}`}>
                   <TableCell>

@@ -7,24 +7,30 @@ import { useFirestoreCollection } from './useFirestoreCollection';
  * Returns the first Draft Work Product observation where the current
  * user is the observed staff member, or null if none exists.
  */
-export function useActiveWorkProductObservation(observedEmail: string) {
+export function useActiveWorkProductObservation(
+  observedEmail: string,
+  /** Scope to one observer's drafts (an observer viewing someone else; see
+   *  useStaffCheckpoints). Null for the observed teacher themselves. */
+  observerEmail: string | null = null,
+) {
   const constraints = useMemo(
     () => [
+      ...(observerEmail ? [where('observerEmail', '==', observerEmail)] : []),
       where('observedEmail', '==', observedEmail),
       where('type', '==', OBSERVATION_TYPES.workProduct),
       where('status', '==', OBSERVATION_STATUS.draft),
       orderBy('createdAt', 'desc'),
       limit(1),
     ],
-    [observedEmail],
+    [observedEmail, observerEmail],
   );
 
   const { data, loading, error } = useFirestoreCollection<Observation>(
-    COLLECTIONS.observations,
+    observedEmail ? COLLECTIONS.observations : '',
     constraints,
     // Disambiguate by email: the hook keys on constraint types only, so a
     // different observedEmail would otherwise collide on the same cache key.
-    [observedEmail],
+    [observedEmail, observerEmail ?? ''],
   );
 
   return { observation: data?.[0] ?? null, loading, error };

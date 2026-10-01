@@ -1,7 +1,12 @@
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_STATUS, type AudioRecordingMeta } from '@ops/shared';
-import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
+import {
+  COLLECTIONS,
+  OBSERVATION_STATUS,
+  observationAccessFor,
+  type AudioRecordingMeta,
+} from '@ops/shared';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 import { getDriveClient } from '../lib/drive.js';
 
 /** The observation fields the recording callables read. A raw Admin SDK read
@@ -9,6 +14,7 @@ import { getDriveClient } from '../lib/drive.js';
 export interface RecordingObservation {
   observerEmail: string;
   observedEmail: string;
+  coObserverEmails?: string[];
   status: string;
   audioDriveFileIds?: string[];
   audioRecordings?: Record<string, AudioRecordingMeta>;
@@ -42,29 +48,43 @@ export function requireRecording(obs: RecordingObservation, audioFileId: string)
   }
 }
 
-/** Edits (rename, delete) are the observer's, and only on a Draft. */
+/** Edits (rename, delete) are the observers' (owner or co-observer), and
+ *  only on a Draft. */
 export function requireObserverOnDraft(obs: RecordingObservation, email: string): void {
-  if (obs.observerEmail !== email) {
-    throw new HttpsError('permission-denied', 'Only the observer can change recordings');
+  const access = observationAccessFor(obs, email, false);
+  if (access !== 'owner' && access !== 'coObserver') {
+    throw new HttpsError('permission-denied', 'Only the observers can change recordings');
   }
   if (obs.status !== OBSERVATION_STATUS.draft) {
     throw new HttpsError('failed-precondition', 'Recordings can only be changed on a Draft');
   }
 }
 
-/** Same audience as getAudio playback: the observer, a PE or admin, or the
- *  observed staff member once the observation is finalized. */
+/** Same audience as getAudio playback: the observers (owner or
+ *  co-observer), oversight, or the observed staff member once the
+ *  observation is finalized. Other PEs and building Administrators can't. */
 export async function requireRecordingReader(
   db: Firestore,
   request: CallableRequest,
   obs: RecordingObservation,
   email: string,
 ): Promise<void> {
-  if (obs.observerEmail === email) return;
-  if (obs.observedEmail === email && obs.status === OBSERVATION_STATUS.finalized) return;
-  const tokenRole = request.auth?.token['role'] as string | undefined;
-  if (await callerMeetsAccessLevel(db, { email, tokenRole, level: 'special' })) return;
+  if (await canReadRecording(db, obs, email, request.auth)) return;
   throw new HttpsError('permission-denied', 'Not authorized to access this recording');
+}
+
+export async function canReadRecording(
+  db: Firestore,
+  obs: RecordingObservation,
+  email: string,
+  /** The caller's auth, so a demo-edit session only reaches demo staff's
+   *  recordings (callerObservationAccess). */
+  auth: { token: Record<string, unknown> } | null | undefined,
+): Promise<boolean> {
+  const tokenRole = typeof auth?.token['role'] === 'string' ? auth.token['role'] : undefined;
+  const access = await callerObservationAccess(db, obs, { email, tokenRole, auth });
+  if (access === 'owner' || access === 'coObserver' || access === 'oversight') return true;
+  return access === 'observed' && obs.status === OBSERVATION_STATUS.finalized;
 }
 
 /** Metadata for a recording that predates `audioRecordings`: the Drive

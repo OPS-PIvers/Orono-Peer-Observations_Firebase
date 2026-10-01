@@ -27,6 +27,7 @@ import {
   type SlotDoc,
 } from './autoAssignPreferences';
 import { formatLocalTime, formatYMD } from './slotTime';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface AssignResult {
   observationId: string;
@@ -178,6 +179,7 @@ export function AutoAssignDialog({
       working[i] = { ...row, status: 'assigning' };
       setRows([...working]);
       try {
+        assertWritable();
         await assignFromPreferenceFn({
           windowId,
           email: row.email,

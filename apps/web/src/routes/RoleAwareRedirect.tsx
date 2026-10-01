@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { SPECIAL_ROLES } from '@ops/shared';
 import { useEffectiveClaims } from '@/dev/DevModeContext';
@@ -25,4 +26,13 @@ export function RoleAwareRedirect() {
   }
 
   return <Navigate to="/dashboard" replace />;
+}
+
+/** Pages building Administrators don't use (the teacher dashboard and
+ *  rubric, PE observation windows, New observation — they start from My
+ *  Staff): send them to My Staff instead. */
+export function NotForAdministrators({ children }: { children: ReactNode }) {
+  const { role } = useEffectiveClaims();
+  if (role === SPECIAL_ROLES.administrator) return <Navigate to="/my-staff" replace />;
+  return <>{children}</>;
 }

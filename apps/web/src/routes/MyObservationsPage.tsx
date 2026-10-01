@@ -32,21 +32,21 @@ import { toast } from 'sonner';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
-  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   postQuestionsUnlocked,
-  questionType,
+  questionsForObservation,
   type Observation,
   type WorkProductQuestion,
 } from '@ops/shared';
 import { answerProgress, splitQuestionsByPhase } from '@/observations/questionAnswers';
 import { useReflectionUnlock } from '@/observations/useReflectionUnlock';
 import { toJsDate } from '@/utils/staffFormatting';
-import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 // Cap the query — staff never have more than a few dozen observations.
 const PAGE_LIMIT = 100;
@@ -65,8 +65,8 @@ function formatDate(value: Observation['finalizedAt'] | undefined): string {
 }
 
 export function MyObservationsPage() {
-  const { user } = useAuth();
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const emailLower = useEffectiveEmail();
+  const isViewingAs = useIsViewingAs();
   const queryClient = useQueryClient();
 
   const constraints = useMemo(
@@ -115,6 +115,7 @@ export function MyObservationsPage() {
 
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
+      assertWritable();
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
         acknowledgedAt: serverTimestamp(),
         acknowledgedBy: emailLower,
@@ -279,7 +280,7 @@ export function MyObservationsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={ackMutation.isPending}
+                          disabled={ackMutation.isPending || isViewingAs}
                           onClick={() => ackMutation.mutate(o.id)}
                           aria-label={`Acknowledge ${heading}`}
                         >
@@ -319,9 +320,7 @@ function InProgressSection({
       </h2>
       <ul className="space-y-2">
         {drafts.map((o) => {
-          const bank = questionBank.filter(
-            (q) => questionType(q) === QUESTION_TYPE_BY_OBSERVATION_TYPE[o.type],
-          );
+          const bank = questionsForObservation(questionBank, o);
           const { pre, post } = splitQuestionsByPhase(bank);
           const answers = new Map(
             (o.workProductAnswers ?? []).map((a) => [a.questionId, a.answer] as const),

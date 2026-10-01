@@ -11,8 +11,7 @@ import {
   type ModuleProgress,
   type Staff,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
@@ -20,12 +19,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/Skeleton';
 import { MaterialsSection, ResourceListSection, RichTextSection } from './moduleSections';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 export function ModulePage() {
   const { moduleId = '' } = useParams();
-  const { user } = useAuth();
   const claims = useEffectiveClaims();
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const isViewingAs = useIsViewingAs();
+  const emailLower = useEffectiveEmail();
 
   const { data: module, loading: moduleLoading } = useFirestoreDoc<ModuleDoc>(
     moduleId ? `${COLLECTIONS.modules}/${moduleId}` : '',
@@ -72,6 +72,12 @@ export function ModulePage() {
 
   function toggleDone(item: ModuleItem, done: boolean) {
     setToggleError(null);
+    try {
+      assertWritable();
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : String(err));
+      return;
+    }
     const ref = doc(
       db,
       COLLECTIONS.staff,
@@ -157,6 +163,7 @@ export function ModulePage() {
                 items={items ?? []}
                 doneItemIds={doneItemIds}
                 onToggleDone={toggleDone}
+                readOnly={isViewingAs}
               />
             );
           })
