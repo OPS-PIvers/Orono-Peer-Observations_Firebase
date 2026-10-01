@@ -33,6 +33,7 @@ import { recomputeBlockedSlots } from './engine/blocking.js';
 import { meetsLeadTime } from './engine/bookingRules.js';
 import { blockedStaff, loadObserverScope } from './observeScope.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
+import { resolveObservationQuestionSet } from '../lib/questionSets.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -88,6 +89,14 @@ export async function createDraftObservationForBooking(args: {
     ? window.defaultObservationType
     : OBSERVATION_TYPES.standard;
 
+  const questionSetId = await resolveObservationQuestionSet(db, {
+    observerRole,
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- raw Admin SDK reads skip schema defaults
+    observerBuildings: observerSnap.exists ? ((observerSnap.data() as Staff).buildings ?? []) : [],
+    staffBuildings: staff?.buildings ?? [],
+    type: observationType,
+  });
+
   const slotStart = toDate(slot.startUTC);
   const slotEnd = toDate(slot.endUTC);
 
@@ -107,6 +116,7 @@ export async function createDraftObservationForBooking(args: {
     observedBuildings: staff?.buildings ?? [],
     status: OBSERVATION_STATUS.draft,
     type: observationType,
+    questionSetId,
     observationName: window.defaultObservationName,
     observationData: {},
     componentNotes: {},

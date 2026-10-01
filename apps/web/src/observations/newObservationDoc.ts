@@ -16,6 +16,8 @@ export function newDraftObservationDoc(args: {
   staff: Staff;
   type: ObservationType;
   observationName?: string;
+  /** Planning / Reflection question set (useQuestionSetResolution). */
+  questionSetId: string;
 }) {
   const { staff } = args;
   return {
@@ -28,6 +30,7 @@ export function newDraftObservationDoc(args: {
     observedBuildings: staff.buildings,
     status: OBSERVATION_STATUS.draft,
     type: args.type,
+    questionSetId: args.questionSetId,
     observationName: (args.observationName ?? '').trim(),
     observationData: {},
     componentNotes: {},

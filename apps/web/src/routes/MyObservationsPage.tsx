@@ -32,9 +32,8 @@ import { toast } from 'sonner';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
-  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   postQuestionsUnlocked,
-  questionType,
+  questionsForObservation,
   type Observation,
   type WorkProductQuestion,
 } from '@ops/shared';
@@ -320,9 +319,7 @@ function InProgressSection({
       </h2>
       <ul className="space-y-2">
         {drafts.map((o) => {
-          const bank = questionBank.filter(
-            (q) => questionType(q) === QUESTION_TYPE_BY_OBSERVATION_TYPE[o.type],
-          );
+          const bank = questionsForObservation(questionBank, o);
           const { pre, post } = splitQuestionsByPhase(bank);
           const answers = new Map(
             (o.workProductAnswers ?? []).map((a) => [a.questionId, a.answer] as const),

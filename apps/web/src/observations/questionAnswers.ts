@@ -1,5 +1,7 @@
 import {
+  GLOBAL_QUESTION_SET,
   OBSERVATION_STATUS,
+  QUESTION_TYPE_BY_OBSERVATION_TYPE,
   type Observation,
   type QuestionPhase,
   type ReflectionUnlockMode,
@@ -7,6 +9,7 @@ import {
   type WorkProductQuestion,
   postQuestionsUnlocked,
   questionPhase,
+  questionsForObservation,
   workProductAnswerHasText,
 } from '@ops/shared';
 import { toJsDate } from '@/utils/staffFormatting';
@@ -33,6 +36,40 @@ export function splitQuestionsByPhase(
     out[questionPhase(q)].push(q);
   }
   return out;
+}
+
+type QuestionRow = WorkProductQuestion & { id: string };
+
+/**
+ * The observation's questions (its set, see questionsForObservation), plus
+ * a read-only stand-in for every answered question that has since left the
+ * set (edited away, deactivated or deleted), shown under the text and phase
+ * captured when it was answered. Answers saved before that capture existed
+ * have nothing to show and stay hidden, as before.
+ */
+export function questionsWithRetiredAnswers(
+  bank: readonly QuestionRow[],
+  obs: Pick<Observation, 'type' | 'questionSetId' | 'workProductAnswers'>,
+): QuestionRow[] {
+  const live = questionsForObservation(bank, obs);
+  const liveIds = new Set(live.map((q) => q.questionId));
+  const retired: QuestionRow[] = (obs.workProductAnswers ?? [])
+    .filter(
+      (a) => !liveIds.has(a.questionId) && a.questionText && workProductAnswerHasText(a.answer),
+    )
+    .map((a, i) => ({
+      id: a.questionId,
+      questionId: a.questionId,
+      text: a.questionText ?? '',
+      phase: a.questionPhase ?? 'post',
+      type: QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type],
+      setId: obs.questionSetId ?? GLOBAL_QUESTION_SET,
+      order: Number.MAX_SAFE_INTEGER - 1000 + i,
+      isActive: false,
+      createdAt: a.updatedAt,
+      updatedAt: a.updatedAt,
+    }));
+  return [...live, ...retired];
 }
 
 export interface AnswerProgress {

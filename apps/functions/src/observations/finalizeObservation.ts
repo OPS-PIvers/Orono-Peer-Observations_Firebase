@@ -10,6 +10,7 @@ import {
   displayYear,
   OBSERVATION_STATUS,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
+  questionsForObservation,
   questionPhase,
   roleYearMappingDocId,
   workProductAnswerHasText,
@@ -211,10 +212,11 @@ export const finalizeObservation = onCall(
       const snapshotDomains = resolveSnapshotDomains(rubric.domains, activeComponentIds);
 
       // Every observation type stores its reflection answers as Q&A keyed on
-      // questionId. Fetch the matching question bank so the PDF can print each
-      // answer under its question text. Every question of the type is fetched
-      // (not just active ones) so answers to since-deactivated questions still
-      // make it into the permanent record.
+      // questionId. Fetch the observation's question set so the PDF can print
+      // each answer under its question text. Every question of the set is
+      // fetched (not just active ones) so answers to since-deactivated
+      // questions still make it into the permanent record; an answer whose
+      // question was deleted prints under the text it was written against.
       const questionType = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
       let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
       {
@@ -222,16 +224,28 @@ export const finalizeObservation = onCall(
           .collection(COLLECTIONS.workProductQuestions)
           .where('type', '==', questionType)
           .get();
-        const answeredIds = new Set(
-          (obs.workProductAnswers ?? [])
-            .filter((a) => workProductAnswerHasText(a.answer))
-            .map((a) => a.questionId),
+        const answered = (obs.workProductAnswers ?? []).filter((a) =>
+          workProductAnswerHasText(a.answer),
         );
-        workProductQuestions = questionsSnap.docs
-          .map((doc) => doc.data() as WorkProductQuestion)
-          .filter((q) => q.isActive || answeredIds.has(q.questionId))
-          .sort((a, b) => a.order - b.order)
-          .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) }));
+        const answeredIds = new Set(answered.map((a) => a.questionId));
+        const inSet = questionsForObservation(
+          questionsSnap.docs.map((doc) => doc.data() as WorkProductQuestion),
+          obs,
+        );
+        const known = new Set(inSet.map((q) => q.questionId));
+        workProductQuestions = [
+          ...inSet
+            .filter((q) => q.isActive || answeredIds.has(q.questionId))
+            .sort((a, b) => a.order - b.order)
+            .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) })),
+          ...answered
+            .filter((a) => !known.has(a.questionId) && a.questionText)
+            .map((a) => ({
+              questionId: a.questionId,
+              text: a.questionText ?? '',
+              phase: 'post' as const,
+            })),
+        ];
       }
 
       // Thread admin-configured branding into the PDF so the archived

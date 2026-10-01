@@ -248,9 +248,29 @@ service cloud.firestore {
     // --- /workProductQuestions ----------------------------------------------
     // Staff need to read questions (for WorkProductAnswerForm / InstructionalRoundAnswerForm).
     // Writes are admin-only.
+    // Building Administrators manage their own buildings' Planning /
+    // Reflection sets: Standard questions whose setId is building-<id> for a
+    // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
+      function isBuildingAdmin() {
+        return isFromOronoDomain() && role() == 'administrator';
+      }
+      function inOwnBuildingSet(data) {
+        return data.get('type', '') == 'standard'
+          && data.get('buildingId', '') is string
+          && data.get('buildingId', '') != ''
+          && data.get('setId', '') == 'building-' + data.get('buildingId', '')
+          && get(/databases/$(database)/documents/buildings/$(data.get('buildingId', ''))).data.displayName
+               in staffDocData().get('buildings', []);
+      }
+
       allow read: if isFromOronoDomain();
       allow write: if isConsoleAdmin();
+      allow create: if isBuildingAdmin() && inOwnBuildingSet(request.resource.data);
+      allow update: if isBuildingAdmin()
+        && inOwnBuildingSet(resource.data)
+        && inOwnBuildingSet(request.resource.data);
+      allow delete: if isBuildingAdmin() && inOwnBuildingSet(resource.data);
     }
 
     // --- /emailTemplates -----------------------------------------------------

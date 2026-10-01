@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { addDoc, collection } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
+  OBSERVATION_TYPES,
   COLLECTIONS,
   canCreateObservations,
   canObserve,
@@ -29,6 +30,7 @@ import { EvaluatorChecklistView, observationTypeForWatchedKind } from './Evaluat
 import { useStaffCheckpoints } from './useStaffCheckpoints';
 import { assertWritable } from '@/dev/viewAsGuard';
 import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useQuestionSetResolution } from '@/observations/useQuestionSetResolution';
 
 const setStepCheckFn = httpsCallable<SetStepCheckInput, { ok: true; path: string }>(
   functions,
@@ -110,7 +112,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
   }
 
-  async function handleStartAndCheck(task: CheckpointWithStatus) {
+  async function handleStartAndCheck(task: CheckpointWithStatus, questionSetId: string) {
     setConfirming(null);
     if (!observerEmail) {
       setError(task.id, 'Missing observer context.');
@@ -128,6 +130,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
           observerName: observerStaff?.name ?? '',
           staff,
           type: observationTypeForWatchedKind(task.watchedKind),
+          questionSetId,
         }),
       );
       observationId = ref.id;
@@ -157,6 +160,13 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
   );
 
   const confirmType = confirming ? observationTypeForWatchedKind(confirming.watchedKind) : null;
+  const [chosenBuildingId, setChosenBuildingId] = useState<string | null>(null);
+  const questionSet = useQuestionSetResolution(
+    confirming ? staff : null,
+    confirmType ?? OBSERVATION_TYPES.standard,
+    chosenBuildingId,
+  );
+  const confirmSetId = questionSet && 'setId' in questionSet ? questionSet.setId : null;
 
   return (
     <>
@@ -169,7 +179,10 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
         creatableTypes={creatableTypes}
         readOnly={isViewingAs}
         onToggle={(task) => void handleToggle(task)}
-        onStart={(task) => setConfirming(task)}
+        onStart={(task) => {
+          setChosenBuildingId(null);
+          setConfirming(task);
+        }}
       />
       {confirming ? (
         <Dialog open onOpenChange={(open) => (open ? null : setConfirming(null))}>
@@ -181,11 +194,34 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
                 you as the observer, then marks “{confirming.title}” complete on their dashboard.
               </DialogDescription>
             </DialogHeader>
+            {questionSet && 'choose' in questionSet ? (
+              <label className="grid gap-1.5 text-sm">
+                <span className="font-medium">Planning and Reflection questions</span>
+                <select
+                  value={chosenBuildingId ?? ''}
+                  onChange={(e) => setChosenBuildingId(e.target.value || null)}
+                  className="border-input bg-background h-11 rounded-md border px-3 text-sm"
+                >
+                  <option value="">Choose a building…</option>
+                  {questionSet.choose.map((b) => (
+                    <option key={b.buildingId} value={b.buildingId}>
+                      {b.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setConfirming(null)}>
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void handleStartAndCheck(confirming)}>
+              <Button
+                type="button"
+                disabled={!confirmSetId}
+                onClick={() => {
+                  if (confirmSetId) void handleStartAndCheck(confirming, confirmSetId);
+                }}
+              >
                 Start observation &amp; mark done
               </Button>
             </DialogFooter>

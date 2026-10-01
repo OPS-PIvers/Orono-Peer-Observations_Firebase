@@ -21,6 +21,11 @@ export const building = z.object({
   /** Pill color for this building in the Staff table. Unset = auto-assigned. */
   color: pillColor.optional(),
   isActive: z.boolean().default(true),
+  /** Who uses this building's Planning / Reflection question set: only
+   *  building Administrators' observations ('admin'), or every observation
+   *  of staff in the building, Peer Evaluators' included ('all'). Set in the
+   *  Admin Console; building Administrators can't change it. */
+  questionsAppliesTo: z.enum(['admin', 'all']).default('admin'),
   createdAt: isoDate,
   updatedAt: isoDate,
 });

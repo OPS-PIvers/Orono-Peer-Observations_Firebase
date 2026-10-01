@@ -110,6 +110,7 @@ export function App() {
                   editing scoped to it in place of the Admin Console. */}
               <Route element={<StandardShell requireAdministrator />}>
                 <Route path="/my-staff" element={<L.MyStaffPage />} />
+                <Route path="/observation-questions" element={<L.ObservationQuestionsPage />} />
                 {/* Merged into My Staff; kept so old links still land. */}
                 <Route path="/building-staff" element={<Navigate to="/my-staff" replace />} />
               </Route>

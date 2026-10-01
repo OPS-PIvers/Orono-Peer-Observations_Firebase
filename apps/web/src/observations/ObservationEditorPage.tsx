@@ -76,7 +76,11 @@ import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
 import { showsObservationTypes } from './observationTypeLabels';
-import { answerEditability, splitQuestionsByPhase } from './questionAnswers';
+import {
+  answerEditability,
+  questionsWithRetiredAnswers,
+  splitQuestionsByPhase,
+} from './questionAnswers';
 import { useReflectionUnlock } from './useReflectionUnlock';
 import { AudioPopoverButton } from './AudioPopoverButton';
 import { recordingTitle } from './recordings';
@@ -89,6 +93,8 @@ import {
   type EditorSavingState,
   type PendingEditorWorkRefs,
 } from './pendingEditorWork';
+
+const EMPTY_QUESTIONS: readonly WorkProductQuestion[] = [];
 
 interface FinalizeResponse {
   pdfDriveFileId: string;
@@ -523,7 +529,13 @@ export function ObservationEditorPage() {
     questionConstraints,
     [questionType ?? ''],
   );
-  const answers = useWorkProductAnswers(observation, canAnswer);
+  // This observation's questions (its set), plus retired ones it answered.
+  const setQuestions = useMemo(
+    () =>
+      observation && questionBank ? questionsWithRetiredAnswers(questionBank, observation) : null,
+    [observation, questionBank],
+  );
+  const answers = useWorkProductAnswers(observation, canAnswer, setQuestions ?? EMPTY_QUESTIONS);
 
   // Evidence capture: a sentence selected in a teacher's answer is appended
   // to the script (attributed) and the component picker opens on it. The
@@ -545,8 +557,8 @@ export function ObservationEditorPage() {
   );
 
   const questionsSlot = useMemo<QuestionsSlot | undefined>(() => {
-    if (!observation || !questionBank) return undefined;
-    const { pre, post } = splitQuestionsByPhase(questionBank);
+    if (!observation || !setQuestions) return undefined;
+    const { pre, post } = splitQuestionsByPhase(setQuestions);
     const observationDate = toJsDate(observation.observationDate) ?? null;
     const now = new Date();
     const editabilityFor = (phase: 'pre' | 'post') =>
@@ -574,7 +586,7 @@ export function ObservationEditorPage() {
     };
   }, [
     observation,
-    questionBank,
+    setQuestions,
     canAnswer,
     reflectionUnlock,
     answers,

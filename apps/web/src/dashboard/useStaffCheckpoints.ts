@@ -7,6 +7,7 @@ import {
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
   questionPhase,
+  questionSetId,
   questionType,
   resolveSteps,
   type AppSettings,
@@ -124,7 +125,12 @@ export function useStaffCheckpoints(
     () =>
       (wpQuestions.data ?? [])
         .filter((q) => q.isActive)
-        .map((q) => ({ questionId: q.questionId, type: questionType(q), phase: questionPhase(q) })),
+        .map((q) => ({
+          questionId: q.questionId,
+          type: questionType(q),
+          phase: questionPhase(q),
+          setId: questionSetId(q),
+        })),
     [wpQuestions.data],
   );
 

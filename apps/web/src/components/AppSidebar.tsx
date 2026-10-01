@@ -12,6 +12,7 @@ import {
   FileText,
   LayoutGrid,
   LogOut,
+  MessageSquareText,
   Settings,
   Sparkles,
   User,
@@ -161,6 +162,7 @@ function buildNavItems(
     const main: NavItem[] = [
       { icon: Building2, label: 'My Staff', href: '/my-staff', alsoActiveOn: ['/staff'] },
       { icon: ClipboardList, label: 'Observations', children: obsChildren(role) },
+      { icon: MessageSquareText, label: 'Observation Questions', href: '/observation-questions' },
     ];
     if (flags.canOpenConsole) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });

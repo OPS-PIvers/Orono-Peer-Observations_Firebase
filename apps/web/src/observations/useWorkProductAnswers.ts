@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Observation, type TiptapDoc, type WorkProductAnswer } from '@ops/shared';
+import {
+  COLLECTIONS,
+  questionPhase,
+  type Observation,
+  type TiptapDoc,
+  type WorkProductAnswer,
+  type WorkProductQuestion,
+} from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
@@ -40,7 +47,15 @@ export interface WorkProductAnswersState {
 export function useWorkProductAnswers(
   observation: (Observation & { id: string }) | null | undefined,
   canAnswer: boolean,
+  /** The observation's live questions: each saved answer keeps its
+   *  question's text and phase, so later question edits never change or
+   *  orphan it. */
+  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [],
 ): WorkProductAnswersState {
+  const questionsRef = useRef(questions);
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
   const stored = useMemo(() => {
     const map = new Map<string, WorkProductAnswer>();
     for (const a of observation?.workProductAnswers ?? []) map.set(a.questionId, a);
@@ -98,10 +113,23 @@ export function useWorkProductAnswers(
     const next: WorkProductAnswer[] = [];
     for (const [questionId, answer] of Object.entries(localRef.current)) {
       const previous = storedRef.current.get(questionId);
+      const question = questionsRef.current.find((q) => q.questionId === questionId);
+      // Firestore rejects undefined fields, so only include what's known.
+      const questionText = question?.text ?? previous?.questionText;
+      const phase = question ? questionPhase(question) : previous?.questionPhase;
+      const snapshot = {
+        ...(questionText ? { questionText } : {}),
+        ...(phase ? { questionPhase: phase } : {}),
+      };
       if (dirty.has(questionId)) {
-        next.push({ questionId, answer, updatedAt: now });
+        next.push({ questionId, ...snapshot, answer, updatedAt: now });
       } else if (previous) {
-        next.push({ questionId, answer: previous.answer, updatedAt: previous.updatedAt });
+        next.push({
+          questionId,
+          ...snapshot,
+          answer: previous.answer,
+          updatedAt: previous.updatedAt,
+        });
       }
       // Never stored and never edited (an empty editor that only ever
       // mounted): nothing to persist.

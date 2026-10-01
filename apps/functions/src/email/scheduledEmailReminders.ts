@@ -5,8 +5,10 @@ import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
+  GLOBAL_QUESTION_SET,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
   questionPhase,
+  questionSetId,
   questionType,
   workProductAnswerHasText,
   type EmailTemplate,
@@ -62,10 +64,14 @@ if (getApps().length === 0) initializeApp();
  * Unknown observation types (bad data) have no questions and get no nudge.
  */
 export function unansweredQuestionIds(
-  questions: readonly Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'>[],
+  questions: readonly (Pick<WorkProductQuestion, 'questionId' | 'type' | 'phase'> & {
+    setId?: string;
+  })[],
   answers: unknown,
   observationType: string,
   phase: QuestionPhase,
+  /** The observation's question set; absent means the district set. */
+  setId: string = GLOBAL_QUESTION_SET,
 ): string[] {
   const type = (QUESTION_TYPE_BY_OBSERVATION_TYPE as Record<string, string | undefined>)[
     observationType
@@ -80,7 +86,9 @@ export function unansweredQuestionIds(
     }
   }
   return questions
-    .filter((q) => questionType(q) === type && questionPhase(q) === phase)
+    .filter(
+      (q) => questionType(q) === type && questionPhase(q) === phase && questionSetId(q) === setId,
+    )
     .map((q) => q.questionId)
     .filter((id) => !answered.has(id));
 }
@@ -109,7 +117,11 @@ async function sendPhaseReminder(args: {
   const observedEmail = (obs['observedEmail'] as string | undefined) ?? '';
   if (!observedEmail) return false;
   const type = (obs['type'] as ObservationType | undefined) ?? '';
-  if (unansweredQuestionIds(activeQuestions, obs['workProductAnswers'], type, phase).length === 0) {
+  const setId = typeof obs['questionSetId'] === 'string' ? obs['questionSetId'] : undefined;
+  if (
+    unansweredQuestionIds(activeQuestions, obs['workProductAnswers'], type, phase, setId).length ===
+    0
+  ) {
     return false;
   }
 

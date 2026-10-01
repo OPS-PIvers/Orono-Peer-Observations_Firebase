@@ -64,6 +64,13 @@ export type ComponentTag = z.infer<typeof componentTag>;
  *  without a data migration. */
 export const workProductAnswer = z.object({
   questionId: z.string().min(1),
+  /** The question's text when this answer was saved, so editing or deleting
+   *  the question later never changes or orphans a past response. Absent on
+   *  answers saved before it was captured. */
+  questionText: z.string().optional(),
+  /** The question's Planning ('pre') / Reflection ('post') phase, kept for
+   *  the same reason. */
+  questionPhase: z.enum(['pre', 'post']).optional(),
   answer: z.union([z.string(), tiptapDoc]).default(''),
   updatedAt: isoDate,
 });
@@ -167,6 +174,10 @@ export const observation = z.object({
   // Lifecycle
   status: observationStatus.default(OBSERVATION_STATUS.draft),
   type: observationType.default(OBSERVATION_TYPES.standard),
+  /** Which Planning / Reflection question set this observation uses,
+   *  resolved once at creation (see resolveQuestionSetId). Absent on older
+   *  docs, which use the district set (GLOBAL_QUESTION_SET). */
+  questionSetId: z.string().optional(),
 
   // Free-form metadata
   observationName: z.string().trim().max(200).default(''),
