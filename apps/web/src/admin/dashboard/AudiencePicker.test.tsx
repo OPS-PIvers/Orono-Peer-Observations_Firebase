@@ -59,6 +59,7 @@ function staff(partial: Partial<Staff>): Staff {
     summativeYear: false,
     isActive: true,
     hasAdminAccess: false,
+    canViewAs: false,
     emailPreferences: DEFAULT_EMAIL_PREFERENCES,
     lastSignInAt: null,
     createdAt: now,

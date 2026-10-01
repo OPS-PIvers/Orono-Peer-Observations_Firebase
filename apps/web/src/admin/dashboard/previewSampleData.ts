@@ -33,6 +33,7 @@ export const SAMPLE_STAFF: Staff = {
   summativeYear: false,
   isActive: true,
   hasAdminAccess: false,
+  canViewAs: false,
   emailPreferences: DEFAULT_EMAIL_PREFERENCES,
   lastSignInAt: PAST,
   createdAt: new Date(),

@@ -65,6 +65,7 @@ function makeStaff(overrides: Partial<Staff> = {}): Staff {
     summativeYear: false,
     isActive: true,
     hasAdminAccess: false,
+    canViewAs: false,
     emailPreferences: DEFAULT_EMAIL_PREFERENCES,
     lastSignInAt: null,
     createdAt: new Date('2024-01-01T00:00:00.000Z'),

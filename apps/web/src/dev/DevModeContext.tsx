@@ -11,7 +11,11 @@ import {
 import { COLLECTIONS, isAdminRole, isSpecialRole, type Staff } from '@ops/shared';
 import { useAuth, type AuthClaims } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
 import { setViewAsGuard } from './viewAsGuard';
+
+const recordViewAsFn = httpsCallable<{ email: string }, { ok: true }>(functions, 'recordViewAs');
 
 const STORAGE_KEY = 'ops:dev-view-as';
 /** The old role-only override. Dropped on load so it can't linger. */
@@ -71,17 +75,27 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
   const { user, claims } = useAuth();
   const [stored, setStored] = useState<string | null>(loadViewAs);
 
-  // The dev escape hatch: real Administrators / Full Access / PEs see
-  // their actual role and don't get this UI. Only users who have
-  // hasAdminAccess flagged on without holding a special role qualify.
-  const isDevUser = claims.isAdmin && !isSpecialRole(claims.role);
   const realEmail = user?.email?.toLowerCase() ?? '';
+  // Who may view as someone: people granted "View As" in Admin Console →
+  // Staff (canViewAs on their own staff doc), plus the original developer
+  // escape hatch — hasAdminAccess without a special role.
+  const { data: realStaff, loading: realStaffLoading } = useFirestoreDoc<Staff>(
+    realEmail ? `${COLLECTIONS.staff}/${realEmail}` : '',
+  );
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+  const grantedViewAs = realStaff?.canViewAs === true && (realStaff.isActive ?? true);
+  const isDevUser = grantedViewAs || (claims.isAdmin && !isSpecialRole(claims.role));
   const viewAsEmail = isDevUser && stored && stored !== realEmail ? stored : null;
 
   const { data: viewAsStaff, loading } = useFirestoreDoc<Staff>(
     viewAsEmail ? `${COLLECTIONS.staff}/${viewAsEmail}` : '',
   );
-  const viewAsLoading = viewAsEmail !== null && loading && !viewAsStaff;
+  // Also "loading" while a stored selection can't be judged yet (claims or
+  // the viewer's own staff doc still arriving), so route guards don't act on
+  // the viewer's own claims and bounce them before view-as applies.
+  const resolvingStored =
+    stored !== null && !!realEmail && (claims.role === null || (realStaffLoading && !realStaff));
+  const viewAsLoading = resolvingStored || (viewAsEmail !== null && loading && !viewAsStaff);
 
   // Layout effect: set before any child's useEffect can write. The stored
   // value is applied at module load (see loadViewAs) for the first commit.
@@ -100,12 +114,21 @@ export function DevModeProvider({ children }: { children: ReactNode }) {
 
   // If the real user stops being a dev (e.g. role change at the server),
   // drop any stored view-as so it doesn't quietly affect the next session.
+  // Only once both the claims and the staff doc have loaded: before then
+  // isDevUser reads false for everyone and would wipe a valid selection.
   useEffect(() => {
-    if (claims.role !== null && !isDevUser && stored !== null) setStored(null);
-  }, [claims.role, isDevUser, stored]);
+    if (claims.role !== null && realStaff && !isDevUser && stored !== null) setStored(null);
+  }, [claims.role, realStaff, isDevUser, stored]);
 
   const setViewAs = useCallback((email: string | null) => {
     setStored(email ? email.toLowerCase() : null);
+    // Audit trail: every view-as start is logged server-side. Best-effort —
+    // a failed log doesn't block the read-only view.
+    if (email) {
+      recordViewAsFn({ email }).catch((err: unknown) => {
+        console.warn('Could not record view-as in the audit log', err);
+      });
+    }
   }, []);
   const clear = useCallback(() => setStored(null), []);
 

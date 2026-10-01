@@ -70,6 +70,7 @@ interface FormState {
   cycleStatus: CycleStatus;
   isActive: boolean;
   hasAdminAccess: boolean;
+  canViewAs: boolean;
 }
 
 const empty: FormState = {
@@ -82,6 +83,7 @@ const empty: FormState = {
   cycleStatus: 'planning',
   isActive: true,
   hasAdminAccess: false,
+  canViewAs: false,
 };
 
 const ACTIVE_ROLES_CONSTRAINTS = [where('isActive', '==', true), orderBy('displayName', 'asc')];
@@ -146,6 +148,8 @@ export function StaffDialog({
         cycleStatus: staffCycleStatus(existing),
         isActive: existing.isActive,
         hasAdminAccess: existing.hasAdminAccess,
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+        canViewAs: existing.canViewAs ?? false,
       });
     } else if (mode === 'create') {
       setForm(buildingScope?.length === 1 ? { ...empty, buildings: [...buildingScope] } : empty);
@@ -190,6 +194,15 @@ export function StaffDialog({
       color: ADMIN_PILL_COLOR,
       checked: form.hasAdminAccess,
       onToggle: () => setForm((f) => ({ ...f, hasAdminAccess: !f.hasAdminAccess })),
+    },
+    {
+      id: 'view-as-access',
+      name: 'View As',
+      description:
+        'Can view the app as any staff member, read-only. Sees everything that person sees.',
+      color: ADMIN_PILL_COLOR,
+      checked: form.canViewAs,
+      onToggle: () => setForm((f) => ({ ...f, canViewAs: !f.canViewAs })),
     },
     ...modules.map((m) => {
       const cls = MODULE_COLOR_CLASSES[m.color];
@@ -293,7 +306,11 @@ export function StaffDialog({
           // are (merge keeps the stored values); a scoped create starts empty.
           ...(buildingScope && mode === 'edit'
             ? {}
-            : { modules: form.modules, hasAdminAccess: form.hasAdminAccess }),
+            : {
+                modules: form.modules,
+                hasAdminAccess: form.hasAdminAccess,
+                canViewAs: form.canViewAs,
+              }),
           updatedAt: serverTimestamp(),
           ...(mode === 'create' ? { createdAt: serverTimestamp() } : {}),
         },

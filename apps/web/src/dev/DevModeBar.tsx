@@ -25,8 +25,9 @@ function matchesRole(s: Staff, filter: RoleFilter): boolean {
 }
 
 /**
- * Header pill for dev users: view the app as any real staff member
- * (read-only). See DevModeProvider.
+ * Header pill for people allowed to view as someone (Admin Console → Staff
+ * → View As, or the developer escape hatch): render the app as any real
+ * staff member, read-only. See DevModeProvider.
  */
 export function DevModeBar() {
   const { viewAsEmail, viewAsStaff, setViewAs, clear, isDevUser } = useDevMode();
@@ -97,7 +98,7 @@ export function DevModeBar() {
         title="View the app as another staff member"
       >
         <Wrench className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">DEV: {pillLabel}</span>
+        <span className="truncate">View as: {pillLabel}</span>
         <ChevronDown
           className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')}
         />

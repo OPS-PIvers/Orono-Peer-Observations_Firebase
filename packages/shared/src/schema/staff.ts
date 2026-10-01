@@ -56,6 +56,10 @@ export const staff = z.object({
   isActive: z.boolean().default(true),
   /** Grants admin-console access independent of professional role. */
   hasAdminAccess: z.boolean().default(false),
+  /** Grants read-only "view as": this person can render the app as any
+   *  staff member. Reads everything (firestore.rules canReadAll); writes
+   *  are blocked while viewing as. Set by console admins only. */
+  canViewAs: z.boolean().default(false),
   /** Self-service opt-in/out per non-critical email category (see
    *  emailTemplate.ts EMAIL_TRIGGER_CATEGORY). Missing/legacy docs parse as
    *  all-true — fully opted in, matching pre-existing behavior. */
