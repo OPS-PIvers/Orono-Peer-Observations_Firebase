@@ -8,7 +8,6 @@ import {
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
   assignObservationFromPreferenceInput,
-  isAdminRole,
   type ObservationPreference,
   type ObservationSlot,
   type ObservationWindow,
@@ -23,6 +22,7 @@ import {
 } from './bookObservationSlot.js';
 import { toDate } from './engine/schedulingEmail.js';
 import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -47,7 +47,13 @@ export const assignObservationFromPreference = onCall(
     const callerEmail = request.auth.token.email?.toLowerCase();
     if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
+    // District oversight only (Full Access / hasAdminAccess). Building
+    // Administrators manage their own windows, like any observer.
+    const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'console',
+    });
 
     const parsed = assignObservationFromPreferenceInput.safeParse(request.data);
     if (!parsed.success) {

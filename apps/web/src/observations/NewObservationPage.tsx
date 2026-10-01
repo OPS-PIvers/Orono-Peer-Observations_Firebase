@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Search } from 'lucide-react';
-import { COLLECTIONS, SPECIAL_ROLES, canObserve, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, canObserve, type Role, type Staff } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -18,6 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CreateObservationDialog } from './CreateObservationDialog';
+import { useGoBack } from '@/hooks/useGoBack';
 
 /**
  * Staff selector for starting a new observation.
@@ -32,13 +33,14 @@ import { CreateObservationDialog } from './CreateObservationDialog';
  */
 export function NewObservationPage() {
   const navigate = useNavigate();
+  const goBack = useGoBack('/');
   const { data: allStaff, loading } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const scope = useObserverScope();
-  const scoped = scope.role === SPECIAL_ROLES.administrator;
-  // Building Administrators only see the staff they can observe (active,
-  // Probationary or High Cycle, in their buildings); other observer roles
-  // see everyone. Held as null until the observer's buildings load.
+  // Only staff this observer may observe (canObserve). Building
+  // Administrators don't use this page (they start from My Staff), so for
+  // Peer Evaluators and Full Access that's everyone. Held as null until the
+  // observer's scope loads.
   const staff = useMemo(
     () =>
       allStaff && !scope.loading
@@ -102,8 +104,6 @@ export function NewObservationPage() {
     <PageHeader
       title="New observation"
       subtitle={`Pick the staff member you're observing.${
-        scoped ? ' Showing Probationary and High Cycle staff in your building.' : ''
-      }${
         staff ? ` ${String(filtered.length)} of ${String(staff.length)} match.` : ' Loading staff…'
       }`}
       actions={
@@ -119,7 +119,7 @@ export function NewObservationPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate(-1)}
+            onClick={goBack}
             className="border-white/40 bg-white/10 text-white hover:bg-white/20 hover:text-white"
           >
             <ChevronLeft className="h-4 w-4" />

@@ -377,7 +377,18 @@ describe('finalizeObservation — finalize flow', () => {
     expect(result).toMatchObject({ pdfDriveFileId: 'pdf-existing' });
   });
 
-  it('permits an admin who is not the observer to finalize', async () => {
+  it('permits Full Access (oversight) who is not the observer to finalize', async () => {
+    OVERRIDE_EMAIL = 'district@orono.k12.mn.us';
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    const req = {
+      auth: { uid: 'a', token: { email: 'district@orono.k12.mn.us', role: 'full-access' } },
+      data: { observationId: 'obs-1' },
+    } as never;
+    await expect(run(req)).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
+  });
+
+  it("rejects a building Administrator finalizing someone else's observation", async () => {
     OVERRIDE_EMAIL = 'admin@orono.k12.mn.us';
     const { db } = buildDb(happyConfig());
     h.db = db;
@@ -385,7 +396,7 @@ describe('finalizeObservation — finalize flow', () => {
       auth: { uid: 'a', token: { email: 'admin@orono.k12.mn.us', role: 'administrator' } },
       data: { observationId: 'obs-1' },
     } as never;
-    await expect(run(req)).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
+    await expect(run(req)).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('maps a PDF render failure to an internal error and clears the claim', async () => {

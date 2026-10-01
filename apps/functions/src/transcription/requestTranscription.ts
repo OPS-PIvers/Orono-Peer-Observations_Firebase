@@ -9,6 +9,7 @@ import {
   resolveGeminiFeature,
 } from '@ops/shared';
 import { RATE_LIMIT_KEYS, checkRateLimit, rateLimitsFromSettings } from '../lib/rateLimit.js';
+import { observationAccessFor } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -73,8 +74,14 @@ export const requestTranscription = onCall(
     if (!obsSnap.exists) {
       throw new HttpsError('not-found', 'Observation not found');
     }
-    const obs = obsSnap.data() as { observerEmail: string; audioDriveFileIds: string[] };
-    if (obs.observerEmail !== userEmail) {
+    const obs = obsSnap.data() as {
+      observerEmail: string;
+      observedEmail: string;
+      coObserverEmails?: string[];
+      audioDriveFileIds: string[];
+    };
+    const access = observationAccessFor(obs, userEmail, false);
+    if (access !== 'owner' && access !== 'coObserver') {
       throw new HttpsError('permission-denied', 'Not your observation');
     }
     if (!obs.audioDriveFileIds.includes(audioFileId)) {

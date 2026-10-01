@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ClipboardList, Mail } from 'lucide-react';
-import { deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
+import { deleteDoc, doc, orderBy, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
   OBSERVATION_TYPES,
+  SPECIAL_ROLES,
   canCreateObservations,
   observeBlockReason,
   staffCycleStatus,
@@ -35,8 +37,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CreateObservationDialog } from '@/observations/CreateObservationDialog';
+import { useObserverObservations } from '@/observations/useObserverObservations';
 import { EvaluatorStepChecklist } from '@/dashboard/EvaluatorStepChecklist';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
+import { showsObservationTypes } from '@/observations/observationTypeLabels';
 
 type ObsTab = 'all' | ObservationStatus;
 
@@ -50,6 +54,7 @@ const sendManualEmailFn = httpsCallable<
   { sent: boolean }
 >(functions, 'sendManualEmail');
 
+const OBS_ORDER = orderBy('lastModifiedAt', 'desc');
 const MANUAL_TEMPLATE_CONSTRAINTS = [
   where('triggerType', '==', 'manual'),
   where('isActive', '==', true),
@@ -94,7 +99,7 @@ export function StaffPersonPage() {
   const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
   const { user } = useAuth();
-  const currentEmail = user?.email?.toLowerCase() ?? '';
+  const currentEmail = useEffectiveEmail();
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staffMember, loading: staffLoading } = useDocument<Staff>(staffDocRef);
@@ -107,29 +112,20 @@ export function StaffPersonPage() {
     setObsPageSize(OBS_PAGE_SIZE);
   }, [email]);
 
-  const obsConstraints = useMemo(
-    () =>
-      email
-        ? [
-            where('observedEmail', '==', email),
-            orderBy('lastModifiedAt', 'desc'),
-            limit(obsPageSize),
-          ]
-        : [],
-    [email, obsPageSize],
-  );
-  // The hook keys on constraint *types* only, so passing `email` as a keyPart
-  // is what disambiguates one person's observations from another's. This makes
-  // the subscription self-correcting on email change even without the
-  // KeyedStaffPersonPage remount in App.tsx (which remains as defence in depth).
-  // `obsPageSize` is threaded through for the same reason: `limit()`'s value
-  // isn't reflected in the constraint-type key, so growing the page via
-  // "Load more" wouldn't otherwise trigger a resubscribe.
-  const { data: observations } = useFirestoreCollection<Observation>(
-    COLLECTIONS.observations,
-    obsConstraints,
-    [email ?? '', obsPageSize],
-  );
+  // Only observations the viewer created or co-observes (everything for
+  // console admins) — see useObserverObservations and the /observations rules.
+  const obsFilters = useMemo(() => (email ? [where('observedEmail', '==', email)] : []), [email]);
+  const {
+    data: observations,
+    hasMore: obsHasMore,
+    error: obsError,
+  } = useObserverObservations({
+    enabled: !!email,
+    filters: obsFilters,
+    orderBy: OBS_ORDER,
+    pageSize: obsPageSize,
+    keyParts: [email ?? ''],
+  });
 
   const { data: manualTemplates } = useFirestoreCollection<EmailTemplate>(
     COLLECTIONS.emailTemplates,
@@ -139,7 +135,13 @@ export function StaffPersonPage() {
   const [activeTab, setActiveTab] = useState<ObsTab>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const newObservationsDisabled = useNewObservationsDisabled();
-  const canCreate = canCreateObservations(useEffectiveClaims().role);
+  const { role: myRole } = useEffectiveClaims();
+  const canCreate = canCreateObservations(myRole);
+  const isViewingAs = useIsViewingAs();
+  // Building Administrators reach this page from My Staff and go back there.
+  const isBuildingAdmin = myRole === SPECIAL_ROLES.administrator;
+  const backTo = isBuildingAdmin ? '/my-staff' : '/staff';
+  const backLabel = isBuildingAdmin ? 'Back to My Staff' : 'Back to Staff';
   const observerScope = useObserverScope();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -178,6 +180,7 @@ export function StaffPersonPage() {
   async function handleDelete(id: string) {
     setDeleteError(null);
     try {
+      assertWritable();
       await deleteDoc(doc(db, COLLECTIONS.observations, id));
       setConfirmingDeleteId(null);
     } catch (err) {
@@ -190,6 +193,7 @@ export function StaffPersonPage() {
     setSending(true);
     setSendError(null);
     try {
+      assertWritable();
       const roleLabel = roleDisplayName(roles, staffMember.role);
       await sendManualEmailFn({
         templateId: selectedTemplate.id,
@@ -245,25 +249,53 @@ export function StaffPersonPage() {
     return (
       <div className="py-16 text-center">
         <p className="text-ops-gray mb-4 font-medium">Staff member not found.</p>
-        <Button variant="ghost" onClick={() => void navigate('/staff')}>
+        <Button variant="ghost" onClick={() => void navigate(backTo)}>
           <ChevronLeft className="h-4 w-4" />
-          Back to Staff
+          {backLabel}
         </Button>
       </div>
     );
   }
 
-  // Why a new observation can't start here, or null when it can. Building
-  // Administrators only observe summative staff in their buildings.
-  const createBlocked = newObservationsDisabled
-    ? 'New observation creation is currently disabled by an administrator.'
-    : observerScope.loading
-      ? 'Loading…'
-      : observeBlockReason(observerScope, {
-          ...staffMember,
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
-          buildings: staffMember.buildings ?? [],
-        });
+  // Building Administrators only see staff in their own buildings (My Staff's
+  // scope). The page is otherwise district-wide for observers.
+  if (
+    isBuildingAdmin &&
+    !observerScope.loading &&
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+    !(staffMember.buildings ?? []).some((b) => observerScope.buildings.includes(b))
+  ) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-ops-gray mb-4 font-medium">
+          {staffMember.name} isn&apos;t in your building.
+        </p>
+        <Button variant="ghost" onClick={() => void navigate(backTo)}>
+          <ChevronLeft className="h-4 w-4" />
+          {backLabel}
+        </Button>
+      </div>
+    );
+  }
+
+  // Staff this viewer can never observe (a building Administrator and a
+  // non-summative teacher, say) get no start button at all.
+  const notObservable =
+    !observerScope.loading &&
+    observeBlockReason(observerScope, {
+      ...staffMember,
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs may lack this field
+      buildings: staffMember.buildings ?? [],
+    }) !== null;
+  const showCreate = canCreate && !notObservable;
+  // Why the (shown) start button is disabled right now, or null when it works.
+  const createBlocked = isViewingAs
+    ? 'Read-only while viewing as someone else.'
+    : newObservationsDisabled
+      ? 'New observation creation is currently disabled by an administrator.'
+      : observerScope.loading
+        ? 'Loading…'
+        : null;
 
   const tabs: { id: ObsTab; label: string; count: number }[] = [
     { id: 'all', label: 'All', count: allObs.length },
@@ -302,7 +334,7 @@ export function StaffPersonPage() {
             asChild
             className="text-white/80 hover:bg-white/10 hover:text-white"
           >
-            <Link to="/staff">
+            <Link to={backTo} aria-label={backLabel}>
               <ChevronLeft className="h-4 w-4" />
               Back
             </Link>
@@ -341,7 +373,7 @@ export function StaffPersonPage() {
             ) : null}
           </div>
 
-          {canCreate ? (
+          {showCreate ? (
             // A disabled button fires no hover events, so the reason lives
             // on a wrapper.
             <span title={createBlocked ?? undefined}>
@@ -378,6 +410,12 @@ export function StaffPersonPage() {
         ))}
       </div>
 
+      {obsError ? (
+        <div className="border-destructive bg-ops-red-lighter text-ops-red-dark mb-4 rounded-md border-l-4 px-4 py-3 text-sm">
+          Failed to load observations: {obsError.message}
+        </div>
+      ) : null}
+
       {deleteError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
           {deleteError}
@@ -389,7 +427,7 @@ export function StaffPersonPage() {
         <div className="flex flex-col items-center gap-3 py-16 text-center">
           <ClipboardList className="text-ops-gray-lighter h-10 w-10" />
           <p className="text-ops-gray font-medium">No observations yet for {staffMember.name}</p>
-          {canCreate ? (
+          {showCreate ? (
             <span title={createBlocked ?? undefined}>
               <Button onClick={() => setDialogOpen(true)} disabled={createBlocked !== null}>
                 Start first observation
@@ -403,7 +441,8 @@ export function StaffPersonPage() {
             <ObservationCard
               key={o.id}
               observation={o}
-              canDelete={o.observerEmail === currentEmail}
+              showType={showsObservationTypes(myRole)}
+              canDelete={!isViewingAs && o.observerEmail === currentEmail}
               confirmingDelete={confirmingDeleteId === o.id}
               onRequestDelete={() => setConfirmingDeleteId(o.id)}
               onCancelDelete={() => setConfirmingDeleteId(null)}
@@ -413,7 +452,7 @@ export function StaffPersonPage() {
         </div>
       )}
 
-      {observations?.length === obsPageSize ? (
+      {obsHasMore ? (
         <div className="mt-4 flex justify-center">
           <Button
             variant="outline"
@@ -484,6 +523,7 @@ export function StaffPersonPage() {
 
 function ObservationCard({
   observation: o,
+  showType,
   canDelete,
   confirmingDelete,
   onRequestDelete,
@@ -491,6 +531,7 @@ function ObservationCard({
   onConfirmDelete,
 }: {
   observation: Observation & { id: string };
+  showType: boolean;
   canDelete: boolean;
   confirmingDelete: boolean;
   onRequestDelete: () => void;
@@ -512,11 +553,13 @@ function ObservationCard({
                 <span className="text-ops-gray italic">Untitled observation</span>
               )}
             </span>
-            <span
-              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${typeBadge(o.type)}`}
-            >
-              {o.type}
-            </span>
+            {showType ? (
+              <span
+                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${typeBadge(o.type)}`}
+              >
+                {o.type}
+              </span>
+            ) : null}
           </div>
           <StatusChip status={o.status} />
         </div>

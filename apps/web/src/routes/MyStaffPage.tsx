@@ -13,10 +13,10 @@ import {
   type Role,
   type Staff,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useDevMode, useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { assertWritable } from '@/dev/viewAsGuard';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,8 @@ import { CreateObservationDialog } from '@/observations/CreateObservationDialog'
 import { yearLabel } from '@/utils/staffFormatting';
 
 type StaffRow = Staff & { id: string };
+
+const VIEW_AS_READ_ONLY = 'Read-only while viewing as someone else';
 type StaffTab = 'all' | 'probationary' | 'highCycle';
 
 const staffRowKey = (r: StaffRow) => r.email;
@@ -106,26 +108,18 @@ function evaluationListWarning(
  * flag, CSV import and rollover stay in the console.
  */
 export function MyStaffPage() {
-  const { user } = useAuth();
-  const { override } = useDevMode();
   const { role } = useEffectiveClaims();
+  const isViewingAs = useIsViewingAs();
   const navigate = useNavigate();
   const newObservationsDisabled = useNewObservationsDisabled();
-  const myEmail = user?.email?.toLowerCase() ?? '';
+  const myEmail = useEffectiveEmail();
 
   const { data: myStaff, loading: myStaffLoading } = useFirestoreDoc<Staff>(
     myEmail ? `${COLLECTIONS.staff}/${myEmail}` : '',
   );
 
-  // Dev mode can override the building scope when impersonating
-  // Administrator for a specific building; otherwise the admin's own doc.
-  const overrideBuilding =
-    override.role === 'administrator' && override.building ? override.building : null;
-  const myBuildings = useMemo<string[]>(
-    () => (overrideBuilding ? [overrideBuilding] : (myStaff?.buildings ?? [])),
-    [overrideBuilding, myStaff],
-  );
-  const missingBuildings = !overrideBuilding && !myStaffLoading && myBuildings.length === 0;
+  const myBuildings = useMemo<string[]>(() => myStaff?.buildings ?? [], [myStaff]);
+  const missingBuildings = !myStaffLoading && myBuildings.length === 0;
 
   const { data: staff, loading, error } = useFirestoreCollection<Staff>(COLLECTIONS.staff);
   const { data: rolesRaw } = useFirestoreCollection<Role>(
@@ -189,6 +183,12 @@ export function MyStaffPage() {
 
   const writePatch = useCallback<PatchStaff>((email, patch) => {
     setPatchError(null);
+    try {
+      assertWritable();
+    } catch (err) {
+      setPatchError(err instanceof Error ? err.message : String(err));
+      return;
+    }
     setDoc(
       doc(db, COLLECTIONS.staff, email),
       { ...patch, updatedAt: serverTimestamp() },
@@ -347,32 +347,40 @@ export function MyStaffPage() {
 
   const renderRowActions = useCallback(
     (r: StaffRow) => {
-      const blocked = newObservationsDisabled
-        ? 'New observations are turned off'
-        : observeBlockReason(observerScope, r);
+      // Staff the admin can't observe (wrong status, another building,
+      // archived) get no start button. Temporary blocks keep it, disabled.
+      const observable = observeBlockReason(observerScope, r) === null;
+      const blocked = isViewingAs
+        ? VIEW_AS_READ_ONLY
+        : newObservationsDisabled
+          ? 'New observations are turned off'
+          : null;
       return (
         <div className="flex items-center justify-end gap-2">
-          {/* A disabled button fires no hover events, so the reason lives
-              on a wrapper. */}
-          <span title={blocked ?? undefined}>
-            <Button
-              size="sm"
-              disabled={blocked !== null}
-              aria-label={blocked ? `Start observation (${blocked})` : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                setObserving(r);
-              }}
-            >
-              Start observation
-            </Button>
-          </span>
+          {observable ? (
+            // A disabled button fires no hover events, so the reason lives
+            // on a wrapper.
+            <span title={blocked ?? undefined}>
+              <Button
+                size="sm"
+                disabled={blocked !== null}
+                aria-label={`New observation for ${r.name}${blocked ? ` (${blocked})` : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setObserving(r);
+                }}
+              >
+                New
+              </Button>
+            </span>
+          ) : null}
           <Button variant="outline" size="sm" asChild>
             <Link
               to={`/staff/${encodeURIComponent(r.email.toLowerCase())}`}
               onClick={(e) => e.stopPropagation()}
+              aria-label={`View all observations for ${r.name}`}
             >
-              View observations
+              View All
             </Link>
           </Button>
           {editMode && !isLocked(r) ? (
@@ -381,7 +389,7 @@ export function MyStaffPage() {
         </div>
       );
     },
-    [newObservationsDisabled, observerScope, editMode, patchStaff],
+    [isViewingAs, newObservationsDisabled, observerScope, editMode, patchStaff],
   );
 
   const scopeLabel = myBuildings.join(', ');
@@ -430,14 +438,16 @@ export function MyStaffPage() {
             </Button>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            onClick={() => setEditMode(true)}
-            disabled={myBuildings.length === 0}
-          >
-            <Pencil />
-            Edit roster
-          </Button>
+          <span title={isViewingAs ? VIEW_AS_READ_ONLY : undefined}>
+            <Button
+              variant="outline"
+              onClick={() => setEditMode(true)}
+              disabled={isViewingAs || myBuildings.length === 0}
+            >
+              <Pencil />
+              Edit roster
+            </Button>
+          </span>
         )
       }
     >
@@ -525,6 +535,7 @@ export function MyStaffPage() {
         onSortChange={setSort}
         editing={editMode}
         rowActions={renderRowActions}
+        rowActionsHeader="Observations"
       />
 
       <StaffDialog

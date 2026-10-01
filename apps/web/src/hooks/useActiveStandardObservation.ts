@@ -11,16 +11,22 @@ import { useFirestoreCollection } from './useFirestoreCollection';
  * the moment the peer evaluator creates the observation, even before
  * dates are picked.
  */
-export function useActiveStandardObservation(observedEmail: string) {
+export function useActiveStandardObservation(
+  observedEmail: string,
+  /** Scope to one observer's drafts (an observer viewing someone else; see
+   *  useStaffCheckpoints). Null for the observed teacher themselves. */
+  observerEmail: string | null = null,
+) {
   const constraints = useMemo(
     () => [
+      ...(observerEmail ? [where('observerEmail', '==', observerEmail)] : []),
       where('observedEmail', '==', observedEmail),
       where('type', '==', OBSERVATION_TYPES.standard),
       where('status', '==', OBSERVATION_STATUS.draft),
       orderBy('createdAt', 'desc'),
       limit(1),
     ],
-    [observedEmail],
+    [observedEmail, observerEmail],
   );
 
   const { data, loading, error } = useFirestoreCollection<Observation>(
@@ -28,7 +34,7 @@ export function useActiveStandardObservation(observedEmail: string) {
     constraints,
     // Disambiguate by email: the hook keys on constraint types only, so a
     // different observedEmail would otherwise collide on the same cache key.
-    [observedEmail],
+    [observedEmail, observerEmail ?? ''],
   );
 
   return { observation: data?.[0] ?? null, loading, error };

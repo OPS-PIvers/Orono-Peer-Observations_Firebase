@@ -28,6 +28,7 @@ import {
 import { yearLabel } from '@/utils/staffFormatting';
 import { toDate } from '@/scheduling/slotTime';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from '@/admin/staff/StaffFilterBar';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface UpdateObservationWindowResult {
   ok: true;
@@ -200,6 +201,7 @@ export function EditObservationWindowDialog({
     setError(null);
     setResendingEmail(email);
     try {
+      assertWritable();
       await updateObservationWindowFn({
         windowId: win.windowId,
         addInvitees: [],
@@ -261,6 +263,7 @@ export function EditObservationWindowDialog({
 
     setSubmitting(true);
     try {
+      assertWritable();
       await updateObservationWindowFn(input);
       onOpenChange(false);
       onSaved();

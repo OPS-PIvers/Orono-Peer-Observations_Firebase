@@ -13,21 +13,22 @@ import {
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
+  SPECIAL_ROLES,
   canCreateObservations,
-  isAdminRole,
   type Observation,
   type ObservationStatus,
   type Role,
   displayYear,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail } from '@/dev/DevModeContext';
 import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { roleDisplayName } from '@/utils/roleLookup';
+import { showsObservationTypes } from './observationTypeLabels';
+import { useObserverObservations } from './useObserverObservations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -51,22 +52,27 @@ const PAGE_SIZE = 50;
 // on-demand server-side search bounded, same spirit as PAGE_SIZE above.
 const EXTRA_SEARCH_LIMIT = 25;
 
+const LAST_MODIFIED_DESC = orderBy('lastModifiedAt', 'desc');
+
 /**
  * Landing page for PEs and admins (special-access roles). Shows the
  * observations they can see, filtered by status and free-text search.
  *
- * Admins / Full Access: see all observations.
- * Peer Evaluators: see all observations (security rules enforce — they
- *   technically have hasSpecialAccess and can list everything).
+ * Console admins (Full Access, hasAdminAccess): every observation.
+ * Peer Evaluators and building Administrators: the ones they created plus
+ *   the ones shared with them as co-observer (useObserverObservations).
+ * All of it as the viewed-as person in dev mode.
  * Teachers / specialists: don't reach this page; they're routed to MyRubric.
  */
 export function ObservationsListPage() {
-  const { user, claims } = useAuth();
-  const isAdmin = isAdminRole(claims.role);
+  const { role } = useEffectiveClaims();
+  const myEmail = useEffectiveEmail();
+  const showTypes = showsObservationTypes(role);
   const newObservationsDisabled = useNewObservationsDisabled();
-  // Effective (dev-switcher-aware) role, so "Real" shows exactly what the
-  // signed-in user's own role allows.
-  const canCreate = canCreateObservations(useEffectiveClaims().role);
+  // Building Administrators start observations from My Staff, not the
+  // New observation page.
+  const startsFromMyStaff = role === SPECIAL_ROLES.administrator;
+  const canCreate = canCreateObservations(role) && !startsFromMyStaff;
 
   // Status comes from the URL (?status=draft|finalized) so the sidebar's
   // In-progress / Finalized / All observations links land on the right view.
@@ -81,7 +87,6 @@ export function ObservationsListPage() {
         ? OBSERVATION_STATUS.finalized
         : 'all';
   const [search, setSearch] = useState('');
-  const [showAllPEs, setShowAllPEs] = useState(false);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   // Reset back to the first page whenever the filter changes — otherwise a
@@ -89,36 +94,25 @@ export function ObservationsListPage() {
   // over-fetch the new selection.
   useEffect(() => {
     setPageSize(PAGE_SIZE);
-  }, [statusFilter, showAllPEs, isAdmin, user?.email]);
+  }, [statusFilter, myEmail]);
 
-  // Constraints stay stable per filter selection. Admins default to "all
-  // PEs"; non-admin PEs default to "just mine" with a toggle to widen.
-  const constraints = useMemo<QueryConstraint[]>(() => {
-    const cs: QueryConstraint[] = [orderBy('lastModifiedAt', 'desc'), limit(pageSize)];
-    if (statusFilter !== 'all') {
-      cs.unshift(where('status', '==', statusFilter));
-    }
-    if (!isAdmin && !showAllPEs && user?.email) {
-      cs.unshift(where('observerEmail', '==', user.email.toLowerCase()));
-    }
-    return cs;
-  }, [statusFilter, showAllPEs, isAdmin, user?.email, pageSize]);
-
+  const statusFilters = useMemo<QueryConstraint[]>(
+    () => (statusFilter === 'all' ? [] : [where('status', '==', statusFilter)]),
+    [statusFilter],
+  );
   const {
     data: observations,
     loading,
     error,
-  } = useFirestoreCollection<Observation>(COLLECTIONS.observations, constraints, [
-    statusFilter,
-    showAllPEs,
-    isAdmin,
-    user?.email?.toLowerCase() ?? '',
-    // `limit()`'s value isn't reflected in the hook's constraint-type key
-    // (only constraint *types* are, per useFirestoreCollection's docs), so
-    // pageSize must be threaded through keyParts to force a resubscribe
-    // when "Load more" grows the page.
+    hasMore,
+    oversight: isAdmin,
+  } = useObserverObservations({
+    enabled: true,
+    filters: statusFilters,
+    orderBy: LAST_MODIFIED_DESC,
     pageSize,
-  ]);
+    keyParts: [statusFilter],
+  });
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
 
   const filtered = useMemo(() => {
@@ -151,7 +145,7 @@ export function ObservationsListPage() {
     setExtraResults(null);
     setExtraSearchedFor(null);
     setExtraSearchError(null);
-  }, [search, statusFilter, showAllPEs, isAdmin, user?.email]);
+  }, [search, statusFilter, isAdmin, myEmail]);
 
   async function searchOlderRecords() {
     const q = search.trim();
@@ -160,10 +154,9 @@ export function ObservationsListPage() {
     setExtraSearchError(null);
     try {
       const qLower = q.toLowerCase();
-      const scope =
-        !isAdmin && !showAllPEs && user?.email
-          ? where('observerEmail', '==', user.email.toLowerCase())
-          : null;
+      // Own observations only for observers (rules require the scope);
+      // co-observed ones are in the live list above.
+      const scope = !isAdmin && myEmail ? where('observerEmail', '==', myEmail) : null;
       const ref = collection(db, COLLECTIONS.observations);
       // Firestore string ranges are case-sensitive but the local filter this
       // lookup backstops matches case-insensitively — run each name prefix
@@ -289,17 +282,6 @@ export function ObservationsListPage() {
             className="pl-9"
           />
         </div>
-        {!isAdmin ? (
-          <label className="text-muted-foreground flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={showAllPEs}
-              onChange={(e) => setShowAllPEs(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Include observations by other PEs
-          </label>
-        ) : null}
       </div>
 
       {error ? (
@@ -315,7 +297,7 @@ export function ObservationsListPage() {
               <TableHead>Observed</TableHead>
               <TableHead>Observer</TableHead>
               <TableHead className="w-32">Status</TableHead>
-              <TableHead className="w-32">Type</TableHead>
+              {showTypes ? <TableHead className="w-32">Type</TableHead> : null}
               <TableHead className="w-32">Last modified</TableHead>
               <TableHead className="w-20" />
             </TableRow>
@@ -351,9 +333,19 @@ export function ObservationsListPage() {
             ) : observations?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-muted-foreground py-6 text-center">
-                  {canCreate
-                    ? 'No observations yet. Click "New observation" to start one.'
-                    : 'No observations yet.'}
+                  {canCreate ? (
+                    'No observations yet. Click "New observation" to start one.'
+                  ) : startsFromMyStaff ? (
+                    <>
+                      No observations yet. Start one from{' '}
+                      <Link to="/my-staff" className="text-ops-blue underline underline-offset-2">
+                        My Staff
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    'No observations yet.'
+                  )}
                 </TableCell>
               </TableRow>
             ) : combined.length === 0 ? (
@@ -410,7 +402,9 @@ export function ObservationsListPage() {
                   <TableCell>
                     <StatusBadge status={o.status} />
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{o.type}</TableCell>
+                  {showTypes ? (
+                    <TableCell className="text-muted-foreground text-xs">{o.type}</TableCell>
+                  ) : null}
                   <TableCell className="text-muted-foreground text-xs">
                     {formatRelative(o.lastModifiedAt)}
                   </TableCell>
@@ -426,7 +420,7 @@ export function ObservationsListPage() {
         </Table>
       </div>
 
-      {observations?.length === pageSize ? (
+      {hasMore ? (
         <div className="mt-4 flex justify-center">
           <Button
             variant="outline"

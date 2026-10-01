@@ -20,6 +20,7 @@ import {
 import {
   COLLECTIONS,
   SPECIAL_ROLES,
+  canCreateObservations,
   effectiveModulesFor,
   type ModuleDoc,
   type Role,
@@ -28,7 +29,8 @@ import {
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useDevMode, useEffectiveClaims } from '@/dev/DevModeContext';
+import { roleDisplayName } from '@/utils/roleLookup';
 import { useActiveObservationTypes } from '@/observations/ActiveObservationTypesContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -42,6 +44,8 @@ import { ADMIN_NAV_SECTIONS } from '@/admin/adminNav';
 interface NavSubItem {
   label: string;
   href: string;
+  /** Also active on routes nested under href (e.g. a window's assign page). */
+  matchNested?: boolean;
 }
 
 interface NavItem {
@@ -51,6 +55,8 @@ interface NavItem {
   action?: () => void;
   locked?: boolean;
   children?: NavSubItem[];
+  /** Other route prefixes this entry owns (e.g. My Staff → /staff/:email). */
+  alsoActiveOn?: string[];
 }
 
 interface NavConfig {
@@ -93,12 +99,28 @@ export function useSidebar() {
 
 // ─── Nav item builder ────────────────────────────────────────────────────────
 
-const OBS_CHILDREN: NavSubItem[] = [
+const OBS_CREATE_CHILDREN: NavSubItem[] = [
   { label: 'New observation', href: '/observations/new' },
+  { label: 'Observation windows', href: '/observations/windows', matchNested: true },
+];
+
+const OBS_LIST_CHILDREN: NavSubItem[] = [
   { label: 'In-progress', href: '/observations?status=draft' },
   { label: 'Finalized', href: '/observations?status=finalized' },
   { label: 'All observations', href: '/observations' },
 ];
+
+/** Starting observations and running windows are for observer roles only
+ *  (canCreateObservations, the requireObserverRole guard). A console admin
+ *  in an observed role (hasAdminAccess) can browse but not start. */
+function obsChildren(role: string | null): NavSubItem[] {
+  // Building Administrators start observations from My Staff, and windows
+  // are the Peer Evaluators' scheduling tool, so they get the lists only.
+  if (!canCreateObservations(role) || role === SPECIAL_ROLES.administrator) {
+    return OBS_LIST_CHILDREN;
+  }
+  return [...OBS_CREATE_CHILDREN, ...OBS_LIST_CHILDREN];
+}
 
 interface NavFlags {
   hasWorkProduct: boolean;
@@ -133,11 +155,12 @@ function buildNavItems(
   const dashboardItem: NavItem = { icon: Sparkles, label: 'My Dashboard', href: '/dashboard' };
 
   if (role === SPECIAL_ROLES.administrator) {
+    // My Staff is an Administrator's home. Staff person pages (/staff/:email)
+    // are reached from it and keep it highlighted. No My Dashboard / My
+    // Rubric (teacher-facing) and no observation windows (PE scheduling).
     const main: NavItem[] = [
-      dashboardItem,
-      myRubricItem,
-      { icon: Building2, label: 'My Staff', href: '/my-staff' },
-      { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      { icon: Building2, label: 'My Staff', href: '/my-staff', alsoActiveOn: ['/staff'] },
+      { icon: ClipboardList, label: 'Observations', children: obsChildren(role) },
     ];
     if (flags.canOpenConsole) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
@@ -150,7 +173,7 @@ function buildNavItems(
       dashboardItem,
       myRubricItem,
       { icon: Users, label: 'Staff', href: '/staff' },
-      { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+      { icon: ClipboardList, label: 'Observations', children: obsChildren(role) },
     ];
     if (flags.canOpenConsole) {
       main.push({ icon: Settings, label: 'Admin Console', href: '/admin' });
@@ -166,7 +189,7 @@ function buildNavItems(
       main: [
         dashboardItem,
         myRubricItem,
-        { icon: ClipboardList, label: 'Observations', children: OBS_CHILDREN },
+        { icon: ClipboardList, label: 'Observations', children: obsChildren(role) },
         { icon: Settings, label: 'Admin Console', href: '/admin' },
       ],
       meta: metaItems,
@@ -221,11 +244,15 @@ function isActivePath(href: string, pathname: string): boolean {
 function isExactChildActive(
   href: string,
   location: { pathname: string; hash: string; search: string },
+  matchNested = false,
 ): boolean {
   const [pathAndQuery, hrefHash] = href.split('#');
   const [hrefPath, hrefQuery] = (pathAndQuery ?? href).split('?');
   const path = hrefPath ?? href;
-  const pathMatches = location.pathname === path || location.pathname.startsWith(path + '/');
+  // Exact path only, unless the child opts in: otherwise "All observations"
+  // (/observations) lights up on every /observations/:id editor page.
+  const pathMatches =
+    location.pathname === path || (matchNested && location.pathname.startsWith(path + '/'));
   if (!pathMatches) return false;
   // Hash-link children (e.g. /my-rubric#domain-1) are active only when the
   // URL hash matches — otherwise all four domain entries would highlight.
@@ -248,7 +275,7 @@ function activeChildHref(
   const pathLength = (href: string) => (href.split(/[?#]/)[0] ?? href).length;
   return (
     children
-      .filter((c) => isExactChildActive(c.href, location))
+      .filter((c) => isExactChildActive(c.href, location, c.matchNested))
       .sort((a, b) => pathLength(b.href) - pathLength(a.href))[0]?.href ?? null
   );
 }
@@ -293,7 +320,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const { effectiveEmail: emailLower, viewAsStaff } = useDevMode();
   const { data: myStaff } = useFirestoreDoc<Staff>(
     emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '',
   );
@@ -350,9 +377,11 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
     onCloseMobileRef.current = onCloseMobile;
   });
 
+  // location.key, not pathname: query/hash-only links (Observations →
+  // In-progress, My Rubric domains) must close the drawer too.
   useEffect(() => {
     onCloseMobileRef.current();
-  }, [location.pathname]);
+  }, [location.key]);
 
   const handleSignOut = useCallback(() => void signOut(), [signOut]);
   const navConfig = useMemo(() => {
@@ -384,7 +413,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
   function isSectionVisible(item: NavItem): boolean {
     const override = explicitOpen.get(item.label);
     if (override !== undefined) return override;
-    return item.children?.some((c) => isActivePath(c.href, location.pathname)) ?? false;
+    return item.children?.some((c) => isExactChildActive(c.href, location, c.matchNested)) ?? false;
   }
 
   function toggleSection(label: string) {
@@ -428,10 +457,12 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
         {showLabels && user && (
           <div className="shrink-0 border-b border-white/10 px-3 py-2.5">
             <div className="truncate text-sm font-medium text-white">
-              {user.displayName ?? user.email}
+              {viewAsStaff?.name ?? user.displayName ?? user.email}
             </div>
             {claims.role ? (
-              <div className="text-ops-blue-lighter truncate text-xs">{claims.role}</div>
+              <div className="text-ops-blue-lighter truncate text-xs">
+                {roleDisplayName(roles, claims.role)}
+              </div>
             ) : null}
           </div>
         )}
@@ -477,8 +508,7 @@ export function AppSidebar({ pcExpanded, mobileOpen, onCloseMobile }: AppSidebar
             >
               <button
                 type="button"
-                onClick={() => void navigate('/my-rubric')}
-                {...prefetchHandlersFor('/my-rubric')}
+                onClick={() => void navigate('/')}
                 className={cn(
                   'mb-1 flex w-full items-center rounded-md py-2 text-sm transition-colors',
                   'text-white/70 hover:bg-white/10 hover:text-white',
@@ -581,7 +611,10 @@ interface NavEntryProps {
 
 function NavEntry({ item, showLabels, location, sectionOpen, onToggleSection }: NavEntryProps) {
   const navigate = useNavigate();
-  const isActive = item.href ? isActivePath(item.href, location.pathname) : false;
+  const isActive = item.href
+    ? isActivePath(item.href, location.pathname) ||
+      (item.alsoActiveOn?.some((p) => isActivePath(p, location.pathname)) ?? false)
+    : false;
 
   const baseItemCls = cn(
     'flex w-full items-center rounded-md py-2 text-sm transition-colors',

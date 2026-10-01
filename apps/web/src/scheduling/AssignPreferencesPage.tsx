@@ -27,6 +27,7 @@ import { functions } from '@/lib/firebase';
 import { AutoAssignDialog } from './AutoAssignDialog';
 import type { PreferenceDoc, SlotDoc } from './autoAssignPreferences';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface AssignResult {
   observationId: string;
@@ -98,6 +99,7 @@ export function AssignPreferencesPage() {
     setError(null);
     setAssigningId(pref.id);
     try {
+      assertWritable();
       await assignFromPreferenceFn({ windowId, email: pref.email, slotId });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not assign that slot.');

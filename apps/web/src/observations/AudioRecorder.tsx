@@ -41,6 +41,7 @@ import {
   recordingTitle,
   saveBlob,
 } from './recordings';
+import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
 
 interface RequestTranscriptionResponse {
   jobId?: string;
@@ -147,7 +148,7 @@ export function AudioRecorder({
   const backfillRequestedRef = useRef(false);
   const needsBackfill = audioFileIds.some((id) => !recordings?.[id]);
   useEffect(() => {
-    if (!needsBackfill || backfillRequestedRef.current) return;
+    if (!needsBackfill || backfillRequestedRef.current || isViewAsActive()) return;
     backfillRequestedRef.current = true;
     backfillRecordingMetadataFn({ observationId }).catch(() => undefined);
   }, [needsBackfill, observationId]);
@@ -173,6 +174,7 @@ export function AudioRecorder({
         return next;
       });
       try {
+        assertWritable();
         await requestTranscriptionFn({ observationId, audioFileId });
       } catch (err) {
         setRequestError((prev) => ({
@@ -465,6 +467,7 @@ function RecordingsList({
     setDeletingId(audioFileId);
     setDeleteError(null);
     try {
+      assertWritable();
       await removeRecordingFn({ observationId, audioFileId });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Could not delete the recording');
@@ -624,6 +627,7 @@ function RecordingItem({
 
   function saveLabel() {
     void run('rename', async () => {
+      assertWritable();
       await renameRecordingFn({ observationId, audioFileId, label: draftLabel.trim() });
       setRenaming(false);
     });
@@ -645,6 +649,7 @@ function RecordingItem({
     const tab = window.open('', '_blank');
     void run('drive', async () => {
       try {
+        assertWritable();
         const { data } = await getRecordingDriveLinkFn({ observationId, audioFileId });
         if (tab) tab.location.href = data.webViewLink;
         else window.open(data.webViewLink, '_blank', 'noopener');

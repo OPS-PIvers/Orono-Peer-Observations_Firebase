@@ -9,8 +9,7 @@ import {
   type SetStepCheckInput,
   type Staff,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useObserverScope } from '@/hooks/useObserverScope';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
@@ -28,6 +27,8 @@ import {
 import type { CheckpointWithStatus } from './deriveCheckpoints';
 import { EvaluatorChecklistView, observationTypeForWatchedKind } from './EvaluatorChecklistView';
 import { useStaffCheckpoints } from './useStaffCheckpoints';
+import { assertWritable } from '@/dev/viewAsGuard';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
 
 const setStepCheckFn = httpsCallable<SetStepCheckInput, { ok: true; path: string }>(
   functions,
@@ -47,14 +48,22 @@ function errorMessage(err: unknown, fallback: string): string {
  * optimistic state to reconcile.
  */
 export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
-  const { tasks } = useStaffCheckpoints(staff.email, { includeHidden: true });
-  const { user } = useAuth();
-  const observerEmail = user?.email?.toLowerCase() ?? '';
+  const viewerEmail = useEffectiveEmail();
+  const { allowed: oversight, loading: oversightLoading } = useAdminConsoleAccess();
+  // An observer's checklist reflects only their own observations of this
+  // teacher; console admins see every observer's.
+  const { tasks } = useStaffCheckpoints(
+    oversightLoading ? '' : staff.email,
+    { includeHidden: true },
+    oversight ? null : viewerEmail,
+  );
+  const observerEmail = viewerEmail;
   const { data: observerStaff } = useFirestoreDoc<Staff>(
     observerEmail ? `${COLLECTIONS.staff}/${observerEmail}` : '',
   );
   const newObservationsDisabled = useNewObservationsDisabled();
   const effectiveRole = useEffectiveClaims().role;
+  const isViewingAs = useIsViewingAs();
   const observerScope = useObserverScope();
   // A building Administrator can only start observations of summative staff
   // in their buildings; otherwise these steps wait for another observer.
@@ -77,6 +86,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
   }
 
   async function writeCheck(task: CheckpointWithStatus, observationId: string | null) {
+    assertWritable();
     await setStepCheckFn({
       staffEmail: staff.email.toLowerCase(),
       stepId: task.key,
@@ -110,6 +120,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     setError(task.id, null);
     let observationId: string;
     try {
+      assertWritable();
       const ref = await addDoc(
         collection(db, COLLECTIONS.observations),
         newDraftObservationDoc({
@@ -137,17 +148,26 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
   }
 
+  // Steps for observation types this viewer never runs are someone else's
+  // workflow: a building Administrator doesn't see the Work Product /
+  // Instructional Round steps, which belong to peer evaluators.
+  const visibleTasks = tasks.filter(
+    (t) =>
+      t.key === 'module' || creatableTypes.includes(observationTypeForWatchedKind(t.watchedKind)),
+  );
+
   const confirmType = confirming ? observationTypeForWatchedKind(confirming.watchedKind) : null;
 
   return (
     <>
       <EvaluatorChecklistView
-        tasks={tasks}
+        tasks={visibleTasks}
         pendingId={pendingId}
         errors={errors}
         newObservationsDisabled={newObservationsDisabled}
         canCreateObservations={canCreate}
         creatableTypes={creatableTypes}
+        readOnly={isViewingAs}
         onToggle={(task) => void handleToggle(task)}
         onStart={(task) => setConfirming(task)}
       />

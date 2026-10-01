@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { newDraftObservationDoc } from './newObservationDoc';
 import { OBSERVATION_TYPE_OPTION_LABELS } from './observationTypeLabels';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 export interface CreateObservationDialogProps {
   open: boolean;
@@ -87,6 +88,7 @@ export function CreateObservationDialog({
     setSubmitting(true);
     setError(null);
     try {
+      assertWritable();
       const ref = await addDoc(
         collection(db, COLLECTIONS.observations),
         newDraftObservationDoc({

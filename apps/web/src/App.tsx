@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { DevModeProvider } from '@/dev/DevModeContext';
 import * as L from '@/lazyRoutes';
 import { NotFound } from '@/routes/NotFound';
-import { RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
+import { NotForAdministrators, RoleAwareRedirect } from '@/routes/RoleAwareRedirect';
 import { Unauthorized } from '@/routes/Unauthorized';
 
 // Dev-only sign-in helper. Lazy-loaded so production bundles tree-shake
@@ -71,9 +71,23 @@ export function App() {
               {/* Authenticated routes (no special access required) */}
               <Route element={<StandardShell />}>
                 <Route path="/" element={<RoleAwareRedirect />} />
-                <Route path="/dashboard" element={<L.StaffDashboardPage />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <NotForAdministrators>
+                      <L.StaffDashboardPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route path="/my-observations" element={<L.MyObservationsPage />} />
-                <Route path="/my-rubric" element={<L.MyRubricPage />} />
+                <Route
+                  path="/my-rubric"
+                  element={
+                    <NotForAdministrators>
+                      <L.MyRubricPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route path="/profile" element={<L.ProfilePage />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/observations/:observationId" element={<L.ObservationEditorPage />} />
@@ -104,11 +118,29 @@ export function App() {
                   alone isn't enough — the hasAdminAccess flag grants it to
                   observed roles too. */}
               <Route element={<StandardShell requireObserverRole />}>
-                <Route path="/observations/new" element={<L.NewObservationPage />} />
-                <Route path="/observations/windows" element={<L.MyObservationWindowsPage />} />
+                <Route
+                  path="/observations/new"
+                  element={
+                    <NotForAdministrators>
+                      <L.NewObservationPage />
+                    </NotForAdministrators>
+                  }
+                />
+                <Route
+                  path="/observations/windows"
+                  element={
+                    <NotForAdministrators>
+                      <L.MyObservationWindowsPage />
+                    </NotForAdministrators>
+                  }
+                />
                 <Route
                   path="/observations/windows/:windowId/assign"
-                  element={<L.AssignPreferencesPage />}
+                  element={
+                    <NotForAdministrators>
+                      <L.AssignPreferencesPage />
+                    </NotForAdministrators>
+                  }
                 />
               </Route>
 

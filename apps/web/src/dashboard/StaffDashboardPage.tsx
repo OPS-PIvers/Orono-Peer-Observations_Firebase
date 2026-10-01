@@ -27,6 +27,8 @@ import { DashboardView, type ModuleChip } from './DashboardView';
 import { type CheckpointWithStatus, extractFirstName } from './deriveCheckpoints';
 import { deriveModuleTasks } from './deriveModuleTasks';
 import { useStaffCheckpoints } from './useStaffCheckpoints';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
 
 const DEFAULT_SECTIONS: DashboardSectionsConfig = {
   hero: true,
@@ -52,7 +54,7 @@ function currentSchoolYearLabel(now: Date = new Date()): string {
 
 export function StaffDashboardPage() {
   const { user } = useAuth();
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const emailLower = useEffectiveEmail();
   const queryClient = useQueryClient();
 
   const staffPath = emailLower ? `${COLLECTIONS.staff}/${emailLower}` : '';
@@ -106,6 +108,7 @@ export function StaffDashboardPage() {
 
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
+      assertWritable();
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
         acknowledgedAt: serverTimestamp(),
         acknowledgedBy: emailLower,
@@ -185,6 +188,7 @@ export function StaffDashboardPage() {
       onAcknowledge={(id) => ackMutation.mutate(id)}
       acknowledging={ackMutation.isPending}
       onCompleteModuleItem={(moduleId, itemId) => {
+        if (isViewAsActive()) return;
         const ref = doc(
           db,
           COLLECTIONS.staff,

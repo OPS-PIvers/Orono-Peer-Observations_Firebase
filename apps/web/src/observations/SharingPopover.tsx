@@ -6,6 +6,8 @@ import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
+import { assertWritable } from '@/dev/viewAsGuard';
+import { CoObserversSection, type CoObserversSectionProps } from './CoObserversSection';
 
 type VisibilityKey = keyof DraftVisibility;
 
@@ -21,6 +23,8 @@ export interface SharingPopoverProps {
   observationId: string;
   /** Live value from the observation doc; the switches reflect it. */
   value: DraftVisibility | undefined;
+  /** Who co-observes (owner-managed); see CoObserversSection. */
+  coObservers: Omit<CoObserversSectionProps, 'observationId'>;
 }
 
 /**
@@ -33,7 +37,7 @@ export interface SharingPopoverProps {
  * (rules gate documents, not fields), so this stops the data rendering,
  * not the data arriving. On finalize everything is visible regardless.
  */
-export function SharingPopover({ observationId, value }: SharingPopoverProps) {
+export function SharingPopover({ observationId, value, coObservers }: SharingPopoverProps) {
   const [pending, setPending] = useState<Partial<DraftVisibility>>({});
   const [error, setError] = useState<string | null>(null);
   const effective: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN, ...value, ...pending };
@@ -42,6 +46,7 @@ export function SharingPopover({ observationId, value }: SharingPopoverProps) {
   async function toggle(key: VisibilityKey, next: boolean) {
     setPending((p) => ({ ...p, [key]: next }));
     try {
+      assertWritable();
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
         draftVisibility: { ...effective, [key]: next },
         lastModifiedAt: serverTimestamp(),
@@ -104,6 +109,7 @@ export function SharingPopover({ observationId, value }: SharingPopoverProps) {
             Could not update sharing: {error}
           </p>
         ) : null}
+        <CoObserversSection observationId={observationId} {...coObservers} />
       </PopoverContent>
     </Popover>
   );

@@ -6,8 +6,8 @@ import {
   type AppSettings,
   type GeminiFeatureKey,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from './useFirestoreDoc';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
 
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
@@ -24,8 +24,7 @@ export type GeminiAccessMap = Record<GeminiFeatureKey, boolean>;
  */
 export function useGeminiAccess(): GeminiAccessMap {
   const { data } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
-  const { user } = useAuth();
-  const email = user?.email ?? null;
+  const email = useEffectiveEmail() || null;
   // Firestore docs predate the access field for existing tenants, so read
   // through resolveGeminiFeature rather than trusting the inferred type.
   const gemini = data?.gemini as Partial<Record<GeminiFeatureKey, unknown>> | undefined;

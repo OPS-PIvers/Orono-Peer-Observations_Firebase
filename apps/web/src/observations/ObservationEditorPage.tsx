@@ -17,6 +17,9 @@ import {
   COLLECTIONS,
   DRAFT_VISIBILITY_HIDDEN,
   OBSERVATION_STATUS,
+  canEditObservationContent,
+  canManageObservation,
+  observationAccessFor,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
   type DraftVisibility,
   type Observation,
@@ -33,7 +36,9 @@ import {
   roleYearMappingDocId,
   displayYear,
 } from '@ops/shared';
-import { useAuth, useIsAdmin } from '@/auth/AuthProvider';
+import { useDevMode } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
+import { useGoBack } from '@/hooks/useGoBack';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -63,12 +68,14 @@ import {
 import { roleDisplayName } from '@/utils/roleLookup';
 import { hasTiptapContent } from '@/utils/tiptapContent';
 import { ScriptEditor, type EvidenceCaptureRequest } from './ScriptEditor';
-import { SharingPopover } from './SharingPopover';
+import { SharingPopover, type SharingPopoverProps } from './SharingPopover';
+import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
+import { showsObservationTypes } from './observationTypeLabels';
 import { answerEditability, splitQuestionsByPhase } from './questionAnswers';
 import { useReflectionUnlock } from './useReflectionUnlock';
 import { AudioPopoverButton } from './AudioPopoverButton';
@@ -153,8 +160,15 @@ export function ObservationEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const requestedPanel = panelFromHash(location.hash);
-  const { user } = useAuth();
-  const isAdminUser = useIsAdmin();
+  // As the viewed-as person in dev mode; read-only while viewing as.
+  const { effectiveClaims, effectiveEmail: myEmail, viewAsEmail } = useDevMode();
+  const isViewingAs = viewAsEmail !== null;
+  // Console admins see and manage every observation; Peer Evaluators and
+  // building Administrators only their own and ones shared with them.
+  const { allowed: hasOversight } = useAdminConsoleAccess();
+  // Back to wherever the user came from; a deep link (email, new tab) goes
+  // to their role's home.
+  const goBack = useGoBack('/');
   const sidebarWidth = useSidebarWidth();
   const reflectionUnlock = useReflectionUnlock();
 
@@ -347,6 +361,7 @@ export function ObservationEditorPage() {
     setSavingState('saving');
     setSaveError(null);
     try {
+      assertWritable();
       await setDoc(
         doc(db, `${COLLECTIONS.observations}/${observation.id}`),
         {
@@ -466,28 +481,29 @@ export function ObservationEditorPage() {
     void flush();
   }, [flush]);
 
-  // KEEP the lowercase normalization — observerEmail is stored lowercased
-  // when the observation is created, but Firebase Auth's User#email reflects
-  // the case the user typed. Without this, the 233 imported observations
-  // would silently flip to read-only for their original observer.
+  // myEmail is lowercased (useDevMode), matching the stored observerEmail /
+  // observedEmail. Firebase Auth's User#email keeps the case the user typed,
+  // which used to flip 233 imported observations to read-only.
   const isReadOnly = observation?.status === OBSERVATION_STATUS.finalized;
-  const isObserver = observation?.observerEmail === user?.email?.toLowerCase();
-  // Same lowercase-normalization rationale as isObserver — observedEmail is
-  // stored lowercased, but Firebase Auth's User#email preserves input case.
-  const isObservedStaff = observation?.observedEmail === user?.email?.toLowerCase();
-  const showAcknowledge = isReadOnly && isObservedStaff && !observation.acknowledgedAt;
+  const isObservedStaff = observation?.observedEmail === myEmail;
+  /** The observed teacher, able to write: never while viewing as. */
+  const canAnswer = isObservedStaff && !isViewingAs;
+  const showAcknowledge = isReadOnly && canAnswer && !observation.acknowledgedAt;
   const showAckPrompt = showAcknowledge && ackRequested && !ackPromptDismissed;
   // Admins may also edit Drafts (firestore.rules allows admin updates of any
   // field) — most importantly after reopening a finalized observation to fix
   // a mistake, when the admin isn't necessarily the original observer.
-  const canEdit = !isReadOnly && (isObserver || isAdminUser);
-  const showFinalize = canEdit && observation?.status === OBSERVATION_STATUS.draft;
+  const access = observation ? observationAccessFor(observation, myEmail, hasOversight) : null;
+  const canEdit = !isViewingAs && !isReadOnly && canEditObservationContent(access);
+  // Finalize, sharing and co-observers are the owner's (or oversight's).
+  const canManage = !isViewingAs && canManageObservation(access);
+  const showFinalize = canEdit && canManage && observation?.status === OBSERVATION_STATUS.draft;
   // Admin-only escape hatch: reopen a finalized observation for correction.
-  const showReopen = isReadOnly && isAdminUser;
+  const showReopen = !isViewingAs && isReadOnly && hasOversight;
   // Observer-or-admin action: re-render and re-upload the PDF for a
   // finalized observation without a full reopen/re-finalize cycle. Mirrors
   // the callable's own auth check server-side — this is UX gating only.
-  const showRegenerate = isReadOnly && (isObserver || isAdminUser);
+  const showRegenerate = !isViewingAs && isReadOnly && canManage;
 
   // The observed staff member's Planning / Reflection questions live in the
   // same panels as the evaluator's meeting notes — this page serves both
@@ -507,7 +523,7 @@ export function ObservationEditorPage() {
     questionConstraints,
     [questionType ?? ''],
   );
-  const answers = useWorkProductAnswers(observation, isObservedStaff);
+  const answers = useWorkProductAnswers(observation, canAnswer);
 
   // Evidence capture: a sentence selected in a teacher's answer is appended
   // to the script (attributed) and the component picker opens on it. The
@@ -537,7 +553,7 @@ export function ObservationEditorPage() {
       answerEditability({
         phase,
         status: observation.status,
-        isObservedStaff,
+        isObservedStaff: canAnswer,
         observationDate,
         now,
         reflectionUnlock,
@@ -559,7 +575,7 @@ export function ObservationEditorPage() {
   }, [
     observation,
     questionBank,
-    isObservedStaff,
+    canAnswer,
     reflectionUnlock,
     answers,
     isOnline,
@@ -851,9 +867,10 @@ export function ObservationEditorPage() {
     setAcknowledging(true);
     setAcknowledgeError(null);
     try {
+      assertWritable();
       await updateDoc(doc(db, `${COLLECTIONS.observations}/${observation.id}`), {
         acknowledgedAt: serverTimestamp(),
-        acknowledgedBy: user?.email?.toLowerCase() ?? '',
+        acknowledgedBy: myEmail,
         lastModifiedAt: serverTimestamp(),
       });
       dismissAckPrompt();
@@ -938,13 +955,7 @@ export function ObservationEditorPage() {
               variant="ghost"
               size="sm"
               aria-label="Back"
-              onClick={() => {
-                if (observation.observedEmail) {
-                  void navigate(`/staff/${observation.observedEmail}`);
-                } else {
-                  void navigate(-1);
-                }
-              }}
+              onClick={goBack}
               className="text-ops-blue hover:text-ops-blue-dark hover:bg-ops-blue-lighter/30 -ml-2 h-9 w-9 shrink-0 px-0"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -959,7 +970,7 @@ export function ObservationEditorPage() {
               <ObservationInfoPopover
                 role={observedRoleLabel}
                 year={observation.observedYear}
-                type={observation.type}
+                {...(showsObservationTypes(effectiveClaims.role) ? { type: observation.type } : {})}
                 {...(isBookedObservation
                   ? {
                       booking: {
@@ -1020,8 +1031,17 @@ export function ObservationEditorPage() {
         showRegenerate={showRegenerate}
         onRegenerate={() => setRegenerateOpen(true)}
         sharing={
-          canEdit && observation.status === OBSERVATION_STATUS.draft
-            ? { observationId: observation.id, value: observation.draftVisibility }
+          canEdit && canManage && observation.status === OBSERVATION_STATUS.draft
+            ? {
+                observationId: observation.id,
+                value: observation.draftVisibility,
+                coObservers: {
+                  ownerEmail: observation.observerEmail,
+                  observedEmail: observation.observedEmail,
+                  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Firestore reads bypass Zod defaults; older docs lack this field
+                  value: observation.coObserverEmails ?? [],
+                },
+              }
             : null
         }
       />
@@ -1275,7 +1295,7 @@ interface EditorToolbarProps {
   showRegenerate: boolean;
   onRegenerate: () => void;
   /** Evaluator-only draft sharing switchboard; null hides the button. */
-  sharing: { observationId: string; value: DraftVisibility | undefined } | null;
+  sharing: SharingPopoverProps | null;
 }
 
 /**
@@ -1324,9 +1344,7 @@ function EditorToolbar({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {sharing ? (
-            <SharingPopover observationId={sharing.observationId} value={sharing.value} />
-          ) : null}
+          {sharing ? <SharingPopover {...sharing} /> : null}
           {canEdit ? (
             <AudioPopoverButton
               observationId={observation.id}
@@ -1388,7 +1406,8 @@ function ObservationInfoPopover({
 }: {
   role: string;
   year: number | string;
-  type: string;
+  /** Omitted for roles that don't see observation types. */
+  type?: string;
   /** Present only when the observation was created from a booked slot. */
   booking?: {
     scheduledStartAt: unknown;
@@ -1460,10 +1479,12 @@ function ObservationInfoPopover({
               <dt className="text-ops-gray w-12 shrink-0">Year</dt>
               <dd className="font-medium">{String(displayYear(Number(year)))}</dd>
             </div>
-            <div className="flex gap-1.5">
-              <dt className="text-ops-gray w-12 shrink-0">Type</dt>
-              <dd className="font-medium">{typeLabel}</dd>
-            </div>
+            {typeLabel ? (
+              <div className="flex gap-1.5">
+                <dt className="text-ops-gray w-12 shrink-0">Type</dt>
+                <dd className="font-medium">{typeLabel}</dd>
+              </div>
+            ) : null}
           </dl>
           {booking ? (
             <div className="mt-2 border-t border-gray-100 pt-2">

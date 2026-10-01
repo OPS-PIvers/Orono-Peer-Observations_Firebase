@@ -4,7 +4,17 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -72,19 +82,51 @@ describe('observations: read access', () => {
     await assertFails(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('admin can read any observation', async () => {
+  it("building Administrator CANNOT read another observer's observation", async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
-    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('any PE can read any observation (special access)', async () => {
+  it("another PE CANNOT read someone else's observation", async () => {
     const db = testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('Full Access (oversight) can read any observation', async () => {
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('PE can list observations; unrelated teacher cannot', async () => {
+  it('a co-observer can read it', async () => {
+    await seedDraftObs('shared', { coObserverEmails: [OTHER_PE_EMAIL] });
+    const db = testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/shared')));
+  });
+
+  it('observers list only their own or co-observed observations', async () => {
+    await seedDraftObs('shared', { coObserverEmails: [OTHER_PE_EMAIL] });
+    const pe2 = testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore();
+    await assertFails(getDocs(collection(pe2, 'observations')));
+    await assertSucceeds(
+      getDocs(query(collection(pe2, 'observations'), where('observerEmail', '==', OTHER_PE_EMAIL))),
+    );
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(pe2, 'observations'),
+          where('coObserverEmails', 'array-contains', OTHER_PE_EMAIL),
+        ),
+      ),
+    );
+    const fa = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertSucceeds(getDocs(collection(fa, 'observations')));
+  });
+
+  it('PE can list their own observations; unrelated teacher cannot', async () => {
     const peDb = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
-    await assertSucceeds(getDocs(collection(peDb, 'observations')));
+    await assertSucceeds(
+      getDocs(query(collection(peDb, 'observations'), where('observerEmail', '==', PE_EMAIL))),
+    );
     // A teacher who is NOT the observed staff member can't list the
     // collection — list scopes per-doc to `observedEmail == auth.email`.
     const otherDb = testEnv
@@ -372,12 +414,17 @@ describe('observations: update', () => {
     await assertFails(updateDoc(doc(db, 'observations/finalObs'), { observationName: 'Re-edit' }));
   });
 
-  it('admin can update any observation, including finalized', async () => {
+  it('Full Access (oversight) can update any observation, including finalized', async () => {
     await seedDraftObs('finalObs', { status: 'Finalized', finalizedAt: new Date() });
-    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(
       updateDoc(doc(db, 'observations/finalObs'), { observationName: 'Admin override' }),
     );
+  });
+
+  it("building Administrator CANNOT update another observer's observation", async () => {
+    const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { observationName: 'Nope' }));
   });
 
   it('teacher cannot update an observation about them', async () => {
@@ -455,8 +502,13 @@ describe('observations: delete', () => {
     await assertFails(deleteDoc(doc(db, 'observations/obs1')));
   });
 
-  it('admin can delete', async () => {
+  it("building Administrator CANNOT delete another observer's Draft", async () => {
     const db = testEnv.authenticatedContext('admin', claims.admin()).firestore();
+    await assertFails(deleteDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('Full Access (oversight) can delete', async () => {
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(deleteDoc(doc(db, 'observations/obs1')));
   });
 
@@ -636,5 +688,61 @@ describe('observations: draftVisibility switchboard', () => {
         lastModifiedAt: new Date(),
       }),
     );
+  });
+});
+
+describe('observations: co-observers', () => {
+  const AP_EMAIL = 'ap@orono.k12.mn.us';
+  beforeEach(async () => {
+    await seedDraftObs('obs1');
+  });
+
+  it('owner can share a Draft with a co-observer', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(updateDoc(doc(db, 'observations/obs1'), { coObserverEmails: [AP_EMAIL] }));
+  });
+
+  it('owner cannot add themselves or the observed teacher', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { coObserverEmails: [PE_EMAIL] }));
+    await assertFails(
+      updateDoc(doc(db, 'observations/obs1'), { coObserverEmails: [OBSERVED_EMAIL] }),
+    );
+  });
+
+  it('cannot be created already shared', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, 'observations/new1'), {
+        observerEmail: PE_EMAIL,
+        observedEmail: OBSERVED_EMAIL,
+        status: 'Draft',
+        type: 'Standard',
+        coObserverEmails: [AP_EMAIL],
+      }),
+    );
+  });
+
+  it('a co-observer can edit Draft content but not sharing, visibility or status', async () => {
+    await seedDraftObs('shared', { coObserverEmails: [AP_EMAIL] });
+    const db = testEnv.authenticatedContext('ap', claims.admin(AP_EMAIL)).firestore();
+    const ref = doc(db, 'observations/shared');
+    await assertSucceeds(updateDoc(ref, { observationName: 'Joint notes' }));
+    await assertFails(updateDoc(ref, { coObserverEmails: [AP_EMAIL, OTHER_PE_EMAIL] }));
+    await assertFails(updateDoc(ref, { draftVisibility: { ratings: true } }));
+    await assertFails(updateDoc(ref, { status: 'Finalized' }));
+  });
+
+  it('a co-observer cannot edit once Finalized, or delete', async () => {
+    await seedDraftObs('sharedFinal', {
+      coObserverEmails: [AP_EMAIL],
+      status: 'Finalized',
+      finalizedAt: new Date(),
+    });
+    await seedDraftObs('sharedDraft', { coObserverEmails: [AP_EMAIL] });
+    const db = testEnv.authenticatedContext('ap', claims.admin(AP_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/sharedFinal')));
+    await assertFails(updateDoc(doc(db, 'observations/sharedFinal'), { observationName: 'x' }));
+    await assertFails(deleteDoc(doc(db, 'observations/sharedDraft')));
   });
 });

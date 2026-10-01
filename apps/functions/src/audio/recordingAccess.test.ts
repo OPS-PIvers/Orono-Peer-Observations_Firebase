@@ -80,11 +80,35 @@ describe('requireRecordingReader', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('allows peer evaluators and admins, not other staff', async () => {
+  it('allows oversight and co-observers, not other PEs, building admins or staff', async () => {
     const other = 'someone@orono.k12.mn.us';
     await expect(
-      requireRecordingReader(dbWithStaff(null), request('peer-evaluator'), obs(), other),
+      requireRecordingReader(dbWithStaff(null), request('full-access'), obs(), other),
     ).resolves.toBeUndefined();
+    await expect(
+      requireRecordingReader(
+        dbWithStaff(null),
+        request('administrator'),
+        { ...obs(), coObserverEmails: [other] },
+        other,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      requireRecordingReader(
+        dbWithStaff({ role: 'peer-evaluator' }),
+        request('peer-evaluator'),
+        obs(),
+        other,
+      ),
+    ).rejects.toThrow(/Not authorized/);
+    await expect(
+      requireRecordingReader(
+        dbWithStaff({ role: 'administrator' }),
+        request('administrator'),
+        obs(),
+        other,
+      ),
+    ).rejects.toThrow(/Not authorized/);
     await expect(
       requireRecordingReader(dbWithStaff({ role: 'teacher' }), request('teacher'), obs(), other),
     ).rejects.toThrow(/Not authorized/);

@@ -92,7 +92,12 @@ beforeEach(() => {
     'appSettings/dashboard': configWithModes(),
     [`staff/${PE}`]: { role: 'peer-evaluator', name: 'Pat Evaluator' },
     [`staff/${TEACHER}`]: { role: 'teacher', name: 'Terry Teacher' },
-    'observations/obs-1': { observedEmail: TEACHER, status: 'Finalized' },
+    'observations/obs-1': { observerEmail: PE, observedEmail: TEACHER, status: 'Finalized' },
+    'observations/obs-pe2': {
+      observerEmail: 'pe2@orono.k12.mn.us',
+      observedEmail: TEACHER,
+      status: 'Draft',
+    },
     'observations/obs-other': { observedEmail: 'someone@orono.k12.mn.us', status: 'Draft' },
   });
 });
@@ -199,7 +204,17 @@ describe('handleSetStepCheck — writes', () => {
     expect(env.docs.has(`staff/${TEACHER}/stepChecks/signup`)).toBe(true);
   });
 
-  it("lets any evaluator clear another evaluator's check, recording who had checked it", async () => {
+  it("rejects a PE checking a step on someone else's observation", async () => {
+    const input = {
+      staffEmail: TEACHER,
+      stepId: 'preObs',
+      observationId: 'obs-pe2',
+      checked: true,
+    };
+    expect(await codeOf(handleSetStepCheck(env.db, peCaller, input))).toBe('permission-denied');
+  });
+
+  it("lets the observer clear another evaluator's check, recording who had checked it", async () => {
     env.docs.set('observations/obs-1/stepChecks/preObs', {
       stepId: 'preObs',
       checkedBy: 'pe2@orono.k12.mn.us',

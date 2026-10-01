@@ -41,12 +41,13 @@ import {
 import { answerProgress, splitQuestionsByPhase } from '@/observations/questionAnswers';
 import { useReflectionUnlock } from '@/observations/useReflectionUnlock';
 import { toJsDate } from '@/utils/staffFormatting';
-import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 // Cap the query — staff never have more than a few dozen observations.
 const PAGE_LIMIT = 100;
@@ -65,8 +66,7 @@ function formatDate(value: Observation['finalizedAt'] | undefined): string {
 }
 
 export function MyObservationsPage() {
-  const { user } = useAuth();
-  const emailLower = user?.email?.toLowerCase() ?? '';
+  const emailLower = useEffectiveEmail();
   const queryClient = useQueryClient();
 
   const constraints = useMemo(
@@ -115,6 +115,7 @@ export function MyObservationsPage() {
 
   const ackMutation = useMutation({
     mutationFn: async (observationId: string) => {
+      assertWritable();
       await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
         acknowledgedAt: serverTimestamp(),
         acknowledgedBy: emailLower,

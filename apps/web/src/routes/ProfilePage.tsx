@@ -19,7 +19,6 @@ import {
   type Staff,
   type UpdateEmailPreferencesInput,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { PROFICIENCY_LABELS } from '@/components/rubric/RubricGrid';
 import { Button } from '@/components/ui/button';
@@ -37,6 +36,8 @@ import {
   yearLabel,
   yearStatusLabel,
 } from '@/utils/staffFormatting';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 /** Domain-id → chart stroke color, mirroring RubricGridEditor's
  *  `DOMAIN_ACCENTS` (border-l-ops-blue/red/blue-light/red-light) so a given
@@ -518,6 +519,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
   const handleConnect = () => {
     setError(null);
     try {
+      assertWritable();
       beginCalendarConnect(email, '/profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the connection.');
@@ -528,6 +530,7 @@ function CalendarIntegrationSection({ email }: { email: string }) {
     setBusy(true);
     setError(null);
     try {
+      assertWritable();
       const { data } = await disconnectGoogleCalendarFn({});
       setStatus(data);
     } catch (err) {
@@ -626,6 +629,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
     setSavingCategory(category);
     setPrefs((p) => ({ ...p, [category]: checked }));
     try {
+      assertWritable();
       const { data } = await updateEmailPreferencesFn({ [category]: checked });
       setPrefs(data);
     } catch (err) {
@@ -680,8 +684,7 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
 }
 
 export function ProfilePage() {
-  const { user } = useAuth();
-  const email = user?.email?.toLowerCase() ?? '';
+  const email = useEffectiveEmail();
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
   const { data: staff, loading: staffLoading } = useDocument<Staff>(staffDocRef);

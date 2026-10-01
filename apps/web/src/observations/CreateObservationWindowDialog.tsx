@@ -39,6 +39,7 @@ import {
 import { yearLabel } from '@/utils/staffFormatting';
 import { OBSERVATION_TYPE_OPTION_LABELS } from './observationTypeLabels';
 import { StaffFilterBar, EMPTY_FILTERS, type StaffFilters } from '@/admin/staff/StaffFilterBar';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface CreateObservationWindowResult {
   windowId: string;
@@ -363,6 +364,7 @@ export function CreateObservationWindowDialog({
 
     setSubmitting(true);
     try {
+      assertWritable();
       const res = await createObservationWindowFn(input);
       onOpenChange(false);
       onCreated(res.data.windowId);

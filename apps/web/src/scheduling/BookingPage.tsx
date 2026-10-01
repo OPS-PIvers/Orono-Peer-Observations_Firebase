@@ -18,7 +18,6 @@ import {
   type SubmitDayPreferenceInput,
   type WindowInvitee,
 } from '@ops/shared';
-import { useAuth } from '@/auth/AuthProvider';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
@@ -36,6 +35,8 @@ import {
   staffBusyIntervalsFromObservations,
 } from './staffConflicts';
 import { formatLocalDateTime, formatLocalTime, formatYMD } from './slotTime';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 interface BookResult {
   observationId: string;
@@ -96,8 +97,7 @@ export function BookingPage() {
   const { windowId } = useParams<{ windowId: string }>();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
-  const { user } = useAuth();
-  const myEmail = user?.email?.toLowerCase() ?? '';
+  const myEmail = useEffectiveEmail();
 
   const windowPath = windowId ? `${COLLECTIONS.observationWindows}/${windowId}` : '';
   const { data: windowDoc, loading: windowLoading } =
@@ -597,6 +597,7 @@ export function BookingPage() {
     setError(null);
     setSubmitting(true);
     try {
+      assertWritable();
       const res = await bookObservationSlotFn({
         windowId,
         slotId,
@@ -623,6 +624,7 @@ export function BookingPage() {
     setError(null);
     setSubmitting(true);
     try {
+      assertWritable();
       const res = await rescheduleBookingFn({ windowId, newSlotId, inviteToken: token });
       const slot = (slots ?? []).find((s) => s.slotId === newSlotId);
       setRescheduledNote(
@@ -649,6 +651,7 @@ export function BookingPage() {
     setError(null);
     setSubmitting(true);
     try {
+      assertWritable();
       await cancelBookingFn({ windowId, slotId, reason: reason.trim() });
       setBookedConfirmation(null);
       setSelectedSlotId(null);
@@ -666,6 +669,7 @@ export function BookingPage() {
     setError(null);
     setSubmitting(true);
     try {
+      assertWritable();
       await submitDayPreferenceFn({
         windowId,
         inviteToken: token,

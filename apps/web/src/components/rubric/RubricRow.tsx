@@ -28,6 +28,7 @@ import {
   extractTaggedSpansForComponent,
 } from '@/observations/extract-script-tags';
 import { PROFICIENCY_LABELS, RUBRIC_GRID_COLS, type RubricGridMode } from './RubricGrid';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 const uploadEvidenceFn = httpsCallable<
   {
@@ -107,6 +108,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
     setUploadError(null);
     try {
       const base64Data = await fileToBase64(file);
+      assertWritable();
       await uploadEvidenceFn({
         observationId: mode.observationId,
         componentId: component.id,
@@ -129,6 +131,7 @@ export function RubricRow({ component, mode, storageScope }: RubricRowProps) {
     setRemovingFileId(fileRef.driveFileId);
     setUploadError(null);
     try {
+      assertWritable();
       await removeEvidenceFn({
         observationId: mode.observationId,
         componentId: component.id,
@@ -1157,6 +1160,7 @@ export function MobileComponentBody({
     setUploadError(null);
     try {
       const base64Data = await fileToBase64(file);
+      assertWritable();
       await uploadEvidenceFn({
         observationId: mode.observationId,
         componentId: component.id,
@@ -1179,6 +1183,7 @@ export function MobileComponentBody({
     setRemovingFileId(fileRef.driveFileId);
     setUploadError(null);
     try {
+      assertWritable();
       await removeEvidenceFn({
         observationId: mode.observationId,
         componentId: component.id,

@@ -34,6 +34,7 @@ import {
   type AutoTagColor,
   type AutoTagSuggestion,
 } from './AutoTagReviewDialog';
+import { assertWritable } from '@/dev/viewAsGuard';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -244,6 +245,7 @@ export function ScriptEditor({
     setAutoTagError(null);
     setAutoTagNotice(null);
     try {
+      assertWritable();
       const res = await suggestScriptTagsFn({ observationId });
       const { suggestions, componentColors, skippedCount } = res.data;
       if (suggestions.length === 0) {
@@ -268,6 +270,7 @@ export function ScriptEditor({
     setApplyBusy(true);
     setApplyError(null);
     try {
+      assertWritable();
       const res = await applyScriptTagsFn({
         observationId,
         suggestions: kept.map(({ paragraphIndex, text, componentId }) => ({

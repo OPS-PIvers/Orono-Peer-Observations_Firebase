@@ -5,6 +5,7 @@ import {
   AUDIT_ACTIONS,
   COLLECTIONS,
   DASHBOARD_CONFIG_DOC_ID,
+  canEditObservationContent,
   OBSERVATION_SUBCOLLECTIONS,
   STAFF_SUBCOLLECTIONS,
   resolveSteps,
@@ -17,6 +18,7 @@ import {
   type StepCheck,
 } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -94,6 +96,15 @@ export async function handleSetStepCheck(
       throw new HttpsError(
         'failed-precondition',
         'That observation belongs to a different staff member.',
+      );
+    }
+    // Only that observation's observers (owner or co-observer) or oversight
+    // check off its steps — not every PE or building Administrator.
+    const access = await callerObservationAccess(db, obs, { email: callerEmail, tokenRole });
+    if (!canEditObservationContent(access)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only the observers of this observation can check off its steps.',
       );
     }
     path = `${COLLECTIONS.observations}/${observationId}/${OBSERVATION_SUBCOLLECTIONS.stepChecks}/${stepId}`;

@@ -5,10 +5,11 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   APP_SETTINGS_DOC_ID,
+  canManageObservation,
   COLLECTIONS,
+  displayYear,
   OBSERVATION_STATUS,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
-  isAdminRole,
   questionPhase,
   roleYearMappingDocId,
   workProductAnswerHasText,
@@ -19,7 +20,6 @@ import {
   type Rubric,
   type RubricDomain,
   type WorkProductQuestion,
-  displayYear,
 } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -43,6 +43,7 @@ import {
   pdfAttachment,
   reportFileName,
 } from '../lib/acknowledgeEmail.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -123,9 +124,17 @@ export const finalizeObservation = onCall(
     const obs = { id: obsSnap.id, ...obsSnap.data() } as unknown as Observation & { id: string };
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin && obs.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or an admin can finalize.');
+    // Owner or oversight only: a co-observer edits the draft but the owner
+    // finalizes it, and building Administrators get no override.
+    const access = await callerObservationAccess(db, obs, {
+      email: userEmail,
+      tokenRole: callerRole,
+    });
+    if (!canManageObservation(access)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Only the observer who created this observation can finalize it.',
+      );
     }
 
     // Atomically claim the finalize transition. Re-reads the observation

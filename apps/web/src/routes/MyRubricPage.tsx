@@ -21,6 +21,7 @@ import {
 } from '@/components/rubric';
 import { RecentObservationsStrip } from '@/observations/RecentObservationsStrip';
 import { roleDisplayName } from '@/utils/roleLookup';
+import { useEffectiveEmail } from '@/dev/DevModeContext';
 
 const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
 
@@ -37,7 +38,7 @@ const ASSIGNMENT_STORAGE_KEY = 'myRubric:assignmentMode';
 export function MyRubricPage() {
   const { user } = useAuth();
   const location = useLocation();
-  const lowerEmail = user?.email?.toLowerCase() ?? '';
+  const lowerEmail = useEffectiveEmail();
 
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>(() => {
     if (typeof window === 'undefined') return 'assigned';

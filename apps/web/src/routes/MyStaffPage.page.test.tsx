@@ -3,7 +3,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Role, Staff } from '@ops/shared';
 
-const { staffHolder, rolesHolder, meHolder, setDocMock } = vi.hoisted(() => ({
+const { staffHolder, rolesHolder, meHolder, setDocMock, viewingAs } = vi.hoisted(() => ({
+  viewingAs: { current: false },
   staffHolder: { current: [] as (Staff & { id: string })[] },
   rolesHolder: { current: [] as (Role & { id: string })[] },
   meHolder: { current: null as (Staff & { id: string }) | null },
@@ -21,13 +22,10 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase', () => ({ auth: {}, db: {}, storage: {}, functions: {} }));
 
-vi.mock('@/auth/AuthProvider', () => ({
-  useAuth: () => ({ user: { email: 'principal@orono.k12.mn.us' } }),
-}));
-
 vi.mock('@/dev/DevModeContext', () => ({
-  useDevMode: () => ({ override: { role: null, building: null } }),
   useEffectiveClaims: () => ({ role: 'administrator' }),
+  useEffectiveEmail: () => 'principal@orono.k12.mn.us',
+  useIsViewingAs: () => viewingAs.current,
 }));
 
 vi.mock('@/hooks/useNewObservationsDisabled', () => ({
@@ -96,6 +94,7 @@ function rowFor(name: string): HTMLElement {
 
 beforeEach(() => {
   setDocMock.mockClear();
+  viewingAs.current = false;
   meHolder.current = makeStaff({
     email: 'principal@orono.k12.mn.us',
     name: 'Pat Principal',
@@ -154,15 +153,19 @@ describe('MyStaffPage', () => {
     expect(screen.queryByRole('button', { name: 'Role for Ann OMS' })).toBeNull();
   });
 
-  it('enables Start observation only for summative staff', () => {
+  it('shows New only for staff the admin can observe', () => {
     renderPage();
     const start = (name: string) =>
-      within(rowFor(name)).getByRole('button', { name: /^Start observation/ });
-    expect((start('Ann OMS') as HTMLButtonElement).disabled).toBe(false);
-    expect((start('Pia OMS') as HTMLButtonElement).disabled).toBe(false);
-    const blocked = start('Dev OMS') as HTMLButtonElement;
-    expect(blocked.disabled).toBe(true);
-    expect(blocked.getAttribute('aria-label')).toMatch(/Probationary and High Cycle/);
+      within(rowFor(name)).queryByRole<HTMLButtonElement>('button', {
+        name: /^New observation for/,
+      });
+    expect(start('Ann OMS')?.disabled).toBe(false);
+    expect(start('Pia OMS')?.disabled).toBe(false);
+    // Developing status: not on the evaluation list, so no button at all.
+    expect(start('Dev OMS')).toBeNull();
+    expect(
+      within(rowFor('Dev OMS')).getByRole('link', { name: 'View all observations for Dev OMS' }),
+    ).toBeTruthy();
   });
 
   it('asks before an edit drops someone off the evaluation list', () => {
@@ -176,6 +179,19 @@ describe('MyStaffPage', () => {
     expect(setDocMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(setDocMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is fully read-only while a developer views as the admin', () => {
+    viewingAs.current = true;
+    renderPage();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Edit roster' }).disabled).toBe(
+      true,
+    );
+    const start = within(rowFor('Ann OMS')).getByRole<HTMLButtonElement>('button', {
+      name: /^New observation for/,
+    });
+    expect(start.disabled).toBe(true);
+    expect(start.getAttribute('aria-label')).toMatch(/viewing as/i);
   });
 
   it('explains when the admin has no building', () => {

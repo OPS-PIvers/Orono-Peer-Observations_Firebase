@@ -14,6 +14,7 @@ import {
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt } from './recordingHeaders.js';
+import { observationAccessFor } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -103,11 +104,15 @@ export const uploadAudio = onRequest(
     }
     const obs = obsSnap.data() as {
       observerEmail: string;
+      observedEmail: string;
+      coObserverEmails?: string[];
       observedName: string;
       status: string;
       driveFolderId: string | null;
     };
-    if (obs.observerEmail !== userEmail) {
+    // The observers record: owner or co-observer.
+    const access = observationAccessFor(obs, userEmail, false);
+    if (access !== 'owner' && access !== 'coObserver') {
       res.status(403).send('Not your observation');
       return;
     }

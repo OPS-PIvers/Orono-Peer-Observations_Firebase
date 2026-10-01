@@ -100,7 +100,7 @@ export const applyScriptTags = onCall(
       // read: the observation may have been finalized while the review dialog
       // sat open, and a finalized record is locked to AI edits just as firmly
       // as it is to hand edits.
-      assertObservationTaggable(obs, userEmail, callerRole);
+      assertObservationTaggable(obs, userEmail, ctx.oversight);
 
       const currentDoc: TiptapDoc | undefined = obs.scriptDoc;
       if (!currentDoc) {

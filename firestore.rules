@@ -384,52 +384,82 @@ service cloud.firestore {
     //
     // Delete: admin, or the observer while the observation is still a Draft.
     match /observations/{observationId} {
-      allow get: if (
-        isCurrentUserEmail(resource.data.observerEmail)
-        || isCurrentUserEmail(resource.data.observedEmail)
-        || hasSpecialAccess()
-      );
-      allow list: if hasSpecialAccess()
-        || isCurrentUserEmail(resource.data.observedEmail);
+      // Ownership model (mirrors observationAccess in @ops/shared):
+      //   owner       — the observer who created it: full control of a Draft.
+      //   co-observer — listed in coObserverEmails by the owner (e.g. a
+      //                 principal and associate principal observing
+      //                 together): read, and edit the Draft's content.
+      //   oversight   — console admins (Full Access, or the hasAdminAccess
+      //                 staff flag): everything, including finalized docs.
+      // Peer Evaluators and building Administrators see nothing they don't
+      // own or co-observe.
+      function ownsObs() {
+        return isCurrentUserEmail(resource.data.observerEmail);
+      }
+      function coObservesObs() {
+        return isFromOronoDomain()
+          && request.auth.token.email in resource.data.get('coObserverEmails', []);
+      }
+      function isObservedObs() {
+        return isCurrentUserEmail(resource.data.observedEmail);
+      }
+      // Content an observer edits on a Draft. The autosave in
+      // ObservationEditorPage writes exactly these fields (see its setDoc
+      // merge payload); evidence/audio/componentTags/driveFolderId are
+      // written server-side via callables (Admin SDK). hasOnly therefore
+      // blocks any change to type, observedEmail, observerEmail,
+      // observedName/Role/Year, status, createdAt, finalizedAt, the
+      // scheduling linkage, or injected/arbitrary fields.
+      function draftContentKeys() {
+        return [
+          'observationData',
+          'componentNotes',
+          'scriptDoc',
+          'observationName',
+          'observationDate',
+          'preObsDate',
+          'preObsNotes',
+          'postObsDate',
+          'postObsNotes',
+          'lastModifiedAt'
+        ];
+      }
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      allow get: if ownsObs() || isObservedObs() || coObservesObs() || isConsoleAdmin();
+      // Rules aren't filters: an observer's queries must constrain
+      // observerEmail == me or coObserverEmails array-contains me.
+      allow list: if ownsObs() || isObservedObs() || coObservesObs() || isConsoleAdmin();
 
       allow create: if hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
         && request.resource.data.status == 'Draft'
+        && request.resource.data.get('coObserverEmails', []).size() == 0
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.
         && (role() != 'administrator' || request.resource.data.type == 'Standard')
         // ...and only of staff they can observe (see adminCanObserve).
         && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail));
 
-      // A building Administrator can't retarget an observation at someone
-      // else, which would sidestep the adminCanObserve check on create.
-      allow update: if (isAdmin() && (role() != 'administrator' || unchanged('observedEmail')))
-        || (
-          isCurrentUserEmail(resource.data.observerEmail)
+      allow update: if (
+          // Owner: Draft content, the teacher-visibility switchboard and who
+          // co-observes. The owner can't add themselves or the observed
+          // teacher as a co-observer.
+          ownsObs()
           && resource.data.status == 'Draft'
-          // Constrain WHAT the observer may change, not just who. The autosave
-          // in ObservationEditorPage writes exactly these fields (see its
-          // setDoc merge payload); evidence/audio/componentTags/driveFolderId
-          // are written server-side via callables (Admin SDK). This hasOnly
-          // therefore blocks any change to type, observedEmail, observerEmail,
-          // observedName/Role/Year, status, createdAt, finalizedAt, the
-          // scheduling linkage, or injected/arbitrary fields, while a real
-          // autosave payload passes untouched.
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly([
-                'observationData',
-                'componentNotes',
-                'scriptDoc',
-                'observationName',
-                'observationDate',
-                'preObsDate',
-                'preObsNotes',
-                'postObsDate',
-                'postObsNotes',
-                'draftVisibility',
-                'lastModifiedAt'
-              ])
+          && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility', 'coObserverEmails']))
+          && !(request.auth.token.email in request.resource.data.get('coObserverEmails', []))
+          && !(resource.data.observedEmail in request.resource.data.get('coObserverEmails', []))
+          && request.resource.data.get('coObserverEmails', []).size() <= 10
+        )
+        || (
+          // Co-observer: Draft content only — not sharing or visibility.
+          coObservesObs()
+          && resource.data.status == 'Draft'
+          && changedKeys().hasOnly(draftContentKeys())
         )
         || (
           // Observed staff answering their Planning / Reflection questions.
@@ -439,37 +469,37 @@ service cloud.firestore {
           // and rules cannot tell which array entries changed, so the UI —
           // not this rule — keeps Planning read-only once finalized and
           // flags any answer saved after finalizedAt.
-          isCurrentUserEmail(resource.data.observedEmail)
+          isObservedObs()
           && resource.data.status in ['Draft', 'Finalized']
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['workProductAnswers', 'lastModifiedAt'])
+          && changedKeys().hasOnly(['workProductAnswers', 'lastModifiedAt'])
         )
         || (
           // Observed staff acknowledging their finalized observation — can
           // only touch the two ack fields plus the audit timestamp, and must
           // stamp acknowledgedBy with their own (verified) email so the
           // acknowledgement can't be attributed to someone else.
-          isCurrentUserEmail(resource.data.observedEmail)
+          isObservedObs()
           && resource.data.status == 'Finalized'
           && request.resource.data.acknowledgedBy == request.auth.token.email
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
-        );
+          && changedKeys().hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
+        )
+        // Oversight can correct anything except who was observed.
+        || (isConsoleAdmin() && unchanged('observedEmail'));
 
-      allow delete: if isAdmin()
-        || (
-          isCurrentUserEmail(resource.data.observerEmail)
-          && resource.data.status == 'Draft'
-        );
+      allow delete: if (ownsObs() && resource.data.status == 'Draft') || isConsoleAdmin();
 
       // Evaluator check-offs for dashboard steps tied to this observation.
       // Read: special access, or the observed staff member (any status —
       // their dashboard shows the check). Written only by the setStepCheck
       // callable (Admin SDK); no client writes, including admins.
       match /stepChecks/{stepId} {
-        allow read: if hasSpecialAccess()
+        allow read: if isConsoleAdmin()
           || isCurrentUserEmail(
-               get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail);
+               get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail)
+          || isCurrentUserEmail(
+               get(/databases/$(database)/documents/observations/$(observationId)).data.observerEmail)
+          || (isFromOronoDomain() && request.auth.token.email in
+               get(/databases/$(database)/documents/observations/$(observationId)).data.get('coObserverEmails', []));
         allow write: if false;
       }
     }

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { LayoutGrid, List, Search, Users } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
-import { COLLECTIONS, staffCycleStatus, type Role, type Staff } from '@ops/shared';
+import { COLLECTIONS, SPECIAL_ROLES, staffCycleStatus, type Role, type Staff } from '@ops/shared';
+import { useEffectiveClaims } from '@/dev/DevModeContext';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
@@ -13,7 +14,15 @@ const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
 const VIEW_MODE_KEY = 'staffDir:viewMode';
 type ViewMode = 'list' | 'cards';
 
+/** The district directory is for Peer Evaluators and Full Access. Building
+ *  Administrators work from their building-scoped My Staff instead. */
 export function StaffDirectoryPage() {
+  const { role } = useEffectiveClaims();
+  if (role === SPECIAL_ROLES.administrator) return <Navigate to="/my-staff" replace />;
+  return <StaffDirectory />;
+}
+
+function StaffDirectory() {
   const {
     data: staff,
     loading,

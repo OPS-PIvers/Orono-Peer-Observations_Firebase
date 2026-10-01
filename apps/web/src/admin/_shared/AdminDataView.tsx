@@ -70,6 +70,8 @@ interface AdminDataViewProps<T> {
   empty?: ReactNode;
   /** Trailing per-row content (e.g. a DropdownMenu kebab). */
   rowActions?: ((row: T) => ReactNode) | undefined;
+  /** Desktop header over the row-actions column; blank when omitted. */
+  rowActionsHeader?: ReactNode;
   selection?: AdminDataViewSelection;
   sort?: AdminDataViewSort | null;
   onSortChange?: (next: AdminDataViewSort | null) => void;
@@ -141,6 +143,7 @@ function DesktopTable<T>({
   onRowClick,
   empty,
   rowActions,
+  rowActionsHeader,
   selection,
   sort,
   onSortChange,
@@ -230,7 +233,11 @@ function DesktopTable<T>({
                 )}
               </TableHead>
             ))}
-            {rowActions ? <TableHead className="w-10" /> : null}
+            {rowActions ? (
+              <TableHead className={rowActionsHeader ? 'text-right' : 'w-10'}>
+                {rowActionsHeader}
+              </TableHead>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>

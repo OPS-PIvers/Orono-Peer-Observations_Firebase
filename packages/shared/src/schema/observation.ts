@@ -181,6 +181,11 @@ export const observation = z.object({
   scriptDoc: tiptapDoc.optional(),
   componentTags: z.array(componentTag).default([]),
 
+  /** Other observers the owner shared this observation with (lowercased
+   *  emails). They view it and edit the Draft's content; see
+   *  observationAccessFor. Absent on older docs. */
+  coObserverEmails: z.array(z.email()).max(10).default([]),
+
   /** Observer-controlled draft sharing switchboard — see draftVisibility. */
   draftVisibility: draftVisibility.default(DRAFT_VISIBILITY_HIDDEN),
 

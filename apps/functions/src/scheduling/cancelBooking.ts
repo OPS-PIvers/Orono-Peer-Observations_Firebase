@@ -10,7 +10,6 @@ import {
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
   cancelBookingInput,
-  isAdminRole,
   type Building,
   type ObservationSlot,
   type ObservationWindow,
@@ -21,6 +20,7 @@ import { deleteObservationEvent } from '../calendar/lib/googleCalendar.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
 import { loadSchedulingSettings, nextWindowStatus } from './bookObservationSlot.js';
 import { formatChicagoDate, formatChicagoTime, toDate } from './engine/schedulingEmail.js';
+import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -39,7 +39,13 @@ export const cancelBooking = onCall(
     const callerEmail = request.auth.token.email?.toLowerCase();
     if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
     const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
+    // District oversight only (Full Access / hasAdminAccess). Building
+    // Administrators manage their own windows, like any observer.
+    const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'console',
+    });
 
     const parsed = cancelBookingInput.safeParse(request.data);
     if (!parsed.success) {
