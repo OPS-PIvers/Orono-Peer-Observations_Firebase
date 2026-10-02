@@ -31,6 +31,9 @@ export interface PrintRubricMenuProps {
   /** Observer printing from an observation: ask what to include first.
    *  Otherwise the printout matches what is on screen. */
   withOptions?: boolean;
+  /** Observation id; makes the observer's printout scan-ready (see
+   *  `RubricPrintOptions.scanId`). */
+  observationId?: string;
   className?: string;
 }
 
@@ -61,6 +64,7 @@ export function PrintRubricMenu({
   title,
   subtitle,
   withOptions = false,
+  observationId,
   className,
 }: PrintRubricMenuProps) {
   const branding = useBranding();
@@ -68,7 +72,7 @@ export function PrintRubricMenu({
   const [printScope, setPrintScope] = useState<PrintScope>(scope);
   const [content, setContent] = useState<RubricPrintContent>(VIEW_PRINT_CONTENT);
 
-  const print = (s: PrintScope, c: RubricPrintContent) => {
+  const print = (s: PrintScope, c: RubricPrintContent, scanId?: string) => {
     // Same rule as BrandingProvider: the stock blue keeps the exact
     // DESIGN.md dark shade; a custom primary gets a derived one.
     const primaryDarkColor =
@@ -86,6 +90,7 @@ export function PrintRubricMenu({
         appName: branding.appName,
         primaryColor: branding.primaryColor,
         primaryDarkColor,
+        ...(scanId ? { scanId } : {}),
       }),
     );
   };
@@ -148,7 +153,7 @@ export function PrintRubricMenu({
               <Button
                 onClick={() => {
                   setOpen(false);
-                  print(printScope, content);
+                  print(printScope, content, observationId);
                 }}
               >
                 <Printer />

@@ -1,4 +1,5 @@
 import { PROFICIENCY_LEVELS, type Rubric } from '@ops/shared';
+import qrcode from 'qrcode-generator';
 import { PROFICIENCY_LABELS } from './proficiencyLabels';
 
 export type PrintScope = 'assigned' | 'full';
@@ -34,6 +35,13 @@ export interface RubricPrintOptions {
   appName: string;
   /** Brand blue (ops-blue). */
   primaryColor: string;
+  /**
+   * Observation id for an observer's printout. Makes the page scan-ready
+   * for a later scan-and-import: corner registration marks and a QR code
+   * identifying the observation on every page, and a rating bubble in each
+   * descriptor cell.
+   */
+  scanId?: string;
   /** Strong brand blue (ops-blue-dark) used for the domain and component
    *  chrome, as on screen. Defaults to the stock OPS value. */
   primaryDarkColor?: string;
@@ -48,6 +56,31 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Payload of the printout's QR code: format version, observation id, scope
+ * and content flags, so an importer knows which observation the sheet
+ * belongs to and which regions it should expect.
+ */
+export function scanPayload(
+  scanId: string,
+  scope: PrintScope,
+  content: RubricPrintContent,
+): string {
+  const flags = [
+    content.lookFors ? 'L' : '',
+    content.componentNotes ? 'N' : '',
+    content.overallNotes ? 'O' : '',
+  ].join('');
+  return `OPS-OBS:1:${scanId}:${scope === 'full' ? 'F' : 'A'}:${flags}`;
+}
+
+function qrSvg(data: string): string {
+  const qr = qrcode(0, 'M');
+  qr.addData(data);
+  qr.make();
+  return qr.createSvgTag({ cellSize: 2, margin: 0, scalable: true });
 }
 
 function ruledLines(count: number): string {
@@ -65,6 +98,9 @@ function ruledLines(count: number): string {
 export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
   const { rubric, assignedComponentIds, scope } = opts;
   const content = opts.content ?? VIEW_PRINT_CONTENT;
+  const scan = opts.scanId
+    ? { id: opts.scanId, payload: scanPayload(opts.scanId, scope, content) }
+    : null;
   const primary = HEX_COLOR_RE.test(opts.primaryColor) ? opts.primaryColor : '#2d3f89';
   const primaryDark =
     opts.primaryDarkColor && HEX_COLOR_RE.test(opts.primaryDarkColor)
@@ -91,7 +127,8 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
         .map((c) => {
           const assigned = assignedComponentIds.has(c.id);
           const descriptorCells = PROFICIENCY_LEVELS.map(
-            (lvl) => `<td class="desc">${escapeHtml(c.proficiencyLevels[lvl] || '—')}</td>`,
+            (lvl) =>
+              `<td class="desc">${scan ? '<span class="bubble"></span>' : ''}${escapeHtml(c.proficiencyLevels[lvl] || '—')}</td>`,
           ).join('');
           const lookFors =
             content.lookFors && c.lookFors.length > 0
@@ -228,9 +265,44 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
 
   .empty { padding: 24pt; text-align: center; color: #6a7282; font-size: 10pt; }
   footer.doc { margin-top: 8pt; font-size: 6.5pt; color: #99a1af; text-align: center; }
+
+  /* Scan-ready printouts. The fixed bands repeat on every printed page;
+     the outer table's header/footer spacer rows (also repeated per page)
+     keep the content clear of them. */
+  table.page { width: 100%; border-collapse: collapse; }
+  table.page > thead > tr > td, table.page > tfoot > tr > td { padding: 0; }
+  .band-space { height: 0.5in; }
+  .band { position: fixed; left: 0; right: 0; height: 0.42in; }
+  .band.top { top: 0; }
+  .band.bottom { bottom: 0; }
+  .mark { position: absolute; width: 0.2in; height: 0.2in; background: #000; }
+  .band.top .mark { top: 0; }
+  .band.bottom .mark { bottom: 0; }
+  .mark.l { left: 0; }
+  .mark.r { right: 0; }
+  .qr { position: absolute; top: 0; right: 0.32in; width: 0.42in; height: 0.42in; }
+  .qr svg { display: block; width: 100%; height: 100%; }
+  .scan-id {
+    position: absolute; bottom: 0; left: 0.32in; right: 0.32in; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 6.5pt; color: #6a7282;
+  }
+  .scan-hint { margin: -4pt 0 10pt; font-size: 7pt; color: #6a7282; }
+  .scan-hint .bubble { position: static; display: inline-block; vertical-align: -1.5pt; margin: 0 2pt; }
+  body.scan td.desc { position: relative; padding-right: 17pt; }
+  .bubble {
+    position: absolute; top: 6pt; right: 5pt; width: 9pt; height: 9pt;
+    border: 1px solid #364153; border-radius: 50%; background: #fff;
+  }
 </style>
 </head>
-<body class="${scope}">
+<body class="${scope}${scan ? ' scan' : ''}">
+  ${
+    scan
+      ? `<div class="band top" aria-hidden="true"><span class="mark l"></span><span class="mark r"></span><div class="qr">${qrSvg(scan.payload)}</div></div>
+  <div class="band bottom" aria-hidden="true"><span class="mark l"></span><span class="mark r"></span><span class="scan-id">${escapeHtml(scan.payload)}</span></div>
+  <table class="page"><thead><tr><td><div class="band-space"></div></td></tr></thead><tfoot><tr><td><div class="band-space"></div></td></tr></tfoot><tbody><tr><td>`
+      : ''
+  }
   <header class="doc">
     <div>
       <p class="brand">${escapeHtml(opts.appName)}</p>
@@ -242,9 +314,11 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
       ${escapeHtml(rubric.displayName)} · Printed ${escapeHtml(printed)}
     </div>
   </header>
+  ${scan ? '<p class="scan-hint">Fill in one circle <span class="bubble"></span> per component to record a rating. Keep marks inside the boxes.</p>' : ''}
   ${domainSections || '<p class="empty">No components are assigned for this role/year combination.</p>'}
   ${overall}
   <footer class="doc">Orono Public Schools · ${escapeHtml(opts.appName)}</footer>
+  ${scan ? '</td></tr></tbody></table>' : ''}
 </body>
 </html>`;
 }

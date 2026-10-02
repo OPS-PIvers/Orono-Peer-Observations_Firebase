@@ -77,6 +77,19 @@ describe('buildRubricPrintHtml', () => {
     expect(observer).toContain('Overall Comments');
   });
 
+  it('adds registration marks, a QR code and rating bubbles to scan-ready prints', () => {
+    const plain = buildRubricPrintHtml({ ...base, scope: 'assigned' });
+    expect(plain).not.toContain('class="mark');
+    expect(plain).not.toContain('class="bubble"');
+
+    const html = buildRubricPrintHtml({ ...base, scope: 'full', scanId: 'obs123' });
+    expect(html.match(/class="mark /g)).toHaveLength(4);
+    expect(html).toContain('<svg');
+    expect(html).toContain('OPS-OBS:1:obs123:F:L');
+    // One bubble per level per component (3 components) plus the legend's.
+    expect(html.match(/class="bubble"/g)).toHaveLength(3 * 4 + 1);
+  });
+
   it('escapes rubric text', () => {
     const html = buildRubricPrintHtml({ ...base, scope: 'full', subtitle: 'A & B' });
     expect(html).toContain('Content &lt;Knowledge&gt;');
