@@ -69,7 +69,7 @@ import { roleDisplayName } from '@/utils/roleLookup';
 import { hasTiptapContent } from '@/utils/tiptapContent';
 import { ScriptEditor, type EvidenceCaptureRequest } from './ScriptEditor';
 import { SharingPopover, type SharingPopoverProps } from './SharingPopover';
-import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useObservationOversight } from '@/auth/observationOversight';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
@@ -169,9 +169,10 @@ export function ObservationEditorPage() {
   // As the viewed-as person in dev mode; read-only while viewing as.
   const { effectiveClaims, effectiveEmail: myEmail, viewAsEmail } = useDevMode();
   const isViewingAs = viewAsEmail !== null;
-  // Console admins see and manage every observation; Peer Evaluators and
-  // building Administrators only their own and ones shared with them.
-  const { allowed: hasOversight } = useAdminConsoleAccess();
+  // Full Access sees and manages every observation (except their own, where
+  // they're the observed teacher); everyone else only their own and ones
+  // shared with them. Admin Console access doesn't change this.
+  const { allowed: hasOversight } = useObservationOversight();
   // Back to wherever the user came from; a deep link (email, new tab) goes
   // to their role's home.
   const goBack = useGoBack('/');
@@ -505,7 +506,7 @@ export function ObservationEditorPage() {
   const canManage = !isViewingAs && canManageObservation(access);
   const showFinalize = canEdit && canManage && observation?.status === OBSERVATION_STATUS.draft;
   // Admin-only escape hatch: reopen a finalized observation for correction.
-  const showReopen = !isViewingAs && isReadOnly && hasOversight;
+  const showReopen = !isViewingAs && isReadOnly && access === 'oversight';
   // Observer-or-admin action: re-render and re-upload the PDF for a
   // finalized observation without a full reopen/re-finalize cycle. Mirrors
   // the callable's own auth check server-side — this is UX gating only.

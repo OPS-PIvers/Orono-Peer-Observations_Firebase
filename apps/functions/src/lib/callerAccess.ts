@@ -1,5 +1,11 @@
 import type { Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, canOpenAdminConsole, isAdminRole, isSpecialRole } from '@ops/shared';
+import {
+  COLLECTIONS,
+  canOpenAdminConsole,
+  hasObservationOversight,
+  isAdminRole,
+  isSpecialRole,
+} from '@ops/shared';
 
 /**
  * Just the two /staff fields this module cares about, typed to reflect that a
@@ -15,15 +21,20 @@ interface StaffAccessFields {
 
 /**
  * The caller-authorization tiers used by admin-area callables:
+ *  - `'oversight'` — district oversight of every observation and window
+ *    (reopen, cancel others' windows/bookings): Full Access only
+ *    (hasObservationOversight). Separate from the console on purpose:
+ *    hasAdminAccess opens the Admin Console, not other people's
+ *    observations. It does not imply the tiers below.
  *  - `'console'` — Admin Console actions (e.g. resendStaffInvite, rollover,
  *    migrations): Full Access or hasAdminAccess (canOpenAdminConsole). A
  *    building Administrator is `'admin'` but not `'console'`.
  *  - `'admin'`   — the isAdmin claim (Administrator / Full Access /
  *    hasAdminAccess).
  *  - `'special'` — PE-or-admin actions (e.g. sendManualEmail,
- *    sendBulkManualEmail). Each tier satisfies the ones below it.
+ *    sendBulkManualEmail). Each of 'console', 'admin', 'special' satisfies the ones below it.
  */
-export type CallerAccessLevel = 'console' | 'admin' | 'special';
+export type CallerAccessLevel = 'oversight' | 'console' | 'admin' | 'special';
 
 /**
  * Whether `role`/`hasAdminAccess` satisfy `level`, mirroring the claim
@@ -36,6 +47,7 @@ function meetsAccessLevel(
   role: string | null | undefined,
   hasAdminAccess: boolean,
 ): boolean {
+  if (level === 'oversight') return hasObservationOversight(role);
   if (level === 'console') return canOpenAdminConsole(role, hasAdminAccess);
   const isAdmin = isAdminRole(role) || hasAdminAccess;
   return level === 'admin' ? isAdmin : isSpecialRole(role) || isAdmin;

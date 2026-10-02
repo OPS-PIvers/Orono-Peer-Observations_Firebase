@@ -40,12 +40,12 @@ export const cancelBooking = onCall(
     const callerEmail = request.auth.token.email?.toLowerCase();
     if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
     const callerRole = request.auth.token['role'] as string | undefined;
-    // District oversight only (Full Access / hasAdminAccess). Building
+    // District oversight only (Full Access; not hasAdminAccess). Building
     // Administrators manage their own windows, like any observer.
     const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
       email: callerEmail,
       tokenRole: callerRole,
-      level: 'console',
+      level: 'oversight',
     });
 
     const parsed = cancelBookingInput.safeParse(request.data);

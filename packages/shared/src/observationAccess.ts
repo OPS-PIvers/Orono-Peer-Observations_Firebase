@@ -1,4 +1,4 @@
-import { canOpenAdminConsole } from './roles.js';
+import { SPECIAL_ROLES } from './roles.js';
 
 /**
  * Who may do what with an observation. Mirrors the /observations rules in
@@ -10,20 +10,22 @@ import { canOpenAdminConsole } from './roles.js';
  *               principal observing together). Views it and edits the
  *               Draft's content; finalize, delete and sharing stay with the
  *               owner.
- * - oversight:  console admins (Full Access, or the hasAdminAccess flag).
- *               Everything, including reopening finalized observations.
- * - observed:   the staff member being observed.
+ * - oversight:  the Full Access role. Everything, including reopening
+ *               finalized observations — except their own observation,
+ *               where they are only the observed staff member. Admin
+ *               Console access (the hasAdminAccess flag) does NOT grant it.
+ * - observed:   the staff member being observed. Wins over oversight.
  * - null:       no access. Peer Evaluators and building Administrators
  *               never see observations they don't own or co-observe.
  */
 export type ObservationAccess = 'owner' | 'coObserver' | 'oversight' | 'observed' | null;
 
-/** District-level oversight of every observation. */
-export function hasObservationOversight(
-  role: string | null | undefined,
-  hasAdminAccess: boolean | null | undefined,
-): boolean {
-  return canOpenAdminConsole(role, hasAdminAccess);
+/** District-level oversight of every observation: Full Access only.
+ *  Deliberately independent of Admin Console access — a Peer Evaluator or
+ *  specialist with hasAdminAccess manages the console, not other people's
+ *  observations. Mirrored by hasObservationOversight() in firestore.rules. */
+export function hasObservationOversight(role: string | null | undefined): boolean {
+  return role === SPECIAL_ROLES.fullAccess;
 }
 
 export interface ObservationParticipants {
@@ -44,8 +46,9 @@ export function observationAccessFor(
   const coObservers: unknown = obs.coObserverEmails;
   if (is(obs.observerEmail)) return 'owner';
   if (Array.isArray(coObservers) && coObservers.some(is)) return 'coObserver';
-  if (oversight) return 'oversight';
+  // Your own observation is never yours to oversee.
   if (is(obs.observedEmail)) return 'observed';
+  if (oversight) return 'oversight';
   return null;
 }
 

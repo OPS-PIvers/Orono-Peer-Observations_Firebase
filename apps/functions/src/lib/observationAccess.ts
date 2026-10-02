@@ -10,10 +10,11 @@ import { isDemoEditSession, isDemoStaff } from './callable.js';
 /**
  * The caller's relationship to an observation (see observationAccessFor in
  * @ops/shared and the /observations rules). Owner and co-observer resolve
- * from the doc alone; oversight (Full Access or hasAdminAccess) re-reads the
- * live staff doc via callerMeetsAccessLevel('console'). A building
- * Administrator or Peer Evaluator who is neither owner nor co-observer gets
- * no access (or 'observed' for their own observation as a teacher).
+ * from the doc alone; oversight (Full Access only — not hasAdminAccess)
+ * re-reads the live staff doc via callerMeetsAccessLevel('oversight'). The
+ * observed staff member is always just 'observed', even with oversight. A
+ * building Administrator or Peer Evaluator who is neither owner nor
+ * co-observer gets no access.
  */
 export async function callerObservationAccess(
   db: Firestore,
@@ -29,11 +30,11 @@ export async function callerObservationAccess(
 ): Promise<ObservationAccess> {
   if (isDemoEditSession(args.auth) && !(await isDemoStaff(db, obs.observedEmail))) return null;
   const direct = observationAccessFor(obs, args.email, false);
-  if (direct === 'owner' || direct === 'coObserver') return direct;
+  if (direct) return direct;
   const oversight = await callerMeetsAccessLevel(db, {
     email: args.email,
     tokenRole: args.tokenRole,
-    level: 'console',
+    level: 'oversight',
   });
-  return oversight ? 'oversight' : direct;
+  return oversight ? 'oversight' : null;
 }

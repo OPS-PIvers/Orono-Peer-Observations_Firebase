@@ -8,7 +8,7 @@ import {
   type CancelObservationWindowInput,
   type ObservationWindow,
 } from '@ops/shared';
-import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useObservationOversight } from '@/auth/observationOversight';
 import { useGoBack } from '@/hooks/useGoBack';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -64,9 +64,9 @@ function statusBadgeClass(status: ObservationWindow['status']): string {
 
 export function MyObservationWindowsPage() {
   const navigate = useNavigate();
-  // Every window district-wide: console admins only. Building Administrators
+  // Every window district-wide: Full Access (oversight) only. Building Administrators
   // see the windows they opened, like any observer.
-  const { allowed: isAdmin } = useAdminConsoleAccess();
+  const { allowed: isAdmin } = useObservationOversight();
   const goBack = useGoBack('/');
   const myEmail = useEffectiveEmail();
 

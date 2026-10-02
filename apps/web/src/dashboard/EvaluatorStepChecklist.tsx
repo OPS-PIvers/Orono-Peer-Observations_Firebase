@@ -29,7 +29,7 @@ import type { CheckpointWithStatus } from './deriveCheckpoints';
 import { EvaluatorChecklistView, observationTypeForWatchedKind } from './EvaluatorChecklistView';
 import { useStaffCheckpoints } from './useStaffCheckpoints';
 import { assertWritable } from '@/dev/viewAsGuard';
-import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useObservationOversight } from '@/auth/observationOversight';
 import { useQuestionSetResolution } from '@/observations/useQuestionSetResolution';
 
 const setStepCheckFn = httpsCallable<SetStepCheckInput, { ok: true; path: string }>(
@@ -51,9 +51,9 @@ function errorMessage(err: unknown, fallback: string): string {
  */
 export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
   const viewerEmail = useEffectiveEmail();
-  const { allowed: oversight, loading: oversightLoading } = useAdminConsoleAccess();
+  const { allowed: oversight, loading: oversightLoading } = useObservationOversight();
   // An observer's checklist reflects only their own observations of this
-  // teacher; console admins see every observer's.
+  // teacher; Full Access (oversight) sees every observer's.
   const { tasks } = useStaffCheckpoints(
     oversightLoading ? '' : staff.email,
     { includeHidden: true },

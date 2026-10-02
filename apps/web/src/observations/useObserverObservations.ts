@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { limit, where, type QueryConstraint } from 'firebase/firestore';
 import { COLLECTIONS, toDate, type Observation } from '@ops/shared';
-import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useObservationOversight } from '@/auth/observationOversight';
 import { useEffectiveEmail } from '@/dev/DevModeContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 
@@ -21,7 +21,7 @@ const lastModifiedMs = (o: Row) => toDate(o.lastModifiedAt)?.getTime() ?? 0;
 
 /**
  * Observations an observer may see, matching the /observations rules:
- * console admins (oversight) get one query across everyone; Peer Evaluators
+ * Full Access (oversight) gets one query across everyone; Peer Evaluators
  * and building Administrators get the ones they created plus the ones
  * shared with them as co-observer, merged newest first. Rules aren't
  * filters, so the observer scope has to be part of each query.
@@ -38,7 +38,7 @@ export function useObserverObservations(args: {
 }): ObserverObservationsResult {
   const { enabled, filters, orderBy, pageSize, keyParts } = args;
   const me = useEffectiveEmail();
-  const { allowed: oversight, loading: accessLoading } = useAdminConsoleAccess();
+  const { allowed: oversight, loading: accessLoading } = useObservationOversight();
   const ready = enabled && !accessLoading && !!me;
 
   const allConstraints = useMemo(
