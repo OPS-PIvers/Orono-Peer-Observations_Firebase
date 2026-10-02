@@ -74,6 +74,23 @@ service cloud.firestore {
             && staffDocData().get('isActive', true) == true);
     }
 
+    // District oversight of every observation and window: Full Access only.
+    // Deliberately NOT isConsoleAdmin() — the hasAdminAccess flag opens the
+    // Admin Console, not other people's observations. Mirrors
+    // hasObservationOversight in @ops/shared.
+    function hasObservationOversight() {
+      return isFromOronoDomain() && role() == 'full-access';
+    }
+
+    // canReadAll() for observation data: oversight, or a View As grant.
+    // Console access alone doesn't qualify (see hasObservationOversight).
+    function canReadAllObservations() {
+      return hasObservationOversight()
+        || (isFromOronoDomain()
+            && staffDocData().get('canViewAs', false) == true
+            && staffDocData().get('isActive', true) == true);
+    }
+
     // Demo-edit sessions (View As + Edit): the signed-in user is being
     // driven by someone else via a custom token carrying `demoEditBy`. Such
     // a session may only write demo staff's records; every other write is
@@ -323,8 +340,8 @@ service cloud.firestore {
     // --- /observationWindows/{windowId} -------------------------------------
     // A scheduling window. Read: special-access (PE/admin) or an invited
     // staff member (their email is in invitedEmails). Create: special-access,
-    // and the observer must be the caller. Update/delete: admin or the
-    // observer. Staff never write the window (or its peBusyIntervals /
+    // and the observer must be the caller. Update/delete: oversight (Full
+    // Access) or the observer. Staff never write the window (or its peBusyIntervals /
     // dayCounts) directly — booking + day-preference flow through callable
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
@@ -339,18 +356,18 @@ service cloud.firestore {
         && (role() != 'administrator'
             || request.resource.data.defaultObservationType == 'Standard'))
         && notDemoEdit();
-      // Delete: admin or the observer. Unchanged.
-      allow delete: if (isAdmin()
+      // Delete: oversight or the observer.
+      allow delete: if (hasObservationOversight()
         || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email))
         && notDemoEdit();
-      // Update: admin may change anything. The observer may only touch a small
+      // Update: oversight may change anything. The observer may only touch a small
       // set of cosmetic/booking-default fields on their own window. The
       // authoritative accounting/invite/status fields (invitedEmails, invitees,
       // peBusyIntervals, dayCounts, perDayCap, status, the window bounds, etc.)
       // are mutated only inside callable Cloud Functions (Admin SDK, which
       // bypasses these rules) — the web client never writes the window doc
       // directly, so this allowlist can't break any legitimate client flow.
-      allow update: if (isAdmin()
+      allow update: if (hasObservationOversight()
         || (
           isFromOronoDomain()
           && resource.data.observerEmail == request.auth.token.email
@@ -428,9 +445,10 @@ service cloud.firestore {
     // --- /observations/{observationId} --------------------------------------
     //
     // Read:
-    //   - observer (creator) of the observation
-    //   - observed staff member, ONLY if status == 'Finalized'
-    //   - any user with special access (admin / PE / full access)
+    //   - observer (creator) or co-observer of the observation
+    //   - observed staff member (the UI withholds Draft content per
+    //     draftVisibility)
+    //   - Full Access (oversight), or staff with a View As grant
     //
     // Create: observer roles only (administrator / peer-evaluator /
     // full-access — canCreateObservations in @ops/shared). hasSpecialAccess
@@ -438,7 +456,8 @@ service cloud.firestore {
     // whose own role is observed (e.g. a specialist with Admin Console access).
     //
     // Update:
-    //   - admin: any field
+    //   - oversight (Full Access, never on their own observation): any field
+    //     except observedEmail
     //   - observer + currently Draft: only the autosave-editable fields
     //     (allowlisted via diff().affectedKeys().hasOnly(...)). status,
     //     participant identity, type, timestamps, and scheduling linkage are
@@ -449,17 +468,21 @@ service cloud.firestore {
     //     type, Draft or Finalized), or the ack fields on a Finalized
     //     observation (must stamp their own email).
     //
-    // Delete: admin, or the observer while the observation is still a Draft.
+    // Delete: oversight, or the observer while the observation is still a Draft.
     match /observations/{observationId} {
       // Ownership model (mirrors observationAccess in @ops/shared):
       //   owner       — the observer who created it: full control of a Draft.
       //   co-observer — listed in coObserverEmails by the owner (e.g. a
       //                 principal and associate principal observing
       //                 together): read, and edit the Draft's content.
-      //   oversight   — console admins (Full Access, or the hasAdminAccess
-      //                 staff flag): everything, including finalized docs.
-      // Peer Evaluators and building Administrators see nothing they don't
-      // own or co-observe.
+      //   oversight   — Full Access only (hasObservationOversight): everything,
+      //                 including finalized docs — except observations of
+      //                 themselves, where they are just the observed staff.
+      // Peer Evaluators, building Administrators and other Admin Console
+      // users see nothing they don't own or co-observe.
+      function oversees() {
+        return hasObservationOversight() && !isObservedObs();
+      }
       function ownsObs() {
         return isCurrentUserEmail(resource.data.observerEmail);
       }
@@ -495,10 +518,10 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys();
       }
 
-      allow get: if ownsObs() || isObservedObs() || coObservesObs() || canReadAll();
+      allow get: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
       // Rules aren't filters: an observer's queries must constrain
       // observerEmail == me or coObserverEmails array-contains me.
-      allow list: if ownsObs() || isObservedObs() || coObservesObs() || canReadAll();
+      allow list: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
 
       allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']
@@ -552,10 +575,10 @@ service cloud.firestore {
           && changedKeys().hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         )
         // Oversight can correct anything except who was observed.
-        || (isConsoleAdmin() && unchanged('observedEmail')))
+        || (oversees() && unchanged('observedEmail')))
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
-      allow delete: if ((ownsObs() && resource.data.status == 'Draft') || isConsoleAdmin())
+      allow delete: if ((ownsObs() && resource.data.status == 'Draft') || oversees())
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
       // Evaluator check-offs for dashboard steps tied to this observation.
@@ -563,7 +586,7 @@ service cloud.firestore {
       // their dashboard shows the check). Written only by the setStepCheck
       // callable (Admin SDK); no client writes, including admins.
       match /stepChecks/{stepId} {
-        allow read: if canReadAll()
+        allow read: if canReadAllObservations()
           || isCurrentUserEmail(
                get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail)
           || isCurrentUserEmail(
@@ -600,11 +623,12 @@ service cloud.firestore {
     }
 
     // --- /transcriptionJobs --------------------------------------------------
-    // Read: the requester and console admins. Writes are server-only.
+    // Read: the requester and observation oversight / View As. Writes are
+    // server-only.
     match /transcriptionJobs/{id} {
-      allow get: if canReadAll()
+      allow get: if canReadAllObservations()
         || isCurrentUserEmail(resource.data.requestedBy);
-      allow list: if canReadAll()
+      allow list: if canReadAllObservations()
         || isCurrentUserEmail(resource.data.requestedBy);
       allow write: if false;
     }

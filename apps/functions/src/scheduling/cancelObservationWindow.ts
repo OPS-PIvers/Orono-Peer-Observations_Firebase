@@ -45,12 +45,12 @@ export const cancelObservationWindow = onCall(
     const window = windowSnap.data() as ObservationWindow;
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    // District oversight only (Full Access / hasAdminAccess). Building
+    // District oversight only (Full Access; not hasAdminAccess). Building
     // Administrators manage their own windows, like any observer.
     const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
       email: userEmail,
       tokenRole: callerRole,
-      level: 'console',
+      level: 'oversight',
     });
     if (!isAdmin && window.observerEmail !== userEmail) {
       throw new HttpsError('permission-denied', 'Only the observer or an admin can cancel.');

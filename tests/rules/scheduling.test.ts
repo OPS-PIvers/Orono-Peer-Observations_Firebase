@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -289,11 +289,28 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('admin can still change any window field directly', async () => {
-    const db = testEnv.authenticatedContext('a', claims.admin()).firestore();
+  it('Full Access (oversight) can still change any window field directly', async () => {
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(
       setDoc(doc(db, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
     );
+  });
+
+  it("building Administrators and Admin Console users CANNOT change someone else's window", async () => {
+    const admin = testEnv.authenticatedContext('a', claims.admin()).firestore();
+    await assertFails(
+      setDoc(doc(admin, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+    const consolePe = testEnv
+      .authenticatedContext('cpe', {
+        ...claims.peerEval('consolepe@orono.k12.mn.us'),
+        isAdmin: true,
+      })
+      .firestore();
+    await assertFails(
+      setDoc(doc(consolePe, 'observationWindows/w1'), { status: 'cancelled' }, { merge: true }),
+    );
+    await assertFails(deleteDoc(doc(consolePe, 'observationWindows/w1')));
   });
 
   it('invited staff can read a slot', async () => {
