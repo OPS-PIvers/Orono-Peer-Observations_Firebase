@@ -14,11 +14,11 @@ import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 if (getApps().length === 0) initializeApp();
 
 /**
- * Reopen a Finalized observation (admin only):
+ * Reopen a Finalized observation (oversight only):
  *
- *   1. Verify the caller is an admin — gated via a live /staff lookup (like
- *      migrateRolesToSlugs) so staff granted hasAdminAccess after their token
- *      was minted aren't locked out.
+ *   1. Verify the caller has oversight (Full Access) — gated via a live
+ *      /staff lookup (like migrateRolesToSlugs) so a role change since the
+ *      token was minted takes effect.
  *   2. Atomically flip status Finalized → Draft (transaction, so a
  *      concurrent reopen/finalize can't double-fire), clearing finalizedAt
  *      and the observed staff member's acknowledgement (the content is about
@@ -47,13 +47,13 @@ export const reopenObservation = onCall(
 
     const db = getFirestore();
 
-    // Oversight only (Full Access or hasAdminAccess, from the live staff
-    // doc). Building Administrators don't reopen, even their own.
+    // Oversight only (Full Access, from the live staff doc; Admin Console
+    // access alone doesn't qualify). Building Administrators don't reopen, even their own.
     const callerRole = request.auth.token['role'] as string | undefined;
     const isOversight = await callerMeetsAccessLevel(db, {
       email: userEmail,
       tokenRole: callerRole,
-      level: 'console',
+      level: 'oversight',
     });
     if (!isOversight) {
       throw new HttpsError(
