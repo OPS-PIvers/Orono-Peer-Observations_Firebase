@@ -175,6 +175,7 @@ function resolveButton(
   step: DashboardStep,
   ctx: DeriveContext,
   obs: Observation | null,
+  now: Date,
 ): { ctaUrl: string; ackObservationId?: string } {
   switch (step.buttonTarget) {
     case 'observation': {
@@ -182,7 +183,13 @@ function resolveButton(
       if (!id) return { ctaUrl: '' };
       // `#planning` / `#reflection` opens that panel on arrival — see the
       // hash handling in ObservationEditorPage.
-      const hash = step.openPanel ? `#${step.openPanel}` : '';
+      const panel =
+        step.openPanel === 'current'
+          ? EVENT_EVALUATORS.postQuestionsUnlocked(ctx, obs, now).satisfied
+            ? 'reflection'
+            : 'planning'
+          : step.openPanel;
+      const hash = panel ? `#${panel}` : '';
       return { ctaUrl: `/observations/${id}${hash}` };
     }
     case 'booking': {
@@ -301,7 +308,7 @@ export function deriveCheckpoints(
     const scheduledStartAt =
       step.dateFrom === 'observationDate' ? toDate(obs?.scheduledStartAt) : null;
     const scheduledEndAt = step.dateFrom === 'observationDate' ? toDate(obs?.scheduledEndAt) : null;
-    const { ctaUrl, ackObservationId } = resolveButton(step, ctx, obs);
+    const { ctaUrl, ackObservationId } = resolveButton(step, ctx, obs, now);
     const isAck = step.buttonTarget === 'acknowledge';
     const isDeadline = step.dateFrom === 'windowEndDate';
 

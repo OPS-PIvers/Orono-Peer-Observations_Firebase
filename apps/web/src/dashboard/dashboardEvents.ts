@@ -212,7 +212,8 @@ export const DATE_SOURCE_FN: Record<
 /**
  * answered / total for the in-progress bar: the active questions for the
  * watched observation's type, narrowed to one phase when the step opens a
- * specific panel (`planning` → pre, `reflection` → post). Locked Reflection
+ * specific panel (`planning` → pre, `reflection` → post; `current` counts
+ * both, since the card covers both phases). Locked Reflection
  * questions stay in their own denominator on purpose — the teacher does owe
  * them, just not yet — but never leak into the Planning card's count.
  */
