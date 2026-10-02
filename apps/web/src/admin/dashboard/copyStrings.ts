@@ -237,6 +237,7 @@ export const OPEN_PANEL_LABELS: Record<string, string> = {
   none: 'Neither — the top of the page',
   planning: 'Planning',
   reflection: 'Reflection',
+  current: 'Planning, then Reflection once it unlocks',
 };
 
 export const BUTTON_TARGET_LABELS: Record<string, string> = {

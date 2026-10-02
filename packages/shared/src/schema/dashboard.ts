@@ -187,7 +187,9 @@ export type StepChipStyle = (typeof STEP_CHIP_STYLES)[number];
 /** Which Planning / Reflection panel a step's button opens on the observation
  *  page (`/observations/:id#planning` / `#reflection`). Also scopes
  *  `responseProgress` to that panel's questions. */
-export const STEP_OPEN_PANELS = ['planning', 'reflection'] as const;
+/** `current` opens Planning until the Reflection questions unlock, then
+ *  Reflection — for one card that covers both phases. */
+export const STEP_OPEN_PANELS = ['planning', 'reflection', 'current'] as const;
 export type StepOpenPanel = (typeof STEP_OPEN_PANELS)[number];
 
 /** How a step turns complete:
