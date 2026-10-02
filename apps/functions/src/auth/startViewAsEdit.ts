@@ -14,7 +14,9 @@ import { isDemoEditSession, onCall } from '../lib/callable.js';
 if (getApps().length === 0) initializeApp();
 
 /** Roles a demo-edit session may sign in as: the observers whose workflows
- *  the walkthrough videos show. Never Full Access (the Admin Console). */
+ *  the walkthrough videos show. Never Full Access. An Administrator or PE
+ *  with Admin Console access is fine: rules and functions still refuse every
+ *  change outside demo staff, console pages included. */
 const EDITABLE_ROLES: readonly string[] = [
   SPECIAL_ROLES.administrator,
   SPECIAL_ROLES.peerEvaluator,
@@ -60,7 +62,7 @@ export async function handleStartViewAsEdit(
   if (!target || target.isActive === false) {
     throw new HttpsError('not-found', 'That staff member is not active.');
   }
-  if (!EDITABLE_ROLES.includes(target.role ?? '') || target.hasAdminAccess === true) {
+  if (!EDITABLE_ROLES.includes(target.role ?? '')) {
     throw new HttpsError(
       'failed-precondition',
       'Edits are only available while viewing as an Administrator or Peer Evaluator.',

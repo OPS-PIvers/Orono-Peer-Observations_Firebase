@@ -81,11 +81,7 @@ export function ViewAsBanner() {
         .filter(Boolean)
         .join(' · ')
     : null;
-  const canEditThisPerson =
-    canEditAs &&
-    !!viewAsStaff &&
-    EDITABLE_ROLES.includes(viewAsStaff.role) &&
-    !viewAsStaff.hasAdminAccess;
+  const canEditThisPerson = canEditAs && !!viewAsStaff && EDITABLE_ROLES.includes(viewAsStaff.role);
 
   async function startEditing() {
     if (!viewAsEmail) return;
