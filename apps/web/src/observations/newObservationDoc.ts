@@ -4,7 +4,7 @@ import { OBSERVATION_STATUS, type ObservationType, type Staff } from '@ops/share
 /**
  * The document a peer evaluator's client writes to start a Draft
  * observation. Shared by CreateObservationDialog and the evaluator
- * checklist's "Start observation & mark done" so both create identical
+ * checklist's "Start observation" so both create identical
  * drafts (the rules' create check requires `observerEmail` to be the
  * caller and `status` Draft).
  */

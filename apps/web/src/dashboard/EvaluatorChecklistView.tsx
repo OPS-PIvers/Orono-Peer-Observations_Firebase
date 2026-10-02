@@ -9,7 +9,8 @@ import { checkAttributionLabel, type CheckpointWithStatus } from './deriveCheckp
  *   - `auto`             — the step completes on its own; read-only.
  *   - `toggle`           — check / un-check it.
  *   - `start`            — observation-tied, but the teacher has no matching
- *                          observation: offer to start one and check it.
+ *                          observation: offer to start one (checked off
+ *                          later through the `toggle` it becomes).
  *   - `needsFinalized`   — tied to a finalized observation that doesn't
  *                          exist yet; a new draft wouldn't satisfy it.
  *   - `creationDisabled` — would be `start`, but an admin has switched off
@@ -203,13 +204,14 @@ function ChecklistRow({
             type="button"
             size="sm"
             variant="outline"
+            aria-label={`Start observation: ${task.title}`}
             aria-describedby={error ? errorId : undefined}
             aria-busy={pending || undefined}
             disabled={busy}
             onClick={() => onStart(task)}
           >
             {pending ? <Loader2 className="animate-spin" aria-hidden /> : null}
-            {pending ? 'Starting…' : `Start observation & mark ${task.title} done`}
+            {pending ? 'Starting…' : 'Start observation'}
           </Button>
         ) : (
           <span className={cn('text-ops-gray text-xs', action !== 'auto' && 'italic')}>

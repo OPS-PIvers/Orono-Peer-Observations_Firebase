@@ -143,12 +143,10 @@ describe('EvaluatorChecklistView', () => {
     expect(screen.getByText('Automatic')).toBeInTheDocument();
   });
 
-  it('offers "Start observation & mark … done" when there is no observation', async () => {
+  it('offers "Start observation" when there is no observation', async () => {
     const t = task({ observationId: null });
     const { onStart } = renderView({ tasks: [t] });
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Start observation & mark Planning done' }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Start observation: Planning' }));
     expect(onStart).toHaveBeenCalledWith(t);
   });
 
