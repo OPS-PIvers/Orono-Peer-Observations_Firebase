@@ -112,7 +112,10 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
   }
 
-  async function handleStartAndCheck(task: CheckpointWithStatus, questionSetId: string) {
+  /** Starts a draft only. Once the draft exists the row becomes the normal
+   *  "Mark complete" toggle, so the step is checked off when the work has
+   *  actually happened rather than the moment the draft is created. */
+  async function handleStart(task: CheckpointWithStatus, questionSetId: string) {
     setConfirming(null);
     if (!observerEmail) {
       setError(task.id, 'Missing observer context.');
@@ -120,10 +123,9 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
     }
     setPendingId(task.id);
     setError(task.id, null);
-    let observationId: string;
     try {
       assertWritable();
-      const ref = await addDoc(
+      await addDoc(
         collection(db, COLLECTIONS.observations),
         newDraftObservationDoc({
           observerEmail,
@@ -133,19 +135,8 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
           questionSetId,
         }),
       );
-      observationId = ref.id;
     } catch (err) {
       setError(task.id, errorMessage(err, 'Could not start the observation.'));
-      setPendingId(null);
-      return;
-    }
-    try {
-      await writeCheck(task, observationId);
-    } catch (err) {
-      setError(
-        task.id,
-        `The observation was started, but the check-off failed: ${errorMessage(err, 'unknown error')}`,
-      );
     } finally {
       setPendingId(null);
     }
@@ -188,10 +179,11 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
         <Dialog open onOpenChange={(open) => (open ? null : setConfirming(null))}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Start observation &amp; mark {confirming.title} done?</DialogTitle>
+              <DialogTitle>Start an observation of {staff.name}?</DialogTitle>
               <DialogDescription>
                 This creates a draft {confirmType} observation of <strong>{staff.name}</strong> with
-                you as the observer, then marks “{confirming.title}” complete on their dashboard.
+                you as the observer. You can mark “{confirming.title}” complete here once it&apos;s
+                done.
               </DialogDescription>
             </DialogHeader>
             {questionSet && 'choose' in questionSet ? (
@@ -219,10 +211,10 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
                 type="button"
                 disabled={!confirmSetId}
                 onClick={() => {
-                  if (confirmSetId) void handleStartAndCheck(confirming, confirmSetId);
+                  if (confirmSetId) void handleStart(confirming, confirmSetId);
                 }}
               >
-                Start observation &amp; mark done
+                Start observation
               </Button>
             </DialogFooter>
           </DialogContent>
