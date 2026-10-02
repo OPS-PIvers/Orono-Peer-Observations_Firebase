@@ -3,18 +3,40 @@ import { PROFICIENCY_LABELS } from './proficiencyLabels';
 
 export type PrintScope = 'assigned' | 'full';
 
+/** Choices an observer makes in the print dialog. Teachers printing their
+ *  own rubric get {@link VIEW_PRINT_CONTENT}: what they see on screen. */
+export interface RubricPrintContent {
+  /** Show each component's look-fors as a checklist. */
+  lookFors: boolean;
+  /** Ruled space under each component for handwritten notes. */
+  componentNotes: boolean;
+  /** Ruled page section at the end for overall comments. */
+  overallNotes: boolean;
+}
+
+export const VIEW_PRINT_CONTENT: RubricPrintContent = {
+  lookFors: true,
+  componentNotes: false,
+  overallNotes: false,
+};
+
 export interface RubricPrintOptions {
   rubric: Rubric;
   /** Components assigned for the role/year. Drives the "assigned" filter
-   *  and the Assigned tag on rows when printing the full rubric. */
+   *  and the Assigned marker on component cells. */
   assignedComponentIds: ReadonlySet<string>;
   scope: PrintScope;
+  content?: RubricPrintContent;
   /** Heading line, e.g. "Classroom Teacher · Year 2". */
   title: string;
   /** Optional second line, e.g. the observed teacher's name. */
   subtitle?: string;
   appName: string;
+  /** Brand blue (ops-blue). */
   primaryColor: string;
+  /** Strong brand blue (ops-blue-dark) used for the domain and component
+   *  chrome, as on screen. Defaults to the stock OPS value. */
+  primaryDarkColor?: string;
 }
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -28,16 +50,26 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function ruledLines(count: number): string {
+  return `<div class="lines">${'<span></span>'.repeat(count)}</div>`;
+}
+
 /**
- * Standalone, print-ready HTML for a rubric: one table per domain, one row
- * per component, the four proficiency descriptors as columns, and the
- * component's look-fors beneath. Laid out for landscape Letter paper.
+ * Standalone, print-ready HTML for a rubric, styled like the on-screen
+ * rubric grid: dark-blue domain strips, the red proficiency header row,
+ * dark-blue component cells with white descriptor cells, and look-fors as
+ * a two-column checklist. Laid out for portrait Letter paper; each
+ * domain's strip and header row repeat when a domain runs onto a new page.
  * Pure — no DOM access — so it is unit-testable.
  */
 export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
   const { rubric, assignedComponentIds, scope } = opts;
+  const content = opts.content ?? VIEW_PRINT_CONTENT;
   const primary = HEX_COLOR_RE.test(opts.primaryColor) ? opts.primaryColor : '#2d3f89';
-  const markAssigned = scope === 'full' && assignedComponentIds.size > 0;
+  const primaryDark =
+    opts.primaryDarkColor && HEX_COLOR_RE.test(opts.primaryDarkColor)
+      ? opts.primaryDarkColor
+      : '#1d2a5d';
 
   const domains = rubric.domains
     .map((d) => ({
@@ -49,49 +81,61 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
     }))
     .filter((d) => d.components.length > 0);
 
-  const headerCells = PROFICIENCY_LEVELS.map(
-    (lvl) => `<th class="lvl lvl-${lvl}">${escapeHtml(PROFICIENCY_LABELS[lvl])}</th>`,
+  const levelHeaders = PROFICIENCY_LEVELS.map(
+    (lvl) => `<th class="lvl">${escapeHtml(PROFICIENCY_LABELS[lvl])}</th>`,
   ).join('');
 
   const domainSections = domains
     .map((d) => {
       const rows = d.components
         .map((c) => {
-          const assigned = markAssigned && assignedComponentIds.has(c.id);
+          const assigned = assignedComponentIds.has(c.id);
           const descriptorCells = PROFICIENCY_LEVELS.map(
-            (lvl) => `<td>${escapeHtml(c.proficiencyLevels[lvl] || '—')}</td>`,
+            (lvl) => `<td class="desc">${escapeHtml(c.proficiencyLevels[lvl] || '—')}</td>`,
           ).join('');
           const lookFors =
-            c.lookFors.length > 0
-              ? `<tr class="lookfors"><td colspan="5"><span class="lf-label">Look-fors</span><ul>${c.lookFors
-                  .map((lf) => `<li>${escapeHtml(lf.text)}</li>`)
+            content.lookFors && c.lookFors.length > 0
+              ? `<tr class="panel"><td colspan="5"><ul class="lookfors">${c.lookFors
+                  .map((lf) => `<li><span class="box"></span>${escapeHtml(lf.text)}</li>`)
                   .join('')}</ul></td></tr>`
               : '';
+          const notes = content.componentNotes
+            ? `<tr class="panel notes"><td colspan="5"><span class="panel-label">Notes</span>${ruledLines(4)}</td></tr>`
+            : '';
           return `<tbody class="component">
             <tr>
               <th scope="row" class="comp">
                 <span class="comp-id">${escapeHtml(c.id)}</span>
                 <span class="comp-title">${escapeHtml(c.title)}</span>
-                ${assigned ? '<span class="tag">Assigned</span>' : ''}
+                ${assigned ? '<span class="tag">&#10003; Assigned</span>' : ''}
               </th>
               ${descriptorCells}
             </tr>
-            ${lookFors}
+            ${lookFors}${notes}
           </tbody>`;
         })
         .join('');
       return `<section class="domain">
-        <h2>Domain ${escapeHtml(d.id)}: ${escapeHtml(d.name)}</h2>
         <table>
           <colgroup><col class="c-comp" /><col /><col /><col /><col /></colgroup>
-          <thead><tr><th class="comp-head">Component</th>${headerCells}</tr></thead>
+          <thead>
+            <tr><th colspan="5" class="domain-strip"><span class="num">${escapeHtml(d.id)}</span>Domain ${escapeHtml(d.id)}: ${escapeHtml(d.name)}</th></tr>
+            <tr class="levels"><th class="comp-head">Component</th>${levelHeaders}</tr>
+          </thead>
           ${rows}
         </table>
       </section>`;
     })
     .join('');
 
-  const scopeLabel = scope === 'full' ? 'Full rubric' : 'Assigned components';
+  const overall = content.overallNotes
+    ? `<section class="overall">
+        <h2 class="domain-strip">Overall Comments</h2>
+        <div class="overall-body">${ruledLines(16)}</div>
+      </section>`
+    : '';
+
+  const scopeLabel = scope === 'full' ? 'Full Rubric' : 'Assigned only';
   const printed = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -104,71 +148,102 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
 <head>
 <meta charset="utf-8" />
 <title>${escapeHtml(docTitle)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" />
 <style>
-  @page { size: letter landscape; margin: 0.5in; }
+  @page { size: letter portrait; margin: 0.45in; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
   body {
-    font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-    font-size: 8.5pt; line-height: 1.35; color: #1f2937;
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    font-size: 7.5pt; line-height: 1.35; color: #364153;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
+  .heading { font-family: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
   header.doc {
-    display: flex; justify-content: space-between; align-items: flex-end;
-    border-bottom: 3px solid ${primary}; padding-bottom: 6pt; margin-bottom: 10pt;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 12pt;
+    padding-bottom: 8pt; margin-bottom: 10pt; border-bottom: 1px solid #e5e7eb;
   }
-  .brand { font-size: 8pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: ${primary}; margin: 0 0 2pt; }
-  h1 { font-family: 'Lexend', 'Helvetica Neue', Arial, sans-serif; font-size: 16pt; margin: 0; color: #111827; }
-  .sub { margin: 2pt 0 0; font-size: 10pt; color: #374151; }
-  .meta { text-align: right; font-size: 8pt; color: #6b7280; }
-  .meta strong { display: block; font-size: 9pt; color: ${primary}; }
+  .brand { margin: 0 0 2pt; font-size: 7pt; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #6a7282; }
+  h1 { margin: 0; font-size: 15pt; font-weight: 600; color: ${primaryDark}; }
+  .sub { margin: 2pt 0 0; font-size: 9.5pt; color: #364153; }
+  .meta { text-align: right; font-size: 7pt; color: #6a7282; white-space: nowrap; }
+  .pill {
+    display: inline-block; margin-bottom: 3pt; padding: 2pt 7pt; border-radius: 4pt;
+    font-size: 7.5pt; font-weight: 500; color: #fff; background: ${primary};
+  }
+
   section.domain { margin-bottom: 12pt; }
-  /* Full rubric: one domain per page. Assigned-only prints run on so a
-     handful of components doesn't spread across mostly-blank pages. */
   body.full section.domain + section.domain { break-before: page; }
-  h2 {
-    font-family: 'Lexend', 'Helvetica Neue', Arial, sans-serif; font-size: 11.5pt;
-    color: #fff; background: ${primary}; margin: 0; padding: 4pt 8pt;
-    border-radius: 3pt 3pt 0 0; break-after: avoid;
-  }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  col.c-comp { width: 16%; }
+  col.c-comp { width: 21%; }
   thead { display: table-header-group; }
-  thead th {
-    font-size: 8pt; text-transform: uppercase; letter-spacing: 0.05em; text-align: left;
-    padding: 4pt 6pt; background: #f3f4f6; border: 1px solid #d1d5db; color: #374151;
+
+  .domain-strip {
+    margin: 0; padding: 5pt 9pt; text-align: left; background: ${primaryDark}; color: #fff;
+    font-family: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 10pt; font-weight: 600;
   }
+  .domain-strip .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15pt; height: 15pt; margin-right: 7pt; border-radius: 50%;
+    background: rgba(255,255,255,0.15); font-size: 8pt; vertical-align: 1pt;
+  }
+  tr.levels th {
+    padding: 4pt 7pt; text-align: left; color: #fff;
+    font-family: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 6.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  tr.levels th.comp-head { background: ${primaryDark}; }
+  tr.levels th.lvl { background: #c13435; border-left: 1px solid rgba(255,255,255,0.2); }
+
   tbody.component { break-inside: avoid; }
-  td, th.comp { border: 1px solid #d1d5db; padding: 5pt 6pt; vertical-align: top; text-align: left; }
-  th.comp { background: #f9fafb; font-weight: 400; }
-  .comp-id { display: block; font-weight: 700; color: ${primary}; font-size: 9pt; }
-  .comp-title { display: block; font-weight: 600; color: #111827; }
-  .tag {
-    display: inline-block; margin-top: 4pt; padding: 1pt 5pt; border-radius: 8pt;
-    font-size: 7pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: #fff; background: ${primary};
+  tbody.component + tbody.component tr:first-child > * { border-top: 1px solid #f3f4f6; }
+  th.comp {
+    padding: 7pt 7pt; vertical-align: top; text-align: left; font-weight: 400;
+    background: ${primaryDark}; color: #fff;
   }
-  tr.lookfors td { background: #fcfcfd; font-size: 8pt; color: #374151; }
-  .lf-label { font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 7pt; color: #6b7280; }
-  tr.lookfors ul { margin: 2pt 0 0; padding-left: 12pt; columns: 2; column-gap: 18pt; }
-  tr.lookfors li { break-inside: avoid; }
-  .empty { padding: 24pt; text-align: center; color: #6b7280; font-size: 10pt; }
-  footer.doc { margin-top: 8pt; font-size: 7pt; color: #9ca3af; text-align: center; }
+  .comp-id { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 7pt; font-weight: 600; color: rgba(255,255,255,0.5); }
+  .comp-title { display: block; margin-top: 2pt; font-size: 8pt; font-weight: 700; line-height: 1.3; }
+  .tag { display: block; margin-top: 6pt; font-size: 6pt; font-weight: 500; text-transform: uppercase; color: #c13435; }
+  td.desc {
+    padding: 7pt 7pt; vertical-align: top; text-align: left; background: #fff;
+    border-left: 1px solid #f3f4f6; border-bottom: 1px solid #f3f4f6; white-space: pre-line;
+  }
+
+  tr.panel td { padding: 6pt 8pt; background: #fdfdfe; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+  ul.lookfors { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4pt; }
+  ul.lookfors li {
+    display: flex; align-items: flex-start; gap: 5pt; padding: 4pt 6pt;
+    border: 1px solid #e5e7eb; border-radius: 4pt; background: #fff; color: #364153;
+  }
+  .box { flex: none; width: 8pt; height: 8pt; margin-top: 0.5pt; border: 1px solid #99a1af; border-radius: 2pt; }
+  .panel-label { display: block; font-size: 7.5pt; font-weight: 500; color: #364153; }
+  .lines span { display: block; height: 17pt; border-bottom: 1px solid #d1d5dc; }
+
+  section.overall { margin-top: 14pt; break-inside: avoid; }
+  .overall-body { padding: 4pt 9pt 9pt; border: 1px solid #e5e7eb; border-top: 0; }
+
+  .empty { padding: 24pt; text-align: center; color: #6a7282; font-size: 10pt; }
+  footer.doc { margin-top: 8pt; font-size: 6.5pt; color: #99a1af; text-align: center; }
 </style>
 </head>
 <body class="${scope}">
   <header class="doc">
     <div>
       <p class="brand">${escapeHtml(opts.appName)}</p>
-      <h1>${escapeHtml(opts.title)}</h1>
+      <h1 class="heading">${escapeHtml(opts.title)}</h1>
       ${opts.subtitle ? `<p class="sub">${escapeHtml(opts.subtitle)}</p>` : ''}
     </div>
     <div class="meta">
-      <strong>${escapeHtml(rubric.displayName)}</strong>
-      ${escapeHtml(scopeLabel)} · Printed ${escapeHtml(printed)}
+      <span class="pill">${escapeHtml(scopeLabel)}</span><br />
+      ${escapeHtml(rubric.displayName)} · Printed ${escapeHtml(printed)}
     </div>
   </header>
   ${domainSections || '<p class="empty">No components are assigned for this role/year combination.</p>'}
+  ${overall}
   <footer class="doc">Orono Public Schools · ${escapeHtml(opts.appName)}</footer>
 </body>
 </html>`;
@@ -201,8 +276,16 @@ export function printHtmlDocument(html: string): void {
       return;
     }
     win.addEventListener('afterprint', cleanup, { once: true });
-    win.focus();
-    win.print();
+    // Wait for Lexend/Roboto so the printout matches the app's type, but
+    // never hold the dialog hostage to a slow font CDN.
+    const fontsReady = Promise.race([
+      win.document.fonts.ready,
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ]);
+    void fontsReady.then(() => {
+      win.focus();
+      win.print();
+    });
   };
   iframe.srcdoc = html;
   document.body.appendChild(iframe);

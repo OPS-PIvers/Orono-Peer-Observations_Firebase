@@ -51,7 +51,8 @@ describe('buildRubricPrintHtml', () => {
     expect(html).not.toContain('Knowing Students');
     expect(html).not.toContain('Domain 2');
     expect(html).toContain('Uses accurate terms');
-    expect(html).toContain('Assigned components');
+    expect(html).toContain('Assigned only');
+    expect(html).toContain('size: letter portrait');
   });
 
   it('prints every component in full mode and tags the assigned ones', () => {
@@ -59,6 +60,21 @@ describe('buildRubricPrintHtml', () => {
     expect(html).toContain('Knowing Students');
     expect(html).toContain('Domain 2: Environment');
     expect(html.match(/class="tag"/g)).toHaveLength(1);
+  });
+
+  it('adds note and overall-comment space only when asked', () => {
+    const plain = buildRubricPrintHtml({ ...base, scope: 'assigned' });
+    expect(plain).not.toContain('class="panel notes"');
+    expect(plain).not.toContain('Overall Comments');
+
+    const observer = buildRubricPrintHtml({
+      ...base,
+      scope: 'assigned',
+      content: { lookFors: false, componentNotes: true, overallNotes: true },
+    });
+    expect(observer).not.toContain('Uses accurate terms');
+    expect(observer).toContain('class="panel notes"');
+    expect(observer).toContain('Overall Comments');
   });
 
   it('escapes rubric text', () => {
