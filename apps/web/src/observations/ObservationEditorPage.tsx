@@ -1230,6 +1230,9 @@ export function ObservationEditorPage() {
                 <PrintRubricMenu
                   rubric={rubric}
                   assignedComponentIds={assignedComponentIds}
+                  scope={assignmentMode}
+                  withOptions={!isObservedStaff}
+                  observationId={observation.id}
                   title={`${observedRoleLabel} · Year ${String(displayYear(observation.observedYear))}`}
                   subtitle={observation.observedName}
                   className="shrink-0"

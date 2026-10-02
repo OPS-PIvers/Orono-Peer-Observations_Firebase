@@ -147,6 +147,7 @@ export function MyRubricPage() {
             <PrintRubricMenu
               rubric={rubric}
               assignedComponentIds={assignedComponentIds}
+              scope={assignmentMode}
               title={headerTitle}
               {...(staff?.name ? { subtitle: staff.name } : {})}
             />
