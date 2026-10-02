@@ -68,6 +68,8 @@ vi.mock('firebase-admin/firestore', () => ({
 vi.mock('../lib/emailUtils.js', () => ({
   sendEmail: (...args: unknown[]) => state.sendEmail?.(...args),
   substituteVariables: (template: string) => template,
+  withPersonNameVars: (vars: Record<string, string>) => vars,
+  APP_URL: 'https://app.test',
 }));
 
 // Rate limiting is a separate concern (covered by rateLimit.test.ts); stub it

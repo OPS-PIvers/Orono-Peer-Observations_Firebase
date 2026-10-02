@@ -6,6 +6,8 @@ import {
   COLLECTIONS,
   DEFAULT_EMAIL_PREFERENCES,
   EMAIL_TRIGGER_CATEGORY,
+  firstNameOf,
+  formatPersonName,
   isCriticalEmailTrigger,
   renderEmailShell,
   sanitizeHtmlHrefs,
@@ -15,7 +17,11 @@ import {
 } from '@ops/shared';
 import { isDemoStaff } from './callable.js';
 
-export const APP_URL = 'https://observations.orono.k12.mn.us';
+// The Firebase Hosting default domain. No custom domain is wired up yet —
+// if one is, change it here; every email link is built from this.
+export const APP_URL = 'https://peer-evaluator-rubric.web.app';
+/** Packaged app icon (apps/web/public/brand), used when branding has none. */
+const DEFAULT_ICON_URL = `${APP_URL}/brand/torch-icon.png`;
 const FROM_EMAIL = 'observations@orono.k12.mn.us';
 
 /** Variable bag passed to substituteVariables. Undefined values render as ''. */
@@ -35,6 +41,27 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Person-name variables, each paired with a `<prefix>FirstName` greeting
+ *  variable derived from it. */
+const PERSON_NAME_VARS = ['observedName', 'observerName', 'staffName'] as const;
+
+/**
+ * Normalize person-name variables for display ("IVERS, PAUL" → "Paul Ivers")
+ * and derive the matching first-name variables ("Paul"). An explicitly passed
+ * first-name variable wins.
+ */
+export function withPersonNameVars(vars: TemplateVars): TemplateVars {
+  const out: TemplateVars = { ...vars };
+  for (const key of PERSON_NAME_VARS) {
+    const raw = vars[key];
+    if (!raw) continue;
+    out[key] = formatPersonName(raw);
+    const firstKey = key.replace(/Name$/, 'FirstName');
+    out[firstKey] ??= firstNameOf(raw);
+  }
+  return out;
 }
 
 /** Replace all {{varName}} occurrences in a string with values from the bag,
@@ -65,14 +92,15 @@ export async function loadActiveTemplate(
 /** Load branding bits needed to render the email shell. */
 async function loadEmailBranding(
   db: Firestore,
-): Promise<{ appName: string; logoUrl: string | null }> {
+): Promise<{ appName: string; logoUrl: string | null; iconUrl: string }> {
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
   const branding = snap.data()?.['branding'] as
-    | { appName?: string; logoUrl?: string | null }
+    | { appName?: string; logoUrl?: string | null; iconUrl?: string | null }
     | undefined;
   return {
     appName: branding?.appName ?? 'Orono Peer Observations',
     logoUrl: branding?.logoUrl ?? null,
+    iconUrl: branding?.iconUrl ?? DEFAULT_ICON_URL,
   };
 }
 
@@ -319,6 +347,7 @@ export async function sendEmail(args: {
   const wrappedHtml = renderEmailShell(safeHtml, {
     appName: branding.appName,
     logoUrl: branding.logoUrl,
+    iconUrl: branding.iconUrl,
     signInLink: APP_URL,
     preferencesLink: `${APP_URL}/profile#email-preferences`,
   });
@@ -480,12 +509,12 @@ export async function sendTemplatedEmail(args: {
   const appName: string = branding?.appName ?? 'Orono Peer Observations';
   const signupLink: string = (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
 
-  const fullVars: TemplateVars = {
+  const fullVars: TemplateVars = withPersonNameVars({
     appName,
     signInLink: APP_URL,
     signupLink,
     ...vars,
-  };
+  });
 
   const subject = substituteVariables(template.subject, fullVars);
   const html = withRequiredBlock(

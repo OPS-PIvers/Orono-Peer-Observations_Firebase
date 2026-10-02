@@ -629,6 +629,15 @@ function EmailPreferencesSection({ staff }: { staff: Staff }) {
     setPrefs({ ...DEFAULT_EMAIL_PREFERENCES, ...staff.emailPreferences });
   }, [staff.emailPreferences]);
 
+  // Every email footer links to /profile#email-preferences. The section only
+  // mounts once the staff doc loads, after the browser's own anchor jump, so
+  // scroll to it here.
+  useEffect(() => {
+    if (window.location.hash === '#email-preferences') {
+      document.getElementById('email-preferences')?.scrollIntoView({ block: 'start' });
+    }
+  }, []);
+
   const handleToggle = async (category: keyof EmailPreferences, checked: boolean) => {
     const previous = prefs;
     setError(null);

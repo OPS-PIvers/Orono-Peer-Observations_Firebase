@@ -13,6 +13,7 @@ export * from './cycle.js';
 export * from './observability.js';
 export * from './brand.js';
 export * from './email/renderEmailShell.js';
+export * from './email/personName.js';
 export * from './schema/index.js';
 export * from './firestoreDefaults.js';
 export * from './firestoreQuery.js';
