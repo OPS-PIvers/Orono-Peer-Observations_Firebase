@@ -65,9 +65,12 @@ export function withPersonNameVars(vars: TemplateVars): TemplateVars {
 }
 
 /** Replace all {{varName}} occurrences in a string with values from the bag,
- *  HTML-escaping each substituted value. */
+ *  HTML-escaping each substituted value. Person names are normalized and the
+ *  first-name variables derived here (withPersonNameVars), so every send path
+ *  gets them — including callers that build their own var bag. */
 export function substituteVariables(template: string, vars: TemplateVars): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => escapeHtml(vars[key] ?? ''));
+  const all = withPersonNameVars(vars);
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => escapeHtml(all[key] ?? ''));
 }
 
 /**
@@ -509,12 +512,12 @@ export async function sendTemplatedEmail(args: {
   const appName: string = branding?.appName ?? 'Orono Peer Observations';
   const signupLink: string = (appSettingsSnap.data()?.['signupLink'] as string | undefined) ?? '';
 
-  const fullVars: TemplateVars = withPersonNameVars({
+  const fullVars: TemplateVars = {
     appName,
     signInLink: APP_URL,
     signupLink,
     ...vars,
-  });
+  };
 
   const subject = substituteVariables(template.subject, fullVars);
   const html = withRequiredBlock(

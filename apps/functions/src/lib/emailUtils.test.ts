@@ -9,6 +9,7 @@ import {
   sendEmail,
   sendTemplatedEmail,
   substituteVariables,
+  withPersonNameVars,
 } from './emailUtils.js';
 
 /**
@@ -97,6 +98,15 @@ const appSettingsPath = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 describe('substituteVariables', () => {
   it('substitutes known variables', () => {
     expect(substituteVariables('Hi {{name}}!', { name: 'Sam' })).toBe('Hi Sam!');
+  });
+
+  it('derives first-name variables for callers that build their own vars', () => {
+    expect(
+      substituteVariables('Hi {{observedFirstName}}, from {{observerName}}', {
+        observedName: 'IVERS, PAUL',
+        observerName: 'sarah.johnson',
+      }),
+    ).toBe('Hi Paul, from Sarah Johnson');
   });
 
   it('renders unknown/undefined variables as empty string', () => {
@@ -796,5 +806,35 @@ describe('sendTemplatedEmail', () => {
     const msg = writes.mailSets[0]?.data['message'] as { html: string };
     expect(msg.html).toContain('<a href="#">Sign up</a>');
     expect(msg.html).not.toContain('javascript:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withPersonNameVars
+// ---------------------------------------------------------------------------
+
+describe('withPersonNameVars', () => {
+  it('normalizes names and adds first-name variables', () => {
+    expect(
+      withPersonNameVars({ observedName: 'IVERS, PAUL', staffName: 'Jane McDonald', appName: 'X' }),
+    ).toEqual({
+      observedName: 'Paul Ivers',
+      observedFirstName: 'Paul',
+      staffName: 'Jane McDonald',
+      staffFirstName: 'Jane',
+      appName: 'X',
+    });
+  });
+
+  it('keeps an explicitly passed first name', () => {
+    expect(
+      withPersonNameVars({ observerName: 'IVERS, PAUL', observerFirstName: 'P.J.' })[
+        'observerFirstName'
+      ],
+    ).toBe('P.J.');
+  });
+
+  it('skips missing names', () => {
+    expect(withPersonNameVars({})).toEqual({});
   });
 });

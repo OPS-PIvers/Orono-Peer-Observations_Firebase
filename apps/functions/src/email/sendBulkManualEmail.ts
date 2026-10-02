@@ -4,7 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldPath, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
-import { APP_URL, sendEmail, substituteVariables, withPersonNameVars } from '../lib/emailUtils.js';
+import { APP_URL, sendEmail, substituteVariables } from '../lib/emailUtils.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 
 if (getApps().length === 0) initializeApp();
@@ -364,12 +364,12 @@ export const sendBulkManualEmail = onCall(
     const appName = appData?.branding?.appName ?? 'Orono Peer Observations';
     const signupLink = appData?.signupLink ?? '';
 
-    const fullVars = withPersonNameVars({
+    const fullVars: Record<string, string> = {
       appName,
       signupLink,
       signInLink: APP_URL,
       ...vars,
-    });
+    };
 
     // Subject/body are the same for every recipient in a broadcast (no
     // per-recipient personalization), so substitute once rather than per
