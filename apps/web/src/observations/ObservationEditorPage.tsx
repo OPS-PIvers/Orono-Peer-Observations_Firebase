@@ -1102,14 +1102,14 @@ export function ObservationEditorPage() {
         />
 
         {!canEdit && !isReadOnly ? (
-          <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+          <div className="bg-ops-blue-lighter text-ops-gray-dark rounded-lg px-4 py-2.5 text-sm">
             {isObservedStaff
               ? 'Your evaluator is still drafting this observation. Open Planning or Reflection below to answer your questions. Your evaluator chooses what else to share while drafting; everything is visible once it is finalized.'
               : "You can view this observation but not edit it (you're not the observer)."}
           </div>
         ) : null}
         {isReadOnly ? (
-          <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+          <div className="bg-ops-blue-lighter text-ops-blue-dark rounded-lg px-4 py-2.5 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p>
                 This observation is finalized and read-only.
