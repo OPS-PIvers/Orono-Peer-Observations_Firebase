@@ -13,12 +13,18 @@ export interface RubricPrintContent {
   componentNotes: boolean;
   /** Ruled page section at the end for overall comments. */
   overallNotes: boolean;
+  /** Lined script pages appended at the end; 0 for none. */
+  scriptPages: number;
 }
+
+/** Upper bound on script pages, so a typo can't print a ream. */
+export const MAX_SCRIPT_PAGES = 20;
 
 export const VIEW_PRINT_CONTENT: RubricPrintContent = {
   lookFors: true,
   componentNotes: false,
   overallNotes: false,
+  scriptPages: 0,
 };
 
 export interface RubricPrintOptions {
@@ -72,6 +78,7 @@ export function scanPayload(
     content.lookFors ? 'L' : '',
     content.componentNotes ? 'N' : '',
     content.overallNotes ? 'O' : '',
+    content.scriptPages > 0 ? `S${String(content.scriptPages)}` : '',
   ].join('');
   return `OPS-OBS:1:${scanId}:${scope === 'full' ? 'F' : 'A'}:${flags}`;
 }
@@ -172,6 +179,15 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
       </section>`
     : '';
 
+  const scriptCount = Math.min(Math.max(Math.floor(content.scriptPages) || 0, 0), MAX_SCRIPT_PAGES);
+  const scriptPages = Array.from(
+    { length: scriptCount },
+    (_, i) => `<section class="script">
+        <h2 class="domain-strip">Script<span class="script-page">Page ${String(i + 1)} of ${String(scriptCount)}</span></h2>
+        <div class="script-body">${ruledLines(scan ? 34 : 38)}</div>
+      </section>`,
+  ).join('');
+
   const scopeLabel = scope === 'full' ? 'Full Rubric' : 'Assigned only';
   const printed = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -261,6 +277,13 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
   .lines span { display: block; height: 17pt; border-bottom: 1px solid #d1d5dc; }
 
   section.overall { margin-top: 14pt; break-inside: avoid; }
+  section.script { break-before: page; break-inside: avoid; }
+  .script-page { float: right; font-size: 8pt; font-weight: 400; color: rgba(255,255,255,0.7); }
+  .script-body { position: relative; padding: 2pt 9pt 6pt; border: 1px solid #e5e7eb; border-top: 0; }
+  /* Margin rule for timestamps, like a legal pad. */
+  .script-body::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 0.65in; border-left: 1px solid #e5c7c7;
+  }
   .overall-body { padding: 4pt 9pt 9pt; border: 1px solid #e5e7eb; border-top: 0; }
 
   .empty { padding: 24pt; text-align: center; color: #6a7282; font-size: 10pt; }
@@ -317,6 +340,7 @@ export function buildRubricPrintHtml(opts: RubricPrintOptions): string {
   ${scan ? '<p class="scan-hint">Fill in one circle <span class="bubble"></span> per component to record a rating. Keep marks inside the boxes.</p>' : ''}
   ${domainSections || '<p class="empty">No components are assigned for this role/year combination.</p>'}
   ${overall}
+  ${scriptPages}
   <footer class="doc">Orono Public Schools · ${escapeHtml(opts.appName)}</footer>
   ${scan ? '</td></tr></tbody></table>' : ''}
 </body>

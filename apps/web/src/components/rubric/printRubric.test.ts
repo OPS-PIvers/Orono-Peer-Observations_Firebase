@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rubric } from '@ops/shared';
-import { buildRubricPrintHtml } from './printRubric';
+import { buildRubricPrintHtml, MAX_SCRIPT_PAGES, VIEW_PRINT_CONTENT } from './printRubric';
 
 const levels = {
   developing: 'dev text',
@@ -70,7 +70,7 @@ describe('buildRubricPrintHtml', () => {
     const observer = buildRubricPrintHtml({
       ...base,
       scope: 'assigned',
-      content: { lookFors: false, componentNotes: true, overallNotes: true },
+      content: { lookFors: false, componentNotes: true, overallNotes: true, scriptPages: 0 },
     });
     expect(observer).not.toContain('Uses accurate terms');
     expect(observer).toContain('class="panel notes"');
@@ -88,6 +88,28 @@ describe('buildRubricPrintHtml', () => {
     expect(html).toContain('OPS-OBS:1:obs123:F:L');
     // One bubble per level per component (3 components) plus the legend's.
     expect(html.match(/class="bubble"/g)).toHaveLength(3 * 4 + 1);
+  });
+
+  it('appends the requested number of script pages, capped', () => {
+    const none = buildRubricPrintHtml({ ...base, scope: 'assigned' });
+    expect(none).not.toContain('class="script"');
+
+    const two = buildRubricPrintHtml({
+      ...base,
+      scope: 'assigned',
+      scanId: 'obs123',
+      content: { ...VIEW_PRINT_CONTENT, scriptPages: 2 },
+    });
+    expect(two.match(/class="script"/g)).toHaveLength(2);
+    expect(two).toContain('Page 2 of 2');
+    expect(two).toContain('OPS-OBS:1:obs123:A:LS2');
+
+    const many = buildRubricPrintHtml({
+      ...base,
+      scope: 'assigned',
+      content: { ...VIEW_PRINT_CONTENT, scriptPages: 500 },
+    });
+    expect(many.match(/class="script"/g)).toHaveLength(MAX_SCRIPT_PAGES);
   });
 
   it('escapes rubric text', () => {

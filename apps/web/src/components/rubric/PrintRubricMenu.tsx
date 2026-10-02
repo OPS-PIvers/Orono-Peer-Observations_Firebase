@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { OPS_BRAND, type Rubric } from '@ops/shared';
 import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
   printHtmlDocument,
   VIEW_PRINT_CONTENT,
   type PrintScope,
+  MAX_SCRIPT_PAGES,
   type RubricPrintContent,
 } from './printRubric';
 
@@ -37,7 +39,9 @@ export interface PrintRubricMenuProps {
   className?: string;
 }
 
-const OPTION_ROWS: { key: keyof RubricPrintContent; label: string; hint: string }[] = [
+type ToggleKey = 'lookFors' | 'componentNotes' | 'overallNotes';
+
+const OPTION_ROWS: { key: ToggleKey; label: string; hint: string }[] = [
   { key: 'lookFors', label: 'Include look-fors', hint: 'A checklist under each component.' },
   {
     key: 'componentNotes',
@@ -71,6 +75,11 @@ export function PrintRubricMenu({
   const [open, setOpen] = useState(false);
   const [printScope, setPrintScope] = useState<PrintScope>(scope);
   const [content, setContent] = useState<RubricPrintContent>(VIEW_PRINT_CONTENT);
+  const [scriptOn, setScriptOn] = useState(false);
+  const [scriptCount, setScriptCount] = useState('1');
+  const scriptPages = scriptOn
+    ? Math.min(Math.max(parseInt(scriptCount, 10) || 1, 1), MAX_SCRIPT_PAGES)
+    : 0;
 
   const print = (s: PrintScope, c: RubricPrintContent, scanId?: string) => {
     // Same rule as BrandingProvider: the stock blue keeps the exact
@@ -144,6 +153,37 @@ export function PrintRubricMenu({
                     </span>
                   </label>
                 ))}
+                <div className="hover:bg-ops-blue-lighter/30 flex items-start gap-3 rounded-md px-2 py-2">
+                  <input
+                    id="print-opt-script"
+                    type="checkbox"
+                    checked={scriptOn}
+                    onChange={(e) => setScriptOn(e.target.checked)}
+                    className="accent-ops-blue mt-0.5 h-4 w-4 rounded"
+                  />
+                  <label
+                    htmlFor="print-opt-script"
+                    className="flex-1 cursor-pointer text-sm font-medium"
+                  >
+                    Include script pages
+                    <span className="text-muted-foreground block text-xs font-normal">
+                      Lined pages at the end for scripting the lesson.
+                    </span>
+                  </label>
+                  {scriptOn ? (
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={MAX_SCRIPT_PAGES}
+                      value={scriptCount}
+                      onChange={(e) => setScriptCount(e.target.value)}
+                      onBlur={() => setScriptCount(String(scriptPages))}
+                      aria-label="Number of script pages"
+                      className="h-8 w-16"
+                    />
+                  ) : null}
+                </div>
               </div>
             </div>
             <DialogFooter>
@@ -153,7 +193,7 @@ export function PrintRubricMenu({
               <Button
                 onClick={() => {
                   setOpen(false);
-                  print(printScope, content, observationId);
+                  print(printScope, { ...content, scriptPages }, observationId);
                 }}
               >
                 <Printer />
