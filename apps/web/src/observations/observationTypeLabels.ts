@@ -13,3 +13,9 @@ export const OBSERVATION_TYPE_OPTION_LABELS: Record<ObservationType, string> = {
 export function showsObservationTypes(role: string | null | undefined): boolean {
   return role !== SPECIAL_ROLES.administrator;
 }
+
+/** Label for the pre-observation questions panel. Instructional Rounds have
+ *  no planning meeting — the teacher observes colleagues and takes notes. */
+export function planningPanelLabel(type: ObservationType | null | undefined): string {
+  return type === OBSERVATION_TYPES.instructionalRound ? 'Observation Notes' : 'Planning Questions';
+}

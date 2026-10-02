@@ -75,7 +75,7 @@ import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
-import { showsObservationTypes } from './observationTypeLabels';
+import { planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
 import {
   answerEditability,
   questionsWithRetiredAnswers,
@@ -1214,6 +1214,7 @@ export function ObservationEditorPage() {
           onPostObsNotesChange={setPostObsNotes}
           questions={questionsSlot}
           openPanel={requestedPanel}
+          preLabel={planningPanelLabel(observation.type)}
           // Park the rubric scope toggle on the right of the meeting-
           // notes row at md+ so it sits inline with Planning/
           // Reflection. At mobile widths it drops below the row as a
