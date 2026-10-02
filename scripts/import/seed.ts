@@ -25,14 +25,14 @@ export const DEFAULT_FINALIZED_OBSERVATION_TEMPLATE: Omit<
   name: 'Observation Finalized',
   description: 'Sent to staff when their observation is finalized. Includes Drive folder link.',
   subject: 'Your Observation Has Been Finalized — {{appName}}',
-  bodyHtml: `<p>Hi {{observedName}},</p>
+  bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your peer observation conducted by {{observerName}} on {{observationDate}} has been finalized.</p>
 <p>You can view your complete observation report in your Drive folder:</p>
 ${ctaRow('{{driveFolderLink}}', 'Open observation folder')}
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
   variables: [
     'observedName',
+    'observedFirstName',
     'observerName',
     'observationDate',
     'driveFolderLink',
@@ -54,12 +54,11 @@ export const SYSTEM_TEMPLATES: Omit<EmailTemplate, 'createdAt' | 'updatedAt'>[] 
     description:
       'Sent manually by PEs to invite a staff member to sign up for an observation timeslot.',
     subject: 'Schedule Your Observation — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your peer evaluator would like to schedule an observation with you. Please use the link below to sign up for a timeslot that works for your schedule.</p>
 ${ctaRow('{{signupLink}}', 'Sign up for a timeslot')}
-<p>If you have any questions, feel free to reach out.</p>
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'signupLink', 'appName'],
+<p>If you have any questions, feel free to reach out.</p>`,
+    variables: ['observedName', 'observedFirstName', 'signupLink', 'appName'],
     triggerType: 'manual',
     recipient: 'observed',
     scheduledDays: 3,
@@ -71,12 +70,18 @@ ${ctaRow('{{signupLink}}', 'Sign up for a timeslot')}
     name: 'Upcoming Observation Reminder',
     description: 'Sent automatically N days before a scheduled observation date.',
     subject: 'Reminder: Your Observation is Coming Up — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>This is a reminder that you have an observation scheduled for <strong>{{observationDate}}</strong> with {{observerName}}.</p>
 <p>You can sign in to {{appName}} to review your rubric and assigned areas ahead of time:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'observerName', 'observationDate', 'signInLink', 'appName'],
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
+    variables: [
+      'observedName',
+      'observedFirstName',
+      'observerName',
+      'observationDate',
+      'signInLink',
+      'appName',
+    ],
     triggerType: 'scheduled.preObservation',
     recipient: 'observed',
     scheduledDays: 3,
@@ -88,12 +93,18 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Observation Created (Standard)',
     description: 'Sent to staff when a standard observation is created for them.',
     subject: 'A Standard Observation Has Been Started — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>{{observerName}} has started a standard observation for you.</p>
 <p>You can sign in to view your rubric and assigned areas:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'observerName', 'observationDate', 'signInLink', 'appName'],
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
+    variables: [
+      'observedName',
+      'observedFirstName',
+      'observerName',
+      'observationDate',
+      'signInLink',
+      'appName',
+    ],
     triggerType: 'observation.created.standard',
     recipient: 'observed',
     scheduledDays: 3,
@@ -105,15 +116,15 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Observation Finalized',
     description: 'Sent to staff when their observation is finalized. Includes Drive folder link.',
     subject: 'Your Observation Has Been Finalized — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your peer observation conducted by {{observerName}} on {{observationDate}} has been finalized.</p>
 <p>You can view your complete observation report, including ratings, look-fors, notes, and any media files, in your Drive folder:</p>
 ${ctaRow('{{driveFolderLink}}', 'Open observation folder')}
 <p>Sign in to {{appName}} to see your rubric and all finalized observations:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'observationDate',
       'driveFolderLink',
@@ -133,12 +144,11 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent to staff when their role-year subdomain assignments are updated by an admin.',
     subject: 'Your Observation Focus Areas Have Been Assigned — {{appName}}',
-    bodyHtml: `<p>Hi {{staffName}},</p>
+    bodyHtml: `<p>Hi {{staffFirstName}},</p>
 <p>Your assigned observation focus areas have been updated for the current cycle. You have <strong>{{assignedComponentCount}} component(s)</strong> assigned to your rubric.</p>
 <p>Sign in to {{appName}} to view your assigned areas and full rubric:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
-    variables: ['staffName', 'assignedComponentCount', 'signInLink', 'appName'],
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
+    variables: ['staffName', 'staffFirstName', 'assignedComponentCount', 'signInLink', 'appName'],
     triggerType: 'roleYearMapping.updated',
     recipient: 'observed',
     scheduledDays: 3,
@@ -150,13 +160,12 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Work Product Questions Available',
     description: 'Sent to staff when a Work Product observation is created for them.',
     subject: 'Work Product Questions Are Ready for You — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your peer evaluator has started a Work Product observation and has questions for you to respond to. Your responses help inform the observation process.</p>
 <p>Sign in to {{appName}} to view and respond to your Work Product questions:</p>
 ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>Please complete your responses at your earliest convenience.</p>
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'signInLink', 'appName'],
+<p>Please complete your responses at your earliest convenience.</p>`,
+    variables: ['observedName', 'observedFirstName', 'signInLink', 'appName'],
     triggerType: 'observation.created.workProduct',
     recipient: 'observed',
     scheduledDays: 7,
@@ -168,12 +177,11 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Instructional Round Questions Available',
     description: 'Sent to staff when an Instructional Round observation is created.',
     subject: 'Instructional Round Questions Are Ready — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your peer evaluator has initiated an Instructional Round observation and has reflection questions for you to respond to.</p>
 <p>Sign in to {{appName}} to view and complete your Instructional Round questions:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'signInLink', 'appName'],
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
+    variables: ['observedName', 'observedFirstName', 'signInLink', 'appName'],
     triggerType: 'observation.created.instructionalRound',
     recipient: 'observed',
     scheduledDays: 7,
@@ -186,12 +194,18 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent automatically (weekly, while unanswered) to the observed staff member starting N days after any observation is created, if their Planning questions are not all answered.',
     subject: 'Reminder: Your Planning questions are waiting — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your <strong>{{observationType}}</strong> observation{{observationName}} has Planning questions that are not answered yet. Your peer evaluator uses these to prepare for the lesson.</p>
 <p>Open the observation and use the <strong>Planning</strong> panel to answer them — your responses save as you type:</p>
-${ctaRow('{{observationLink}}', 'Open Planning')}
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'observationType', 'observationName', 'observationLink', 'appName'],
+${ctaRow('{{observationLink}}', 'Open Planning')}`,
+    variables: [
+      'observedName',
+      'observedFirstName',
+      'observationType',
+      'observationName',
+      'observationLink',
+      'appName',
+    ],
     triggerType: 'scheduled.reminderPlanning',
     recipient: 'observed',
     scheduledDays: 7,
@@ -204,13 +218,13 @@ ${ctaRow('{{observationLink}}', 'Open Planning')}
     description:
       'Sent automatically (weekly, while unanswered) to the observed staff member starting N days after the observation date, if their Reflection questions are not all answered.',
     subject: 'Reminder: Your Reflection questions are open — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your <strong>{{observationType}}</strong> observation{{observationName}} on {{observationDate}} has Reflection questions that are not answered yet.</p>
 <p>Open the observation and use the <strong>Reflection</strong> panel to answer them while the lesson is still fresh:</p>
-${ctaRow('{{observationLink}}', 'Open Reflection')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{observationLink}}', 'Open Reflection')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observationType',
       'observationName',
       'observationDate',
@@ -229,13 +243,13 @@ ${ctaRow('{{observationLink}}', 'Open Reflection')}
     description:
       'Sent automatically (weekly, while overdue) to the observer once a Draft observation is N+ days past its observation date.',
     subject: 'Reminder: Please Finalize Your Observation — {{appName}}',
-    bodyHtml: `<p>Hi {{observerName}},</p>
+    bodyHtml: `<p>Hi {{observerFirstName}},</p>
 <p>Your <strong>{{observationType}}</strong> observation of {{observedName}}, scheduled for {{observationDate}}, is still in Draft and hasn't been finalized.</p>
 <p>Sign in to {{appName}} to review and finalize it:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observerName',
+      'observerFirstName',
       'observedName',
       'observationDate',
       'observationType',
@@ -254,12 +268,12 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent to the observer when the observed staff member confirms they received their finalized observation.',
     subject: '{{observedName}} acknowledged their observation — {{appName}}',
-    bodyHtml: `<p>Hi {{observerName}},</p>
+    bodyHtml: `<p>Hi {{observerFirstName}},</p>
 <p>{{observedName}} confirmed on {{acknowledgedDate}} that they received their finalized observation from {{observationDate}}.</p>
-${ctaRow('{{observationLink}}', 'View the observation')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{observationLink}}', 'View the observation')}`,
     variables: [
       'observerName',
+      'observerFirstName',
       'observedName',
       'observationDate',
       'acknowledgedDate',
@@ -278,11 +292,17 @@ ${ctaRow('{{observationLink}}', 'View the observation')}
     description:
       'Sent once to the observed staff member N days after finalize if they have not yet acknowledged receipt.',
     subject: 'Reminder: Please Acknowledge Your Observation — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your observation with {{observerName}} from {{observationDate}} was finalized, but we haven't received your acknowledgment yet.</p>
-${ctaRow('{{acknowledgeLink}}', 'Acknowledge receipt')}
-<p>— {{appName}}</p>`,
-    variables: ['observedName', 'observerName', 'observationDate', 'acknowledgeLink', 'appName'],
+${ctaRow('{{acknowledgeLink}}', 'Acknowledge receipt')}`,
+    variables: [
+      'observedName',
+      'observedFirstName',
+      'observerName',
+      'observationDate',
+      'acknowledgeLink',
+      'appName',
+    ],
     triggerType: 'scheduled.reminderAcknowledge',
     recipient: 'observed',
     scheduledDays: 7,
@@ -294,13 +314,12 @@ ${ctaRow('{{acknowledgeLink}}', 'Acknowledge receipt')}
     name: 'New Staff System Invitation',
     description: 'Sent to newly added staff members, welcoming them to the system.',
     subject: 'Welcome to {{appName}}',
-    bodyHtml: `<p>Hi {{staffName}},</p>
+    bodyHtml: `<p>Hi {{staffFirstName}},</p>
 <p>You've been added to <strong>{{appName}}</strong>, Orono Public Schools' peer observation platform.</p>
 <p>You can sign in using your Orono Google account to view your rubric, assigned focus areas, and any finalized observations:</p>
 ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>If you have any questions, please contact your peer evaluator or administrator.</p>
-<p>— {{appName}}</p>`,
-    variables: ['staffName', 'staffRole', 'signInLink', 'appName'],
+<p>If you have any questions, please contact your peer evaluator or administrator.</p>`,
+    variables: ['staffName', 'staffFirstName', 'staffRole', 'signInLink', 'appName'],
     triggerType: 'staff.created',
     recipient: 'observed',
     scheduledDays: 3,
@@ -313,13 +332,13 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent to the PE/observer when they create any new observation — confirmation receipt.',
     subject: 'Observation Created for {{observedName}} — {{appName}}',
-    bodyHtml: `<p>Hi {{observerName}},</p>
+    bodyHtml: `<p>Hi {{observerFirstName}},</p>
 <p>This confirms that you have created a new <strong>{{observationType}}</strong> observation for <strong>{{observedName}}</strong>.</p>
 <p>Sign in to continue working on this observation:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observerName',
+      'observerFirstName',
       'observedName',
       'observationType',
       'observationDate',
@@ -338,13 +357,13 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent to each invited staff member when a peer evaluator opens an observation window. Includes their personal booking link.',
     subject: 'Schedule your observation — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>{{observerName}} has opened a window to schedule your observation between {{windowStartLocal}} and {{windowEndLocal}}.</p>
 <p>Use your personal link below to pick a time that works for you:</p>
-${ctaRow('{{bookingLink}}', 'Schedule my observation')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{bookingLink}}', 'Schedule my observation')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'bookingLink',
       'buildingName',
@@ -364,12 +383,12 @@ ${ctaRow('{{bookingLink}}', 'Schedule my observation')}
     name: 'Scheduling: Booking Confirmed',
     description: 'Sent to the staff member and the evaluator when an observation slot is booked.',
     subject: 'Observation scheduled for {{slotDateLocal}} — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your observation with {{observerName}} is confirmed for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'slotDateLocal',
       'slotStartLocal',
@@ -391,12 +410,12 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent when a peer evaluator assigns an exact observation time from a day preference.',
     subject: 'Your observation time — {{slotDateLocal}} — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>{{observerName}} has assigned your observation for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'slotDateLocal',
       'slotStartLocal',
@@ -417,14 +436,14 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Scheduling: Booking Cancelled',
     description: 'Sent to the staff member and evaluator when a booked observation is cancelled.',
     subject: 'Observation cancelled — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your observation with {{observerName}} on {{slotDateLocal}} ({{slotStartLocal}}) has been cancelled.</p>
 <p>{{cancellationReason}}</p>
 <p>You can reschedule if needed:</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'slotDateLocal',
       'slotStartLocal',
@@ -444,12 +463,12 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       'Sent to the staff member and evaluator when a booked observation is moved to a new time.',
     subject: 'Observation rescheduled — {{slotDateLocal}} — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>Your observation with {{observerName}} has been moved from {{previousSlotDateLocal}} ({{previousSlotStartLocal}}) to <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}) at {{buildingName}}.</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'slotDateLocal',
       'slotStartLocal',
@@ -472,12 +491,12 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     name: 'Scheduling: Window Expired',
     description: 'Sent to invitees who never booked when a scheduling window expires.',
     subject: 'Observation scheduling window closed — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>The window to schedule your observation with {{observerName}} ({{windowStartLocal}}–{{windowEndLocal}}) has closed. Please reach out to arrange a time.</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'windowStartLocal',
       'windowEndLocal',
@@ -496,14 +515,14 @@ ${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
     description:
       "Sent to the staff member and evaluator when an admin's edit to a building's bell schedule invalidates an already-booked observation time (the period moved or was removed).",
     subject: 'Your observation time may have changed — {{appName}}',
-    bodyHtml: `<p>Hi {{observedName}},</p>
+    bodyHtml: `<p>Hi {{observedFirstName}},</p>
 <p>{{buildingName}}'s bell schedule was just updated, and it affects your already-booked observation with {{observerName}}, previously scheduled for <strong>{{slotDateLocal}}</strong>, {{slotStartLocal}}–{{slotEndLocal}} ({{slotPeriodName}}).</p>
 <p>{{scheduleChangeReason}}</p>
 <p>Please sign in to confirm the observation's status, and reschedule together if needed.</p>
-${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}
-<p>— {{appName}}</p>`,
+${ctaRow('{{signInLink}}', 'Sign in to {{appName}}')}`,
     variables: [
       'observedName',
+      'observedFirstName',
       'observerName',
       'slotDateLocal',
       'slotStartLocal',

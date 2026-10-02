@@ -4,7 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
-import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
+import { APP_URL, sendEmail, substituteVariables } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -72,7 +72,7 @@ export const sendManualEmail = onCall(
     const fullVars: Record<string, string> = {
       appName,
       signupLink,
-      signInLink: 'https://observations.orono.k12.mn.us',
+      signInLink: APP_URL,
       ...vars,
     };
 

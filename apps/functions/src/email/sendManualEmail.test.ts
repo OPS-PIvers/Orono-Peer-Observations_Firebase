@@ -55,6 +55,7 @@ vi.mock('firebase-admin/firestore', () => ({
 vi.mock('../lib/emailUtils.js', () => ({
   sendEmail: (...args: unknown[]) => state.sendEmail?.(...args),
   substituteVariables: (template: string) => template,
+  APP_URL: 'https://app.test',
 }));
 
 const { sendManualEmail } = await import('./sendManualEmail.js');

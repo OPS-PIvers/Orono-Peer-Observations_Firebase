@@ -22,10 +22,14 @@ export interface EmailShellOptions {
    *  page). Rendered in the footer next to the sign-in link so non-critical
    *  mail always carries a self-service opt-out path. */
   preferencesLink?: string | null;
+  /** Absolute, publicly-reachable square app icon, shown in the header next
+   *  to the app name and in the footer's bottom-right corner. */
+  iconUrl?: string | null;
 }
 
 const BLUE = '#2d3f89';
 const BLUE_DARK = '#1d2a5d';
+const RED = '#ad2122';
 
 /** Inline styles for an email CTA button (works in Gmail/Apple Mail/mobile;
  *  degrades to a colored link in legacy Outlook). Shared by the editor's
@@ -50,15 +54,25 @@ function escapeHtml(s: string): string {
 
 export function renderEmailShell(bodyHtml: string, opts: EmailShellOptions): string {
   const appName = escapeHtml(opts.appName);
+  const iconUrl = opts.iconUrl ? escapeHtml(opts.iconUrl) : null;
+
+  // Header: a navy band matching the web app's top bar. An uploaded logo
+  // replaces the wordmark; otherwise the app name in white Lexend.
   const header = opts.logoUrl
     ? `<img src="${escapeHtml(opts.logoUrl)}" alt="${appName}" height="44" style="display:block;max-height:44px;width:auto;border:0;outline:none;text-decoration:none;" />`
-    : `<span style="font-family:'Lexend',Arial,sans-serif;font-size:20px;font-weight:700;color:${BLUE_DARK};">${appName}</span>`;
+    : `<span style="font-family:'Lexend',Arial,sans-serif;font-size:21px;font-weight:600;letter-spacing:0.2px;color:#ffffff;">${appName}</span>`;
 
   const footerLink = opts.signInLink
     ? ` &middot; <a href="${escapeHtml(opts.signInLink)}" style="color:#cdd3e8;">Sign in</a>`
     : '';
   const preferencesLink = opts.preferencesLink
     ? ` &middot; <a href="${escapeHtml(opts.preferencesLink)}" style="color:#cdd3e8;">Email preferences</a>`
+    : '';
+  // White tile so the icon's white background reads as intentional on navy.
+  const footerIcon = iconUrl
+    ? `<td align="right" valign="middle" width="56" style="width:56px;padding-left:12px;">
+                    <img src="${iconUrl}" alt="" width="44" height="44" style="display:block;width:44px;height:44px;border:0;border-radius:8px;background:#ffffff;" />
+                  </td>`
     : '';
 
   return `<!DOCTYPE html>
@@ -81,7 +95,7 @@ export function renderEmailShell(bodyHtml: string, opts: EmailShellOptions): str
       <td align="center" style="padding:24px 12px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
           <tr>
-            <td style="padding:22px 32px;border-bottom:3px solid ${BLUE};background:#ffffff;">
+            <td style="padding:22px 32px;background:${BLUE_DARK};border-bottom:4px solid ${RED};">
               ${header}
             </td>
           </tr>
@@ -91,9 +105,16 @@ export function renderEmailShell(bodyHtml: string, opts: EmailShellOptions): str
             </td>
           </tr>
           <tr>
-            <td style="padding:18px 32px;background:${BLUE_DARK};color:#cdd3e8;font-family:'Roboto',Arial,sans-serif;font-size:12px;line-height:1.5;">
-              <strong style="color:#ffffff;">${appName}</strong><br />
-              Orono Public Schools${footerLink}${preferencesLink}
+            <td style="padding:18px 32px;background:${BLUE_DARK};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td valign="middle" style="color:#cdd3e8;font-family:'Roboto',Arial,sans-serif;font-size:12px;line-height:1.5;">
+                    <strong style="color:#ffffff;">${appName}</strong><br />
+                    Orono Public Schools${footerLink}${preferencesLink}
+                  </td>
+                  ${footerIcon}
+                </tr>
+              </table>
             </td>
           </tr>
         </table>

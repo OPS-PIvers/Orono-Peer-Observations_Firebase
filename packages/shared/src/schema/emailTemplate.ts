@@ -193,8 +193,11 @@ export const FIXED_RECIPIENT_DESCRIPTION: Partial<Record<EmailTriggerType, strin
 export const KNOWN_TEMPLATE_VARIABLES = [
   // Observation participants
   'observerName',
+  /** First name only, for greetings ("Hi {{observerFirstName}},"). */
+  'observerFirstName',
   'observerEmail',
   'observedName',
+  'observedFirstName',
   'observedEmail',
   'observedRole',
   'observedYear',
@@ -218,6 +221,7 @@ export const KNOWN_TEMPLATE_VARIABLES = [
   'signInLink',
   // Staff invite
   'staffName',
+  'staffFirstName',
   'staffEmail',
   'staffRole',
   // Subdomain assignment

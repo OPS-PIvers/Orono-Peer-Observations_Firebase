@@ -7,8 +7,10 @@ import type { TemplateVariable } from '@ops/shared';
  */
 export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   observerName: "Peer evaluator's name",
+  observerFirstName: "Peer evaluator's first name",
   observerEmail: "Peer evaluator's email",
   observedName: "Staff member's name",
+  observedFirstName: "Staff member's first name",
   observedEmail: "Staff member's email",
   observedRole: "Staff member's role",
   observedYear: "Staff member's year",
@@ -23,6 +25,7 @@ export const VARIABLE_LABELS: Record<TemplateVariable, string> = {
   appName: 'App name',
   signInLink: 'Sign-in link',
   staffName: "Staff member's name",
+  staffFirstName: "Staff member's first name",
   staffEmail: "Staff member's email",
   staffRole: "Staff member's role",
   assignedDomainList: 'Assigned components list',
