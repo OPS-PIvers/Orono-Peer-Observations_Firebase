@@ -124,9 +124,11 @@ export const DRAFT_VISIBILITY_HIDDEN: DraftVisibility = {
 };
 
 /** Frozen copy of the rubric content an observation was scored against,
- *  captured server-side at finalize time (finalizeObservation). Domains are
- *  resolved to the components actually in play for the observed role/year
- *  (falling back to the full rubric when no mapping narrows it) so the
+ *  captured server-side at finalize time (finalizeObservation) and
+ *  re-captured on PDF regeneration. Domains are resolved by
+ *  resolveReportDomains: the observed role/year's assigned components plus
+ *  any other component the evaluator rated, noted or tagged (falling back to
+ *  the full rubric when no mapping narrows it) so the
  *  finalized read-only view renders the historical criteria text even after
  *  the live rubric is edited. Cleared on reopen — re-finalizing re-captures
  *  it. Absent/null on legacy finalized docs, which fall back to the live

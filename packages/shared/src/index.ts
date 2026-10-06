@@ -9,6 +9,7 @@
 export * from './constants.js';
 export * from './roles.js';
 export * from './observationAccess.js';
+export * from './reportComponents.js';
 export * from './cycle.js';
 export * from './observability.js';
 export * from './brand.js';

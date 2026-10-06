@@ -377,6 +377,51 @@ describe('finalizeObservation — finalize flow', () => {
     expect(result).toMatchObject({ pdfDriveFileId: 'pdf-existing' });
   });
 
+  it('reports assigned components plus any others the evaluator rated or noted', async () => {
+    const config = happyConfig({
+      observedYear: 6,
+      observationData: {
+        c1: { proficiency: 'proficient', selectedLookForIds: [], scratchNotes: '' },
+        c3: { proficiency: 'distinguished', selectedLookForIds: [], scratchNotes: '' },
+        c4: { proficiency: null, selectedLookForIds: [], scratchNotes: '' },
+      },
+      componentNotes: {
+        c5: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'n' }] }],
+        },
+      },
+    });
+    config.docs = {
+      ...config.docs,
+      [`${COLLECTIONS.rubrics}/rubric-1`]: {
+        rubricId: 'rubric-1',
+        displayName: 'Teaching Rubric',
+        domains: [
+          { id: 'd1', components: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }] },
+          { id: 'd2', components: [{ id: 'c4' }, { id: 'c5' }] },
+          { id: 'd3', components: [{ id: 'c6' }] },
+        ],
+      },
+      [`${COLLECTIONS.roleYearMappings}/teacher_6`]: { assignedComponentIds: ['c1', 'c2'] },
+    };
+    const { db, rec } = buildDb(config);
+    h.db = db;
+    await run(observerRequest());
+
+    const expected = ['c1', 'c2', 'c3', 'c5'];
+    const renderArgs = vi.mocked(h.renderObservationPdf as Mock).mock.calls[0]?.[0] as {
+      activeComponentIds: string[];
+    };
+    expect(renderArgs.activeComponentIds).toEqual(expected);
+    const snapshot = rec.obsUpdates.find((u) => u['rubricSnapshot'])?.['rubricSnapshot'] as {
+      assignedComponentIds: string[];
+      domains: { id: string }[];
+    };
+    expect(snapshot.assignedComponentIds).toEqual(expected);
+    expect(snapshot.domains.map((d) => d.id)).toEqual(['d1', 'd2']);
+  });
+
   it('permits Full Access (oversight) who is not the observer to finalize', async () => {
     OVERRIDE_EMAIL = 'district@orono.k12.mn.us';
     const { db } = buildDb(happyConfig());
