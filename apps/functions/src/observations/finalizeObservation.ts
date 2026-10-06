@@ -13,6 +13,7 @@ import {
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
   questionsForObservation,
   questionPhase,
+  resolveReportDomains,
   roleYearMappingDocId,
   workProductAnswerHasText,
   type AppSettings,
@@ -20,7 +21,6 @@ import {
   type Role,
   type RoleYearMapping,
   type Rubric,
-  type RubricDomain,
   type WorkProductQuestion,
 } from '@ops/shared';
 import {
@@ -204,16 +204,20 @@ export const finalizeObservation = onCall(
       const mappingDocId = roleYearMappingDocId(role.roleId, obs.observedYear);
       const mappingSnap = await db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`).get();
       const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
-      const activeComponentIds = mapping?.assignedComponentIds ?? [];
-
       // Freeze the rubric content actually used so the finalized read-only
       // view renders the criteria text as it stood at finalize time — later
       // rubric edits must never silently rewrite the historical record (the
       // archived PDF already keeps the old wording; this keeps the in-app
-      // view consistent with it). Domains are resolved the way the PDF
-      // template resolves them: narrowed to the role-year mapping when one
-      // exists, falling back to the full rubric otherwise.
-      const snapshotDomains = resolveSnapshotDomains(rubric.domains, activeComponentIds);
+      // view consistent with it). The report covers the role-year's assigned
+      // components plus anything else the evaluator rated, noted or tagged
+      // (administrators may observe against the whole rubric); the PDF gets
+      // the same component list so the two always agree.
+      const snapshotDomains = resolveReportDomains(
+        rubric.domains,
+        mapping?.assignedComponentIds ?? [],
+        obs,
+      );
+      const activeComponentIds = snapshotDomains.flatMap((d) => d.components.map((c) => c.id));
 
       // Every observation type stores its reflection answers as Q&A keyed on
       // questionId. Fetch the observation's question set so the PDF can print
@@ -352,7 +356,7 @@ export const finalizeObservation = onCall(
           rubricId: rubric.rubricId,
           displayName: rubric.displayName,
           domains: snapshotDomains,
-          assignedComponentIds: snapshotDomains.flatMap((d) => d.components.map((c) => c.id)),
+          assignedComponentIds: activeComponentIds,
           capturedAt: new Date(),
         },
         lastModifiedAt: finalizedAt,
@@ -430,23 +434,4 @@ export const finalizeObservation = onCall(
 
 function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-/**
- * Narrow rubric domains to the components active for the observed
- * role/year, dropping domains that end up empty. Mirrors the PDF template's
- * allow-list semantics: an empty `activeComponentIds` means "no mapping
- * narrows this" and keeps the full rubric — as does a mapping that would
- * filter everything out, so the stored snapshot is never empty.
- */
-function resolveSnapshotDomains(
-  domains: RubricDomain[],
-  activeComponentIds: string[],
-): RubricDomain[] {
-  if (activeComponentIds.length === 0) return domains;
-  const allow = new Set(activeComponentIds);
-  const filtered = domains
-    .map((d) => ({ ...d, components: d.components.filter((c) => allow.has(c.id)) }))
-    .filter((d) => d.components.length > 0);
-  return filtered.length > 0 ? filtered : domains;
 }

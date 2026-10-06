@@ -258,9 +258,9 @@ export function ObservationEditorPage() {
   );
 
   // The evaluator can flip between just the components assigned for
-  // this role-year (default — what they're actually scoring) and the
-  // full rubric (read-the-other-descriptors mode). Only the assigned
-  // ones are persisted/scored regardless.
+  // this role-year (default) and the full rubric. Anything rated, noted
+  // or tagged in full-rubric mode is saved and lands in the finalized
+  // report alongside the assigned components (see resolveReportDomains).
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('assigned');
 
   // Build a filtered rubric so the matrix only renders rows the observed
