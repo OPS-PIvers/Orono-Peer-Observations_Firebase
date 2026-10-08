@@ -5,6 +5,7 @@ import {
   Download,
   ExternalLink,
   FileInput,
+  FolderOpen,
   Loader2,
   Mic,
   Pencil,
@@ -15,10 +16,9 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { getIdToken } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { RECORDING_LABEL_MAX, type AudioRecordingMeta, type TranscriptionJob } from '@ops/shared';
-import { auth, functions, functionsHttpUrl } from '@/lib/firebase';
+import { functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -40,7 +40,18 @@ import {
   recordingDownloadName,
   recordingTitle,
   saveBlob,
+  uploadObservationAudio,
 } from './recordings';
+import {
+  MAX_DRIVE_AUDIO_BYTES,
+  downloadDriveFile,
+  isDriveImportConfigured,
+  labelFromFileName,
+  measureAudioDuration,
+  normalizeAudioMimeType,
+  pickDriveAudio,
+  preloadDrivePicker,
+} from './driveAudioPicker';
 import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
 
 interface RequestTranscriptionResponse {
@@ -89,13 +100,15 @@ export interface AudioRecorderProps {
   onInsertTranscript?: ((audioFileId: string) => void) | undefined;
 }
 
-export type Phase = 'idle' | 'recording' | 'uploading' | 'error';
+export type Phase = 'idle' | 'recording' | 'uploading' | 'importing' | 'error';
 
 /**
  * In-browser audio recorder backed by MediaRecorder. Records as webm/opus
  * (Chrome/Firefox) or audio/mp4 (Safari/iPad) and uploads via the
  * `uploadAudio` Cloud Function on stop. The function writes the file to
- * the observation's Drive folder, owned by the service account.
+ * the observation's Drive folder, owned by the service account. "Upload
+ * from Drive" sends audio recorded elsewhere (iPhone Voice Memos saved to
+ * Drive) through the same function.
  *
  * The list of recorded audio is rendered live from the observation doc
  * (whatever `audioFileIds` the parent passes in); playback streams through
@@ -119,6 +132,9 @@ export function AudioRecorder({
   }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  /** Progress line while importing from Drive ("Downloading …"). */
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const driveImportEnabled = !readOnly && isDriveImportConfigured();
   /** Request-time failures (e.g. the callable itself rejecting, before a
    *  job doc even exists) — separate from a job's own `status: 'Failed'`,
    *  which is surfaced from `jobsByAudioFileId` below. */
@@ -185,6 +201,12 @@ export function AudioRecorder({
     },
     [observationId, jobsByAudioFileId],
   );
+
+  // Load the Google scripts before the click so the Drive sign-in popup
+  // still counts as user-initiated and isn't blocked.
+  useEffect(() => {
+    if (driveImportEnabled) preloadDrivePicker();
+  }, [driveImportEnabled]);
 
   const handleInsertTranscript = useCallback(
     (audioFileId: string) => {
@@ -266,38 +288,14 @@ export function AudioRecorder({
         setPhase('error');
         return;
       }
-      const user = auth.currentUser;
-      if (!user) {
-        setError('Not signed in.');
-        setPhase('error');
-        return;
-      }
-      const idToken = await getIdToken(user);
       const startedAt = startedAtRef.current;
-      const timing: Record<string, string> = startedAt
-        ? {
-            'X-Audio-Recorded-At': startedAt.toISOString(),
-            'X-Audio-Duration-Sec': String(Math.round((Date.now() - startedAt.getTime()) / 1000)),
-          }
-        : {};
-      const response = await fetch(functionsHttpUrl('uploadAudio'), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'X-Observation-Id': observationId,
-          'X-Audio-Mime-Type': mimeType,
-          'Content-Type': mimeType,
-          ...timing,
-        },
-        body: blob,
+      const data = await uploadObservationAudio({
+        observationId,
+        blob,
+        mimeType,
+        recordedAt: startedAt,
+        durationSec: startedAt ? Math.round((Date.now() - startedAt.getTime()) / 1000) : null,
       });
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(
-          `Upload failed (${String(response.status)}): ${text || response.statusText}`,
-        );
-      }
-      const data = (await response.json()) as { audioFileId: string };
       setPhase('idle');
       onUploaded?.(data.audioFileId);
       // Auto-request transcription so the user doesn't have to click again
@@ -308,6 +306,62 @@ export function AudioRecorder({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
+      setPhase('error');
+    }
+  }
+
+  /**
+   * Pick audio files in Google Drive and send each through the same upload
+   * (and auto-transcription) path as an in-app recording. The recording is
+   * named after the Drive file so the user can tell imports apart.
+   */
+  async function importFromDrive() {
+    setError(null);
+    setPhase('importing');
+    setImportStatus('Opening Google Drive…');
+    try {
+      assertWritable();
+      const { files, accessToken } = await pickDriveAudio(user?.email ?? null);
+      const failures: string[] = [];
+      for (const [i, file] of files.entries()) {
+        const position = files.length > 1 ? ` (${String(i + 1)} of ${String(files.length)})` : '';
+        try {
+          const mimeType = normalizeAudioMimeType(file.mimeType);
+          if (!mimeType) throw new Error('not an audio format that can be transcribed.');
+          if (file.sizeBytes != null && file.sizeBytes > MAX_DRIVE_AUDIO_BYTES) {
+            throw new Error(tooLargeMessage(file.sizeBytes));
+          }
+          setImportStatus(`Downloading ${file.name}${position}…`);
+          const downloaded = await downloadDriveFile(file.id, accessToken);
+          if (downloaded.size > MAX_DRIVE_AUDIO_BYTES) {
+            throw new Error(tooLargeMessage(downloaded.size));
+          }
+          const blob = downloaded.slice(0, downloaded.size, mimeType);
+          const durationSec = await measureAudioDuration(blob);
+          setImportStatus(`Uploading ${file.name}${position}…`);
+          const data = await uploadObservationAudio({ observationId, blob, mimeType, durationSec });
+          const label = labelFromFileName(file.name, RECORDING_LABEL_MAX);
+          if (label) {
+            await renameRecordingFn({ observationId, audioFileId: data.audioFileId, label }).catch(
+              () => undefined,
+            );
+          }
+          onUploaded?.(data.audioFileId);
+          if (transcriptionEnabled) void requestTranscription(data.audioFileId);
+        } catch (err) {
+          failures.push(`${file.name}: ${err instanceof Error ? err.message : 'upload failed.'}`);
+        }
+      }
+      setImportStatus(null);
+      if (failures.length > 0) {
+        setError(`Could not add ${failures.join(' ')}`);
+        setPhase('error');
+      } else {
+        setPhase('idle');
+      }
+    } catch (err) {
+      setImportStatus(null);
+      setError(err instanceof Error ? err.message : 'Could not open Google Drive.');
       setPhase('error');
     }
   }
@@ -327,17 +381,41 @@ export function AudioRecorder({
                 observation script for tagging.
               </>
             ) : null}
+            {driveImportEnabled ? (
+              <>
+                {' '}
+                Recorded on another device? Use <strong>Upload from Drive</strong> to add a Voice
+                Memo you saved to Google Drive.
+              </>
+            ) : null}
           </p>
         </div>
-        <RecordButton
-          phase={phase}
-          disabled={readOnly}
-          onStart={startRecording}
-          onStop={stopRecording}
-        />
+        <div className="flex shrink-0 flex-col items-stretch gap-2">
+          <RecordButton
+            phase={phase}
+            disabled={readOnly || phase === 'importing'}
+            onStart={startRecording}
+            onStop={stopRecording}
+          />
+          {driveImportEnabled ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void importFromDrive()}
+              disabled={phase === 'recording' || phase === 'uploading' || phase === 'importing'}
+            >
+              {phase === 'importing' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FolderOpen className="h-4 w-4" />
+              )}
+              Upload from Drive
+            </Button>
+          ) : null}
+        </div>
       </header>
 
-      <PhaseStatus phase={phase} elapsed={elapsed} error={error} />
+      <PhaseStatus phase={phase} elapsed={elapsed} error={error} importStatus={importStatus} />
 
       <RecordingsList
         observationId={observationId}
@@ -396,10 +474,12 @@ function PhaseStatus({
   phase,
   elapsed,
   error,
+  importStatus,
 }: {
   phase: Phase;
   elapsed: number;
   error: string | null;
+  importStatus: string | null;
 }) {
   if (phase === 'recording') {
     return (
@@ -414,6 +494,14 @@ function PhaseStatus({
       <div className="text-muted-foreground mb-3 flex items-center gap-2 text-sm">
         <Upload className="h-4 w-4" />
         <span>Uploading to Drive…</span>
+      </div>
+    );
+  }
+  if (phase === 'importing' && importStatus) {
+    return (
+      <div className="text-muted-foreground mb-3 flex items-center gap-2 text-sm">
+        <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
+        <span className="min-w-0 truncate">{importStatus}</span>
       </div>
     );
   }
@@ -949,6 +1037,12 @@ function pickSupportedMimeType(): string | null {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c)) return c;
   }
   return null;
+}
+
+function tooLargeMessage(bytes: number): string {
+  const mb = (bytes / (1024 * 1024)).toFixed(0);
+  const max = String(MAX_DRIVE_AUDIO_BYTES / (1024 * 1024));
+  return `too large to add (${mb} MB; the limit is ${max} MB, about an hour of a Voice Memo).`;
 }
 
 function formatDuration(seconds: number): string {

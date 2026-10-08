@@ -42,19 +42,21 @@ export function AudioPopoverButton({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
-  // Click-outside / Escape close. While recording or uploading, the
-  // popover stays open so the user can hit Stop without re-opening it.
+  // Click-outside / Escape close. While recording, uploading or importing
+  // from Drive, the popover stays open so the user can hit Stop (or see the
+  // import's progress) without re-opening it. Clicks on the Drive picker's
+  // backdrop land outside the popover, which is why importing counts too.
   useEffect(() => {
     if (!open) return;
     function handleMouseDown(e: MouseEvent) {
       const target = e.target as Node;
-      if (phase === 'recording' || phase === 'uploading') return;
+      if (keepOpen(phase)) return;
       if (popoverRef.current?.contains(target)) return;
       if (triggerRef.current?.contains(target)) return;
       setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && phase !== 'recording' && phase !== 'uploading') {
+      if (e.key === 'Escape' && !keepOpen(phase)) {
         setOpen(false);
       }
     }
@@ -112,4 +114,8 @@ export function AudioPopoverButton({
       </div>
     </div>
   );
+}
+
+function keepOpen(phase: Phase): boolean {
+  return phase === 'recording' || phase === 'uploading' || phase === 'importing';
 }
