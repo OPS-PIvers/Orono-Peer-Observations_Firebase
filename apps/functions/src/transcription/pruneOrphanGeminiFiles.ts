@@ -3,6 +3,7 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
+import { DRIVE_SERVICE_ACCOUNT } from '../lib/drive.js';
 import { deleteTranscriptionAudio } from '../lib/transcriptionStorage.js';
 
 if (getApps().length === 0) initializeApp();
@@ -34,6 +35,9 @@ export const pruneOrphanGeminiFiles = onSchedule(
     schedule: 'every day 04:15',
     timeZone: 'America/Chicago',
     region: 'us-central1',
+    // Same account as the transcription worker, which already has object
+    // access to the scratch bucket.
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
     memory: '256MiB',
     timeoutSeconds: 540,
   },
