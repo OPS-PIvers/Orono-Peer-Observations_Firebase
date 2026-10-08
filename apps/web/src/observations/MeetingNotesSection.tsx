@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { CalendarClock, ChevronDown, Lock } from 'lucide-react';
+import { CalendarClock, ChevronDown, Lock, Target } from 'lucide-react';
 import type { QuestionPhase, TiptapDoc, WorkProductAnswer, WorkProductQuestion } from '@ops/shared';
 import { TiptapEditor } from '@/components/ui/tiptap-editor';
 import { cn } from '@/lib/utils';
@@ -46,6 +46,11 @@ export interface QuestionsSlot {
   isOnline: boolean;
 }
 
+export interface GoalsSlot {
+  value: TiptapDoc | undefined;
+  onChange: (doc: TiptapDoc) => void;
+}
+
 export interface MeetingNotesSectionProps {
   preObsDate: Date | undefined;
   preObsNotes: TiptapDoc | undefined;
@@ -58,6 +63,10 @@ export interface MeetingNotesSectionProps {
   onPostObsDateChange: (date: Date | undefined) => void;
   onPostObsNotesChange: (doc: TiptapDoc) => void;
   questions?: QuestionsSlot | undefined;
+  /** Goals & Next Steps panel (Work Product and Instructional Round only).
+   *  Absent hides the button. Editable under the same `readOnly` as the
+   *  evaluator's other meeting notes. */
+  goals?: GoalsSlot | undefined;
   /**
    * External request to open a panel — the observation page passes the URL
    * hash (`#planning` / `#reflection`) so dashboard cards and emails can
@@ -77,7 +86,7 @@ export interface MeetingNotesSectionProps {
   actions?: ReactNode;
 }
 
-type ActiveTab = null | QuestionPhase;
+type ActiveTab = null | QuestionPhase | 'goals';
 
 interface PanelProps {
   /** Stable HTML-id slug — keep distinct per sub-section ('pre' / 'post'). */
@@ -168,6 +177,28 @@ function Panel({
           />
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function GoalsPanel({ goals, readOnly }: { goals: GoalsSlot; readOnly: boolean }) {
+  return (
+    <div
+      id="meeting-panel-goals"
+      className="border-ops-blue-lighter mt-2 rounded-md border bg-white p-3"
+    >
+      {readOnly && !hasTiptapContent(goals.value) ? (
+        <p className="text-sm text-gray-400 italic">No goals or next steps yet.</p>
+      ) : (
+        <TiptapEditor
+          value={goals.value}
+          onChange={goals.onChange}
+          readOnly={readOnly}
+          variant="full"
+          minHeight="6rem"
+          placeholder="Add goals and next steps…"
+        />
+      )}
     </div>
   );
 }
@@ -299,6 +330,8 @@ function TabButton({
   date,
   progress,
   controls,
+  icon: Icon = CalendarClock,
+  className,
 }: {
   active: boolean;
   hasContent: boolean;
@@ -307,6 +340,8 @@ function TabButton({
   date: string | null;
   progress: ReturnType<typeof progressLabel>;
   controls: string;
+  icon?: typeof CalendarClock;
+  className?: string;
 }) {
   return (
     <button
@@ -322,9 +357,10 @@ function TabButton({
           : hasContent
             ? 'border-ops-blue-lighter text-ops-blue-dark hover:bg-ops-blue-lighter/60 bg-white'
             : 'border-input text-ops-gray-dark hover:bg-ops-blue-lighter/50 bg-white',
+        className,
       )}
     >
-      <CalendarClock className="h-3.5 w-3.5" />
+      <Icon className="h-3.5 w-3.5" />
       {label}
       {date ? <span className="text-muted-foreground font-normal">· {date}</span> : null}
       {progress && 'locked' in progress ? (
@@ -357,6 +393,7 @@ export function MeetingNotesSection({
   onPostObsDateChange,
   onPostObsNotesChange,
   questions,
+  goals,
   openPanel,
   preLabel = 'Planning Questions',
   actions,
@@ -400,6 +437,19 @@ export function MeetingNotesSection({
           progress={progressLabel('post', questions)}
           controls="meeting-panel-post"
         />
+        {goals ? (
+          <TabButton
+            active={active === 'goals'}
+            hasContent={hasTiptapContent(goals.value)}
+            onClick={() => setActive((v) => (v === 'goals' ? null : 'goals'))}
+            label="Goals & Next Steps"
+            date={null}
+            progress={null}
+            controls="meeting-panel-goals"
+            icon={Target}
+            className="col-span-2"
+          />
+        ) : null}
         {actions ? <div className="hidden md:ml-auto md:block">{actions}</div> : null}
       </div>
       {actions ? <div className="md:hidden">{actions}</div> : null}
@@ -427,6 +477,7 @@ export function MeetingNotesSection({
           label="Reflection Questions"
         />
       ) : null}
+      {active === 'goals' && goals ? <GoalsPanel goals={goals} readOnly={readOnly} /> : null}
     </div>
   );
 }
