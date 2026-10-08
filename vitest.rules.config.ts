@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
  *
  *     pnpm test:rules
  *
- * which wraps this config in `firebase emulators:exec --only firestore`.
+ * which wraps this config in `firebase emulators:exec --only firestore,storage`.
  */
 export default defineConfig({
   test: {

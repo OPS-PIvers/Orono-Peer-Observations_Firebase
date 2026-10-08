@@ -23,7 +23,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md,yml,yaml}\"",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
-    "test:rules": "node scripts/run-firebase-emulators.mjs emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "node scripts/run-firebase-emulators.mjs emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
     "test:e2e": "pnpm --filter @ops/web test:e2e",
     "validate": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "deploy:dev": "pnpm build:web && firebase hosting:channel:deploy dev-paul --expires 30d",

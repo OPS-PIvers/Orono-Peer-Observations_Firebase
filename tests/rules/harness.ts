@@ -18,6 +18,11 @@ export async function setupTestEnv(): Promise<RulesTestEnvironment> {
       host: '127.0.0.1',
       port: 8080,
     },
+    storage: {
+      rules: readFileSync(resolve(__dirname, '../../storage.rules'), 'utf8'),
+      host: '127.0.0.1',
+      port: 9199,
+    },
   });
 }
 
@@ -43,6 +48,14 @@ export const claims = {
     role: 'peer-evaluator',
     hasSpecialAccess: true,
     isAdmin: false,
+    ...verified,
+  }),
+  /** A Peer Evaluator who was also granted Admin Console access. */
+  peerEvalConsole: (email = 'pe-console@orono.k12.mn.us') => ({
+    email,
+    role: 'peer-evaluator',
+    hasSpecialAccess: true,
+    isAdmin: true,
     ...verified,
   }),
   admin: (email = 'admin@orono.k12.mn.us') => ({

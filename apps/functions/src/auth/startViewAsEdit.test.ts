@@ -68,17 +68,23 @@ describe('handleStartViewAsEdit', () => {
     });
   });
 
-  it('only signs in as Administrators or Peer Evaluators without console access', async () => {
-    for (const target of [
-      { role: 'full-access' },
-      { role: 'teacher' },
-      { role: 'administrator', hasAdminAccess: true },
-    ]) {
+  it('only signs in as Administrators or Peer Evaluators', async () => {
+    for (const target of [{ role: 'full-access' }, { role: 'teacher' }]) {
       const { db, auth } = setup({ ...granted, [ERIN]: target });
       await expect(
         handleStartViewAsEdit(db, auth, caller(), { email: ERIN }),
       ).rejects.toMatchObject({ code: 'failed-precondition' });
     }
+  });
+
+  it('allows an Administrator who also has Admin Console access', async () => {
+    const { db, auth } = setup({
+      ...granted,
+      [ERIN]: { role: 'administrator', hasAdminAccess: true, isActive: true },
+    });
+    await expect(handleStartViewAsEdit(db, auth, caller(), { email: ERIN })).resolves.toEqual({
+      token: 'custom-token',
+    });
   });
 
   it('cannot be chained from inside a demo-edit session', async () => {
