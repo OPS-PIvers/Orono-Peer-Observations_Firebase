@@ -1,9 +1,9 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
-import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { vertexGenerateContent } from '../lib/vertexGemini.js';
 import type { RubricComponent } from '@ops/shared';
 import {
   assertScriptAutoTagAvailable,
@@ -14,9 +14,6 @@ import {
 } from './scriptTagging.js';
 
 if (getApps().length === 0) initializeApp();
-
-const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 interface SuggestScriptTagsRequest {
   observationId?: string;
@@ -53,7 +50,6 @@ export const suggestScriptTags = onCall(
     // Demo-edit sessions allowed; confined to demo staff below.
     allowDemoEdit: true,
     region: 'us-central1',
-    secrets: [GEMINI_API_KEY],
     memory: '512MiB',
     timeoutSeconds: 120,
     // maxInstances caps concurrent Gemini-tagging work to bound cost/abuse
@@ -81,12 +77,7 @@ export const suggestScriptTags = onCall(
     const callerRole = request.auth.token['role'] as string | undefined;
     const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
 
-    const raw = await callGeminiForTags(
-      ctx.activeComponents,
-      ctx.paragraphs,
-      GEMINI_API_KEY.value(),
-      feature.model,
-    );
+    const raw = await callGeminiForTags(ctx.activeComponents, ctx.paragraphs, feature.model);
 
     const { accepted, rejected } = filterVerbatimSuggestions(
       raw,
@@ -119,14 +110,9 @@ export const suggestScriptTags = onCall(
 
 // ─── Gemini call ─────────────────────────────────────────────────────────────
 
-interface GeminiResponse {
-  candidates?: { content?: { parts?: { text?: string }[] } }[];
-}
-
 async function callGeminiForTags(
   components: readonly RubricComponent[],
   paragraphs: readonly string[],
-  apiKey: string,
   model: string,
 ): Promise<ScriptTagSuggestion[]> {
   const componentBlock = components.map((c) => ({
@@ -154,26 +140,17 @@ ${JSON.stringify(componentBlock, null, 2)}
 SCRIPT:
 ${JSON.stringify(paragraphBlock, null, 2)}`;
 
-  const url = `${GEMINI_BASE}/models/${model}:generateContent`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
+  const data = await vertexGenerateContent(
+    model,
+    {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.2,
       },
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new HttpsError(
-      'internal',
-      `Gemini API error ${String(response.status)}: ${text.slice(0, 300)}`,
-    );
-  }
-  const data = (await response.json()) as GeminiResponse;
+    },
+    'suggestScriptTags',
+  );
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   if (!raw) throw new HttpsError('internal', 'Gemini returned no content');
 
