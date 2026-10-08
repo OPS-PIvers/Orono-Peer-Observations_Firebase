@@ -485,6 +485,7 @@ describe('observations: update', () => {
         preObsNotes: null,
         postObsDate: null,
         postObsNotes: null,
+        goalsNextSteps: null,
         observationName: 'Autosaved title',
         observationDate: new Date(),
         lastModifiedAt: new Date(),

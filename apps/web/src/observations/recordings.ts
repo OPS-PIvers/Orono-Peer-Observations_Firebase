@@ -94,3 +94,38 @@ export function saveBlob(blob: Blob, fileName: string): void {
   // after click() returns.
   setTimeout(() => URL.revokeObjectURL(href), 30_000);
 }
+
+/**
+ * Post audio bytes to the `uploadAudio` function, which stores them in the
+ * observation's Drive folder and adds the recording to the observation.
+ * Used by in-app recordings and by imports from Drive alike.
+ */
+export async function uploadObservationAudio(args: {
+  observationId: string;
+  blob: Blob;
+  mimeType: string;
+  recordedAt?: Date | null;
+  durationSec?: number | null;
+}): Promise<{ audioFileId: string }> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in.');
+  const idToken = await getIdToken(user);
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${idToken}`,
+    'X-Observation-Id': args.observationId,
+    'X-Audio-Mime-Type': args.mimeType,
+    'Content-Type': args.mimeType,
+  };
+  if (args.recordedAt) headers['X-Audio-Recorded-At'] = args.recordedAt.toISOString();
+  if (args.durationSec != null) headers['X-Audio-Duration-Sec'] = String(args.durationSec);
+  const response = await fetch(functionsHttpUrl('uploadAudio'), {
+    method: 'POST',
+    headers,
+    body: args.blob,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Upload failed (${String(response.status)}): ${text || response.statusText}`);
+  }
+  return (await response.json()) as { audioFileId: string };
+}

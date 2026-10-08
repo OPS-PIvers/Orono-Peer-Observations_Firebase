@@ -110,7 +110,8 @@ export const draftVisibility = z.object({
   evidence: z.boolean().default(false),
   /** The live script and its component tags. */
   script: z.boolean().default(false),
-  /** The evaluator's Planning / Reflection meeting notes (dates stay visible). */
+  /** The evaluator's Planning / Reflection / Goals & Next Steps meeting
+   *  notes (dates stay visible). */
   meetingNotes: z.boolean().default(false),
 });
 export type DraftVisibility = z.infer<typeof draftVisibility>;
@@ -210,6 +211,9 @@ export const observation = z.object({
   preObsNotes: tiptapDoc.optional(),
   postObsDate: isoDate.optional(),
   postObsNotes: tiptapDoc.optional(),
+  /** Evaluator's Goals & Next Steps notes. Work Product and Instructional
+   *  Round only; withheld from the teacher with the other meeting notes. */
+  goalsNextSteps: tiptapDoc.optional(),
 
   // Audio + transcripts
   audioDriveFileIds: z.array(z.string()).default([]),
@@ -322,6 +326,7 @@ export const observationUpdateInput = observation
     preObsNotes: true,
     postObsDate: true,
     postObsNotes: true,
+    goalsNextSteps: true,
   })
   .partial();
 export type ObservationUpdateInput = z.infer<typeof observationUpdateInput>;

@@ -75,7 +75,7 @@ import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
-import { planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
+import { hasGoalsPanel, planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
 import {
   answerEditability,
   questionsWithRetiredAnswers,
@@ -138,6 +138,7 @@ interface EditorDraft {
   preObsNotes: TiptapDoc | undefined;
   postObsDate: Date | undefined;
   postObsNotes: TiptapDoc | undefined;
+  goalsNextSteps: TiptapDoc | undefined;
   observationName: string;
   observationDate: Date | undefined;
 }
@@ -150,6 +151,7 @@ const emptyDraft: EditorDraft = {
   preObsNotes: undefined,
   postObsDate: undefined,
   postObsNotes: undefined,
+  goalsNextSteps: undefined,
   observationName: '',
   observationDate: undefined,
 };
@@ -356,6 +358,7 @@ export function ObservationEditorPage() {
       preObsNotes: src.preObsNotes,
       postObsDate: toJsDate(src.postObsDate),
       postObsNotes: src.postObsNotes,
+      goalsNextSteps: src.goalsNextSteps,
       observationName: src.observationName,
       observationDate: toJsDate(src.observationDate),
     };
@@ -379,6 +382,7 @@ export function ObservationEditorPage() {
           preObsNotes: draftRef.current.preObsNotes ?? null,
           postObsDate: draftRef.current.postObsDate ?? null,
           postObsNotes: draftRef.current.postObsNotes ?? null,
+          goalsNextSteps: draftRef.current.goalsNextSteps ?? null,
           observationName: draftRef.current.observationName,
           observationDate: draftRef.current.observationDate ?? null,
           lastModifiedAt: serverTimestamp(),
@@ -807,6 +811,17 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
+  const setGoalsNextSteps = useCallback(
+    (doc: TiptapDoc) => {
+      if (!canEdit) return;
+      const next: EditorDraft = { ...draftRef.current, goalsNextSteps: doc };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave();
+    },
+    [canEdit, scheduleSave],
+  );
+
   const setObservationName = useCallback(
     (name: string) => {
       if (!canEdit) return;
@@ -1212,6 +1227,14 @@ export function ObservationEditorPage() {
           onPreObsNotesChange={setPreObsNotes}
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
+          goals={
+            hasGoalsPanel(observation.type)
+              ? {
+                  value: show.meetingNotes ? draft.goalsNextSteps : undefined,
+                  onChange: setGoalsNextSteps,
+                }
+              : undefined
+          }
           questions={questionsSlot}
           openPanel={requestedPanel}
           preLabel={planningPanelLabel(observation.type)}
