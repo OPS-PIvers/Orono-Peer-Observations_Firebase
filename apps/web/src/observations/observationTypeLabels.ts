@@ -19,3 +19,9 @@ export function showsObservationTypes(role: string | null | undefined): boolean 
 export function planningPanelLabel(type: ObservationType | null | undefined): string {
   return type === OBSERVATION_TYPES.instructionalRound ? 'Observation Notes' : 'Planning Questions';
 }
+
+/** Work Product and Instructional Round observations add a Goals & Next
+ *  Steps panel to the meeting notes: one rich-text box, no questions. */
+export function hasGoalsPanel(type: ObservationType | null | undefined): boolean {
+  return type === OBSERVATION_TYPES.workProduct || type === OBSERVATION_TYPES.instructionalRound;
+}
