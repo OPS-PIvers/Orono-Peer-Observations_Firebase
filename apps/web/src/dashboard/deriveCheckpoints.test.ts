@@ -393,6 +393,28 @@ describe('deriveCheckpoints (generic slots)', () => {
     expect(cards.find((c) => c.id === 'l')?.ctaUrl).toBe('/x');
     expect(cards.find((c) => c.id === 'i')?.ctaUrl).toBe('');
   });
+
+  it('a "current" panel opens Planning until Reflection unlocks, then Reflection', () => {
+    const step = dashboardStep.parse({
+      id: 'wpq',
+      showWhen: 'always',
+      watchedKind: 'workProduct',
+      buttonTarget: 'observation',
+      openPanel: 'current',
+    });
+    const yesterday = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+    const url = (observationDate: Date) =>
+      deriveCheckpoints(
+        [step],
+        ctx({
+          workProductDraft: obs({ observationId: 'wp', observationDate }),
+          appSettings: DATE_GATED,
+        }),
+        NOW,
+      )[0]?.ctaUrl;
+    expect(url(FUTURE)).toBe('/observations/wp#planning');
+    expect(url(yesterday)).toBe('/observations/wp#reflection');
+  });
 });
 
 describe('deriveCheckpoints (evaluator check-offs)', () => {

@@ -39,6 +39,7 @@ import {
 } from '@ops/shared';
 import { answerProgress, splitQuestionsByPhase } from '@/observations/questionAnswers';
 import { useReflectionUnlock } from '@/observations/useReflectionUnlock';
+import { planningPanelLabel } from '@/observations/observationTypeLabels';
 import { toJsDate } from '@/utils/staffFormatting';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -348,7 +349,7 @@ function InProgressSection({
                 </div>
               </div>
               <ProgressPill
-                label="Planning Questions"
+                label={planningPanelLabel(o.type)}
                 to={`/observations/${o.id}#planning`}
                 answered={planning.answered}
                 total={planning.total}

@@ -14,6 +14,7 @@ interface HState {
     shareWithUser: Fn;
     uploadFileToFolder: Fn;
     deleteDriveFile: Fn;
+    replaceFileContent: Fn;
   };
   renderObservationPdf: Fn;
   loadRateLimits: Fn;
@@ -37,6 +38,7 @@ const h = vi.hoisted(
       shareWithUser: undefined,
       uploadFileToFolder: undefined,
       deleteDriveFile: undefined,
+      replaceFileContent: undefined,
     },
     renderObservationPdf: undefined,
     loadRateLimits: undefined,
@@ -68,6 +70,7 @@ vi.mock('../lib/drive.js', () => ({
   shareWithUser: (...a: unknown[]) => h.drive.shareWithUser?.(...a),
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
   deleteDriveFile: (...a: unknown[]) => h.drive.deleteDriveFile?.(...a),
+  replaceFileContent: (...a: unknown[]) => h.drive.replaceFileContent?.(...a),
 }));
 
 vi.mock('../lib/pdfRenderer.js', () => ({
@@ -211,6 +214,8 @@ function installHappyDrive() {
   h.drive.shareObservationFolderWithObserver = vi.fn().mockResolvedValue(undefined);
   h.drive.getDriveLinks = vi.fn().mockResolvedValue({ webViewLink: 'https://drive/view/pdf-new' });
   h.drive.deleteDriveFile = vi.fn().mockResolvedValue(undefined);
+  // Old PDF gone by default, so the fresh-upload path runs.
+  h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
   h.renderObservationPdf = vi.fn().mockResolvedValue(Buffer.from('pdf'));
 }
 
@@ -306,5 +311,67 @@ describe('regenerateObservationPdf — rate limiting', () => {
 
     await expect(run(stranger)).rejects.toMatchObject({ code: 'permission-denied' });
     expect(h.checkRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe('regenerateObservationPdf — report contents and file handling', () => {
+  it('writes over the existing PDF so the emailed link keeps working', async () => {
+    h.drive.replaceFileContent = vi.fn().mockResolvedValue('pdf-old');
+    const { db, rec } = buildDb(happyConfig());
+    h.db = db;
+    const result = await run(observerRequest());
+
+    expect(h.drive.replaceFileContent).toHaveBeenCalledWith(
+      expect.objectContaining({ fileId: 'pdf-old', mimeType: 'application/pdf' }),
+    );
+    expect(h.drive.uploadFileToFolder).not.toHaveBeenCalled();
+    expect(h.drive.deleteDriveFile).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ pdfDriveFileId: 'pdf-old' });
+    expect(rec.obsUpdates[0]?.['pdfDriveFileId']).toBe('pdf-old');
+  });
+
+  it('uploads a fresh PDF and drops the old reference when the old file is gone', async () => {
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    const result = await run(observerRequest());
+
+    expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
+    expect(h.drive.deleteDriveFile).toHaveBeenCalledWith('pdf-old');
+    expect(result).toMatchObject({ pdfDriveFileId: 'pdf-new' });
+  });
+
+  it('renders and re-snapshots assigned components plus off-assignment ratings', async () => {
+    const config = happyConfig({
+      observationData: {
+        c1: { proficiency: 'basic', selectedLookForIds: [], scratchNotes: '' },
+        c4: { proficiency: 'distinguished', selectedLookForIds: [], scratchNotes: '' },
+      },
+    });
+    config.rubric = {
+      rubricId: 'rubric-1',
+      displayName: 'Teaching Rubric',
+      domains: [
+        { id: 'd1', components: [{ id: 'c1' }, { id: 'c2' }] },
+        { id: 'd2', components: [{ id: 'c3' }, { id: 'c4' }] },
+      ],
+    };
+    config.mapping = { assignedComponentIds: ['c2'] };
+    const { db, rec } = buildDb(config);
+    h.db = db;
+    await run(observerRequest());
+
+    const renderArgs = (h.renderObservationPdf as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+      activeComponentIds: string[];
+    };
+    expect(renderArgs.activeComponentIds).toEqual(['c1', 'c2', 'c4']);
+    const snapshot = rec.obsUpdates[0]?.['rubricSnapshot'] as {
+      assignedComponentIds: string[];
+      domains: { id: string; components: { id: string }[] }[];
+    };
+    expect(snapshot.assignedComponentIds).toEqual(['c1', 'c2', 'c4']);
+    expect(snapshot.domains.map((d) => d.components.map((c) => c.id))).toEqual([
+      ['c1', 'c2'],
+      ['c4'],
+    ]);
   });
 });

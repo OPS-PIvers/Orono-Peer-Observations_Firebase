@@ -65,6 +65,9 @@ export interface MeetingNotesSectionProps {
    * user can still close the panel afterwards.
    */
   openPanel?: QuestionPhase | null | undefined;
+  /** Label for the pre-observation panel's button and heading. Defaults to
+   *  "Planning Questions"; see `planningPanelLabel`. */
+  preLabel?: string | undefined;
   /**
    * Optional slot rendered to the far right of the toggle row at md+
    * widths, dropped below the row at narrow widths. Used by the
@@ -85,9 +88,9 @@ interface PanelProps {
   onDateChange: (date: Date | undefined) => void;
   onNotesChange: (doc: TiptapDoc) => void;
   questions: QuestionsSlot | undefined;
+  /** Heading over the panel's questions, e.g. "Planning Questions". */
+  label: string;
 }
-
-const PHASE_LABEL: Record<QuestionPhase, string> = { pre: 'Planning', post: 'Reflection' };
 
 function Panel({
   slug,
@@ -97,6 +100,7 @@ function Panel({
   onDateChange,
   onNotesChange,
   questions,
+  label,
 }: PanelProps) {
   const dateInputId = `meeting-date-${slug}`;
   const phase = questions?.[slug];
@@ -145,8 +149,8 @@ function Panel({
       </div>
 
       {questions && phase && hasQuestions ? (
-        <section className="space-y-4" aria-label={`${PHASE_LABEL[slug]} questions`}>
-          <SectionHeading>{PHASE_LABEL[slug]} questions</SectionHeading>
+        <section className="space-y-4" aria-label={label}>
+          <SectionHeading>{label}</SectionHeading>
           <PhaseQuestionsBlock phase={slug} slot={phase} questions={questions} />
         </section>
       ) : null}
@@ -198,7 +202,7 @@ function PhaseQuestionsBlock({
       {slot.editability === 'finalized' ? (
         <p className="text-muted-foreground flex items-center gap-2 text-xs">
           <Lock className="size-3.5 shrink-0" aria-hidden />
-          Planning answers are locked now that this observation is finalized.
+          These answers are locked now that this observation is finalized.
         </p>
       ) : null}
       {editable ? (
@@ -354,6 +358,7 @@ export function MeetingNotesSection({
   onPostObsNotesChange,
   questions,
   openPanel,
+  preLabel = 'Planning Questions',
   actions,
 }: MeetingNotesSectionProps) {
   const [active, setActive] = useState<ActiveTab>(openPanel ?? null);
@@ -381,7 +386,7 @@ export function MeetingNotesSection({
           active={active === 'pre'}
           hasContent={preObsDate !== undefined || hasTiptapContent(preObsNotes)}
           onClick={() => setActive((v) => (v === 'pre' ? null : 'pre'))}
-          label="Planning Questions"
+          label={preLabel}
           date={dateLabel(preObsDate)}
           progress={progressLabel('pre', questions)}
           controls="meeting-panel-pre"
@@ -407,6 +412,7 @@ export function MeetingNotesSection({
           onDateChange={onPreObsDateChange}
           onNotesChange={onPreObsNotesChange}
           questions={questions}
+          label={preLabel}
         />
       ) : null}
       {active === 'post' ? (
@@ -418,6 +424,7 @@ export function MeetingNotesSection({
           onDateChange={onPostObsDateChange}
           onNotesChange={onPostObsNotesChange}
           questions={questions}
+          label="Reflection Questions"
         />
       ) : null}
     </div>

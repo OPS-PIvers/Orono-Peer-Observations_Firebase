@@ -51,6 +51,23 @@ async function seedDraftObs(id: string, overrides: Record<string, unknown> = {})
   });
 }
 
+// A Peer Evaluator with Admin Console access (the hasAdminAccess staff flag):
+// isAdmin + hasSpecialAccess claims, but no observation oversight.
+async function consolePeDb() {
+  const email = 'consolepe@orono.k12.mn.us';
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'staff', email), {
+      email,
+      role: 'peer-evaluator',
+      hasAdminAccess: true,
+      isActive: true,
+    });
+  });
+  return testEnv
+    .authenticatedContext('consolepe', { ...claims.peerEval(email), isAdmin: true })
+    .firestore();
+}
+
 describe('observations: read access', () => {
   beforeEach(async () => {
     await seedDraftObs('obs1');
@@ -95,6 +112,12 @@ describe('observations: read access', () => {
   it('Full Access (oversight) can read any observation', async () => {
     const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
+  });
+
+  it("Admin Console access does NOT grant reading others' observations", async () => {
+    const db = await consolePeDb();
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertFails(getDocs(collection(db, 'observations')));
   });
 
   it('a co-observer can read it', async () => {
@@ -420,6 +443,22 @@ describe('observations: update', () => {
     await assertSucceeds(
       updateDoc(doc(db, 'observations/finalObs'), { observationName: 'Admin override' }),
     );
+  });
+
+  it("Admin Console access does NOT grant editing or deleting others' observations", async () => {
+    const db = await consolePeDb();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { observationName: 'Nope' }));
+    await assertFails(deleteDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('Full Access CANNOT edit or delete an observation of themselves', async () => {
+    await seedDraftObs('selfObs', { observedEmail: 'fullaccess@orono.k12.mn.us' });
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/selfObs')));
+    await assertFails(
+      updateDoc(doc(db, 'observations/selfObs'), { observationDate: '2026-10-02' }),
+    );
+    await assertFails(deleteDoc(doc(db, 'observations/selfObs')));
   });
 
   it("building Administrator CANNOT update another observer's observation", async () => {

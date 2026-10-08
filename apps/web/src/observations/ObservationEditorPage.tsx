@@ -69,13 +69,13 @@ import { roleDisplayName } from '@/utils/roleLookup';
 import { hasTiptapContent } from '@/utils/tiptapContent';
 import { ScriptEditor, type EvidenceCaptureRequest } from './ScriptEditor';
 import { SharingPopover, type SharingPopoverProps } from './SharingPopover';
-import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
+import { useObservationOversight } from '@/auth/observationOversight';
 import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
-import { showsObservationTypes } from './observationTypeLabels';
+import { planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
 import {
   answerEditability,
   questionsWithRetiredAnswers,
@@ -169,9 +169,10 @@ export function ObservationEditorPage() {
   // As the viewed-as person in dev mode; read-only while viewing as.
   const { effectiveClaims, effectiveEmail: myEmail, viewAsEmail } = useDevMode();
   const isViewingAs = viewAsEmail !== null;
-  // Console admins see and manage every observation; Peer Evaluators and
-  // building Administrators only their own and ones shared with them.
-  const { allowed: hasOversight } = useAdminConsoleAccess();
+  // Full Access sees and manages every observation (except their own, where
+  // they're the observed teacher); everyone else only their own and ones
+  // shared with them. Admin Console access doesn't change this.
+  const { allowed: hasOversight } = useObservationOversight();
   // Back to wherever the user came from; a deep link (email, new tab) goes
   // to their role's home.
   const goBack = useGoBack('/');
@@ -257,9 +258,9 @@ export function ObservationEditorPage() {
   );
 
   // The evaluator can flip between just the components assigned for
-  // this role-year (default — what they're actually scoring) and the
-  // full rubric (read-the-other-descriptors mode). Only the assigned
-  // ones are persisted/scored regardless.
+  // this role-year (default) and the full rubric. Anything rated, noted
+  // or tagged in full-rubric mode is saved and lands in the finalized
+  // report alongside the assigned components (see resolveReportDomains).
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('assigned');
 
   // Build a filtered rubric so the matrix only renders rows the observed
@@ -505,7 +506,7 @@ export function ObservationEditorPage() {
   const canManage = !isViewingAs && canManageObservation(access);
   const showFinalize = canEdit && canManage && observation?.status === OBSERVATION_STATUS.draft;
   // Admin-only escape hatch: reopen a finalized observation for correction.
-  const showReopen = !isViewingAs && isReadOnly && hasOversight;
+  const showReopen = !isViewingAs && isReadOnly && access === 'oversight';
   // Observer-or-admin action: re-render and re-upload the PDF for a
   // finalized observation without a full reopen/re-finalize cycle. Mirrors
   // the callable's own auth check server-side — this is UX gating only.
@@ -1101,14 +1102,14 @@ export function ObservationEditorPage() {
         />
 
         {!canEdit && !isReadOnly ? (
-          <div className="bg-ops-blue-lighter border-l-ops-gray text-ops-gray-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+          <div className="bg-ops-blue-lighter text-ops-gray-dark rounded-lg px-4 py-2.5 text-sm">
             {isObservedStaff
               ? 'Your evaluator is still drafting this observation. Open Planning or Reflection below to answer your questions. Your evaluator chooses what else to share while drafting; everything is visible once it is finalized.'
               : "You can view this observation but not edit it (you're not the observer)."}
           </div>
         ) : null}
         {isReadOnly ? (
-          <div className="bg-ops-blue-lighter border-l-ops-blue text-ops-blue-dark rounded-lg border-l-4 px-4 py-2.5 text-sm">
+          <div className="bg-ops-blue-lighter text-ops-blue-dark rounded-lg px-4 py-2.5 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p>
                 This observation is finalized and read-only.
@@ -1213,6 +1214,7 @@ export function ObservationEditorPage() {
           onPostObsNotesChange={setPostObsNotes}
           questions={questionsSlot}
           openPanel={requestedPanel}
+          preLabel={planningPanelLabel(observation.type)}
           // Park the rubric scope toggle on the right of the meeting-
           // notes row at md+ so it sits inline with Planning/
           // Reflection. At mobile widths it drops below the row as a
@@ -1228,6 +1230,9 @@ export function ObservationEditorPage() {
                 <PrintRubricMenu
                   rubric={rubric}
                   assignedComponentIds={assignedComponentIds}
+                  scope={assignmentMode}
+                  withOptions={!isObservedStaff}
+                  observationId={observation.id}
                   title={`${observedRoleLabel} · Year ${String(displayYear(observation.observedYear))}`}
                   subtitle={observation.observedName}
                   className="shrink-0"

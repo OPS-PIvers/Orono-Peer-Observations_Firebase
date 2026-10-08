@@ -9,12 +9,14 @@ import {
   canManageObservation,
   COLLECTIONS,
   OBSERVATION_STATUS,
+  resolveReportDomains,
   roleYearMappingDocId,
   toDate as sharedToDate,
   type DriveFileRef,
   type Observation,
   type RoleYearMapping,
   type Rubric,
+  type RubricDomain,
 } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -22,6 +24,7 @@ import {
   deleteDriveFile,
   ensureObservationFolder,
   getDriveLinks,
+  replaceFileContent,
   shareObservationFolderWithObserver,
   shareWithUser,
   uploadFileToFolder,
@@ -58,11 +61,13 @@ interface RegenerateRequest {
 /**
  * Regenerate the PDF for a Finalized observation (admin or the observer).
  *
- * Re-renders the observation through the pdf-renderer, uploads the fresh PDF to
- * the observation's existing Drive folder, repoints `pdfDriveFileId` at it, then
- * deletes the superseded PDF so the folder never accumulates stale copies.
- * Re-shares the folder (idempotently) so the observed staff member and observer
- * keep Reader access. Writes a `pdf_regenerated` audit entry.
+ * Re-renders the observation through the pdf-renderer and writes the fresh PDF
+ * over the existing Drive file, so links already sent keep working. If that
+ * file is gone it uploads a new one to the observation's folder, repoints
+ * `pdfDriveFileId` at it, and deletes any superseded copy. Re-captures
+ * `rubricSnapshot` to match the PDF. Re-shares the folder (idempotently) so
+ * the observed staff member and observer keep Reader access. Writes a
+ * `pdf_regenerated` audit entry.
  *
  * Used after an admin reopens → corrects → re-finalizes (covers a failed
  * finalize that left the observation Finalized with no PDF), or when the
@@ -162,7 +167,8 @@ export const regenerateObservationPdf = onCall(
       );
     }
 
-    const { rubric, activeComponentIds, roleDisplayName } = await loadRenderInputs(db, obs);
+    const { rubric, reportDomains, roleDisplayName } = await loadRenderInputs(db, obs);
+    const activeComponentIds = reportDomains.flatMap((d) => d.components.map((c) => c.id));
 
     const parentFolderId = PARENT_FOLDER_ID.value();
     if (!parentFolderId) {
@@ -196,13 +202,28 @@ export const regenerateObservationPdf = onCall(
         existingFolderId: obs.driveFolderId,
       });
       const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
-      const uploaded = await uploadFileToFolder({
-        folderId,
-        filename,
-        mimeType: 'application/pdf',
-        body: pdfBuffer,
-      });
-      pdfFileId = uploaded.fileId;
+      // Replace the existing PDF's content in place so the fileId — and the
+      // link already emailed to the observed staff member — keeps working.
+      // Falls back to a fresh upload if the old file is gone.
+      const replacedFileId = previousPdfFileId
+        ? await replaceFileContent({
+            fileId: previousPdfFileId,
+            filename,
+            mimeType: 'application/pdf',
+            body: pdfBuffer,
+          })
+        : null;
+      if (replacedFileId) {
+        pdfFileId = replacedFileId;
+      } else {
+        const uploaded = await uploadFileToFolder({
+          folderId,
+          filename,
+          mimeType: 'application/pdf',
+          body: pdfBuffer,
+        });
+        pdfFileId = uploaded.fileId;
+      }
       // Re-grant Reader (idempotent) so the observed staff + observer can open
       // the fresh PDF even if the folder was recreated.
       await shareWithUser({
@@ -222,12 +243,21 @@ export const regenerateObservationPdf = onCall(
       throw new HttpsError('internal', `Drive upload or share failed: ${driveErrorDetail(err)}`);
     }
 
-    // Repoint the observation at the new PDF before deleting the old one, so a
+    // Repoint the observation at the new PDF before deleting any old one, so a
     // crash between the two can never leave pdfDriveFileId dangling at a
-    // deleted file.
+    // deleted file. The rubric snapshot is re-captured from the same domains
+    // the PDF was just rendered from, so the in-app finalized view and the
+    // archived PDF keep showing the same components and wording.
     await obsRef.update({
       pdfDriveFileId: pdfFileId,
       driveFolderId: folderId,
+      rubricSnapshot: {
+        rubricId: rubric.rubricId,
+        displayName: rubric.displayName,
+        domains: reportDomains,
+        assignedComponentIds: activeComponentIds,
+        capturedAt: new Date(),
+      },
       lastModifiedAt: FieldValue.serverTimestamp(),
     });
 
@@ -269,12 +299,13 @@ export const regenerateObservationPdf = onCall(
 
 interface RenderInputs {
   rubric: Rubric;
-  activeComponentIds: string[];
+  /** Domains the report shows — see resolveReportDomains. */
+  reportDomains: RubricDomain[];
   roleDisplayName: string;
 }
 
 /**
- * Resolve the rubric, role display name, and active component ids the renderer
+ * Resolve the rubric, role display name, and report domains the renderer
  * needs for this observation. Mirrors the lookups finalizeObservation performs.
  */
 async function loadRenderInputs(
@@ -301,9 +332,13 @@ async function loadRenderInputs(
   const mappingDocId = roleYearMappingDocId(role.roleId, obs.observedYear);
   const mappingSnap = await db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`).get();
   const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
-  const activeComponentIds = mapping?.assignedComponentIds ?? [];
+  const reportDomains = resolveReportDomains(
+    rubric.domains,
+    mapping?.assignedComponentIds ?? [],
+    obs,
+  );
 
-  return { rubric, activeComponentIds, roleDisplayName: role.displayName };
+  return { rubric, reportDomains, roleDisplayName: role.displayName };
 }
 
 function formatDateIso(date: Date): string {

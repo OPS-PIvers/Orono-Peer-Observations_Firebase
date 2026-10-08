@@ -12,8 +12,8 @@ vi.mock('firebase/firestore', () => ({
   orderBy: (...args: unknown[]) => ({ type: 'orderBy', args }),
 }));
 vi.mock('@/lib/firebase', () => ({ db: {} }));
-vi.mock('@/auth/adminConsoleAccess', () => ({
-  useAdminConsoleAccess: () => ({ allowed: oversight.current, loading: false }),
+vi.mock('@/auth/observationOversight', () => ({
+  useObservationOversight: () => ({ allowed: oversight.current, loading: false }),
 }));
 vi.mock('@/dev/DevModeContext', () => ({
   useEffectiveEmail: () => 'me@orono.k12.mn.us',
@@ -60,7 +60,7 @@ describe('useObserverObservations', () => {
     expect(result.current.hasMore).toBe(true);
   });
 
-  it('uses one unscoped query for console admins', () => {
+  it('uses one unscoped query for Full Access (oversight)', () => {
     oversight.current = true;
     results.current = { all: [obs('x', 1)], own: [obs('mine', 2)] };
     const { result } = renderHook(() => useObserverObservations(args));
