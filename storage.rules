@@ -20,13 +20,19 @@ rules_version = '2';
 // (see isConsoleAdmin in firestore.rules). Storage rules can't cheaply read
 // the staff doc, so an Administrator who also has hasAdminAccess can't upload
 // here either; a Full Access or other hasAdminAccess user can.
+//
+// A View As + Edit session (custom token carrying `demoEditBy`) never passes:
+// it keeps the account's isAdmin/role claims, so a Peer Evaluator with console
+// access would otherwise get admin-uploads read/write. Mirrors notDemoEdit()
+// in firestore.rules.
 
 service firebase.storage {
   match /b/{bucket}/o {
     function isConsoleAdmin() {
       return request.auth != null
         && request.auth.token.isAdmin == true
-        && request.auth.token.role != 'administrator';
+        && request.auth.token.role != 'administrator'
+        && request.auth.token.get('demoEditBy', null) == null;
     }
 
     // Branding assets: auth-readable, admin-writable.
