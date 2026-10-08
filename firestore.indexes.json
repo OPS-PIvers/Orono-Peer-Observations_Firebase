@@ -617,6 +617,20 @@
       ]
     },
     {
+      "collectionGroup": "transcriptionJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "completedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "moduleProgress",
       "queryScope": "COLLECTION",
       "fields": [

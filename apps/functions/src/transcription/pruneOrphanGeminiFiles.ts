@@ -1,14 +1,12 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
+import { DRIVE_SERVICE_ACCOUNT } from '../lib/drive.js';
+import { deleteTranscriptionAudio } from '../lib/transcriptionStorage.js';
 
 if (getApps().length === 0) initializeApp();
-
-const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
-const GEMINI_FILES_BASE = 'https://generativelanguage.googleapis.com';
 
 /**
  * Jobs whose `geminiFileUri` is still set this long after creation are
@@ -21,13 +19,14 @@ const ORPHAN_AGE_HOURS = 6;
 const SWEEP_BATCH_SIZE = 50;
 
 /**
- * Daily sweep that deletes Gemini Files API temp uploads which were
- * persisted onto a transcriptionJob doc but never cleaned up by the
- * worker (e.g. because the function instance was killed by timeout/OOM
- * between upload and the finally block).
+ * Daily sweep that deletes scratch audio (a gs:// object in the transcription
+ * bucket) which was persisted onto a transcriptionJob doc but never cleaned up
+ * by the worker (e.g. because the function instance was killed by timeout/OOM
+ * between upload and the finally block), then clears the pointer on the job.
  *
- * Gemini auto-deletes files after 48 hours regardless, so this is
- * defense-in-depth to keep the project quota tidy.
+ * The bucket's 1-day lifecycle rule deletes the object regardless, so this is
+ * defense-in-depth. Legacy Gemini Files URIs are just cleared (they expire
+ * on Google's side after 48 hours).
  *
  * Runs at 04:15 America/Chicago — after pruneAuditLog (03:05).
  */
@@ -36,7 +35,9 @@ export const pruneOrphanGeminiFiles = onSchedule(
     schedule: 'every day 04:15',
     timeZone: 'America/Chicago',
     region: 'us-central1',
-    secrets: [GEMINI_API_KEY],
+    // Same account as the transcription worker, which already has object
+    // access to the scratch bucket.
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
     memory: '256MiB',
     timeoutSeconds: 540,
   },
@@ -68,7 +69,7 @@ export const pruneOrphanGeminiFiles = onSchedule(
         continue;
       }
       try {
-        await deleteGeminiFile(fileUri, GEMINI_API_KEY.value());
+        await deleteTranscriptionAudio(fileUri);
         await doc.ref.update({ geminiFileUri: null });
         cleaned += 1;
       } catch (err) {
@@ -90,19 +91,3 @@ export const pruneOrphanGeminiFiles = onSchedule(
     });
   },
 );
-
-async function deleteGeminiFile(fileUri: string, apiKey: string): Promise<void> {
-  const fileName = fileUri.startsWith('https://')
-    ? fileUri.split('/files/')[1]
-    : fileUri.replace(/^files\//, '');
-  if (!fileName) throw new Error(`Unrecognized Gemini file URI: ${fileUri}`);
-
-  const res = await fetch(`${GEMINI_FILES_BASE}/v1beta/files/${fileName}`, {
-    method: 'DELETE',
-    headers: { 'x-goog-api-key': apiKey },
-  });
-  if (!res.ok && res.status !== 404) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Gemini Files delete failed ${String(res.status)}: ${text.slice(0, 200)}`);
-  }
-}
