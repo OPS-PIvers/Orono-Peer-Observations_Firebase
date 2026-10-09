@@ -130,6 +130,7 @@ export function EvaluatorStepChecklist({ staff }: { staff: Staff }) {
         newDraftObservationDoc({
           observerEmail,
           observerName: observerStaff?.name ?? '',
+          observerRole: observerStaff?.role ?? null,
           staff,
           type: observationTypeForWatchedKind(task.watchedKind),
           questionSetId,
