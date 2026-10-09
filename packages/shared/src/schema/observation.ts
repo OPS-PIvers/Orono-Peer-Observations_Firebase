@@ -211,8 +211,11 @@ export const observation = z.object({
   preObsNotes: tiptapDoc.optional(),
   postObsDate: isoDate.optional(),
   postObsNotes: tiptapDoc.optional(),
-  /** Evaluator's Goals & Next Steps notes. Work Product and Instructional
-   *  Round only; withheld from the teacher with the other meeting notes. */
+  /** Goals & Next Steps (Work Product and Instructional Round only).
+   *  `goalsResponse` is the observed teacher's own response, always visible
+   *  to them; `goalsNextSteps` is the evaluator's notes, withheld from the
+   *  teacher on a Draft with the other meeting notes. */
+  goalsResponse: tiptapDoc.optional(),
   goalsNextSteps: tiptapDoc.optional(),
 
   // Audio + transcripts
