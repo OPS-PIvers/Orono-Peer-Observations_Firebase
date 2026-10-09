@@ -554,7 +554,8 @@ service cloud.firestore {
           && changedKeys().hasOnly(draftContentKeys())
         )
         || (
-          // Observed staff answering their Planning / Reflection questions.
+          // Observed staff answering their Planning / Reflection questions
+          // and writing their Goals & Next Steps response.
           // Every observation type carries questions (Standard included).
           // Allowed on Finalized too: Reflection stays open after finalize
           // (the evaluator may finalize before the teacher has reflected),
@@ -563,7 +564,7 @@ service cloud.firestore {
           // flags any answer saved after finalizedAt.
           isObservedObs()
           && resource.data.status in ['Draft', 'Finalized']
-          && changedKeys().hasOnly(['workProductAnswers', 'lastModifiedAt'])
+          && changedKeys().hasOnly(['workProductAnswers', 'goalsResponse', 'lastModifiedAt'])
         )
         || (
           // Observed staff acknowledging their finalized observation — can

@@ -685,6 +685,28 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
+  it('observed teacher CAN save their Goals & Next Steps response on a WP Draft', async () => {
+    await seedDraftObs('wpGoals', { type: 'Work Product' });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/wpGoals'), {
+        goalsResponse: { type: 'doc', content: [{ type: 'paragraph' }] },
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
+  it('observed teacher CANNOT write the evaluator Goals & Next Steps notes', async () => {
+    await seedDraftObs('wpGoals2', { type: 'Work Product' });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'observations/wpGoals2'), {
+        goalsNextSteps: { type: 'doc', content: [{ type: 'paragraph' }] },
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
   it('a different teacher CANNOT save workProductAnswers', async () => {
     await seedDraftObs('stdObs4', { type: 'Standard', workProductAnswers: [] });
     const db = testEnv

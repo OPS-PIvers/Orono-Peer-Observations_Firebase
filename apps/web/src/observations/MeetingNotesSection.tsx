@@ -46,9 +46,20 @@ export interface QuestionsSlot {
   isOnline: boolean;
 }
 
+/** Goals & Next Steps: the observed teacher's own response (one rich-text
+ *  box, no questions) over the evaluator's notes. */
 export interface GoalsSlot {
-  value: TiptapDoc | undefined;
-  onChange: (doc: TiptapDoc) => void;
+  response: TiptapDoc | undefined;
+  /** True only for the observed teacher; everyone else reads it. */
+  responseEditable: boolean;
+  onResponseChange: (doc: TiptapDoc) => void;
+  saveState: 'idle' | 'saving' | 'saved' | 'error';
+  saveError: string | null;
+  onRetrySave: () => void;
+  isOnline: boolean;
+  /** Evaluator notes, editable under the section's `readOnly`. */
+  notes: TiptapDoc | undefined;
+  onNotesChange: (doc: TiptapDoc) => void;
 }
 
 export interface MeetingNotesSectionProps {
@@ -64,8 +75,7 @@ export interface MeetingNotesSectionProps {
   onPostObsNotesChange: (doc: TiptapDoc) => void;
   questions?: QuestionsSlot | undefined;
   /** Goals & Next Steps panel (Work Product and Instructional Round only).
-   *  Absent hides the button. Editable under the same `readOnly` as the
-   *  evaluator's other meeting notes. */
+   *  Absent hides the button. */
   goals?: GoalsSlot | undefined;
   /**
    * External request to open a panel — the observation page passes the URL
@@ -182,23 +192,62 @@ function Panel({
 }
 
 function GoalsPanel({ goals, readOnly }: { goals: GoalsSlot; readOnly: boolean }) {
+  const showNotes = !readOnly || hasTiptapContent(goals.notes);
   return (
     <div
       id="meeting-panel-goals"
-      className="border-ops-blue-lighter mt-2 rounded-md border bg-white p-3"
+      className="border-ops-blue-lighter mt-2 space-y-4 rounded-md border bg-white p-3"
     >
-      {readOnly && !hasTiptapContent(goals.value) ? (
-        <p className="text-sm text-gray-400 italic">No goals or next steps yet.</p>
-      ) : (
-        <TiptapEditor
-          value={goals.value}
-          onChange={goals.onChange}
-          readOnly={readOnly}
-          variant="full"
-          minHeight="6rem"
-          placeholder="Add goals and next steps…"
-        />
-      )}
+      <section className="space-y-2" aria-label="Goals & Next Steps">
+        <SectionHeading>Goals &amp; Next Steps</SectionHeading>
+        {goals.responseEditable ? (
+          <>
+            <div className="flex min-h-6 items-center gap-3">
+              <p className="text-muted-foreground text-xs">
+                Your response saves automatically as you type.
+              </p>
+              <div className="ml-auto">
+                <SaveStatusIndicator
+                  state={goals.saveState}
+                  error={goals.saveError}
+                  onRetry={goals.onRetrySave}
+                  isOnline={goals.isOnline}
+                />
+              </div>
+            </div>
+            <TiptapEditor
+              value={goals.response}
+              onChange={goals.onResponseChange}
+              placeholder="Type your response here…"
+              minHeight="6rem"
+            />
+          </>
+        ) : hasTiptapContent(goals.response) ? (
+          <TiptapEditor
+            value={goals.response}
+            onChange={() => undefined}
+            readOnly
+            variant="compact"
+            minHeight="4rem"
+          />
+        ) : (
+          <p className="text-sm text-gray-400 italic">Not yet answered</p>
+        )}
+      </section>
+
+      {showNotes ? (
+        <section className="space-y-2">
+          <SectionHeading>Evaluator notes</SectionHeading>
+          <TiptapEditor
+            value={goals.notes}
+            onChange={goals.onNotesChange}
+            readOnly={readOnly}
+            variant="full"
+            minHeight="5rem"
+            placeholder="Add meeting notes…"
+          />
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -440,7 +489,7 @@ export function MeetingNotesSection({
         {goals ? (
           <TabButton
             active={active === 'goals'}
-            hasContent={hasTiptapContent(goals.value)}
+            hasContent={hasTiptapContent(goals.response) || hasTiptapContent(goals.notes)}
             onClick={() => setActive((v) => (v === 'goals' ? null : 'goals'))}
             label="Goals & Next Steps"
             date={null}
