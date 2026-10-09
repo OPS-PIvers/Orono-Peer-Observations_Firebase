@@ -25,7 +25,7 @@ import {
   ensureObservationFolder,
   getDriveLinks,
   replaceFileContent,
-  shareObservationFolderWithObserver,
+  shareObservationFolderWithObservers,
   shareWithUser,
   uploadFileToFolder,
 } from '../lib/drive.js';
@@ -232,9 +232,10 @@ export const regenerateObservationPdf = onCall(
         role: 'reader',
         sendNotificationEmail: false,
       });
-      await shareObservationFolderWithObserver({
+      await shareObservationFolderWithObservers({
         folderId,
         observerEmail: obs.observerEmail,
+        coObserverEmails: obs.coObserverEmails,
       });
       const links = await getDriveLinks(pdfFileId);
       webViewLink = links.webViewLink;

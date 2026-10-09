@@ -74,6 +74,7 @@ import { ScriptDrawer } from './ScriptDrawer';
 import { SignupDetailsCard } from './SignupDetailsCard';
 import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
+import { useGoalsResponse } from './useGoalsResponse';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
 import { hasGoalsPanel, planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
 import {
@@ -541,6 +542,7 @@ export function ObservationEditorPage() {
     [observation, questionBank],
   );
   const answers = useWorkProductAnswers(observation, canAnswer, setQuestions ?? EMPTY_QUESTIONS);
+  const goalsResponse = useGoalsResponse(observation, canAnswer);
 
   // Evidence capture: a sentence selected in a teacher's answer is appended
   // to the script (attributed) and the component picker opens on it. The
@@ -1228,10 +1230,17 @@ export function ObservationEditorPage() {
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
           goals={
-            hasGoalsPanel(observation.type)
+            hasGoalsPanel(observation.type, observation.observerRole)
               ? {
-                  value: show.meetingNotes ? draft.goalsNextSteps : undefined,
-                  onChange: setGoalsNextSteps,
+                  response: goalsResponse.value,
+                  responseEditable: canAnswer,
+                  onResponseChange: goalsResponse.setValue,
+                  saveState: goalsResponse.saveState,
+                  saveError: goalsResponse.saveError,
+                  onRetrySave: goalsResponse.retry,
+                  isOnline,
+                  notes: show.meetingNotes ? draft.goalsNextSteps : undefined,
+                  onNotesChange: setGoalsNextSteps,
                 }
               : undefined
           }

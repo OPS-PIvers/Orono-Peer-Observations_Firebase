@@ -13,6 +13,8 @@ export function newDraftObservationDoc(args: {
   /** Denormalized so the observed staff member's dashboard can show the
    *  evaluator without read access to their /staff doc. */
   observerName: string;
+  /** The observer's role, denormalized for the same reason. */
+  observerRole: string | null;
   staff: Staff;
   type: ObservationType;
   observationName?: string;
@@ -23,6 +25,7 @@ export function newDraftObservationDoc(args: {
   return {
     observerEmail: args.observerEmail.toLowerCase(),
     observerName: args.observerName,
+    observerRole: args.observerRole,
     observedEmail: staff.email.toLowerCase(),
     observedName: staff.name,
     observedRole: staff.role,

@@ -10,7 +10,7 @@ interface HState {
   drive: {
     ensureObservationFolder: Fn;
     getDriveLinks: Fn;
-    shareObservationFolderWithObserver: Fn;
+    shareObservationFolderWithObservers: Fn;
     shareWithUser: Fn;
     uploadFileToFolder: Fn;
     deleteDriveFile: Fn;
@@ -34,7 +34,7 @@ const h = vi.hoisted(
     drive: {
       ensureObservationFolder: undefined,
       getDriveLinks: undefined,
-      shareObservationFolderWithObserver: undefined,
+      shareObservationFolderWithObservers: undefined,
       shareWithUser: undefined,
       uploadFileToFolder: undefined,
       deleteDriveFile: undefined,
@@ -65,8 +65,8 @@ vi.mock('../lib/drive.js', () => ({
   DRIVE_SECRETS: [],
   ensureObservationFolder: (...a: unknown[]) => h.drive.ensureObservationFolder?.(...a),
   getDriveLinks: (...a: unknown[]) => h.drive.getDriveLinks?.(...a),
-  shareObservationFolderWithObserver: (...a: unknown[]) =>
-    h.drive.shareObservationFolderWithObserver?.(...a),
+  shareObservationFolderWithObservers: (...a: unknown[]) =>
+    h.drive.shareObservationFolderWithObservers?.(...a),
   shareWithUser: (...a: unknown[]) => h.drive.shareWithUser?.(...a),
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
   deleteDriveFile: (...a: unknown[]) => h.drive.deleteDriveFile?.(...a),
@@ -211,7 +211,7 @@ function installHappyDrive() {
   h.drive.ensureObservationFolder = vi.fn().mockResolvedValue('folder-1');
   h.drive.uploadFileToFolder = vi.fn().mockResolvedValue({ fileId: 'pdf-new' });
   h.drive.shareWithUser = vi.fn().mockResolvedValue(undefined);
-  h.drive.shareObservationFolderWithObserver = vi.fn().mockResolvedValue(undefined);
+  h.drive.shareObservationFolderWithObservers = vi.fn().mockResolvedValue(undefined);
   h.drive.getDriveLinks = vi.fn().mockResolvedValue({ webViewLink: 'https://drive/view/pdf-new' });
   h.drive.deleteDriveFile = vi.fn().mockResolvedValue(undefined);
   // Old PDF gone by default, so the fresh-upload path runs.
