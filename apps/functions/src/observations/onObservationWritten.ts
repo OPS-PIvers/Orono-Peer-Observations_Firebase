@@ -6,7 +6,13 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { OBSERVATION_TYPES, displayYear, type EmailTriggerType } from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
-import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, deleteDriveFolder } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  deleteDriveFolder,
+  removeReaderFromFile,
+  shareObservationFolderWithObservers,
+} from '../lib/drive.js';
 import { APP_URL, formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -146,6 +152,12 @@ export const onObservationWritten = onDocumentWritten(
       await sendAcknowledgedEmail(event.params.observationId, afterData);
     }
 
+    // Co-observers added or removed after the Drive folder exists: grant or
+    // revoke their folder Reader so Drive links match who the app lets in.
+    if (beforeData) {
+      await syncCoObserverFolderAccess(event.params.observationId, beforeData, afterData);
+    }
+
     // Sheet sync (only when MASTER_LOG_SHEET_ID is configured)
     if (!sheetId) {
       logger.info('onObservationWritten: MASTER_LOG_SHEET_ID unset, skipping sheet sync');
@@ -164,6 +176,63 @@ export const onObservationWritten = onDocumentWritten(
     }
   },
 );
+
+/**
+ * Which co-observers this write added and removed. Emails are compared
+ * lowercased. A removed co-observer who is still the observer or the
+ * observed staff member keeps folder access, so they are not reported as
+ * removed. Pure + exported for unit tests.
+ */
+export function coObserverChanges(
+  before: ObsLike,
+  after: ObsLike,
+): { added: string[]; removed: string[] } {
+  const emails = (data: ObsLike): Set<string> => {
+    const raw: unknown = data['coObserverEmails'];
+    if (!Array.isArray(raw)) return new Set();
+    return new Set(
+      raw.filter((e): e is string => typeof e === 'string' && e !== '').map((e) => e.toLowerCase()),
+    );
+  };
+  const lower = (value: unknown) => (typeof value === 'string' ? value.toLowerCase() : '');
+  const prev = emails(before);
+  const next = emails(after);
+  const keep = new Set([lower(after['observerEmail']), lower(after['observedEmail'])]);
+  return {
+    added: [...next].filter((e) => !prev.has(e)),
+    removed: [...prev].filter((e) => !next.has(e) && !keep.has(e)),
+  };
+}
+
+async function syncCoObserverFolderAccess(
+  observationId: string,
+  before: ObsLike,
+  after: ObsLike,
+): Promise<void> {
+  const folderId = after['driveFolderId'];
+  // No folder yet: the first audio/evidence upload creates it and shares it
+  // with every observer, co-observers included.
+  if (typeof folderId !== 'string' || !folderId) return;
+  const { added, removed } = coObserverChanges(before, after);
+  if (added.length > 0) {
+    await shareObservationFolderWithObservers({
+      folderId,
+      observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
+      coObserverEmails: added,
+    });
+  }
+  for (const email of removed) {
+    try {
+      await removeReaderFromFile({ fileId: folderId, email });
+    } catch (err) {
+      logger.warn('onObservationWritten: co-observer unshare failed (non-fatal)', {
+        observationId,
+        email,
+        err,
+      });
+    }
+  }
+}
 
 /** True when this write is the staff member acknowledging the observation
  *  (acknowledgedAt went from unset to set). A reopen clears it, so a

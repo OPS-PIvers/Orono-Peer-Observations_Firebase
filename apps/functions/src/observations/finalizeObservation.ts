@@ -29,7 +29,7 @@ import {
   ensureObservationFolder,
   getDriveLinks,
   replaceFileContent,
-  shareObservationFolderWithObserver,
+  shareObservationFolderWithObservers,
   shareWithUser,
   uploadFileToFolder,
 } from '../lib/drive.js';
@@ -333,11 +333,12 @@ export const finalizeObservation = onCall(
           role: 'reader',
           sendNotificationEmail: false,
         });
-        // The observer needs the same access to open the PDF they just
+        // The observers need the same access to open the PDF they just
         // finalized; without it they land on Drive's request-access page.
-        await shareObservationFolderWithObserver({
+        await shareObservationFolderWithObservers({
           folderId,
           observerEmail: obs.observerEmail,
+          coObserverEmails: obs.coObserverEmails,
         });
         const links = await getDriveLinks(pdfFileId);
         webViewLink = links.webViewLink;
