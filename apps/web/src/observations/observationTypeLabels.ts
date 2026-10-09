@@ -19,18 +19,3 @@ export function showsObservationTypes(role: string | null | undefined): boolean 
 export function planningPanelLabel(type: ObservationType | null | undefined): string {
   return type === OBSERVATION_TYPES.instructionalRound ? 'Observation Notes' : 'Planning Questions';
 }
-
-/** Work Product, Instructional Round and Peer Evaluator Standard
- *  observations add a Goals & Next Steps panel to the meeting notes: one
- *  rich-text box, no questions. A Standard observation counts as a Peer
- *  Evaluator's unless an Administrator ran it; docs from before the
- *  observer's role was recorded have none and get the panel. */
-export function hasGoalsPanel(
-  type: ObservationType | null | undefined,
-  observerRole?: string | null,
-): boolean {
-  if (type === OBSERVATION_TYPES.workProduct || type === OBSERVATION_TYPES.instructionalRound) {
-    return true;
-  }
-  return type === OBSERVATION_TYPES.standard && observerRole !== SPECIAL_ROLES.administrator;
-}

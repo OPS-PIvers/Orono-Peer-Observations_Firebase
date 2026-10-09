@@ -76,7 +76,7 @@ import { SignupDetailsDisplay } from '@/scheduling/SignupDetailsDisplay';
 import { MeetingNotesSection, type QuestionsSlot } from './MeetingNotesSection';
 import { useGoalsResponse } from './useGoalsResponse';
 import { useWorkProductAnswers } from './useWorkProductAnswers';
-import { hasGoalsPanel, planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
+import { planningPanelLabel, showsObservationTypes } from './observationTypeLabels';
 import {
   answerEditability,
   questionsWithRetiredAnswers,
@@ -1229,21 +1229,17 @@ export function ObservationEditorPage() {
           onPreObsNotesChange={setPreObsNotes}
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
-          goals={
-            hasGoalsPanel(observation.type, observation.observerRole)
-              ? {
-                  response: goalsResponse.value,
-                  responseEditable: canAnswer,
-                  onResponseChange: goalsResponse.setValue,
-                  saveState: goalsResponse.saveState,
-                  saveError: goalsResponse.saveError,
-                  onRetrySave: goalsResponse.retry,
-                  isOnline,
-                  notes: show.meetingNotes ? draft.goalsNextSteps : undefined,
-                  onNotesChange: setGoalsNextSteps,
-                }
-              : undefined
-          }
+          goals={{
+            response: goalsResponse.value,
+            responseEditable: canAnswer,
+            onResponseChange: goalsResponse.setValue,
+            saveState: goalsResponse.saveState,
+            saveError: goalsResponse.saveError,
+            onRetrySave: goalsResponse.retry,
+            isOnline,
+            notes: show.meetingNotes ? draft.goalsNextSteps : undefined,
+            onNotesChange: setGoalsNextSteps,
+          }}
           questions={questionsSlot}
           openPanel={requestedPanel}
           preLabel={planningPanelLabel(observation.type)}

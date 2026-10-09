@@ -74,7 +74,7 @@ export interface MeetingNotesSectionProps {
   onPostObsDateChange: (date: Date | undefined) => void;
   onPostObsNotesChange: (doc: TiptapDoc) => void;
   questions?: QuestionsSlot | undefined;
-  /** Goals & Next Steps panel (Work Product and Instructional Round only).
+  /** Goals & Next Steps panel (every observation in the editor).
    *  Absent hides the button. */
   goals?: GoalsSlot | undefined;
   /**
