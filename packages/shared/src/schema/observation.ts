@@ -168,6 +168,11 @@ export const observation = z.object({
    *  staff member's dashboard can show who their PE is without needing read
    *  access to the observer's /staff doc. Empty on legacy docs. */
   observerName: z.string().trim().default(''),
+  /** Observer's role at create time (SPECIAL_ROLES value), so the observed
+   *  teacher's view can tell an Administrator's observation from a Peer
+   *  Evaluator's without reading the observer's /staff doc. Absent on docs
+   *  created before it was recorded. */
+  observerRole: z.string().nullable().optional(),
   observedEmail: email,
   observedName: z.string().trim().min(1),
   observedRole: z.string().trim().min(1),

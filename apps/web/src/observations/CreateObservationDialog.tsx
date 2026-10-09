@@ -107,6 +107,7 @@ export function CreateObservationDialog({
         newDraftObservationDoc({
           observerEmail,
           observerName: observerStaff?.name ?? '',
+          observerRole: observerStaff?.role ?? null,
           staff,
           type: effectiveType,
           observationName: name,

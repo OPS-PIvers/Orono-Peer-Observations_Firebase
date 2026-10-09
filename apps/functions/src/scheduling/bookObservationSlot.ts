@@ -110,6 +110,7 @@ export async function createDraftObservationForBooking(args: {
     // PE without read access to the observer's /staff doc (see the /staff
     // rules in firestore.rules).
     observerName: window.observerName,
+    observerRole,
     observedEmail: staffEmail,
     observedName: staff?.name ?? staffEmail,
     observedRole: staff?.role ?? 'unknown',

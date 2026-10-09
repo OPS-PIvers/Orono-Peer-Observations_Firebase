@@ -1230,7 +1230,7 @@ export function ObservationEditorPage() {
           onPostObsDateChange={setPostObsDate}
           onPostObsNotesChange={setPostObsNotes}
           goals={
-            hasGoalsPanel(observation.type)
+            hasGoalsPanel(observation.type, observation.observerRole)
               ? {
                   response: goalsResponse.value,
                   responseEditable: canAnswer,
