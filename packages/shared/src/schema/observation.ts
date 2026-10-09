@@ -168,10 +168,9 @@ export const observation = z.object({
    *  staff member's dashboard can show who their PE is without needing read
    *  access to the observer's /staff doc. Empty on legacy docs. */
   observerName: z.string().trim().default(''),
-  /** Observer's role at create time (SPECIAL_ROLES value), so the observed
-   *  teacher's view can tell an Administrator's observation from a Peer
-   *  Evaluator's without reading the observer's /staff doc. Absent on docs
-   *  created before it was recorded. */
+  /** Observer's role at create time (SPECIAL_ROLES value), readable by the
+   *  observed teacher, who can't read the observer's /staff doc. Absent on
+   *  docs created before it was recorded. */
   observerRole: z.string().nullable().optional(),
   observedEmail: email,
   observedName: z.string().trim().min(1),
@@ -216,7 +215,7 @@ export const observation = z.object({
   preObsNotes: tiptapDoc.optional(),
   postObsDate: isoDate.optional(),
   postObsNotes: tiptapDoc.optional(),
-  /** Goals & Next Steps (Work Product and Instructional Round only).
+  /** Goals & Next Steps, on every observation.
    *  `goalsResponse` is the observed teacher's own response, always visible
    *  to them; `goalsNextSteps` is the evaluator's notes, withheld from the
    *  teacher on a Draft with the other meeting notes. */
