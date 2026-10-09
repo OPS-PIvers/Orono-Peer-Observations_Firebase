@@ -12,7 +12,7 @@ interface HState {
     ensureObservationFolder: Fn;
     getDriveLinks: Fn;
     replaceFileContent: Fn;
-    shareObservationFolderWithObserver: Fn;
+    shareObservationFolderWithObservers: Fn;
     shareWithUser: Fn;
     uploadFileToFolder: Fn;
   };
@@ -34,7 +34,7 @@ const h = vi.hoisted(
       ensureObservationFolder: undefined,
       getDriveLinks: undefined,
       replaceFileContent: undefined,
-      shareObservationFolderWithObserver: undefined,
+      shareObservationFolderWithObservers: undefined,
       shareWithUser: undefined,
       uploadFileToFolder: undefined,
     },
@@ -66,8 +66,8 @@ vi.mock('../lib/drive.js', () => ({
   ensureObservationFolder: (...a: unknown[]) => h.drive.ensureObservationFolder?.(...a),
   getDriveLinks: (...a: unknown[]) => h.drive.getDriveLinks?.(...a),
   replaceFileContent: (...a: unknown[]) => h.drive.replaceFileContent?.(...a),
-  shareObservationFolderWithObserver: (...a: unknown[]) =>
-    h.drive.shareObservationFolderWithObserver?.(...a),
+  shareObservationFolderWithObservers: (...a: unknown[]) =>
+    h.drive.shareObservationFolderWithObservers?.(...a),
   shareWithUser: (...a: unknown[]) => h.drive.shareWithUser?.(...a),
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
 }));
@@ -185,12 +185,14 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
 
 const OBSERVER = 'observer@orono.k12.mn.us';
 const OBSERVED = 'observed@orono.k12.mn.us';
+const CO_OBSERVER = 'co-observer@orono.k12.mn.us';
 
 function draftObservation(over: Record<string, unknown> = {}) {
   return {
     status: OBSERVATION_STATUS.draft,
     type: OBSERVATION_TYPES.standard,
     observerEmail: OBSERVER,
+    coObserverEmails: [CO_OBSERVER],
     observedEmail: OBSERVED,
     observedName: 'Observed Person',
     observedRole: 'teacher',
@@ -231,7 +233,7 @@ function installHappyDrive() {
   h.drive.ensureObservationFolder = vi.fn().mockResolvedValue('folder-1');
   h.drive.uploadFileToFolder = vi.fn().mockResolvedValue({ fileId: 'pdf-1' });
   h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
-  h.drive.shareObservationFolderWithObserver = vi.fn().mockResolvedValue(undefined);
+  h.drive.shareObservationFolderWithObservers = vi.fn().mockResolvedValue(undefined);
   h.drive.shareWithUser = vi.fn().mockResolvedValue(undefined);
   h.drive.getDriveLinks = vi.fn().mockResolvedValue({ webViewLink: 'https://drive/view/pdf-1' });
   h.renderObservationPdf = vi.fn().mockResolvedValue(Buffer.from('pdf'));
@@ -340,10 +342,11 @@ describe('finalizeObservation — finalize flow', () => {
     expect(h.drive.shareWithUser).toHaveBeenCalledWith(
       expect.objectContaining({ email: OBSERVED, role: 'reader', sendNotificationEmail: false }),
     );
-    // ...and with the observer, so they can open the PDF they finalized
-    expect(h.drive.shareObservationFolderWithObserver).toHaveBeenCalledWith({
+    // ...and with the observers, so they can open the PDF they finalized
+    expect(h.drive.shareObservationFolderWithObservers).toHaveBeenCalledWith({
       folderId: 'folder-1',
       observerEmail: OBSERVER,
+      coObserverEmails: [CO_OBSERVER],
     });
     // final status flip
     const finalUpdate = rec.obsUpdates.find((u) => u['status'] === OBSERVATION_STATUS.finalized);

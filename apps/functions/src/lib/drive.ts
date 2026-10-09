@@ -6,8 +6,8 @@ import { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET } from './googleOAut
 
 /**
  * Drive API helpers that act as the Workspace user who owns the observations
- * parent folder, via a stored OAuth refresh token. Observed staff and
- * observers get `reader` permission via `permissions.create`.
+ * parent folder, via a stored OAuth refresh token. Observed staff, observers
+ * and co-observers get `reader` permission via `permissions.create`.
  *
  * Why a user, not the service account. The parent folder lives in that user's
  * My Drive. Every My Drive file counts against its owner's storage, and a file
@@ -264,12 +264,12 @@ export async function shareWithUser(args: {
 }
 
 /**
- * Grant the observation's observer Reader access on its Drive folder so the
- * observer-facing links the app renders (Finalized banner "Open PDF" /
- * "Open Drive folder", StaffPersonPage "View PDF", evidence chips) actually
- * open. The district parent folder is shared only with its owner, the service
- * account and admins. Peer Evaluators are none of those, so without this per-folder
- * grant every observer link lands on Drive's request-access page.
+ * Grant the observation's observers (the owner and every co-observer) Reader
+ * access on its Drive folder so the observer-facing links the app renders
+ * (Finalized banner "Open PDF" / "Open Drive folder", StaffPersonPage "View
+ * PDF", evidence chips) actually open. The Shared Drive's members are only
+ * the uploader and its managers, so without this per-folder grant every
+ * observer link lands on Drive's request-access page.
  *
  * Idempotent (`shareWithUser` dedupes existing grants) and deliberately
  * best-effort: a failed grant is logged, never thrown, so a Drive permissions
@@ -278,24 +278,58 @@ export async function shareWithUser(args: {
  * call site re-attempts the grant, so a missed grant heals on the next Drive
  * interaction.
  */
-export async function shareObservationFolderWithObserver(args: {
+export async function shareObservationFolderWithObservers(args: {
   folderId: string;
   observerEmail: string;
+  coObserverEmails?: readonly string[] | undefined;
 }): Promise<void> {
-  try {
-    await shareWithUser({
-      fileId: args.folderId,
-      email: args.observerEmail,
-      role: 'reader',
-      sendNotificationEmail: false,
-    });
-  } catch (err) {
-    logger.warn('shareObservationFolderWithObserver: share failed (non-fatal)', {
-      folderId: args.folderId,
-      observerEmail: args.observerEmail,
-      err,
-    });
+  const emails = new Set(
+    [args.observerEmail, ...(args.coObserverEmails ?? [])]
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e !== ''),
+  );
+  for (const email of emails) {
+    try {
+      await shareWithUser({
+        fileId: args.folderId,
+        email,
+        role: 'reader',
+        sendNotificationEmail: false,
+      });
+    } catch (err) {
+      logger.warn('shareObservationFolderWithObservers: share failed (non-fatal)', {
+        folderId: args.folderId,
+        email,
+        err,
+      });
+    }
   }
+}
+
+/**
+ * Remove a user's direct Reader permission on a Drive folder/file. Used when
+ * an observer drops a co-observer, so the folder stops opening for them.
+ * Only `reader` grants are removed: a writer or owner permission was added
+ * by hand in Drive and is left alone. No-op when the user has no direct
+ * permission.
+ */
+export async function removeReaderFromFile(args: { fileId: string; email: string }): Promise<void> {
+  const drive = await getDriveClient();
+  const existing = await drive.permissions.list({
+    fileId: args.fileId,
+    fields: 'permissions(id,emailAddress,role)',
+    supportsAllDrives: true,
+  });
+  const lower = args.email.toLowerCase();
+  const match = existing.data.permissions?.find(
+    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader',
+  );
+  if (!match?.id) return;
+  await drive.permissions.delete({
+    fileId: args.fileId,
+    permissionId: match.id,
+    supportsAllDrives: true,
+  });
 }
 
 /**
