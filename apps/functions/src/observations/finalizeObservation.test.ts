@@ -26,22 +26,20 @@ process.env['GCLOUD_PROJECT'] = 'test';
 // ---------------------------------------------------------------------------
 // Hoisted test state read by the module mocks below.
 // ---------------------------------------------------------------------------
-const h = vi.hoisted(
-  (): HState => ({
-    db: undefined,
-    parentFolderId: 'parent-folder-id',
-    drive: {
-      ensureObservationFolder: undefined,
-      getDriveLinks: undefined,
-      replaceFileContent: undefined,
-      shareObservationFolderWithObserver: undefined,
-      shareWithUser: undefined,
-      uploadFileToFolder: undefined,
-    },
-    renderObservationPdf: undefined,
-    sendTemplatedEmail: undefined,
-  }),
-);
+const h = vi.hoisted((): HState => ({
+  db: undefined,
+  parentFolderId: 'parent-folder-id',
+  drive: {
+    ensureObservationFolder: undefined,
+    getDriveLinks: undefined,
+    replaceFileContent: undefined,
+    shareObservationFolderWithObserver: undefined,
+    shareWithUser: undefined,
+    uploadFileToFolder: undefined,
+  },
+  renderObservationPdf: undefined,
+  sendTemplatedEmail: undefined,
+}));
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
 

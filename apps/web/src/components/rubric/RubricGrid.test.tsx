@@ -644,6 +644,7 @@ describe('<RubricGrid> edit mode', () => {
 //     useIsDesktop breakpoint, so this tree is a real iPad target) ───────────
 
 describe('<RubricGrid> mobile layout touch targets', () => {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
   const desktopMatchMedia = window.matchMedia;
 
   beforeEach(() => {

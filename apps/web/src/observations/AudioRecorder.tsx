@@ -162,6 +162,7 @@ export function AudioRecorder({
 
       setRequestError((prev) => {
         const { [audioFileId]: _omit, ...rest } = prev;
+        // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
         void _omit;
         return rest;
       });

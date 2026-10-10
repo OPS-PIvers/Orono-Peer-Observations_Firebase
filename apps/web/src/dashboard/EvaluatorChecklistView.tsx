@@ -22,12 +22,7 @@ import { checkAttributionLabel, type CheckpointWithStatus } from './deriveCheckp
  *                          and a Work Product / Instructional Round step).
  */
 export type ChecklistAction =
-  | 'auto'
-  | 'toggle'
-  | 'start'
-  | 'needsFinalized'
-  | 'creationDisabled'
-  | 'observerOnly';
+  'auto' | 'toggle' | 'start' | 'needsFinalized' | 'creationDisabled' | 'observerOnly';
 
 export function checklistAction(
   task: CheckpointWithStatus,

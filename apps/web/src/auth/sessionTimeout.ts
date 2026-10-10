@@ -45,9 +45,7 @@ export interface SessionTimeoutInput {
 }
 
 export type SessionTimeoutStatus =
-  | { kind: 'ok' }
-  | { kind: 'warning'; remainingMs: number }
-  | { kind: 'expired' };
+  { kind: 'ok' } | { kind: 'warning'; remainingMs: number } | { kind: 'expired' };
 
 export function computeSessionTimeoutStatus(input: SessionTimeoutInput): SessionTimeoutStatus {
   const deadlineMs = input.authTimeMs + input.sessionDurationMs;

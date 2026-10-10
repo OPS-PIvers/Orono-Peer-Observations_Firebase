@@ -41,6 +41,7 @@ describe('requireRecording', () => {
       /not part of this observation/,
     );
     const { audioDriveFileIds: _ids, ...legacy } = obs();
+    // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
     void _ids;
     expect(() => requireRecording(legacy, 'file_A-1')).toThrow();
   });

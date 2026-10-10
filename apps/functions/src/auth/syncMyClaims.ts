@@ -104,9 +104,7 @@ export const syncMyClaims = onCall(
     // rows for a sign-in that never happened.
     if (staffSnap.exists) {
       const existingStamp = staffData?.['lastSignInAt'] as
-        | { toMillis?: () => number }
-        | null
-        | undefined;
+        { toMillis?: () => number } | null | undefined;
       const existingMs =
         existingStamp && typeof existingStamp.toMillis === 'function'
           ? existingStamp.toMillis()
