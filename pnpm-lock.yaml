@@ -6,6 +6,7 @@ settings:
 
 overrides:
   uuid: ^14.0.0
+  basic-ftp: ^6.2.1
   google-auth-library@>=10: ^10.9.1
   '@tootallnate/once': ^3.0.1
   protobufjs: ^7.6.5
@@ -13,7 +14,6 @@ overrides:
   hono: ^4.12.34
   ws@7: ^7.5.11
   ws@8: ^8.21.0
-  basic-ftp: ^5.3.1
   fast-uri: ^3.1.7
   fast-xml-builder: ^1.1.7
   ip-address: ^10.5.1
@@ -3273,8 +3273,8 @@ packages:
     resolution: {integrity: sha512-NF+epuEdnUYVlGuhaxbbq+dvJttwLnGY+YixlXlME5KpQ5W3CnXA5cVTneY3SPbPDRkcjMbifrwmFYcClgOZeg==}
     engines: {node: '>= 0.8'}
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.3:
+    resolution: {integrity: sha512-T7GYtQ2eKJUN5YORG7A8u2WfB9JMN0a4/wl3MI64qq2qTRfa3FXzoNq0DDojZDkDyStcL+TkfKsz4JHEZx5kGQ==}
     engines: {node: '>=10.0.0'}
 
   bidi-js@1.1.0:
@@ -10214,7 +10214,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.1.2
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.3: {}
 
   bidi-js@1.1.0:
     dependencies:
@@ -11677,7 +11677,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 5.3.1
+      basic-ftp: 6.2.3
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3
     transitivePeerDependencies:
