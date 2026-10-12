@@ -23,6 +23,8 @@ export const COLLECTIONS = {
   appSettings: 'appSettings',
   auditLog: 'auditLog',
   transcriptionJobs: 'transcriptionJobs',
+  aiUsageDaily: 'aiUsageDaily',
+  aiUsageEvents: 'aiUsageEvents',
   mail: 'mail',
   dashboardQuickMaterials: 'dashboardQuickMaterials',
   buildingSchedules: 'buildingSchedules',

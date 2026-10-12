@@ -18,6 +18,7 @@ export * from './staff.js';
 export * from './role.js';
 export * from './building.js';
 export * from './rubric.js';
+export * from './ai.js';
 export * from './settings.js';
 export * from './observation.js';
 export * from './workProductQuestion.js';

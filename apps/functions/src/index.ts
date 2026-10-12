@@ -32,6 +32,7 @@ export { regenerateObservationPdf } from './observations/regenerateObservationPd
 export { reopenObservation } from './observations/reopenObservation.js';
 export { suggestScriptTags } from './observations/suggestScriptTags.js';
 export { applyScriptTags } from './observations/applyScriptTags.js';
+export { getAiProviderStatus } from './ai/getAiProviderStatus.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';

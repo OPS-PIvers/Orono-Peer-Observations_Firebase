@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppSettings } from '@ops/shared';
+import { MemoryRouter } from 'react-router-dom';
 import { SettingsPage } from './SettingsPage';
 
 /**
@@ -74,7 +75,7 @@ describe('SettingsPage save() — reply-to cross-admin overwrite guard', () => {
     };
 
     const user = userEvent.setup();
-    render(<SettingsPage />);
+    render(<SettingsPage />, { wrapper: MemoryRouter });
 
     // Admin B never touches the reply-to field at all, and saves.
     const saveButton = await screen.findByRole('button', { name: /save settings/i });
@@ -97,7 +98,7 @@ describe('SettingsPage save() — reply-to cross-admin overwrite guard', () => {
     };
 
     const user = userEvent.setup();
-    render(<SettingsPage />);
+    render(<SettingsPage />, { wrapper: MemoryRouter });
 
     const replyToInput = await screen.findByPlaceholderText('frontoffice@orono.k12.mn.us');
     expect(replyToInput).toHaveValue('frontoffice@orono.k12.mn.us');
@@ -122,7 +123,7 @@ describe('SettingsPage save() — reply-to cross-admin overwrite guard', () => {
     };
 
     const user = userEvent.setup();
-    render(<SettingsPage />);
+    render(<SettingsPage />, { wrapper: MemoryRouter });
 
     const saveButton = await screen.findByRole('button', { name: /save settings/i });
     await user.click(saveButton);

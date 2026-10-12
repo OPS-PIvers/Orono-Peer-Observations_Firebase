@@ -26,6 +26,7 @@ cat > apps/functions/lib/.secret.local <<'ENV'
 GEMINI_API_KEY=demo-gemini-key
 GOOGLE_OAUTH_CLIENT_SECRET=demo-oauth-secret
 DRIVE_OAUTH_REFRESH_TOKEN=
+ANTHROPIC_API_KEY=
 ENV
 
 web_env=apps/web/.env.local
