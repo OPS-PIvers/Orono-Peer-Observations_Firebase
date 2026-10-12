@@ -63,7 +63,7 @@ export function SpendingPanel({ models, daily, events, loading, error }: Spendin
 
   if (error) {
     return (
-      <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-4 py-3 text-sm">
+      <div className="border-ops-red-light bg-ops-red-lighter text-ops-red-dark rounded-md border px-4 py-3 text-sm">
         Couldn&apos;t load AI usage: {error.message}
       </div>
     );

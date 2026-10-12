@@ -174,7 +174,7 @@ function FeatureCard({
               </p>
             ) : null}
             {effective.provider === 'claude' && claudeConfigured === false ? (
-              <p className="border-ops-red-light bg-ops-red-lighter/50 text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-xs">
+              <p className="border-ops-red-light bg-ops-red-lighter/50 text-ops-red-dark rounded-md border px-3 py-2 text-xs">
                 The Claude API key isn&apos;t set on the server yet, so {title.toLowerCase()} calls
                 will fail until it is.
               </p>
