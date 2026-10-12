@@ -45,6 +45,7 @@ const importers = {
   EmailTemplatesPage: () => import('@/admin/email-templates/EmailTemplatesPage'),
   BrandingPage: () => import('@/admin/branding/BrandingPage'),
   SettingsPage: () => import('@/admin/settings/SettingsPage'),
+  AiModelsPage: () => import('@/admin/ai/AiModelsPage'),
   AuditLogPage: () => import('@/admin/audit-log/AuditLogPage'),
   TranscriptionJobsPage: () => import('@/admin/transcription/TranscriptionJobsPage'),
 } as const;
@@ -146,6 +147,9 @@ export const BrandingPage = lazy(() =>
 export const SettingsPage = lazy(() =>
   importers.SettingsPage().then((m) => ({ default: m.SettingsPage })),
 );
+export const AiModelsPage = lazy(() =>
+  importers.AiModelsPage().then((m) => ({ default: m.AiModelsPage })),
+);
 export const AuditLogPage = lazy(() =>
   importers.AuditLogPage().then((m) => ({ default: m.AuditLogPage })),
 );
@@ -185,6 +189,7 @@ export const PREFETCH_BY_PATH: Record<string, RouteName> = {
   '/admin/email-templates': 'EmailTemplatesPage',
   '/admin/branding': 'BrandingPage',
   '/admin/settings': 'SettingsPage',
+  '/admin/ai': 'AiModelsPage',
   '/admin/audit-log': 'AuditLogPage',
   '/admin/transcription-jobs': 'TranscriptionJobsPage',
 };

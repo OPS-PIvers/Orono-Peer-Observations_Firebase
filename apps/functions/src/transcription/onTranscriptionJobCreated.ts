@@ -2,19 +2,14 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import {
-  APP_SETTINGS_DOC_ID,
-  COLLECTIONS,
-  DEFAULT_GEMINI_MODEL,
-  resolveGeminiModel,
-} from '@ops/shared';
+import { COLLECTIONS, DEFAULT_AI_MODEL, type AiModel } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   downloadFile,
   getDriveClient,
 } from '../lib/drive.js';
-import { vertexGenerateContent } from '../lib/vertexGemini.js';
+import { generateText, loadFeatureModel } from '../lib/aiClient.js';
 import { deleteTranscriptionAudio, uploadTranscriptionAudio } from '../lib/transcriptionStorage.js';
 
 if (getApps().length === 0) initializeApp();
@@ -23,24 +18,18 @@ const TRANSCRIPTION_PROMPT =
   'Transcribe the attached audio recording verbatim. Output only the transcript text — no headers, no speaker labels, no timestamps, no commentary. Preserve sentence boundaries with line breaks where natural pauses occur.';
 
 /**
- * Resolves the Gemini model id from /appSettings/global. Admins pick the
- * model per Gemini-feature in the Settings page; we read it at job time so
- * a model swap takes effect without redeploying.
+ * The model transcription is routed to on the AI Models admin page, read at
+ * job time so a model swap takes effect without redeploying. Only
+ * audio-capable models qualify; anything else resolves to one that is.
  */
-async function resolveTranscriptionModel(): Promise<string> {
+async function resolveTranscriptionModel(): Promise<AiModel> {
   try {
-    const snap = await getFirestore()
-      .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
-      .get();
-    if (!snap.exists) return DEFAULT_GEMINI_MODEL;
-    // Raw Firestore reads don't apply Zod defaults; partial-shape the tree.
-    const settings = snap.data() as { gemini?: { audioTranscription?: { model?: string } } };
-    return resolveGeminiModel(settings.gemini?.audioTranscription?.model);
+    return await loadFeatureModel(getFirestore(), 'audioTranscription');
   } catch (err) {
     logger.warn('resolveTranscriptionModel: settings fetch failed; using default', {
       error: err instanceof Error ? err.message : String(err),
     });
-    return DEFAULT_GEMINI_MODEL;
+    return DEFAULT_AI_MODEL;
   }
 }
 
@@ -109,10 +98,13 @@ export const onTranscriptionJobCreated = onDocumentCreated(
       logger.info('onTranscriptionJobCreated: uploaded audio for Gemini', {
         jobId: snapshot.id,
         audioUri,
-        model,
+        model: model.id,
       });
 
-      const transcript = await transcribeWithGcsUri(audioUri, mimeType, model);
+      const transcript = await transcribeWithGcsUri(audioUri, mimeType, model, {
+        userEmail: (snapshot.data() as { requestedBy?: string }).requestedBy ?? null,
+        observationId: job.observationId,
+      });
 
       await obsRef.update({
         [`transcripts.${job.audioDriveFileId}`]: transcript,
@@ -163,21 +155,14 @@ export const onTranscriptionJobCreated = onDocumentCreated(
 async function transcribeWithGcsUri(
   fileUri: string,
   mimeType: string,
-  model: string,
+  model: AiModel,
+  caller: { userEmail: string | null; observationId: string },
 ): Promise<string> {
-  const data = await vertexGenerateContent(
+  const text = await generateText(
     model,
-    {
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: TRANSCRIPTION_PROMPT }, { fileData: { fileUri, mimeType } }],
-        },
-      ],
-    },
-    'onTranscriptionJobCreated',
+    { prompt: TRANSCRIPTION_PROMPT, fileData: { fileUri, mimeType } },
+    { feature: 'audioTranscription', logContext: 'onTranscriptionJobCreated', ...caller },
   );
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) {
     throw new Error('Gemini returned no transcript text');
   }

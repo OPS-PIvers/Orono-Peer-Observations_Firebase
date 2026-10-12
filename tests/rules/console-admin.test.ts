@@ -106,6 +106,35 @@ describe('console-only collections', () => {
   });
 });
 
+describe('AI usage collections', () => {
+  beforeEach(async () => {
+    await seed('aiUsageDaily/2026-10-12', { date: '2026-10-12' });
+    await seed('aiUsageEvents/e1', { feature: 'scriptAutoTag' });
+  });
+
+  it('console admins read them', async () => {
+    const db = consolePrincipalDb();
+    await assertSucceeds(getDoc(doc(db, 'aiUsageDaily/2026-10-12')));
+    await assertSucceeds(getDoc(doc(db, 'aiUsageEvents/e1')));
+  });
+
+  it('building Administrators and teachers cannot read them', async () => {
+    const teacherDb = testEnv
+      .authenticatedContext('ann', claims.teacher('ann@orono.k12.mn.us'))
+      .firestore();
+    for (const db of [principalDb(), teacherDb]) {
+      await assertFails(getDoc(doc(db, 'aiUsageDaily/2026-10-12')));
+      await assertFails(getDoc(doc(db, 'aiUsageEvents/e1')));
+    }
+  });
+
+  it('nobody writes them from the client', async () => {
+    const db = consolePrincipalDb();
+    await assertFails(setDoc(doc(db, 'aiUsageDaily/2026-10-12'), { date: 'x' }, { merge: true }));
+    await assertFails(setDoc(doc(db, 'aiUsageEvents/e2'), { feature: 'scriptAutoTag' }));
+  });
+});
+
 describe('/staff — building Administrator', () => {
   it('edits staff in their building', async () => {
     const db = principalDb();

@@ -4,6 +4,7 @@ import { staffYear } from './staff.js';
 import { componentId } from './rubric.js';
 import { pillColor } from './pillColor.js';
 import { DEFAULT_REFLECTION_UNLOCK, REFLECTION_UNLOCK_MODES } from './workProductQuestion.js';
+import { AI_MODEL_ID_PATTERN, DEFAULT_AI_MODELS, aiModel } from './ai.js';
 
 /**
  * /settings/roleYearMappings/{roleId}_{year} — which components a given
@@ -137,7 +138,8 @@ export type GeminiAccess = (typeof GEMINI_ACCESS_LEVELS)[number];
 /** Access when nothing usable is stored: off, so a new cost is opt-in. */
 export const DEFAULT_GEMINI_ACCESS: GeminiAccess = 'off';
 
-const GEMINI_MODEL_PATTERN = /^gemini-[a-z0-9.-]+$/;
+/** Gemini or Claude; which ones are actually offered comes from the model registry. */
+const GEMINI_MODEL_PATTERN = AI_MODEL_ID_PATTERN;
 
 export const geminiFeature = z.object({
   /**
@@ -150,13 +152,13 @@ export const geminiFeature = z.object({
   /** Who gets the feature while `access` is 'beta'. Kept when switching modes. */
   betaEmails: z.array(email).default([]),
   /**
-   * Free-form string so admins can paste a newer model id we haven't yet
-   * added to GEMINI_MODEL_OPTIONS without us having to ship a release.
-   * Must look like a Gemini model id; the API will reject anything else.
+   * Id of an entry in `aiModels` (Gemini or Claude). The server resolves it
+   * through `resolveFeatureModel`, so a model that was since removed,
+   * disabled, or can't do this task falls back instead of failing.
    */
   model: z
     .string()
-    .regex(GEMINI_MODEL_PATTERN, 'Model must look like "gemini-…"')
+    .regex(GEMINI_MODEL_PATTERN, 'Model must look like "gemini-…" or "claude-…"')
     .default(DEFAULT_GEMINI_MODEL),
 });
 export type GeminiFeature = z.infer<typeof geminiFeature>;
@@ -287,7 +289,10 @@ export const appSettings = z.object({
     logoUrl: null,
     iconUrl: null,
   }),
-  /** Per-feature Gemini config: who gets it (off / beta / all) + model selection. */
+  /** Models admins can route AI features to, with the prices spend is estimated from. */
+  aiModels: z.array(aiModel).default(DEFAULT_AI_MODELS),
+  /** Per-feature AI config: who gets it (off / beta / all) + model selection. Key kept
+   *  as `gemini` from before Claude models were offered. */
   gemini: geminiFeatures.default({
     audioTranscription: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
     scriptAutoTag: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },

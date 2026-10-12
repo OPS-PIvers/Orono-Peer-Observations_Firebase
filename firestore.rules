@@ -635,6 +635,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- /aiUsageDaily, /aiUsageEvents --------------------------------------
+    // AI spend and per-call log for the AI Models admin page. Console admins
+    // read; only the server writes (after each AI call).
+    match /aiUsageDaily/{day} {
+      allow read: if isConsoleAdmin();
+      allow write: if false;
+    }
+    match /aiUsageEvents/{id} {
+      allow read: if isConsoleAdmin();
+      allow write: if false;
+    }
+
     // --- /mail ---------------------------------------------------------------
     // Trigger Email extension writes and reads via admin SDK — clients must
     // never write here directly (that would bypass template rendering and

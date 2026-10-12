@@ -1,6 +1,7 @@
 import {
   AudioLines,
   BookOpen,
+  Bot,
   Building2,
   CalendarClock,
   CalendarDays,
@@ -70,6 +71,7 @@ export const ADMIN_NAV_SECTIONS: readonly AdminNavSection[] = [
     label: 'System',
     items: [
       { to: '/admin/settings', label: 'Settings', icon: SlidersHorizontal },
+      { to: '/admin/ai', label: 'AI Models', icon: Bot },
       { to: '/admin/audit-log', label: 'Audit Log', icon: History },
       { to: '/admin/transcription-jobs', label: 'Transcription Jobs', icon: AudioLines },
     ],
