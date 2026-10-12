@@ -359,8 +359,7 @@ export const sendBulkManualEmail = onCall(
 
     const appSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
     const appData = appSnap.data() as
-      | { branding?: { appName?: string }; signupLink?: string }
-      | undefined;
+      { branding?: { appName?: string }; signupLink?: string } | undefined;
     const appName = appData?.branding?.appName ?? 'Orono Peer Observations';
     const signupLink = appData?.signupLink ?? '';
 

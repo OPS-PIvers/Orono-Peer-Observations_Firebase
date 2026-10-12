@@ -57,8 +57,7 @@ export function extractTaggedSpansForComponent(
         (tagMark.attrs as { componentId?: string } | undefined)?.componentId === componentId
       ) {
         const attrs = tagMark.attrs as
-          | { bg?: string | null; fg?: string | null; source?: unknown }
-          | undefined;
+          { bg?: string | null; fg?: string | null; source?: unknown } | undefined;
         const last = out[out.length - 1];
         if (currentParagraphHadMatch && last?.paragraphIndex === paragraphIndex) {
           last.text += node.text;

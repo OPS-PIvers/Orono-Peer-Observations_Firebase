@@ -38,8 +38,7 @@ export interface QuestionsSlot {
   /** Evaluator-only: lift a selected sentence of an answer into the script
    *  as evidence. Absent for the teacher's own view and after finalize. */
   onCaptureEvidence?:
-    | ((text: string, phase: QuestionPhase, questionText: string) => void)
-    | undefined;
+    ((text: string, phase: QuestionPhase, questionText: string) => void) | undefined;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   saveError: string | null;
   onRetrySave: () => void;
