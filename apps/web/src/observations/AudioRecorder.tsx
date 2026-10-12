@@ -177,9 +177,7 @@ export function AudioRecorder({
       if (inflightStatus === 'Pending' || inflightStatus === 'Running') return;
 
       setRequestError((prev) => {
-        const { [audioFileId]: _omit, ...rest } = prev;
-        void _omit;
-        return rest;
+        return Object.fromEntries(Object.entries(prev).filter(([id]) => id !== audioFileId));
       });
       // A re-transcribe produces new text, so the "inserted" feedback for
       // this recording no longer reflects what's in the script.

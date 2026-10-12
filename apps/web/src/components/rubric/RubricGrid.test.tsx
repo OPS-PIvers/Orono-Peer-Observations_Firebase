@@ -644,7 +644,7 @@ describe('<RubricGrid> edit mode', () => {
 //     useIsDesktop breakpoint, so this tree is a real iPad target) ───────────
 
 describe('<RubricGrid> mobile layout touch targets', () => {
-  const desktopMatchMedia = window.matchMedia;
+  const desktopMatchMedia = window.matchMedia.bind(window);
 
   beforeEach(() => {
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({

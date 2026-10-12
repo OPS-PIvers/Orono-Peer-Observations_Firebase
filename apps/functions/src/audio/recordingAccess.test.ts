@@ -40,8 +40,8 @@ describe('requireRecording', () => {
     expect(() => requireRecording(obs({ audioDriveFileIds: ['a.b'] }), 'a.b')).toThrow(
       /not part of this observation/,
     );
-    const { audioDriveFileIds: _ids, ...legacy } = obs();
-    void _ids;
+    const legacy = obs();
+    delete legacy.audioDriveFileIds;
     expect(() => requireRecording(legacy, 'file_A-1')).toThrow();
   });
 });
