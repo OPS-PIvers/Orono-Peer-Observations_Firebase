@@ -1,14 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { LayoutGrid, List, Search, Users } from 'lucide-react';
-import { orderBy } from 'firebase/firestore';
-import { COLLECTIONS, SPECIAL_ROLES, staffCycleStatus, type Role, type Staff } from '@ops/shared';
+import { CheckCircle2, Clock, LayoutGrid, List, Search, Users } from 'lucide-react';
+import { orderBy, where } from 'firebase/firestore';
+import {
+  COLLECTIONS,
+  SPECIAL_ROLES,
+  staffCycleStatus,
+  type Observation,
+  type Role,
+  type Staff,
+} from '@ops/shared';
 import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
-import { useEffectiveClaims } from '@/dev/DevModeContext';
+import { useEffectiveClaims, useEffectiveEmail } from '@/dev/DevModeContext';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
 import { roleDisplayName } from '@/utils/roleLookup';
+import {
+  DIRECTORY_CHIP_KIND_LABEL,
+  directoryObservationChips,
+  type DirectoryChip,
+} from '@/utils/directoryObservationChips';
 import { yearBadgeClass, yearLabel } from '@/utils/staffFormatting';
 
 const STAFF_CONSTRAINTS = [orderBy('name', 'asc')];
@@ -33,6 +45,20 @@ function StaffDirectory() {
     error,
   } = useFirestoreCollection<Staff>(COLLECTIONS.staff, STAFF_CONSTRAINTS);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
+
+  // Chips show only observations the viewer created, even for Full Access
+  // admins who can read everyone's.
+  const me = useEffectiveEmail();
+  const myObsConstraints = useMemo(() => [where('observerEmail', '==', me)], [me]);
+  const { data: myObservations } = useFirestoreCollection<Observation>(
+    me ? COLLECTIONS.observations : '',
+    myObsConstraints,
+    ['staffDirChips', me],
+  );
+  const chipsByEmail = useMemo(
+    () => directoryObservationChips(myObservations ?? []),
+    [myObservations],
+  );
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -125,6 +151,7 @@ function StaffDirectory() {
           />
           Show inactive
         </label>
+        {chipsByEmail.size > 0 ? <ChipLegend /> : null}
         <div
           className="border-input ml-auto inline-flex h-10 overflow-hidden rounded-md border"
           role="group"
@@ -227,6 +254,7 @@ function StaffDirectory() {
                   </span>
                 ))}
               </div>
+              <ObservationChips chips={chipsByEmail.get(s.email.toLowerCase())} className="mt-2" />
             </Link>
           ))}
         </div>
@@ -263,6 +291,10 @@ function StaffDirectory() {
                       {b}
                     </span>
                   ))}
+                  <ObservationChips
+                    chips={chipsByEmail.get(s.email.toLowerCase())}
+                    className="ml-auto"
+                  />
                 </div>
               </Link>
             </li>
@@ -270,5 +302,65 @@ function StaffDirectory() {
         </ul>
       )}
     </PageHeader>
+  );
+}
+
+const CHIP_STYLE = {
+  inProgress: {
+    Icon: Clock,
+    word: 'in progress',
+    className: 'border-amber-300 bg-amber-50 text-amber-800',
+  },
+  finalized: {
+    Icon: CheckCircle2,
+    word: 'finalized',
+    className: 'border-green-300 bg-green-50 text-green-800',
+  },
+} as const;
+
+/** The viewer's own observations of this staff member: one chip per type. */
+function ObservationChips({
+  chips,
+  className,
+}: {
+  chips: DirectoryChip[] | undefined;
+  className?: string;
+}) {
+  if (!chips?.length) return null;
+  return (
+    <div className={cn('flex flex-wrap gap-1', className)}>
+      {chips.map(({ kind, state }) => {
+        const { Icon, word, className: tone } = CHIP_STYLE[state];
+        const label = `Your ${DIRECTORY_CHIP_KIND_LABEL[kind]} ${word}`;
+        return (
+          <span
+            key={kind}
+            title={label}
+            aria-label={label}
+            className={cn(
+              'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold',
+              tone,
+            )}
+          >
+            <Icon aria-hidden="true" className="h-3 w-3" />
+            {kind}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChipLegend() {
+  return (
+    <div className="text-ops-gray flex items-center gap-2 text-xs">
+      <span>Your observations:</span>
+      <span className="inline-flex items-center gap-0.5 text-amber-800">
+        <Clock aria-hidden="true" className="h-3 w-3" /> In progress
+      </span>
+      <span className="inline-flex items-center gap-0.5 text-green-800">
+        <CheckCircle2 aria-hidden="true" className="h-3 w-3" /> Finalized this year
+      </span>
+    </div>
   );
 }
