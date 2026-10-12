@@ -13,8 +13,14 @@ import {
   type AiModel,
 } from './ai.js';
 
-const haiku = AI_MODEL_PRESETS.find((m) => m.id === 'claude-haiku-5-5') as AiModel;
-const flash = AI_MODEL_PRESETS.find((m) => m.id === 'gemini-3.5-flash') as AiModel;
+function preset(id: string): AiModel {
+  const found = AI_MODEL_PRESETS.find((m) => m.id === id);
+  if (!found) throw new Error(`missing preset ${id}`);
+  return found;
+}
+
+const haiku = preset('claude-haiku-5-5');
+const flash = preset('gemini-3.5-flash');
 
 describe('aiModel', () => {
   it('accepts every preset', () => {

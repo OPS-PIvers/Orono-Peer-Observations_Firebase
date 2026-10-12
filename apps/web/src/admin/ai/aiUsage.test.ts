@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/firebase', () => ({ auth: {}, db: {}, storage: {}, functions: {} }));
+
 import { dayKeysBack, formatTokens, formatUsd, rangeStartKey } from './aiUsage';
 
 describe('formatUsd', () => {
