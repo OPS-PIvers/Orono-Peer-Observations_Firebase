@@ -3,8 +3,8 @@ import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { vertexGenerateContent } from '../lib/vertexGemini.js';
-import type { RubricComponent } from '@ops/shared';
+import { ANTHROPIC_API_KEY, generateText, loadFeatureModel } from '../lib/aiClient.js';
+import type { AiModel, RubricComponent } from '@ops/shared';
 import {
   assertScriptAutoTagAvailable,
   filterVerbatimSuggestions,
@@ -59,6 +59,8 @@ export const suggestScriptTags = onCall(
     // geminiTagScript) because the Gemini round-trip is the expensive part;
     // applyScriptTags is a plain Firestore write and must not consume it.
     maxInstances: 10,
+    // Needed only when an admin routes auto-tag to a Claude model.
+    secrets: [ANTHROPIC_API_KEY],
   },
   async (request): Promise<SuggestScriptTagsResponse> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
@@ -77,7 +79,11 @@ export const suggestScriptTags = onCall(
     const callerRole = request.auth.token['role'] as string | undefined;
     const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
 
-    const raw = await callGeminiForTags(ctx.activeComponents, ctx.paragraphs, feature.model);
+    const model = await loadFeatureModel(db, 'scriptAutoTag');
+    const raw = await callModelForTags(ctx.activeComponents, ctx.paragraphs, model, {
+      userEmail,
+      observationId,
+    });
 
     const { accepted, rejected } = filterVerbatimSuggestions(
       raw,
@@ -108,12 +114,34 @@ export const suggestScriptTags = onCall(
   },
 );
 
-// ─── Gemini call ─────────────────────────────────────────────────────────────
+// ─── Model call ──────────────────────────────────────────────────────────────
 
-async function callGeminiForTags(
+const TAGS_SCHEMA = {
+  type: 'object',
+  properties: {
+    tags: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          paragraphIndex: { type: 'integer' },
+          text: { type: 'string' },
+          componentId: { type: 'string' },
+        },
+        required: ['paragraphIndex', 'text', 'componentId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['tags'],
+  additionalProperties: false,
+};
+
+async function callModelForTags(
   components: readonly RubricComponent[],
   paragraphs: readonly string[],
-  model: string,
+  model: AiModel,
+  caller: { userEmail: string; observationId: string },
 ): Promise<ScriptTagSuggestion[]> {
   const componentBlock = components.map((c) => ({
     id: c.id,
@@ -140,26 +168,22 @@ ${JSON.stringify(componentBlock, null, 2)}
 SCRIPT:
 ${JSON.stringify(paragraphBlock, null, 2)}`;
 
-  const data = await vertexGenerateContent(
+  const raw = await generateText(
     model,
-    {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-      },
-    },
-    'suggestScriptTags',
+    { prompt, jsonSchema: TAGS_SCHEMA, temperature: 0.2 },
+    { feature: 'scriptAutoTag', logContext: 'suggestScriptTags', ...caller },
   );
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  if (!raw) throw new HttpsError('internal', 'Gemini returned no content');
+  if (!raw) throw new HttpsError('internal', 'The AI model returned no content');
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    logger.error('suggestScriptTags: invalid JSON from Gemini', { raw: raw.slice(0, 500) });
-    throw new HttpsError('internal', 'Gemini returned invalid JSON');
+    logger.error('suggestScriptTags: invalid JSON from model', {
+      model: model.id,
+      raw: raw.slice(0, 500),
+    });
+    throw new HttpsError('internal', 'The AI model returned invalid JSON');
   }
 
   const tags = (parsed as { tags?: unknown }).tags;

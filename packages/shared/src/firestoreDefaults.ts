@@ -7,6 +7,7 @@ import {
   STAFF_SUBCOLLECTIONS,
   WINDOW_SUBCOLLECTIONS,
 } from './constants.js';
+import { aiUsageDaily, aiUsageEvent } from './schema/ai.js';
 import { auditLog } from './schema/auditLog.js';
 import { building } from './schema/building.js';
 import { buildingSchedule, buildingScheduleVersion } from './schema/buildingSchedule.js';
@@ -252,6 +253,8 @@ const COLLECTION_SCHEMAS: Record<string, AnyObjectSchema> = {
   [COLLECTIONS.emailTemplates]: emailTemplate,
   [COLLECTIONS.auditLog]: auditLog,
   [COLLECTIONS.transcriptionJobs]: transcriptionJob,
+  [COLLECTIONS.aiUsageDaily]: aiUsageDaily,
+  [COLLECTIONS.aiUsageEvents]: aiUsageEvent,
   [COLLECTIONS.buildingSchedules]: buildingSchedule,
   [`${COLLECTIONS.buildingSchedules}/${BUILDING_SCHEDULE_SUBCOLLECTIONS.versions}`]:
     buildingScheduleVersion,

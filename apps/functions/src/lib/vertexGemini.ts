@@ -23,6 +23,11 @@ export interface GeminiContentPart {
 
 export interface GeminiGenerateContentResponse {
   candidates?: { content?: { parts?: GeminiContentPart[] } }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
 }
 
 /**

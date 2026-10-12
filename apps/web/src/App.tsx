@@ -174,6 +174,7 @@ export function App() {
                   <Route path="branding" element={<L.BrandingPage />} />
                   <Route path="dashboard" element={<L.DashboardSettingsPage />} />
                   <Route path="settings" element={<L.SettingsPage />} />
+                  <Route path="ai" element={<L.AiModelsPage />} />
                   <Route path="audit-log" element={<L.AuditLogPage />} />
                   <Route path="transcription-jobs" element={<L.TranscriptionJobsPage />} />
                 </Route>

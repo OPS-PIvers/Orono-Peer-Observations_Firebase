@@ -222,10 +222,10 @@ export function TranscriptionJobsPage() {
         <div className="bg-ops-red-lighter text-ops-red-dark mb-4 flex items-center gap-2 rounded-md border border-orange-200 px-3 py-2 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            {failedCount} failed job{failedCount > 1 ? 's' : ''} in this page — check the Gemini
-            model and API key in{' '}
-            <Link to="/admin/settings" className="underline">
-              Settings
+            {failedCount} failed job{failedCount > 1 ? 's' : ''} in this page — check the
+            transcription model in{' '}
+            <Link to="/admin/ai?tab=features" className="underline">
+              AI Models
             </Link>
             .
           </span>

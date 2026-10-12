@@ -1,18 +1,8 @@
 import { useState } from 'react';
 import { deleteField, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import {
-  APP_SETTINGS_DOC_ID,
-  COLLECTIONS,
-  DEFAULT_GEMINI_MODEL,
-  GEMINI_MODEL_OPTIONS,
-  email as emailSchema,
-  resolveGeminiFeature,
-  type AppSettings,
-  type GeminiAccess,
-  type GeminiFeatureKey,
-  type ResolvedGeminiFeature,
-} from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
@@ -49,48 +39,6 @@ const backfillScriptTagColorsFn = httpsCallable<Record<string, never>, BackfillR
   'backfillScriptTagColors',
 );
 
-const GEMINI_FEATURE_META: {
-  key: GeminiFeatureKey;
-  title: string;
-  description: string;
-  hiddenWhenUnavailable: string;
-}[] = [
-  {
-    key: 'audioTranscription',
-    title: 'Audio transcription',
-    description:
-      'After a recording is saved, send the audio to Gemini and store the verbatim transcript on the observation.',
-    hiddenWhenUnavailable:
-      'Recording still works, but the Transcribe button, transcript status and transcript text are hidden.',
-  },
-  {
-    key: 'scriptAutoTag',
-    title: 'Script auto-tag',
-    description:
-      'One-click button in the script editor that asks Gemini to tag verbatim spans with rubric components.',
-    hiddenWhenUnavailable: 'The Auto-tag button is hidden from the script editor toolbar.',
-  },
-];
-
-const GEMINI_ACCESS_OPTIONS: { value: GeminiAccess; label: string; help: string }[] = [
-  { value: 'off', label: 'Off', help: 'Hidden from everyone.' },
-  { value: 'beta', label: 'Beta', help: 'Only the people listed below.' },
-  { value: 'all', label: 'On for everyone', help: 'Available to every user.' },
-];
-
-/** Split a pasted list on commas, semicolons and whitespace into valid and invalid addresses. */
-function parseEmailList(text: string): { valid: string[]; invalid: string[] } {
-  const valid: string[] = [];
-  const invalid: string[] = [];
-  for (const token of text.split(/[\s,;]+/)) {
-    if (!token) continue;
-    const parsed = emailSchema.safeParse(token);
-    if (!parsed.success) invalid.push(token);
-    else if (!valid.includes(parsed.data)) valid.push(parsed.data);
-  }
-  return { valid, invalid };
-}
-
 const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
 export function SettingsPage() {
@@ -120,10 +68,15 @@ export function SettingsPage() {
     setSaving(true);
     setSaveError(null);
     try {
+      // AI models and features are edited on the AI Models page; leave them
+      // out so a stale copy hydrated here can't overwrite that page's saves.
+      const rest = { ...form };
+      delete rest.gemini;
+      delete rest.aiModels;
       await setDoc(
         doc(db, SETTINGS_PATH),
         {
-          ...form,
+          ...rest,
           // replyToEmail is a genuinely optional field (no schema default) —
           // explicitly delete it on merge when the admin has cleared the
           // input *in this session*, since a merge write simply omitting the
@@ -290,42 +243,18 @@ export function SettingsPage() {
           </label>
         </div>
 
-        <fieldset className="border-border space-y-4 rounded-md border p-4">
-          <legend className="px-2 text-sm font-medium">Gemini features</legend>
-          <p className="text-muted-foreground text-xs">
-            Each Gemini call is billed, so choose who gets each feature: nobody, a beta list of
-            specific people, or everyone. Both run on{' '}
-            <code className="font-mono">{DEFAULT_GEMINI_MODEL}</code> — the cheapest and fastest
-            model for the short classification work these features do. Anyone without access sees no
-            trace of the feature, and the server refuses their requests.
-          </p>
-          {GEMINI_FEATURE_META.map((meta) => {
-            // Show (and therefore save) what the server would actually
-            // enforce — a legacy enabled flag becomes an access level, and a
-            // retired model maps forward.
-            const current = resolveGeminiFeature(form.gemini?.[meta.key]);
-            return (
-              <GeminiFeatureRow
-                key={meta.key}
-                featureKey={meta.key}
-                title={meta.title}
-                description={meta.description}
-                hiddenWhenUnavailable={meta.hiddenWhenUnavailable}
-                value={current}
-                onChange={(next) =>
-                  setForm((f) => ({
-                    ...f,
-                    gemini: {
-                      audioTranscription: resolveGeminiFeature(f.gemini?.audioTranscription),
-                      scriptAutoTag: resolveGeminiFeature(f.gemini?.scriptAutoTag),
-                      [meta.key]: next,
-                    },
-                  }))
-                }
-              />
-            );
-          })}
-        </fieldset>
+        <div className="border-border bg-muted/20 flex items-center justify-between gap-3 rounded-md border p-4">
+          <span className="text-sm">
+            <span className="font-medium">AI features</span>
+            <span className="text-muted-foreground block text-xs">
+              Who gets audio transcription and script auto-tag, which Gemini or Claude model runs
+              each one, and live spend per model.
+            </span>
+          </span>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/admin/ai">Open AI Models</Link>
+          </Button>
+        </div>
 
         <fieldset className="border-border space-y-4 rounded-md border p-4">
           <legend className="px-2 text-sm font-medium">Rate limits</legend>
@@ -664,115 +593,6 @@ function BackfillScriptTagColorsCard() {
           Run script-tag color backfill
         </Button>
       )}
-    </div>
-  );
-}
-
-function GeminiFeatureRow({
-  featureKey,
-  title,
-  description,
-  hiddenWhenUnavailable,
-  value,
-  onChange,
-}: {
-  featureKey: GeminiFeatureKey;
-  title: string;
-  description: string;
-  hiddenWhenUnavailable: string;
-  value: ResolvedGeminiFeature;
-  onChange: (next: ResolvedGeminiFeature) => void;
-}) {
-  const isCustomModel = !GEMINI_MODEL_OPTIONS.some((m) => m.id === value.model);
-  // Entries dropped on the last blur for not being addresses — shown so a
-  // typo doesn't silently leave someone off the list.
-  const [invalidEmails, setInvalidEmails] = useState<string[]>([]);
-  const betaListId = `gemini-beta-${featureKey}`;
-  return (
-    <div className="border-border bg-muted/20 space-y-3 rounded-md border p-3">
-      <div>
-        <span className="text-sm font-medium">{title}</span>
-        <span className="text-muted-foreground block text-xs">{description}</span>
-      </div>
-
-      <div role="radiogroup" aria-label={`${title} access`} className="flex flex-wrap gap-2">
-        {GEMINI_ACCESS_OPTIONS.map((opt) => (
-          <label
-            key={opt.value}
-            className={`flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-sm ${
-              value.access === opt.value ? 'border-ops-blue bg-white' : 'border-border'
-            }`}
-          >
-            <input
-              type="radio"
-              name={`gemini-access-${featureKey}`}
-              value={opt.value}
-              checked={value.access === opt.value}
-              onChange={() => onChange({ ...value, access: opt.value })}
-              className="mt-0.5 h-4 w-4"
-            />
-            <span className="font-medium">
-              {opt.label}
-              <span className="text-muted-foreground block text-xs font-normal">{opt.help}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-
-      {value.access !== 'all' ? (
-        <p className="text-muted-foreground text-xs italic">
-          {value.access === 'off' ? 'Hidden from everyone' : 'Hidden from everyone not listed'} ·{' '}
-          {hiddenWhenUnavailable}
-        </p>
-      ) : null}
-
-      {value.access === 'beta' ? (
-        <div className="grid gap-1">
-          <Label htmlFor={betaListId} className="text-xs">
-            Beta users
-          </Label>
-          <textarea
-            id={betaListId}
-            // Remount when the saved list changes (hydration, or a blur that
-            // normalized it) so the box shows the list exactly as it will save.
-            key={value.betaEmails.join(',')}
-            defaultValue={value.betaEmails.join('\n')}
-            onBlur={(e) => {
-              const { valid, invalid } = parseEmailList(e.target.value);
-              setInvalidEmails(invalid);
-              onChange({ ...value, betaEmails: valid });
-            }}
-            rows={Math.min(Math.max(value.betaEmails.length + 1, 3), 10)}
-            placeholder={'teacher@orono.k12.mn.us\nanother.teacher@orono.k12.mn.us'}
-            className="border-input focus:border-ops-blue focus:ring-ops-blue rounded-md border bg-white px-2 py-1.5 font-mono text-sm outline-none focus:ring-1"
-          />
-          <p className="text-muted-foreground text-xs">
-            One email address per line (commas also work). {value.betaEmails.length} listed.
-          </p>
-          {invalidEmails.length > 0 ? (
-            <p className="text-ops-red-dark text-xs">
-              Not added — not valid email addresses: {invalidEmails.join(', ')}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="grid gap-1">
-        <Label className="text-xs">Gemini model</Label>
-        <select
-          value={value.model}
-          onChange={(e) => onChange({ ...value, model: e.target.value })}
-          disabled={value.access === 'off'}
-          className="border-input focus:border-ops-blue focus:ring-ops-blue h-9 rounded-md border bg-white px-2 text-sm outline-none focus:ring-1 disabled:opacity-50"
-        >
-          {GEMINI_MODEL_OPTIONS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label} — {m.note}
-            </option>
-          ))}
-          {isCustomModel ? <option value={value.model}>{value.model} (custom)</option> : null}
-        </select>
-      </div>
     </div>
   );
 }
