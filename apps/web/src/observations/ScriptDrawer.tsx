@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronsUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const HEIGHT_KEY = 'ops:script-drawer:height';
@@ -16,6 +16,13 @@ const HANDLE_HEIGHT = 24;
 const COLLAPSE_BTN_THRESHOLD = 80;
 // Cap drawer at 75% viewport so the rubric above stays usable.
 const MAX_HEIGHT_RATIO = 0.75;
+// Within this many px of the cap the drawer counts as fully open and the
+// expand button hides (drag math leaves fractional heights).
+const FULL_EPSILON = 4;
+
+function maxBodyHeight(): number {
+  return Math.max(0, window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT);
+}
 
 function readSession(key: string, fallback: string): string {
   try {
@@ -45,11 +52,12 @@ export interface ScriptDrawerProps {
 const PROGRAMMATIC_OPEN_HEIGHT = 320;
 
 /**
- * Fixed-bottom resizable drawer for the script editor. There is no
- * expand/collapse button — the user drags the handle bar to open it,
- * resize it, or close it (drag down to zero). When the body is tall
- * enough, a floating chevron-down at the bottom-center offers a quick
- * one-click collapse back to zero.
+ * Fixed-bottom resizable drawer for the script editor. The user drags the
+ * handle bar to open it, resize it, or close it (drag down to zero). Two
+ * one-click shortcuts sit alongside the drag: a double-chevron-up at the
+ * right end of the handle pops the drawer open to full height, and, when
+ * the body is tall enough, a chevron-down at the bottom-center collapses
+ * it back to zero.
  */
 export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptDrawerProps) {
   const [bodyHeight, setBodyHeight] = useState<number>(() => {
@@ -76,8 +84,7 @@ export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptD
     function onMove(e: PointerEvent) {
       if (!dragging.current) return;
       const delta = dragStartY.current - e.clientY;
-      const maxH = window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT;
-      const next = Math.min(maxH, Math.max(0, dragStartHeight.current + delta));
+      const next = Math.min(maxBodyHeight(), Math.max(0, dragStartHeight.current + delta));
       setBodyHeight(next);
     }
     function onUp() {
@@ -100,8 +107,7 @@ export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptD
     if (openSignal === 0) return;
     setBodyHeight((h) => {
       if (h > 0) return h;
-      const maxH = window.innerHeight * MAX_HEIGHT_RATIO - HANDLE_HEIGHT;
-      const next = Math.min(maxH, PROGRAMMATIC_OPEN_HEIGHT);
+      const next = Math.min(maxBodyHeight(), PROGRAMMATIC_OPEN_HEIGHT);
       writeSession(HEIGHT_KEY, String(next));
       return next;
     });
@@ -112,8 +118,25 @@ export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptD
     writeSession(HEIGHT_KEY, '0');
   }, []);
 
+  const expandFull = useCallback(() => {
+    const next = maxBodyHeight();
+    setBodyHeight(next);
+    writeSession(HEIGHT_KEY, String(next));
+  }, []);
+
+  // Re-render on viewport resize so the expand button's visibility tracks
+  // the current cap (a drawer at full height on a short window is no
+  // longer full after the window grows).
+  const [, setViewportTick] = useState(0);
+  useEffect(() => {
+    const onResize = () => setViewportTick((n) => n + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const drawerHeight = bodyHeight + HANDLE_HEIGHT;
   const showCollapseBtn = bodyHeight >= COLLAPSE_BTN_THRESHOLD;
+  const showExpandBtn = bodyHeight < maxBodyHeight() - FULL_EPSILON;
 
   return (
     <>
@@ -151,6 +174,22 @@ export function ScriptDrawer({ children, sidebarWidth, openSignal = 0 }: ScriptD
             )}
           />
         </div>
+
+        {/* Expand-to-full shortcut. A sibling of the handle (not a child)
+            so pressing it never starts a drag, and so it isn't swallowed
+            by the handle's aria-hidden. */}
+        {showExpandBtn ? (
+          <button
+            type="button"
+            onClick={expandFull}
+            aria-label="Expand script drawer to full height"
+            title="Expand to full height"
+            className="text-ops-gray-dark hover:text-ops-blue hover:border-ops-gray-lighter absolute top-0.5 right-2 z-10 inline-flex h-5 items-center gap-1 rounded-full border border-transparent px-2 text-[11px] font-semibold tracking-wide uppercase hover:bg-white"
+          >
+            <ChevronsUp className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Full</span>
+          </button>
+        ) : null}
 
         {/* Body. Renders as long as bodyHeight > 0 so the script editor
             scales smoothly as the user drags. flex-1 lets the script
