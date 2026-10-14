@@ -33,8 +33,7 @@ export const RECORDING_LABEL_MAX = 80;
  * from Drive. Uploads go to `uploadAudio` in pieces (Cloud Functions reject
  * any single request over 32 MiB), so this is a sanity cap, not a platform
  * limit: over three hours of an iPhone Voice Memo (about 1 MB a minute),
- * and small enough for the
- * transcription worker to hold in memory.
+ * and small enough for the transcription worker to hold in memory.
  */
 export const MAX_AUDIO_UPLOAD_BYTES = 200 * 1024 * 1024;
 
