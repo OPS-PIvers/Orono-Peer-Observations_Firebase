@@ -24,6 +24,7 @@ import type { RubricComponent, RubricDomain, TiptapDoc } from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { functions } from '@/lib/firebase';
 import { useGeminiAccess } from '@/hooks/useGeminiAccess';
+import type { AssignmentMode } from '@/components/rubric';
 import { Divider, ToolbarButton, useLinkDialog } from '@/components/ui/tiptap-toolbar';
 import { ComponentTagMark } from './component-tag-mark';
 import type { TagSource } from './extract-script-tags';
@@ -44,7 +45,7 @@ const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
  * `applyScriptTags` writes only the subset the observer kept.
  */
 const suggestScriptTagsFn = httpsCallable<
-  { observationId: string },
+  { observationId: string; scope: AssignmentMode },
   {
     suggestions: AutoTagSuggestion[];
     componentColors: { componentId: string; bg: string; fg: string }[];
@@ -56,6 +57,7 @@ const applyScriptTagsFn = httpsCallable<
   {
     observationId: string;
     suggestions: { paragraphIndex: number; text: string; componentId: string }[];
+    scope: AssignmentMode;
   },
   { appliedCount: number; rejectedCount: number; scriptDoc: TiptapDoc }
 >(functions, 'applyScriptTags');
@@ -90,6 +92,11 @@ export interface ScriptEditorProps {
   captureRequest?: EvidenceCaptureRequest | null | undefined;
   /** Components the script can be tagged against, in display order. */
   availableComponents: { domain: RubricDomain; component: RubricComponent }[];
+  /**
+   * Whether Auto-tag uses only the assigned components or the full rubric.
+   * Should match the scope `availableComponents` was built from.
+   */
+  tagScope?: AssignmentMode;
   /** Observation id, required for the Auto-tag callable. Omit to hide the button. */
   observationId?: string;
   placeholder?: string;
@@ -109,6 +116,7 @@ export function ScriptEditor({
   readOnly = false,
   captureRequest,
   availableComponents,
+  tagScope = 'assigned',
   observationId,
   placeholder,
   minHeight = '0',
@@ -246,7 +254,7 @@ export function ScriptEditor({
     setAutoTagNotice(null);
     try {
       assertWritable();
-      const res = await suggestScriptTagsFn({ observationId });
+      const res = await suggestScriptTagsFn({ observationId, scope: tagScope });
       const { suggestions, componentColors, skippedCount } = res.data;
       if (suggestions.length === 0) {
         setAutoTagNotice({ kind: 'no-suggestions', skippedCount });
@@ -278,6 +286,7 @@ export function ScriptEditor({
           text,
           componentId,
         })),
+        scope: tagScope,
       });
       // Adopt the server's result as the local draft. The editor hydrates its
       // draft once per observation, so without this the freshly-written tags

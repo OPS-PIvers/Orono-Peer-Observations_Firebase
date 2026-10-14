@@ -12,6 +12,7 @@ import {
   filterVerbatimSuggestions,
   loadScriptAutoTagFeature,
   loadTaggingContext,
+  parseTagScope,
   resolveActiveComponents,
   transactionReader,
   type ScriptTagSuggestion,
@@ -29,6 +30,8 @@ const MAX_SUGGESTIONS = 500;
 interface ApplyScriptTagsRequest {
   observationId?: string;
   suggestions?: unknown;
+  /** Must match the scope the suggestions were made under. */
+  scope?: unknown;
 }
 
 interface ApplyScriptTagsResponse {
@@ -75,8 +78,12 @@ export const applyScriptTags = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId, suggestions: rawSuggestions } = (request.data ??
-      {}) as ApplyScriptTagsRequest;
+    const {
+      observationId,
+      suggestions: rawSuggestions,
+      scope: rawScope,
+    } = (request.data ?? {}) as ApplyScriptTagsRequest;
+    const scope = parseTagScope(rawScope);
     if (!observationId) {
       throw new HttpsError('invalid-argument', 'observationId required');
     }
@@ -90,7 +97,14 @@ export const applyScriptTags = onCall(
     // Fail fast on a cheap non-transactional read. This is a courtesy check
     // only — nothing it learns is trusted at write time. The transaction below
     // re-establishes every invariant from its own reads.
-    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
+    const ctx = await loadTaggingContext(
+      db,
+      observationId,
+      userEmail,
+      callerRole,
+      request.auth,
+      scope,
+    );
 
     const result = await db.runTransaction(async (tx): Promise<ApplyScriptTagsResponse> => {
       // ── Reads first. Firestore rejects any read that follows a write in the
@@ -117,6 +131,7 @@ export const applyScriptTags = onCall(
         db,
         transactionReader(tx),
         obs,
+        scope,
       );
 
       const paragraphs = extractParagraphs(currentDoc);
