@@ -12,7 +12,18 @@ import {
   loadTaggingContext,
   parseTagScope,
   type ScriptTagSuggestion,
+  type TagScope,
 } from './scriptTagging.js';
+import {
+  hasCompletedRun,
+  isClaimActive,
+  latestRunRef,
+  markStaleSuggestions,
+  parseRerunReason,
+  rerunPromptContext,
+  type StoredScriptTagRun,
+  type SuggestionStatus,
+} from './scriptTagRun.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -20,6 +31,11 @@ interface SuggestScriptTagsRequest {
   observationId?: string;
   /** `'full'` to tag against the whole rubric; defaults to assigned only. */
   scope?: unknown;
+  /**
+   * Required to run the AI again once a result exists: what changed, or what
+   * the model should know this time. Without it the last result is returned.
+   */
+  reason?: unknown;
 }
 
 /** A suggestion enriched with everything the review dialog needs to render it. */
@@ -27,24 +43,41 @@ export interface ReviewableScriptTagSuggestion extends ScriptTagSuggestion {
   componentTitle: string;
   /** Full text of the paragraph the span was found in, for context. */
   paragraphText: string;
+  status: SuggestionStatus;
 }
 
 interface SuggestScriptTagsResponse {
   suggestions: ReviewableScriptTagSuggestion[];
   /** bg/fg for every component that appears in `suggestions`. */
   componentColors: { componentId: string; bg: string; fg: string }[];
-  /** Suggestions Gemini returned that we dropped as unmatchable. */
+  /** Suggestions the model returned that we dropped as unmatchable. */
   skippedCount: number;
+  run: {
+    /** True when this is the saved result of an earlier run, not a new AI call. */
+    reused: boolean;
+    scope: TagScope;
+    createdAt: string | null;
+    createdBy: string;
+    runCount: number;
+    reason: string | null;
+  };
 }
 
 /**
- * Step 1 of the two-step auto-tag flow: ask Gemini which spans of the script
- * demonstrate evidence of each rubric component, keep only the ones that are
- * verbatim substrings of the script, and hand them back for the observer to
- * review. **This callable writes nothing** — the observation is untouched
- * until the observer approves a subset and `applyScriptTags` runs.
+ * Step 1 of the two-step auto-tag flow: ask the AI model which spans of the
+ * script demonstrate evidence of each rubric component, keep only the ones
+ * that are verbatim substrings of the script, and hand them back for the
+ * observer to review. The observation itself is untouched until the observer
+ * approves a subset and `applyScriptTags` runs.
  *
- * Gemini never paraphrases or rewrites: it only points at substrings the
+ * Each observation gets one AI run per click-through, not one per click: the
+ * result is saved (see scriptTagRun.ts), and a call without a `reason` after
+ * that returns the saved result instead of calling the model again. Running
+ * it again requires the observer to say why, and that reason goes to the
+ * model as extra context. An in-flight claim stops double clicks and a second
+ * tab from starting parallel runs.
+ *
+ * The model never paraphrases or rewrites: it only points at substrings the
  * observer typed. Suggestions whose `text` can't be located verbatim are
  * dropped here (counted as `skippedCount`).
  */
@@ -70,59 +103,168 @@ export const suggestScriptTags = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId, scope } = (request.data ?? {}) as SuggestScriptTagsRequest;
+    const {
+      observationId,
+      scope: rawScope,
+      reason: rawReason,
+    } = (request.data ?? {}) as SuggestScriptTagsRequest;
     if (!observationId) {
       throw new HttpsError('invalid-argument', 'observationId required');
     }
+    const reason = parseRerunReason(rawReason);
 
     const db = getFirestore();
     const feature = await loadScriptAutoTagFeature(db);
     assertScriptAutoTagAvailable(feature, userEmail);
 
+    const runRef = latestRunRef(db, observationId);
+    const previous = (await runRef.get()).data() as Partial<StoredScriptTagRun> | undefined;
+    const reuse = reason === null && hasCompletedRun(previous);
+    // Reopening shows the saved run under the scope it was made with, so
+    // Apply validates against the same component set.
+    const scope = reuse && previous?.scope ? previous.scope : parseTagScope(rawScope);
+
     const callerRole = request.auth.token['role'] as string | undefined;
+    // Runs before the reuse branch too: reopening a saved result needs the
+    // same access and draft checks as making one.
     const ctx = await loadTaggingContext(
       db,
       observationId,
       userEmail,
       callerRole,
       request.auth,
-      parseTagScope(scope),
+      scope,
     );
 
-    const model = await loadFeatureModel(db, 'scriptAutoTag');
-    const raw = await callModelForTags(ctx.activeComponents, ctx.paragraphs, model, {
-      userEmail,
-      observationId,
-    });
-
-    const { accepted, rejected } = filterVerbatimSuggestions(
-      raw,
-      ctx.paragraphs,
-      ctx.validComponentIds,
-    );
-
-    const titleById = new Map(ctx.activeComponents.map((c) => [c.id, c.title]));
-    const suggestions: ReviewableScriptTagSuggestion[] = accepted.map((s) => ({
-      ...s,
-      componentTitle: titleById.get(s.componentId) ?? s.componentId,
-      paragraphText: ctx.paragraphs[s.paragraphIndex] ?? '',
-    }));
-
-    const suggestedIds = new Set(suggestions.map((s) => s.componentId));
-    const componentColors: { componentId: string; bg: string; fg: string }[] = [];
-    for (const componentId of suggestedIds) {
-      const color = ctx.componentColorMap.get(componentId);
-      if (color) componentColors.push({ componentId, bg: color.bg, fg: color.fg });
+    if (reuse && previous) {
+      logger.info('suggestScriptTags: reopened saved run', { observationId });
+      return {
+        suggestions: markStaleSuggestions(
+          previous.suggestions ?? [],
+          ctx.paragraphs,
+          ctx.validComponentIds,
+        ),
+        componentColors: previous.componentColors ?? [],
+        skippedCount: previous.skippedCount ?? 0,
+        run: {
+          reused: true,
+          scope,
+          createdAt: toIso(previous.createdAt),
+          createdBy: previous.createdBy ?? '',
+          runCount: previous.runCount ?? 1,
+          reason: previous.reason ?? null,
+        },
+      };
     }
 
-    logger.info('suggestScriptTags: proposed spans', {
-      observationId,
-      suggested: suggestions.length,
-      skipped: rejected.length,
+    // Claim the run. Re-reads inside the transaction so two clicks that both
+    // got past the read above can't both reach the model.
+    const priorRunCount = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(runRef);
+      const data = snap.data() as Partial<StoredScriptTagRun> | undefined;
+      if (isClaimActive(data, Date.now())) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Auto-tag is already running for this observation. Wait for it to finish.',
+        );
+      }
+      if (reason === null && hasCompletedRun(data)) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Auto-tag already ran for this observation. Click Auto-tag again to review the result.',
+        );
+      }
+      tx.set(runRef, { inFlight: { by: userEmail, startedAtMs: Date.now() } }, { merge: true });
+      return data?.runCount ?? 0;
     });
-    return { suggestions, componentColors, skippedCount: rejected.length };
+
+    try {
+      const model = await loadFeatureModel(db, 'scriptAutoTag');
+      const extraContext =
+        reason === null ? '' : rerunPromptContext(reason, previous?.suggestions ?? []);
+      const raw = await callModelForTags(
+        ctx.activeComponents,
+        ctx.paragraphs,
+        model,
+        { userEmail, observationId },
+        extraContext,
+      );
+
+      const { accepted, rejected } = filterVerbatimSuggestions(
+        raw,
+        ctx.paragraphs,
+        ctx.validComponentIds,
+      );
+
+      const titleById = new Map(ctx.activeComponents.map((c) => [c.id, c.title]));
+      const suggestions: ReviewableScriptTagSuggestion[] = accepted.map((s) => ({
+        ...s,
+        componentTitle: titleById.get(s.componentId) ?? s.componentId,
+        paragraphText: ctx.paragraphs[s.paragraphIndex] ?? '',
+        status: 'pending',
+      }));
+
+      const suggestedIds = new Set(suggestions.map((s) => s.componentId));
+      const componentColors: { componentId: string; bg: string; fg: string }[] = [];
+      for (const componentId of suggestedIds) {
+        const color = ctx.componentColorMap.get(componentId);
+        if (color) componentColors.push({ componentId, bg: color.bg, fg: color.fg });
+      }
+
+      const createdAt = new Date();
+      const stored: StoredScriptTagRun = {
+        scope,
+        suggestions,
+        componentColors,
+        skippedCount: rejected.length,
+        createdAt,
+        createdBy: userEmail,
+        modelId: model.id,
+        runCount: priorRunCount + 1,
+        reason,
+        inFlight: null,
+      };
+      await runRef.set(stored);
+
+      logger.info('suggestScriptTags: proposed spans', {
+        observationId,
+        suggested: suggestions.length,
+        skipped: rejected.length,
+        runCount: stored.runCount,
+        rerun: reason !== null,
+      });
+      return {
+        suggestions,
+        componentColors,
+        skippedCount: rejected.length,
+        run: {
+          reused: false,
+          scope,
+          createdAt: createdAt.toISOString(),
+          createdBy: userEmail,
+          runCount: stored.runCount,
+          reason,
+        },
+      };
+    } catch (err) {
+      // Release the claim so a failed call doesn't block a retry until the
+      // TTL runs out. The saved earlier result (if any) is left as it was.
+      await runRef.set({ inFlight: null }, { merge: true }).catch((clearErr: unknown) => {
+        logger.error('suggestScriptTags: failed to clear run claim after error', clearErr);
+      });
+      throw err;
+    }
   },
 );
+
+/** Firestore hands back a Timestamp; a freshly built run holds a Date. */
+function toIso(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof (value as { toDate?: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  return null;
+}
 
 // ─── Model call ──────────────────────────────────────────────────────────────
 
@@ -152,6 +294,7 @@ async function callModelForTags(
   paragraphs: readonly string[],
   model: AiModel,
   caller: { userEmail: string; observationId: string },
+  extraContext = '',
 ): Promise<ScriptTagSuggestion[]> {
   const componentBlock = components.map((c) => ({
     id: c.id,
@@ -176,7 +319,7 @@ COMPONENTS:
 ${JSON.stringify(componentBlock, null, 2)}
 
 SCRIPT:
-${JSON.stringify(paragraphBlock, null, 2)}`;
+${JSON.stringify(paragraphBlock, null, 2)}${extraContext}`;
 
   const raw = await generateText(
     model,

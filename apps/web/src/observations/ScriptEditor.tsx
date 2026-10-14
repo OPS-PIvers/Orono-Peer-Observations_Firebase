@@ -33,6 +33,7 @@ import { colorFor } from './component-colors';
 import {
   AutoTagReviewDialog,
   type AutoTagColor,
+  type AutoTagRunInfo,
   type AutoTagSuggestion,
 } from './AutoTagReviewDialog';
 import { assertWritable } from '@/dev/viewAsGuard';
@@ -40,16 +41,20 @@ import { assertWritable } from '@/dev/viewAsGuard';
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
 /**
- * Auto-tag is a two-step flow so the observer reviews Gemini's proposals
+ * Auto-tag is a two-step flow so the observer reviews the AI's proposals
  * before anything touches the script: `suggestScriptTags` reads and proposes,
  * `applyScriptTags` writes only the subset the observer kept.
+ *
+ * The server saves each run, so a second click reopens the saved result
+ * instead of calling the AI again. A new AI run needs a `reason`.
  */
 const suggestScriptTagsFn = httpsCallable<
-  { observationId: string; scope: AssignmentMode },
+  { observationId: string; scope: AssignmentMode; reason?: string },
   {
     suggestions: AutoTagSuggestion[];
     componentColors: { componentId: string; bg: string; fg: string }[];
     skippedCount: number;
+    run: AutoTagRunInfo & { scope: AssignmentMode };
   }
 >(functions, 'suggestScriptTags');
 
@@ -66,11 +71,15 @@ interface PendingReview {
   suggestions: AutoTagSuggestion[];
   colorById: Map<string, AutoTagColor>;
   skippedCount: number;
+  run: AutoTagRunInfo;
+  /** The scope the run was made under; Apply validates against it. */
+  scope: AssignmentMode;
 }
 
-type AutoTagNotice =
-  | { kind: 'no-suggestions'; skippedCount: number }
-  | { kind: 'applied'; appliedCount: number; rejectedCount: number };
+interface AutoTagNotice {
+  appliedCount: number;
+  rejectedCount: number;
+}
 
 /**
  * A sentence the evaluator lifted from the teacher's Planning / Reflection
@@ -177,6 +186,7 @@ export function ScriptEditor({
   const [autoTagNotice, setAutoTagNotice] = useState<AutoTagNotice | null>(null);
   const [review, setReview] = useState<PendingReview | null>(null);
   const [applyBusy, setApplyBusy] = useState(false);
+  const [rerunBusy, setRerunBusy] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
   const activeTagId = editor.getAttributes('componentTag')['componentId'] as string | null;
@@ -247,7 +257,22 @@ export function ScriptEditor({
     editor.chain().focus().unsetMark('componentTag').run();
   }
 
-  async function runAutoTag() {
+  function showReview(data: Awaited<ReturnType<typeof suggestScriptTagsFn>>['data']) {
+    setApplyError(null);
+    setReview({
+      suggestions: data.suggestions,
+      colorById: new Map(data.componentColors.map((c) => [c.componentId, { bg: c.bg, fg: c.fg }])),
+      skippedCount: data.skippedCount,
+      run: data.run,
+      scope: data.run.scope,
+    });
+  }
+
+  /**
+   * First click runs the AI; every later click reopens the saved result. The
+   * server decides which, so a second tab or a stale page can't skip it.
+   */
+  async function openAutoTag() {
     if (!observationId) return;
     setAutoTagBusy(true);
     setAutoTagError(null);
@@ -255,17 +280,7 @@ export function ScriptEditor({
     try {
       assertWritable();
       const res = await suggestScriptTagsFn({ observationId, scope: tagScope });
-      const { suggestions, componentColors, skippedCount } = res.data;
-      if (suggestions.length === 0) {
-        setAutoTagNotice({ kind: 'no-suggestions', skippedCount });
-        return;
-      }
-      setApplyError(null);
-      setReview({
-        suggestions,
-        colorById: new Map(componentColors.map((c) => [c.componentId, { bg: c.bg, fg: c.fg }])),
-        skippedCount,
-      });
+      showReview(res.data);
     } catch (err) {
       setAutoTagError(err instanceof Error ? err.message : 'Auto-tag failed');
     } finally {
@@ -273,8 +288,24 @@ export function ScriptEditor({
     }
   }
 
+  /** Run the AI again from inside the review dialog, with the observer's note. */
+  async function rerunAutoTag(reason: string) {
+    if (!observationId) return;
+    setRerunBusy(true);
+    setApplyError(null);
+    try {
+      assertWritable();
+      const res = await suggestScriptTagsFn({ observationId, scope: tagScope, reason });
+      showReview(res.data);
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Auto-tag failed');
+    } finally {
+      setRerunBusy(false);
+    }
+  }
+
   async function applyReviewedTags(kept: AutoTagSuggestion[]) {
-    if (!observationId || kept.length === 0) return;
+    if (!observationId || !review || kept.length === 0) return;
     setApplyBusy(true);
     setApplyError(null);
     try {
@@ -286,7 +317,7 @@ export function ScriptEditor({
           text,
           componentId,
         })),
-        scope: tagScope,
+        scope: review.scope,
       });
       // Adopt the server's result as the local draft. The editor hydrates its
       // draft once per observation, so without this the freshly-written tags
@@ -295,7 +326,6 @@ export function ScriptEditor({
       onChange(res.data.scriptDoc);
       setReview(null);
       setAutoTagNotice({
-        kind: 'applied',
         appliedCount: res.data.appliedCount,
         rejectedCount: res.data.rejectedCount,
       });
@@ -322,7 +352,7 @@ export function ScriptEditor({
             if (pickerOpen) closePicker();
             else setPickerOpen(true);
           }}
-          onAutoTag={observationId && autoTagEnabled ? () => void runAutoTag() : null}
+          onAutoTag={observationId && autoTagEnabled ? () => void openAutoTag() : null}
           autoTagBusy={autoTagBusy}
         />
       ) : null}
@@ -333,19 +363,13 @@ export function ScriptEditor({
       ) : null}
       {autoTagNotice ? (
         <div className="bg-accent text-accent-foreground border-b px-3 py-1.5 text-xs">
-          {autoTagNotice.kind === 'no-suggestions'
-            ? `Gemini didn't find any taggable evidence in this script${
-                autoTagNotice.skippedCount > 0
-                  ? ` (${String(autoTagNotice.skippedCount)} suggestion${autoTagNotice.skippedCount === 1 ? '' : 's'} discarded — couldn't locate verbatim text)`
-                  : ''
-              }.`
-            : `Applied ${String(autoTagNotice.appliedCount)} tag${
-                autoTagNotice.appliedCount === 1 ? '' : 's'
-              }${
-                autoTagNotice.rejectedCount > 0
-                  ? ` (${String(autoTagNotice.rejectedCount)} skipped — the script changed since they were suggested)`
-                  : ''
-              }.`}
+          {`Applied ${String(autoTagNotice.appliedCount)} tag${
+            autoTagNotice.appliedCount === 1 ? '' : 's'
+          }${
+            autoTagNotice.rejectedCount > 0
+              ? ` (${String(autoTagNotice.rejectedCount)} skipped — the script changed since they were suggested)`
+              : ''
+          }.`}
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
@@ -371,13 +395,16 @@ export function ScriptEditor({
           suggestions={review.suggestions}
           colorById={review.colorById}
           skippedCount={review.skippedCount}
+          run={review.run}
           applying={applyBusy}
+          rerunning={rerunBusy}
           error={applyError}
           onCancel={() => {
             setReview(null);
             setApplyError(null);
           }}
           onApply={(kept) => void applyReviewedTags(kept)}
+          onRerun={(reason) => void rerunAutoTag(reason)}
         />
       ) : null}
     </div>
@@ -476,7 +503,7 @@ function ScriptToolbar({
           type="button"
           onClick={onAutoTag}
           disabled={autoTagBusy}
-          title="Suggest component tags for this script with Gemini — you review them before anything is written"
+          title="Suggest component tags for this script with AI. You review them before anything is written; clicking again reopens the last suggestions."
           className={cn(
             'hover:bg-accent hover:text-accent-foreground inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs transition-colors',
             autoTagBusy && 'cursor-not-allowed opacity-50',
