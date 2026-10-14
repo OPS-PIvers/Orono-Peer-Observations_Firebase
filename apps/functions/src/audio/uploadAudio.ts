@@ -4,16 +4,21 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldPath, FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
+import { COLLECTIONS, MAX_AUDIO_UPLOAD_BYTES, OBSERVATION_STATUS } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  ResumableUploadGoneError,
   ensureObservationFolder,
+  getFileParents,
+  isResumableSessionUrl,
+  putResumableChunk,
   shareObservationFolderWithObservers,
+  startResumableUpload,
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
-import { parseDurationSec, parseRecordedAt } from './recordingHeaders.js';
+import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
 import { observationAccessFor } from '@ops/shared';
 import { isDemoEditSession, isDemoStaff } from '../lib/callable.js';
 
@@ -40,6 +45,17 @@ const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
  *   Content-Type: audio/webm | audio/mp4 | audio/ogg | application/octet-stream
  *   X-Audio-Duration-Sec: <seconds recorded> (optional, display metadata)
  *   X-Audio-Recorded-At: <ISO time recording started> (optional)
+ *
+ * Audio over 32 MiB (the Cloud Functions request limit; a class period
+ * recorded in the browser easily passes it) comes in pieces of
+ * AUDIO_UPLOAD_CHUNK_BYTES, forwarded to a Drive resumable upload:
+ *   X-Upload-Total-Bytes: <size of the whole file>
+ *   X-Upload-Offset: <byte this piece starts at>
+ *   X-Upload-Session: <uploadSession from the previous response> (not on
+ *     the first piece). An empty body asks where to resume.
+ * Every piece but the last answers 200 { status: 'incomplete',
+ * uploadSession, received }. Without these headers the body is the whole
+ * file, as older clients send it.
  *
  * On success: 200 { audioFileId, fileName }
  *
@@ -92,9 +108,29 @@ export const uploadAudio = onRequest(
     }
 
     const mimeType = req.header('x-audio-mime-type') ?? req.header('content-type') ?? 'audio/webm';
-    const body = req.rawBody;
-    if (body.length === 0) {
+    // rawBody is typed as always present, but the body parser never sets it
+    // on an empty request, which a resumable status query is.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const body = req.rawBody ?? Buffer.alloc(0);
+    const upload = parseUploadRequest(
+      {
+        total: req.header('x-upload-total-bytes'),
+        offset: req.header('x-upload-offset'),
+        session: req.header('x-upload-session'),
+      },
+      body.length,
+      MAX_AUDIO_UPLOAD_BYTES,
+    );
+    if (upload.kind === 'invalid') {
+      res.status(upload.status).send(upload.reason);
+      return;
+    }
+    if (upload.kind === 'whole' && body.length === 0) {
       res.status(400).send('Empty body');
+      return;
+    }
+    if (upload.kind === 'chunk' && upload.session && !isResumableSessionUrl(upload.session)) {
+      res.status(400).send('Bad X-Upload-Session');
       return;
     }
 
@@ -131,46 +167,100 @@ export const uploadAudio = onRequest(
 
     // Per-user rate limit: reject beyond audioUploadsPerHour before doing any
     // Drive work, so a runaway client can't fill the district folder or burn
-    // SA quota. The counter only increments on an allowed request.
-    try {
-      const limits = await loadRateLimits(db);
-      const decision = await checkRateLimit(db, {
-        userEmail,
-        key: RATE_LIMIT_KEYS.audioUpload,
-        max: limits.audioUploadsPerHour,
-        windowMs: HOUR_MS,
-      });
-      if (!decision.allowed) {
-        const retryAfterSec = Math.max(1, Math.ceil((decision.resetAtMs - Date.now()) / 1000));
-        res.set('Retry-After', String(retryAfterSec));
-        res
-          .status(429)
-          .send(`Audio upload limit reached (${String(limits.audioUploadsPerHour)}/hour).`);
-        return;
+    // SA quota. The counter only increments on an allowed request, and a
+    // chunked upload counts once, on its first piece.
+    const startsUpload = upload.kind === 'whole' || upload.session === null;
+    if (startsUpload) {
+      try {
+        const limits = await loadRateLimits(db);
+        const decision = await checkRateLimit(db, {
+          userEmail,
+          key: RATE_LIMIT_KEYS.audioUpload,
+          max: limits.audioUploadsPerHour,
+          windowMs: HOUR_MS,
+        });
+        if (!decision.allowed) {
+          const retryAfterSec = Math.max(1, Math.ceil((decision.resetAtMs - Date.now()) / 1000));
+          res.set('Retry-After', String(retryAfterSec));
+          res
+            .status(429)
+            .send(`Audio upload limit reached (${String(limits.audioUploadsPerHour)}/hour).`);
+          return;
+        }
+      } catch (err) {
+        // Fail-open: a transient Firestore error on the limiter must not block a
+        // legitimate upload (the observation/Draft guards still bound abuse).
+        logger.warn('uploadAudio: rate-limit check failed (allowing)', err);
       }
-    } catch (err) {
-      // Fail-open: a transient Firestore error on the limiter must not block a
-      // legitimate upload (the observation/Draft guards still bound abuse).
-      logger.warn('uploadAudio: rate-limit check failed (allowing)', err);
     }
 
     try {
-      const folderId = await ensureObservationFolder({
-        observationId,
-        observedName: obs.observedName,
-        parentFolderId: PARENT_FOLDER_ID.value(),
-        existingFolderId: obs.driveFolderId,
-      });
-      // Best-effort Reader grant so the observer can play back recordings
-      // from Drive (co-observers too); never fails the upload.
-      await shareObservationFolderWithObservers({
-        folderId,
-        observerEmail: obs.observerEmail,
-        coObserverEmails: obs.coObserverEmails,
-      });
+      let folderId = obs.driveFolderId;
+      if (startsUpload) {
+        const ensured = await ensureObservationFolder({
+          observationId,
+          observedName: obs.observedName,
+          parentFolderId: PARENT_FOLDER_ID.value(),
+          existingFolderId: obs.driveFolderId,
+        });
+        // Best-effort Reader grant so the observer can play back recordings
+        // from Drive (co-observers too); never fails the upload.
+        await shareObservationFolderWithObservers({
+          folderId: ensured,
+          observerEmail: obs.observerEmail,
+          coObserverEmails: obs.coObserverEmails,
+        });
+        folderId = ensured;
+      }
+      if (!folderId) {
+        // A later piece, but the first piece's folder was never recorded.
+        res.status(410).send('Upload session expired; start the upload again');
+        return;
+      }
       const ext = mimeTypeToExt(mimeType);
       const filename = `audio-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.${ext}`;
-      const uploaded = await uploadFileToFolder({ folderId, filename, mimeType, body });
+
+      let uploaded: { fileId: string; fileName: string };
+      if (upload.kind === 'whole') {
+        uploaded = await uploadFileToFolder({ folderId, filename, mimeType, body });
+      } else {
+        let sessionUrl = upload.session;
+        if (sessionUrl === null) {
+          // Record the folder now: later pieces check the finished file
+          // landed in it, and read it from the observation.
+          if (folderId !== obs.driveFolderId) {
+            await obsRef.update('driveFolderId', folderId);
+          }
+          sessionUrl = await startResumableUpload({
+            folderId,
+            filename,
+            mimeType,
+            totalBytes: upload.totalBytes,
+          });
+        }
+        const status = await putResumableChunk({
+          sessionUrl,
+          chunk: body,
+          offset: upload.offset,
+          totalBytes: upload.totalBytes,
+        });
+        if (!status.done) {
+          res.json({ status: 'incomplete', uploadSession: sessionUrl, received: status.received });
+          return;
+        }
+        // The session URL comes back from the browser, so make sure the
+        // finished file is in this observation's folder before linking it.
+        const parents = await getFileParents(status.fileId);
+        if (!parents.includes(folderId)) {
+          logger.warn('uploadAudio: finished file is not in the observation folder', {
+            observationId,
+            fileId: status.fileId,
+          });
+          res.status(403).send('Upload does not belong to this observation');
+          return;
+        }
+        uploaded = { fileId: status.fileId, fileName: status.fileName };
+      }
       const recordedAt = parseRecordedAt(req.header('x-audio-recorded-at'));
 
       await obsRef.update(
@@ -194,6 +284,10 @@ export const uploadAudio = onRequest(
         driveFolderId: folderId,
       });
     } catch (err) {
+      if (err instanceof ResumableUploadGoneError) {
+        res.status(410).send('Upload session expired; start the upload again');
+        return;
+      }
       logger.error('uploadAudio: failed', err);
       res.status(500).send('Upload failed');
     }

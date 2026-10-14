@@ -103,6 +103,22 @@ export interface AudioRecorderProps {
 export type Phase = 'idle' | 'recording' | 'uploading' | 'importing' | 'error';
 
 /**
+ * Speech at 32 kbps is plenty for listening back and for transcription, and
+ * keeps a class period to about 15 MB. Left alone, browsers record at 100+
+ * kbps, which makes uploads slow on school Wi-Fi.
+ */
+const RECORDING_BITS_PER_SECOND = 32_000;
+
+/** A finished in-app recording that hasn't reached Drive yet. Kept until it
+ *  does, so a failed upload can be retried or saved to the computer. */
+interface UnsavedRecording {
+  blob: Blob;
+  mimeType: string;
+  recordedAt: Date | null;
+  durationSec: number | null;
+}
+
+/**
  * In-browser audio recorder backed by MediaRecorder. Records as webm/opus
  * (Chrome/Firefox) or audio/mp4 (Safari/iPad) and uploads via the
  * `uploadAudio` Cloud Function on stop. The function writes the file to
@@ -132,6 +148,10 @@ export function AudioRecorder({
   }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [unsaved, setUnsaved] = useState<UnsavedRecording | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  /** Share of the current upload Drive has, 0 to 1. */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   /** Progress line while importing from Drive ("Downloading …"). */
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const driveImportEnabled = !readOnly && isDriveImportConfigured();
@@ -222,6 +242,21 @@ export function AudioRecorder({
     };
   }, []);
 
+  // Until a recording is in Drive it exists only in this tab, so warn before
+  // the tab is closed or reloaded.
+  const holdsUnsavedAudio = phase === 'recording' || unsaved !== null;
+  useEffect(() => {
+    if (!holdsUnsavedAudio) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      // Legacy Chrome/Edge only prompt when returnValue is set.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [holdsUnsavedAudio]);
+
   function stopTracks() {
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) track.stop();
@@ -233,10 +268,15 @@ export function AudioRecorder({
     setError(null);
     chunksRef.current = [];
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: { ideal: 1 } },
+      });
       streamRef.current = stream;
       const mimeType = pickSupportedMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: RECORDING_BITS_PER_SECOND,
+      });
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -245,7 +285,7 @@ export function AudioRecorder({
         // honor our preferred type — fall through to picked or default.
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         const finalMime = recorder.mimeType || mimeType || 'audio/webm';
-        void uploadRecording(finalMime);
+        finishRecording(finalMime);
       };
       recorder.onerror = () => {
         setError('Recorder error. Try again or refresh the page.');
@@ -277,23 +317,36 @@ export function AudioRecorder({
     }
   }
 
-  async function uploadRecording(mimeType: string) {
+  function finishRecording(mimeType: string) {
+    const blob = new Blob(chunksRef.current, { type: mimeType });
+    stopTracks();
+    if (blob.size === 0) {
+      setError('No audio captured.');
+      setPhase('error');
+      return;
+    }
+    const startedAt = startedAtRef.current;
+    const recording: UnsavedRecording = {
+      blob,
+      mimeType,
+      recordedAt: startedAt,
+      durationSec: startedAt ? Math.round((Date.now() - startedAt.getTime()) / 1000) : null,
+    };
+    setUnsaved(recording);
+    void uploadRecording(recording);
+  }
+
+  async function uploadRecording(recording: UnsavedRecording) {
+    setError(null);
+    setPhase('uploading');
+    setUploadProgress(0);
     try {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      stopTracks();
-      if (blob.size === 0) {
-        setError('No audio captured.');
-        setPhase('error');
-        return;
-      }
-      const startedAt = startedAtRef.current;
       const data = await uploadObservationAudio({
         observationId,
-        blob,
-        mimeType,
-        recordedAt: startedAt,
-        durationSec: startedAt ? Math.round((Date.now() - startedAt.getTime()) / 1000) : null,
+        ...recording,
+        onProgress: setUploadProgress,
       });
+      setUnsaved(null);
       setPhase('idle');
       onUploaded?.(data.audioFileId);
       // Auto-request transcription so the user doesn't have to click again
@@ -303,9 +356,36 @@ export function AudioRecorder({
         void requestTranscription(data.audioFileId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      const reason = err instanceof Error ? err.message : 'Upload failed.';
+      setError(
+        `${reason} The recording is still here: try the upload again, or save it to this computer.`,
+      );
       setPhase('error');
+    } finally {
+      setUploadProgress(null);
     }
+  }
+
+  function saveUnsaved() {
+    if (!unsaved) return;
+    saveBlob(
+      unsaved.blob,
+      recordingDownloadName({
+        observedName,
+        meta: unsaved.recordedAt
+          ? { recordedAt: unsaved.recordedAt, durationSec: unsaved.durationSec, label: '' }
+          : undefined,
+        title: 'Recording',
+        mimeType: unsaved.mimeType,
+      }),
+    );
+  }
+
+  function discardUnsaved() {
+    setConfirmingDiscard(false);
+    setUnsaved(null);
+    setError(null);
+    setPhase('idle');
   }
 
   /**
@@ -391,7 +471,7 @@ export function AudioRecorder({
         <div className="flex shrink-0 flex-col items-stretch gap-2">
           <RecordButton
             phase={phase}
-            disabled={readOnly || phase === 'importing'}
+            disabled={readOnly || phase === 'importing' || unsaved !== null}
             onStart={startRecording}
             onStop={stopRecording}
           />
@@ -413,7 +493,54 @@ export function AudioRecorder({
         </div>
       </header>
 
-      <PhaseStatus phase={phase} elapsed={elapsed} error={error} importStatus={importStatus} />
+      <PhaseStatus
+        phase={phase}
+        elapsed={elapsed}
+        error={error}
+        importStatus={importStatus}
+        uploadProgress={uploadProgress}
+      />
+
+      {unsaved && phase === 'error' ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => void uploadRecording(unsaved)}>
+            <RefreshCw className="h-4 w-4" />
+            Try upload again
+          </Button>
+          <Button size="sm" variant="outline" onClick={saveUnsaved}>
+            <Download className="h-4 w-4" />
+            Save to computer
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmingDiscard(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            Discard
+          </Button>
+        </div>
+      ) : null}
+      <Dialog open={confirmingDiscard} onOpenChange={setConfirmingDiscard}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard this recording?</DialogTitle>
+            <DialogDescription>
+              It hasn&apos;t been uploaded, so it can&apos;t be recovered afterwards. Save it to
+              this computer first if you might need it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setConfirmingDiscard(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" type="button" onClick={discardUnsaved}>
+              Discard recording
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <RecordingsList
         observationId={observationId}
@@ -473,11 +600,13 @@ function PhaseStatus({
   elapsed,
   error,
   importStatus,
+  uploadProgress,
 }: {
   phase: Phase;
   elapsed: number;
   error: string | null;
   importStatus: string | null;
+  uploadProgress: number | null;
 }) {
   if (phase === 'recording') {
     return (
@@ -491,7 +620,10 @@ function PhaseStatus({
     return (
       <div className="text-muted-foreground mb-3 flex items-center gap-2 text-sm">
         <Upload className="h-4 w-4" />
-        <span>Uploading to Drive…</span>
+        <span>
+          Uploading to Drive…
+          {uploadProgress ? ` ${String(Math.round(uploadProgress * 100))}%` : null}
+        </span>
       </div>
     );
   }
@@ -1040,7 +1172,7 @@ function pickSupportedMimeType(): string | null {
 function tooLargeMessage(bytes: number): string {
   const mb = (bytes / (1024 * 1024)).toFixed(0);
   const max = String(MAX_DRIVE_AUDIO_BYTES / (1024 * 1024));
-  return `too large to add (${mb} MB; the limit is ${max} MB, about an hour of a Voice Memo).`;
+  return `too large to add (${mb} MB; the limit is ${max} MB).`;
 }
 
 function formatDuration(seconds: number): string {

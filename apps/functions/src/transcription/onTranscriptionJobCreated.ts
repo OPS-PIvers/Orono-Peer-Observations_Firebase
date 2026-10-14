@@ -11,11 +11,14 @@ import {
 } from '../lib/drive.js';
 import { generateText, loadFeatureModel } from '../lib/aiClient.js';
 import { deleteTranscriptionAudio, uploadTranscriptionAudio } from '../lib/transcriptionStorage.js';
+import {
+  TRANSCRIPTION_PROMPT,
+  TRANSCRIPT_TURNS_SCHEMA,
+  formatTranscriptTurns,
+  parseTranscriptTurns,
+} from './transcriptTurns.js';
 
 if (getApps().length === 0) initializeApp();
-
-const TRANSCRIPTION_PROMPT =
-  'Transcribe the attached audio recording verbatim. Output only the transcript text — no headers, no speaker labels, no timestamps, no commentary. Preserve sentence boundaries with line breaks where natural pauses occur.';
 
 /**
  * The model transcription is routed to on the AI Models admin page, read at
@@ -150,7 +153,8 @@ export const onTranscriptionJobCreated = onDocumentCreated(
 
 /**
  * Calls Vertex generateContent referencing the uploaded audio by gs:// URI.
- * No base64 encoding, no size cap.
+ * No base64 encoding, no size cap. Returns one line per speaker turn,
+ * "[MM:SS] Speaker: text".
  */
 async function transcribeWithGcsUri(
   fileUri: string,
@@ -160,11 +164,19 @@ async function transcribeWithGcsUri(
 ): Promise<string> {
   const text = await generateText(
     model,
-    { prompt: TRANSCRIPTION_PROMPT, fileData: { fileUri, mimeType } },
+    {
+      prompt: TRANSCRIPTION_PROMPT,
+      fileData: { fileUri, mimeType },
+      jsonSchema: TRANSCRIPT_TURNS_SCHEMA,
+    },
     { feature: 'audioTranscription', logContext: 'onTranscriptionJobCreated', ...caller },
   );
-  if (!text) {
+  if (!text.trim()) {
     throw new Error('Gemini returned no transcript text');
   }
-  return text.trim();
+  const turns = parseTranscriptTurns(text);
+  if (turns && turns.length > 0) return formatTranscriptTurns(turns);
+  // The model answered in plain text instead of JSON: keep what it said.
+  if (!/^\s*(```|[[{])/.test(text)) return text.trim();
+  throw new Error('Gemini returned a transcript that could not be read');
 }

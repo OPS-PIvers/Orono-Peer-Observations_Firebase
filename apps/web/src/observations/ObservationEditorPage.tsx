@@ -281,6 +281,16 @@ export function ObservationEditorPage() {
     return { ...rubric, domains: filteredDomains };
   }, [rubric, assignedComponentIds, assignmentMode]);
 
+  // The script's Tag panel follows the same toggle as the matrix, so an
+  // evaluator in "Full Rubric" mode can tag evidence to any component.
+  const taggableComponents = useMemo(
+    () =>
+      (visibleRubric?.domains ?? []).flatMap((domain) =>
+        domain.components.map((component) => ({ domain, component })),
+      ),
+    [visibleRubric],
+  );
+
   // Local draft of observationData + componentNotes; flushed to Firestore
   // on debounce. Both fields share the same autosave cycle so we don't
   // have two timers racing against each other.
@@ -1317,7 +1327,8 @@ export function ObservationEditorPage() {
             onChange={setScriptDoc}
             readOnly={!canEdit}
             captureRequest={captureRequest}
-            availableComponents={activeComponents}
+            availableComponents={taggableComponents}
+            tagScope={assignmentMode}
             observationId={observation.id}
             placeholder="Start typing what you see and hear during the observation…"
           />
