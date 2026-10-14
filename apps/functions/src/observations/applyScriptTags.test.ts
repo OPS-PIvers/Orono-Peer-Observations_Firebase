@@ -5,6 +5,7 @@ import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
   OBSERVATION_STATUS,
+  OBSERVATION_SUBCOLLECTIONS,
   roleYearMappingDocId,
   type TiptapDoc,
 } from '@ops/shared';
@@ -77,10 +78,17 @@ interface DbConfig {
    */
   assignedComponentIdsInTransaction?: string[];
   settings?: Record<string, unknown>;
+  /** The saved auto-tag run, when the suggestions came from one. */
+  savedRun?: Record<string, unknown>;
 }
 
+const RUN_PATH = `${COLLECTIONS.observations}/${OBS_ID}/${OBSERVATION_SUBCOLLECTIONS.scriptAutoTagRuns}/latest`;
+
 interface Recorder {
+  /** Writes to the observation doc. */
   txUpdates: Record<string, unknown>[];
+  /** Writes to the saved auto-tag run. */
+  runUpdates: Record<string, unknown>[];
 }
 
 /** Marker fields the fake attaches so the fake transaction can route reads. */
@@ -95,7 +103,7 @@ interface FakeQuery {
 }
 
 function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
-  const rec: Recorder = { txUpdates: [] };
+  const rec: Recorder = { txUpdates: [], runUpdates: [] };
   const obsPath = `${COLLECTIONS.observations}/${OBS_ID}`;
   const mappingPath = `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId('teacher', 1)}`;
   const txObservation =
@@ -110,6 +118,7 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
     [`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`]: config.settings ?? {
       gemini: { scriptAutoTag: { access: 'all' } },
     },
+    [RUN_PATH]: config.savedRun,
     [`${COLLECTIONS.rubrics}/rubric-1`]: {
       rubricId: 'rubric-1',
       domains: [
@@ -193,9 +202,10 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
         if ('path' in target) return Promise.resolve(snapshot(target.path, true));
         return Promise.resolve(runQuery(target.collectionName, target.filters));
       },
-      update: (_ref: unknown, patch: Record<string, unknown>) => {
+      update: (ref: FakeDocRef, patch: Record<string, unknown>) => {
         hasWritten = true;
-        rec.txUpdates.push(patch);
+        if (ref.path === RUN_PATH) rec.runUpdates.push(patch);
+        else rec.txUpdates.push(patch);
       },
     };
     return fn(tx);
@@ -588,5 +598,82 @@ describe('applyScriptTags — invariants re-established inside the transaction',
       run(callerRequest({ observationId: OBS_ID, suggestions: SUGGESTIONS })),
     ).rejects.toThrow(/not found/i);
     expect(rec.txUpdates).toHaveLength(0);
+  });
+});
+
+describe('applyScriptTags — recording decisions on the saved run', () => {
+  function saved(text: string, componentId: string, paragraphIndex: number, status: string) {
+    return { paragraphIndex, text, componentId, componentTitle: '', paragraphText: '', status };
+  }
+
+  it('marks kept suggestions applied and unchecked pending ones dismissed', async () => {
+    install({
+      observation: observation(),
+      savedRun: {
+        suggestions: [
+          saved('turned and talked', '1a', 0, 'pending'),
+          saved('circulated', '2b', 1, 'pending'),
+        ],
+      },
+    });
+
+    await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
+      }),
+    );
+
+    expect(rec.txUpdates).toHaveLength(1);
+    expect(rec.runUpdates).toHaveLength(1);
+    const statuses = (rec.runUpdates[0]?.['suggestions'] as { status: string }[]).map(
+      (s) => s.status,
+    );
+    expect(statuses).toEqual(['applied', 'dismissed']);
+  });
+
+  it('records approved spans that no longer match as stale', async () => {
+    install({
+      observation: observation(),
+      observationInTransaction: observation({ scriptDoc: scriptDoc('Rewritten.', 'Also new.') }),
+      savedRun: { suggestions: [saved('turned and talked', '1a', 0, 'pending')] },
+    });
+
+    await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],
+      }),
+    );
+
+    expect(rec.txUpdates).toHaveLength(0);
+    const statuses = (rec.runUpdates[0]?.['suggestions'] as { status: string }[]).map(
+      (s) => s.status,
+    );
+    expect(statuses).toEqual(['stale']);
+  });
+
+  it('keeps an earlier decision when a later Apply leaves it out', async () => {
+    install({
+      observation: observation(),
+      savedRun: {
+        suggestions: [
+          saved('turned and talked', '1a', 0, 'applied'),
+          saved('circulated', '2b', 1, 'dismissed'),
+        ],
+      },
+    });
+
+    await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 1, text: 'circulated', componentId: '2b' }],
+      }),
+    );
+
+    const statuses = (rec.runUpdates[0]?.['suggestions'] as { status: string }[]).map(
+      (s) => s.status,
+    );
+    expect(statuses).toEqual(['applied', 'applied']);
   });
 });

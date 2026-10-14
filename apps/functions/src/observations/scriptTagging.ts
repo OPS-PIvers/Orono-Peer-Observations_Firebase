@@ -15,10 +15,12 @@ import {
   OBSERVATION_STATUS,
   observationAccessFor,
   resolveGeminiFeature,
+  resolveScriptAutoTagControls,
   roleYearMappingDocId,
   type ComponentColor,
   type Observation,
   type ResolvedGeminiFeature,
+  type ScriptAutoTagControls,
   type Role,
   type RoleYearMapping,
   type Rubric,
@@ -50,11 +52,11 @@ export interface ScriptTagSuggestion {
   componentId: string;
 }
 
-export interface VerbatimFilterResult {
+export interface VerbatimFilterResult<T extends ScriptTagSuggestion = ScriptTagSuggestion> {
   /** Suggestions that still match the current script verbatim. */
-  accepted: ScriptTagSuggestion[];
+  accepted: T[];
   /** Suggestions dropped because the component or the text no longer matches. */
-  rejected: ScriptTagSuggestion[];
+  rejected: T[];
 }
 
 /**
@@ -62,13 +64,13 @@ export interface VerbatimFilterResult {
  * `text` is a non-empty verbatim substring of the paragraph at
  * `paragraphIndex`. Everything else lands in `rejected`.
  */
-export function filterVerbatimSuggestions(
-  suggestions: readonly ScriptTagSuggestion[],
+export function filterVerbatimSuggestions<T extends ScriptTagSuggestion>(
+  suggestions: readonly T[],
   paragraphs: readonly string[],
   validComponentIds: ReadonlySet<string>,
-): VerbatimFilterResult {
-  const accepted: ScriptTagSuggestion[] = [];
-  const rejected: ScriptTagSuggestion[] = [];
+): VerbatimFilterResult<T> {
+  const accepted: T[] = [];
+  const rejected: T[] = [];
   for (const s of suggestions) {
     if (!validComponentIds.has(s.componentId)) {
       rejected.push(s);
@@ -98,6 +100,17 @@ export async function loadScriptAutoTagFeature(db: Firestore): Promise<ResolvedG
     ? (snap.data()?.['gemini'] as { scriptAutoTag?: unknown } | undefined)?.scriptAutoTag
     : undefined;
   return resolveGeminiFeature(raw);
+}
+
+/**
+ * Read the admin's auto-tag controls (which options observers may pick)
+ * from /appSettings/global, every missing piece defaulting to on.
+ */
+export async function loadScriptAutoTagControls(db: Firestore): Promise<ScriptAutoTagControls> {
+  const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
+  return resolveScriptAutoTagControls(
+    snap.exists ? snap.data()?.['scriptAutoTagControls'] : undefined,
+  );
 }
 
 /**
@@ -195,6 +208,11 @@ export interface ActiveComponentSet {
   componentColorMap: Map<string, ComponentColor>;
   /** `activeComponents` ids — the only ids a tag may reference. */
   validComponentIds: Set<string>;
+  /**
+   * The role/year's assigned components, whatever the scope (null when the
+   * role/year has no mapping), so a full-rubric run can still favour them.
+   */
+  assignedComponentIds: ReadonlySet<string> | null;
 }
 
 /**
@@ -255,6 +273,7 @@ export async function resolveActiveComponents(
     activeComponents,
     componentColorMap,
     validComponentIds: new Set(activeComponents.map((c) => c.id)),
+    assignedComponentIds: mapping ? new Set(mapping.assignedComponentIds) : null,
   };
 }
 

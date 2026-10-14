@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { RotateCcw, Sparkles } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -10,8 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import type { AutoTagConfidence, ScriptAutoTagControls, ScriptAutoTagOptions } from '@ops/shared';
+import { AutoTagOptionsFields, hasAutoTagChoices } from './AutoTagOptions';
 
-/** A tag Gemini proposed, as returned by the `suggestScriptTags` callable. */
+/**
+ * Where a suggestion stands after earlier reviews of the same run (see
+ * `scriptTagRun.ts` in functions): `applied` is already in the script,
+ * `stale` no longer matches it, `dismissed` was left out of an earlier Apply.
+ */
+export type AutoTagSuggestionStatus = 'pending' | 'applied' | 'dismissed' | 'stale';
+
+/** A tag the AI proposed, as returned by the `suggestScriptTags` callable. */
 export interface AutoTagSuggestion {
   paragraphIndex: number;
   text: string;
@@ -19,6 +30,11 @@ export interface AutoTagSuggestion {
   componentTitle: string;
   /** The whole paragraph the span came from, shown as context. */
   paragraphText: string;
+  status: AutoTagSuggestionStatus;
+  /** How sure the model said it was; null when the admin turned confidence off. */
+  confidence: AutoTagConfidence | null;
+  /** One line on what the model saw; empty when reasons were turned off. */
+  rationale: string;
 }
 
 export interface AutoTagColor {
@@ -26,28 +42,103 @@ export interface AutoTagColor {
   fg: string;
 }
 
+/** About the saved run being reviewed. */
+export interface AutoTagRunInfo {
+  /** True when this is an earlier run reopened, not a fresh AI call. */
+  reused: boolean;
+  createdAt: string | null;
+  createdBy: string;
+  runCount: number;
+  reason: string | null;
+  /** The options this run was made with. */
+  options: ScriptAutoTagOptions;
+}
+
+/** Mirrors RERUN_REASON_MIN_LENGTH in functions/src/observations/scriptTagRun.ts. */
+export const RERUN_REASON_MIN_LENGTH = 10;
+const RERUN_REASON_MAX_LENGTH = 1000;
+
 /** Only one review dialog is ever mounted, so static ids are collision-free. */
 const ACCEPT_ALL_ID = 'autotag-accept-all';
 const ROW_ID_PREFIX = 'autotag-suggestion-';
+const RERUN_REASON_ID = 'autotag-rerun-reason';
+
+const CONFIDENCE_LABEL: Record<AutoTagConfidence, string> = {
+  high: 'High confidence',
+  medium: 'Medium confidence',
+  low: 'Low confidence',
+};
+
+const CONFIDENCE_CLASS: Record<AutoTagConfidence, string> = {
+  high: 'border-green-300 text-green-800',
+  medium: 'border-amber-300 text-amber-800',
+  low: 'border-ops-red-light text-ops-red-dark',
+};
+
+const FOCUS_LABEL: Record<ScriptAutoTagOptions['components'], string> = {
+  assigned: 'Assigned only',
+  preferAssigned: 'Full rubric, prefer assigned',
+  full: 'Full rubric',
+};
+
+const DETAIL_LABEL: Record<ScriptAutoTagOptions['detail'], string> = {
+  key: 'Key evidence only',
+  balanced: 'Balanced',
+  thorough: 'Thorough',
+};
+
+const STATUS_LABEL: Partial<Record<AutoTagSuggestionStatus, string>> = {
+  applied: 'Applied',
+  dismissed: 'Left out last time',
+  stale: 'Script changed',
+};
+
+function isSelectable(s: AutoTagSuggestion): boolean {
+  return s.status === 'pending' || s.status === 'dismissed';
+}
+
+/** Pending suggestions start checked; anything already decided starts unchecked. */
+function initialSelection(suggestions: readonly AutoTagSuggestion[]): Set<number> {
+  const out = new Set<number>();
+  suggestions.forEach((s, i) => {
+    if (s.status === 'pending') out.add(i);
+  });
+  return out;
+}
 
 export interface AutoTagReviewDialogProps {
   open: boolean;
   suggestions: AutoTagSuggestion[];
   /** bg/fg per componentId, as the `componentTag` mark would render them. */
   colorById: Map<string, AutoTagColor>;
-  /** Suggestions Gemini returned that the server already discarded. */
+  /** Suggestions the AI returned that the server already discarded. */
   skippedCount: number;
+  run: AutoTagRunInfo;
+  /** Options a re-run will use; editable in the Run again form. */
+  options: ScriptAutoTagOptions;
+  onOptionsChange: (next: ScriptAutoTagOptions) => void;
+  /** What the admin allows: hides confidence, re-runs and disallowed options. */
+  controls: ScriptAutoTagControls;
   applying: boolean;
+  /** A re-run is in flight. */
+  rerunning: boolean;
   error: string | null;
   onCancel: () => void;
   onApply: (kept: AutoTagSuggestion[]) => void;
+  onRerun: (reason: string) => void;
 }
 
 /**
- * Checklist review of Gemini's proposed component tags, shown *before*
- * anything is written to the observation script. Every suggestion starts
- * accepted; the observer unchecks the ones they disagree with (or clears them
- * all) and only the kept subset is sent to `applyScriptTags`.
+ * Checklist review of the AI's proposed component tags, shown *before*
+ * anything is written to the observation script. The observer unchecks the
+ * ones they disagree with and only the kept subset is sent to
+ * `applyScriptTags`.
+ *
+ * The run is saved per observation, so clicking Auto-tag again reopens this
+ * dialog on the same result, with earlier decisions shown, instead of
+ * spending another AI call. Running it again is a deliberate step at the
+ * bottom of the dialog and needs a short note on what changed, which is
+ * passed to the model as extra context.
  *
  * Each row renders the source paragraph with the proposed span highlighted in
  * the component's own colors — the same `<mark>` + inline bg/fg convention the
@@ -59,26 +150,46 @@ export function AutoTagReviewDialog({
   suggestions,
   colorById,
   skippedCount,
+  run,
+  options,
+  onOptionsChange,
+  controls,
   applying,
+  rerunning,
   error,
   onCancel,
   onApply,
+  onRerun,
 }: AutoTagReviewDialogProps) {
-  const [rejected, setRejected] = useState<ReadonlySet<number>>(() => new Set<number>());
+  const [selected, setSelected] = useState<ReadonlySet<number>>(() =>
+    initialSelection(suggestions),
+  );
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const [reason, setReason] = useState('');
 
-  // A fresh batch of suggestions starts fully accepted.
+  // A fresh batch of suggestions starts from its own defaults.
   useEffect(() => {
-    setRejected(new Set<number>());
+    setSelected(initialSelection(suggestions));
+    setRerunOpen(false);
+    setReason('');
   }, [suggestions]);
 
-  const keptCount = suggestions.length - rejected.size;
-  const kept = useMemo(
-    () => suggestions.filter((_, i) => !rejected.has(i)),
-    [suggestions, rejected],
+  const selectableIndexes = useMemo(
+    () => suggestions.flatMap((s, i) => (isSelectable(s) ? [i] : [])),
+    [suggestions],
   );
+  const keptCount = selected.size;
+  const kept = useMemo(
+    () => suggestions.filter((_, i) => selected.has(i)),
+    [suggestions, selected],
+  );
+  const busy = applying || rerunning;
+  const trimmedReason = reason.trim();
+  const reasonReady = trimmedReason.length >= RERUN_REASON_MIN_LENGTH;
+  const appliedCount = suggestions.filter((s) => s.status === 'applied').length;
 
   function toggle(index: number) {
-    setRejected((prev) => {
+    setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(index)) next.delete(index);
       else next.add(index);
@@ -86,9 +197,17 @@ export function AutoTagReviewDialog({
     });
   }
 
+  const selectedLowCount = controls.confidence
+    ? suggestions.filter((s, i) => selected.has(i) && s.confidence === 'low').length
+    : 0;
+
+  function uncheckLowConfidence() {
+    setSelected((prev) => new Set([...prev].filter((i) => suggestions[i]?.confidence !== 'low')));
+  }
+
   function toggleAll() {
-    setRejected((prev) =>
-      prev.size === 0 ? new Set(suggestions.map((_, i) => i)) : new Set<number>(),
+    setSelected((prev) =>
+      prev.size === selectableIndexes.length ? new Set<number>() : new Set(selectableIndexes),
     );
   }
 
@@ -96,82 +215,195 @@ export function AutoTagReviewDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next && !applying) onCancel();
+        if (!next && !busy) onCancel();
       }}
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="text-ops-blue h-4 w-4" />
-            Review suggested tags
+            {run.reused ? 'Earlier auto-tag suggestions' : 'Review suggested tags'}
           </DialogTitle>
           <DialogDescription>
-            Nothing has been written to the script yet. Uncheck any suggestion you disagree with,
-            then apply the rest.
+            {suggestions.length === 0
+              ? 'The AI found no taggable evidence in this script.'
+              : run.reused
+                ? `Pick up where you left off. ${appliedCount > 0 ? `${String(appliedCount)} already applied. ` : ''}Check any you want to add, then apply.`
+                : 'Nothing has been written to the script yet. Uncheck any suggestion you disagree with, then apply the rest.'}
             {skippedCount > 0
               ? ` ${String(skippedCount)} further suggestion${skippedCount === 1 ? ' was' : 's were'} discarded because the text couldn't be located verbatim.`
               : ''}
           </DialogDescription>
+          <RunMeta run={run} />
         </DialogHeader>
 
-        <div className="flex items-center justify-between border-b pb-2">
-          <label htmlFor={ACCEPT_ALL_ID} className="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox
-              id={ACCEPT_ALL_ID}
-              checked={rejected.size === 0 && suggestions.length > 0}
-              indeterminate={rejected.size > 0 && rejected.size < suggestions.length}
-              onChange={toggleAll}
-              disabled={applying}
-            />
-            <span>Accept all</span>
-          </label>
-          <span className="text-muted-foreground text-xs">
-            {String(keptCount)} of {String(suggestions.length)} selected
-          </span>
-        </div>
-
-        <ul className="-mx-1 space-y-2">
-          {suggestions.map((suggestion, index) => {
-            const color = colorById.get(suggestion.componentId);
-            const accepted = !rejected.has(index);
-            const rowId = `${ROW_ID_PREFIX}${String(index)}`;
-            return (
-              <li
-                key={`${String(suggestion.paragraphIndex)}-${suggestion.componentId}-${String(index)}`}
-                className="hover:bg-muted/40 rounded-md px-1 py-1.5"
+        {suggestions.length > 0 ? (
+          <>
+            <div className="flex items-center justify-between border-b pb-2">
+              <label
+                htmlFor={ACCEPT_ALL_ID}
+                className="flex cursor-pointer items-center gap-2 text-sm"
               >
-                <label htmlFor={rowId} className="flex cursor-pointer items-start gap-2.5">
-                  <Checkbox
-                    id={rowId}
-                    className="mt-0.5"
-                    checked={accepted}
-                    onChange={() => toggle(index)}
-                    disabled={applying}
-                    aria-label={`Tag "${suggestion.text}" as ${suggestion.componentId}`}
-                  />
-                  <span className={accepted ? 'min-w-0 flex-1' : 'min-w-0 flex-1 opacity-50'}>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium"
-                        style={color ? { backgroundColor: color.bg, color: color.fg } : undefined}
-                      >
-                        {suggestion.componentId}
-                      </span>
-                      <span className="text-sm font-medium">{suggestion.componentTitle}</span>
-                    </span>
-                    <span className="text-muted-foreground mt-1 block text-xs leading-relaxed">
-                      <HighlightedParagraph
-                        paragraphText={suggestion.paragraphText}
-                        match={suggestion.text}
-                        color={color}
+                <Checkbox
+                  id={ACCEPT_ALL_ID}
+                  checked={keptCount === selectableIndexes.length && keptCount > 0}
+                  indeterminate={keptCount > 0 && keptCount < selectableIndexes.length}
+                  onChange={toggleAll}
+                  disabled={busy || selectableIndexes.length === 0}
+                />
+                <span>Accept all</span>
+              </label>
+              <span className="flex items-center gap-3">
+                {selectedLowCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={uncheckLowConfidence}
+                    disabled={busy}
+                    className="text-ops-blue text-xs underline-offset-2 hover:underline"
+                  >
+                    Uncheck low confidence ({String(selectedLowCount)})
+                  </button>
+                ) : null}
+                <span className="text-muted-foreground text-xs">
+                  {String(keptCount)} of {String(selectableIndexes.length)} selected
+                </span>
+              </span>
+            </div>
+
+            <ul className="-mx-1 max-h-[50vh] space-y-2 overflow-y-auto">
+              {suggestions.map((suggestion, index) => {
+                const color = colorById.get(suggestion.componentId);
+                const selectable = isSelectable(suggestion);
+                const accepted = selected.has(index) || suggestion.status === 'applied';
+                const rowId = `${ROW_ID_PREFIX}${String(index)}`;
+                const statusLabel = STATUS_LABEL[suggestion.status];
+                return (
+                  <li
+                    key={`${String(suggestion.paragraphIndex)}-${suggestion.componentId}-${String(index)}`}
+                    className="hover:bg-muted/40 rounded-md px-1 py-1.5"
+                  >
+                    <label
+                      htmlFor={rowId}
+                      className={
+                        selectable
+                          ? 'flex cursor-pointer items-start gap-2.5'
+                          : 'flex items-start gap-2.5'
+                      }
+                    >
+                      <Checkbox
+                        id={rowId}
+                        className="mt-0.5"
+                        checked={accepted}
+                        onChange={() => toggle(index)}
+                        disabled={busy || !selectable}
+                        aria-label={`Tag "${suggestion.text}" as ${suggestion.componentId}`}
                       />
-                    </span>
-                  </span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
+                      <span className={accepted ? 'min-w-0 flex-1' : 'min-w-0 flex-1 opacity-50'}>
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className="rounded px-1.5 py-0.5 font-mono text-[11px] font-medium"
+                            style={
+                              color ? { backgroundColor: color.bg, color: color.fg } : undefined
+                            }
+                          >
+                            {suggestion.componentId}
+                          </span>
+                          <span className="text-sm font-medium">{suggestion.componentTitle}</span>
+                          {controls.confidence && suggestion.confidence ? (
+                            <span
+                              className={`rounded-full border px-1.5 py-px text-[11px] ${CONFIDENCE_CLASS[suggestion.confidence]}`}
+                            >
+                              {CONFIDENCE_LABEL[suggestion.confidence]}
+                            </span>
+                          ) : null}
+                          {statusLabel ? (
+                            <Badge tone={suggestion.status === 'applied' ? 'active' : 'neutral'}>
+                              {statusLabel}
+                            </Badge>
+                          ) : null}
+                        </span>
+                        <span className="text-muted-foreground mt-1 block text-xs leading-relaxed">
+                          <HighlightedParagraph
+                            paragraphText={suggestion.paragraphText}
+                            match={suggestion.text}
+                            color={color}
+                          />
+                        </span>
+                        {suggestion.rationale ? (
+                          <span className="mt-0.5 block text-xs italic">
+                            {suggestion.rationale}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : null}
+
+        {rerunOpen ? (
+          <div className="bg-muted/40 space-y-2 rounded-md border p-3">
+            <label htmlFor={RERUN_REASON_ID} className="block text-sm font-medium">
+              What should the AI know this time?
+            </label>
+            <p className="text-muted-foreground text-xs">
+              Say what you added to the script or what the last run missed. This goes to the AI with
+              the script, along with which suggestions you applied or left out.
+            </p>
+            <Textarea
+              id={RERUN_REASON_ID}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={RERUN_REASON_MAX_LENGTH}
+              disabled={rerunning}
+              placeholder="e.g. I added notes from the second half of the lesson, and the last run missed the questioning in the exit discussion."
+              className="min-h-16 text-sm"
+            />
+            {hasAutoTagChoices(controls) ? (
+              <details className="rounded-md border bg-white/60 px-2 py-1.5">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Options: {FOCUS_LABEL[options.components]} · {DETAIL_LABEL[options.detail]}
+                  {options.rationale ? ' · Explain each tag' : ''}
+                </summary>
+                <div className="pt-2">
+                  <AutoTagOptionsFields
+                    value={options}
+                    onChange={onOptionsChange}
+                    disabled={rerunning}
+                    idPrefix="autotag-rerun"
+                    controls={controls}
+                  />
+                </div>
+              </details>
+            ) : null}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground text-xs">
+                {reasonReady ? '' : `At least ${String(RERUN_REASON_MIN_LENGTH)} characters.`}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setRerunOpen(false)}
+                  disabled={rerunning}
+                >
+                  Never mind
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => onRerun(trimmedReason)}
+                  disabled={!reasonReady || busy}
+                >
+                  {rerunning ? 'Running…' : 'Run auto-tag again'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="bg-ops-red-lighter text-ops-red-dark rounded-md px-3 py-2 text-xs">
@@ -179,20 +411,62 @@ export function AutoTagReviewDialog({
           </p>
         ) : null}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onCancel} disabled={applying}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={() => onApply(kept)}
-            disabled={applying || keptCount === 0}
-          >
-            {applying ? 'Applying…' : `Apply ${String(keptCount)} tag${keptCount === 1 ? '' : 's'}`}
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {!rerunOpen && controls.rerun ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setRerunOpen(true)}
+              disabled={busy}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Run again…
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
+              {suggestions.length === 0 ? 'Close' : 'Cancel'}
+            </Button>
+            {suggestions.length > 0 ? (
+              <Button
+                type="button"
+                onClick={() => onApply(kept)}
+                disabled={busy || keptCount === 0}
+              >
+                {applying
+                  ? 'Applying…'
+                  : `Apply ${String(keptCount)} tag${keptCount === 1 ? '' : 's'}`}
+              </Button>
+            ) : null}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** "Run 2 · Oct 14, 2:05 PM · paul.ivers" plus the reason, when there was one. */
+function RunMeta({ run }: { run: AutoTagRunInfo }) {
+  const when = run.createdAt
+    ? new Date(run.createdAt).toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null;
+  const who = run.createdBy.split('@')[0];
+  const parts = [`Run ${String(run.runCount)}`, when, who].filter(Boolean);
+  return (
+    <div className="text-muted-foreground space-y-0.5 text-xs">
+      <p>{parts.join(' · ')}</p>
+      <p>
+        {FOCUS_LABEL[run.options.components]} · {DETAIL_LABEL[run.options.detail]}
+      </p>
+      {run.reason ? <p className="italic">“{run.reason}”</p> : null}
+    </div>
   );
 }
 

@@ -57,6 +57,8 @@ export const STAFF_SUBCOLLECTIONS = {
 export const OBSERVATION_SUBCOLLECTIONS = {
   /** Evaluator check-offs for steps tied to this observation. */
   stepChecks: 'stepChecks',
+  /** The last script auto-tag result (server-only; see suggestScriptTags). */
+  scriptAutoTagRuns: 'scriptAutoTagRuns',
 } as const;
 
 /** Subcollections under /buildingSchedules/{buildingId}. */

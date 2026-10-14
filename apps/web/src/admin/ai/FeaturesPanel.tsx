@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   AI_FEATURE_REQUIREMENTS,
   modelFitsFeature,
@@ -7,6 +7,7 @@ import {
   type AiModel,
   type AiUsageTotals,
   type ResolvedGeminiFeature,
+  type ScriptAutoTagControls,
 } from '@ops/shared';
 import { Label } from '@/components/ui/label';
 import { AI_ACCESS_OPTIONS, AI_FEATURE_META, parseEmailList } from './aiFeatures';
@@ -16,6 +17,9 @@ interface FeaturesPanelProps {
   models: readonly AiModel[];
   features: Record<AiFeatureKey, ResolvedGeminiFeature>;
   onChange: (key: AiFeatureKey, next: ResolvedGeminiFeature) => void;
+  /** Which auto-tag options observers may pick. */
+  autoTagControls: ScriptAutoTagControls;
+  onAutoTagControlsChange: (next: ScriptAutoTagControls) => void;
   /** This month's usage per feature. */
   monthByFeature: Map<string, AiUsageTotals>;
   claudeConfigured: boolean | null;
@@ -25,6 +29,8 @@ export function FeaturesPanel({
   models,
   features,
   onChange,
+  autoTagControls,
+  onAutoTagControlsChange,
   monthByFeature,
   claudeConfigured,
 }: FeaturesPanelProps) {
@@ -48,6 +54,15 @@ export function FeaturesPanel({
           onChange={(next) => onChange(meta.key, next)}
           month={monthByFeature.get(meta.key)}
           claudeConfigured={claudeConfigured}
+          extra={
+            meta.key === 'scriptAutoTag' ? (
+              <ScriptAutoTagControlsSection
+                value={autoTagControls}
+                onChange={onAutoTagControlsChange}
+                disabled={features.scriptAutoTag.access === 'off'}
+              />
+            ) : null
+          }
         />
       ))}
     </div>
@@ -64,6 +79,7 @@ function FeatureCard({
   onChange,
   month,
   claudeConfigured,
+  extra,
 }: {
   featureKey: AiFeatureKey;
   title: string;
@@ -74,6 +90,8 @@ function FeatureCard({
   onChange: (next: ResolvedGeminiFeature) => void;
   month: AiUsageTotals | undefined;
   claudeConfigured: boolean | null;
+  /** Feature-specific settings shown under the access and model controls. */
+  extra?: ReactNode;
 }) {
   // Entries dropped on the last blur for not being addresses — shown so a
   // typo doesn't silently leave someone off the list.
@@ -213,6 +231,148 @@ function FeatureCard({
           ) : null}
         </div>
       </div>
+      {extra}
+    </div>
+  );
+}
+
+const FOCUS_SWITCHES: { key: keyof ScriptAutoTagControls['components']; label: string }[] = [
+  { key: 'assigned', label: 'Assigned only' },
+  { key: 'preferAssigned', label: 'Full rubric, prefer assigned' },
+  { key: 'full', label: 'Full rubric' },
+];
+
+const DETAIL_SWITCHES: { key: keyof ScriptAutoTagControls['detail']; label: string }[] = [
+  { key: 'key', label: 'Key evidence only' },
+  { key: 'balanced', label: 'Balanced' },
+  { key: 'thorough', label: 'Thorough' },
+];
+
+/**
+ * Which auto-tag options observers may pick. Everything is on by default.
+ * The server clamps each request to these, so a change applies to the next
+ * run even on pages that were already open.
+ */
+function ScriptAutoTagControlsSection({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ScriptAutoTagControls;
+  onChange: (next: ScriptAutoTagControls) => void;
+  disabled: boolean;
+}) {
+  const onCount = (flags: Record<string, boolean>) => Object.values(flags).filter(Boolean).length;
+  return (
+    <fieldset
+      disabled={disabled}
+      className="border-border space-y-3 border-t pt-4 disabled:opacity-50"
+    >
+      <legend className="sr-only">Auto-tag options observers can use</legend>
+      <div>
+        <p className="text-sm font-semibold">Options observers can use</p>
+        <p className="text-muted-foreground text-xs">
+          Turn off anything you don&apos;t want offered. Requests for a turned-off choice use the
+          nearest allowed one instead. At least one choice in each group stays on.
+        </p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <SwitchGroup
+          title="Components"
+          items={FOCUS_SWITCHES.map((s) => ({
+            id: `autotag-ctl-focus-${s.key}`,
+            label: s.label,
+            checked: value.components[s.key],
+            // Keep the last one on so observers always have a choice.
+            locked: value.components[s.key] && onCount(value.components) === 1,
+            onToggle: () =>
+              onChange({
+                ...value,
+                components: { ...value.components, [s.key]: !value.components[s.key] },
+              }),
+          }))}
+        />
+        <SwitchGroup
+          title="Detail"
+          items={DETAIL_SWITCHES.map((s) => ({
+            id: `autotag-ctl-detail-${s.key}`,
+            label: s.label,
+            checked: value.detail[s.key],
+            locked: value.detail[s.key] && onCount(value.detail) === 1,
+            onToggle: () =>
+              onChange({ ...value, detail: { ...value.detail, [s.key]: !value.detail[s.key] } }),
+          }))}
+        />
+        <SwitchGroup
+          title="Extras"
+          items={[
+            {
+              id: 'autotag-ctl-rationale',
+              label: 'Explain each tag',
+              hint: 'Observers can ask for a one-line reason per suggestion.',
+              checked: value.rationale,
+              onToggle: () => onChange({ ...value, rationale: !value.rationale }),
+            },
+            {
+              id: 'autotag-ctl-confidence',
+              label: 'Confidence levels',
+              hint: 'High / Medium / Low on each suggestion.',
+              checked: value.confidence,
+              onToggle: () => onChange({ ...value, confidence: !value.confidence }),
+            },
+            {
+              id: 'autotag-ctl-rerun',
+              label: 'Run again with a reason',
+              hint: 'Off means each observation gets one AI run.',
+              checked: value.rerun,
+              onToggle: () => onChange({ ...value, rerun: !value.rerun }),
+            },
+          ]}
+        />
+      </div>
+    </fieldset>
+  );
+}
+
+function SwitchGroup({
+  title,
+  items,
+}: {
+  title: string;
+  items: {
+    id: string;
+    label: string;
+    hint?: string;
+    checked: boolean;
+    locked?: boolean;
+    onToggle: () => void;
+  }[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{title}</Label>
+      {items.map((item) => (
+        <label
+          key={item.id}
+          htmlFor={item.id}
+          className="flex cursor-pointer items-start gap-2 text-sm"
+        >
+          <input
+            id={item.id}
+            type="checkbox"
+            checked={item.checked}
+            disabled={item.locked}
+            onChange={item.onToggle}
+            className="accent-ops-blue mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span>
+            {item.label}
+            {item.hint ? (
+              <span className="text-muted-foreground block text-xs">{item.hint}</span>
+            ) : null}
+          </span>
+        </label>
+      ))}
     </div>
   );
 }
