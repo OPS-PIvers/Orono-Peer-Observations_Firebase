@@ -455,6 +455,46 @@ describe('applyScriptTags — stale suggestion rejection', () => {
     expect(rec.txUpdates).toHaveLength(0);
   });
 
+  it('drops an unassigned rubric component in the default assigned scope', async () => {
+    install({ observation: observation(), assignedComponentIds: ['1a'] });
+    const res = (await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 1, text: 'circulated', componentId: '2b' }],
+      }),
+    )) as ApplyResult;
+
+    expect(res.appliedCount).toBe(0);
+    expect(res.rejectedCount).toBe(1);
+  });
+
+  it('accepts an unassigned rubric component when the scope is the full rubric', async () => {
+    install({ observation: observation(), assignedComponentIds: ['1a'] });
+    const res = (await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 1, text: 'circulated', componentId: '2b' }],
+        scope: 'full',
+      }),
+    )) as ApplyResult;
+
+    expect(res.appliedCount).toBe(1);
+    expect(taggedTexts(res.scriptDoc)).toEqual(['circulated']);
+  });
+
+  it('still drops an id outside the rubric when the scope is the full rubric', async () => {
+    const res = (await run(
+      callerRequest({
+        observationId: OBS_ID,
+        suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '4e' }],
+        scope: 'full',
+      }),
+    )) as ApplyResult;
+
+    expect(res.appliedCount).toBe(0);
+    expect(res.rejectedCount).toBe(1);
+  });
+
   it('drops a paragraph index that no longer exists after an edit', async () => {
     install({
       observation: observation(),

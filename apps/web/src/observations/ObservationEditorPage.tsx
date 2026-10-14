@@ -1328,6 +1328,7 @@ export function ObservationEditorPage() {
             readOnly={!canEdit}
             captureRequest={captureRequest}
             availableComponents={taggableComponents}
+            tagScope={assignmentMode}
             observationId={observation.id}
             placeholder="Start typing what you see and hear during the observation…"
           />

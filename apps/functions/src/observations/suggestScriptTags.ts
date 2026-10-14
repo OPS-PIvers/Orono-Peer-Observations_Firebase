@@ -10,6 +10,7 @@ import {
   filterVerbatimSuggestions,
   loadScriptAutoTagFeature,
   loadTaggingContext,
+  parseTagScope,
   type ScriptTagSuggestion,
 } from './scriptTagging.js';
 
@@ -17,6 +18,8 @@ if (getApps().length === 0) initializeApp();
 
 interface SuggestScriptTagsRequest {
   observationId?: string;
+  /** `'full'` to tag against the whole rubric; defaults to assigned only. */
+  scope?: unknown;
 }
 
 /** A suggestion enriched with everything the review dialog needs to render it. */
@@ -67,7 +70,7 @@ export const suggestScriptTags = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId } = (request.data ?? {}) as SuggestScriptTagsRequest;
+    const { observationId, scope } = (request.data ?? {}) as SuggestScriptTagsRequest;
     if (!observationId) {
       throw new HttpsError('invalid-argument', 'observationId required');
     }
@@ -77,7 +80,14 @@ export const suggestScriptTags = onCall(
     assertScriptAutoTagAvailable(feature, userEmail);
 
     const callerRole = request.auth.token['role'] as string | undefined;
-    const ctx = await loadTaggingContext(db, observationId, userEmail, callerRole, request.auth);
+    const ctx = await loadTaggingContext(
+      db,
+      observationId,
+      userEmail,
+      callerRole,
+      request.auth,
+      parseTagScope(scope),
+    );
 
     const model = await loadFeatureModel(db, 'scriptAutoTag');
     const raw = await callModelForTags(ctx.activeComponents, ctx.paragraphs, model, {

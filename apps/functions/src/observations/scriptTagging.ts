@@ -177,8 +177,20 @@ export function assertObservationTaggable(
   }
 }
 
+/**
+ * Which components auto-tag may use, mirroring the editor's Assigned / Full
+ * Rubric toggle: just the role/year's assigned components, or every
+ * component in the rubric.
+ */
+export type TagScope = 'assigned' | 'full';
+
+/** Read a callable's `scope` field; anything other than `'full'` is `'assigned'`. */
+export function parseTagScope(raw: unknown): TagScope {
+  return raw === 'full' ? 'full' : 'assigned';
+}
+
 export interface ActiveComponentSet {
-  /** Components assigned to this observation's role/year, in rubric order. */
+  /** Components in play for the requested scope, in rubric order. */
   activeComponents: RubricComponent[];
   componentColorMap: Map<string, ComponentColor>;
   /** `activeComponents` ids — the only ids a tag may reference. */
@@ -192,12 +204,14 @@ export interface ActiveComponentSet {
  * This is deliberately re-runnable: the apply step re-derives it inside its
  * transaction, so a rubric edit or a role/year assignment change made while
  * the review dialog sat open cannot smuggle a component id onto the script
- * that is no longer assigned.
+ * that is no longer assigned. With `scope: 'full'` the mapping is ignored and
+ * every rubric component is in play, matching the editor's Full Rubric view.
  */
 export async function resolveActiveComponents(
   db: Firestore,
   reader: TaggingReader,
   obs: Pick<Observation, 'observedRole' | 'observedYear'>,
+  scope: TagScope = 'assigned',
 ): Promise<ActiveComponentSet> {
   const roleByIdSnap = await reader.getQuery(
     db.collection(COLLECTIONS.roles).where('roleId', '==', obs.observedRole).limit(1),
@@ -222,7 +236,7 @@ export async function resolveActiveComponents(
     db.doc(`${COLLECTIONS.roleYearMappings}/${mappingDocId}`),
   );
   const mapping = mappingSnap.exists ? (mappingSnap.data() as RoleYearMapping) : null;
-  const allowSet = mapping ? new Set(mapping.assignedComponentIds) : null;
+  const allowSet = mapping && scope === 'assigned' ? new Set(mapping.assignedComponentIds) : null;
 
   const activeComponents: RubricComponent[] = [];
   for (const d of rubric.domains) {
@@ -269,6 +283,7 @@ export async function loadTaggingContext(
   userEmail: string,
   callerRole: string | undefined,
   auth: { token: Record<string, unknown> } | null | undefined,
+  scope: TagScope = 'assigned',
 ): Promise<TaggingContext> {
   const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
   const obsSnap = await obsRef.get();
@@ -292,7 +307,7 @@ export async function loadTaggingContext(
     throw new HttpsError('failed-precondition', 'Script is empty — nothing to tag.');
   }
 
-  const components = await resolveActiveComponents(db, directReader, obs);
+  const components = await resolveActiveComponents(db, directReader, obs, scope);
   return { obsRef, scriptDoc, paragraphs, oversight, ...components };
 }
 
