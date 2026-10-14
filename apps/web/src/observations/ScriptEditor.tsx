@@ -27,6 +27,7 @@ import { useGeminiAccess } from '@/hooks/useGeminiAccess';
 import type { AssignmentMode } from '@/components/rubric';
 import { Divider, ToolbarButton, useLinkDialog } from '@/components/ui/tiptap-toolbar';
 import { ComponentTagMark } from './component-tag-mark';
+import { clearComponentTag } from './clear-component-tag';
 import type { TagSource } from './extract-script-tags';
 import { buildTeacherResponseNodes } from './insert-teacher-response';
 import { colorFor } from './component-colors';
@@ -244,7 +245,7 @@ export function ScriptEditor({
   }
 
   function clearTag() {
-    editor.chain().focus().unsetMark('componentTag').run();
+    clearComponentTag(editor);
   }
 
   async function runAutoTag() {
@@ -359,6 +360,7 @@ export function ScriptEditor({
           <ComponentSidePanel
             components={availableComponents}
             activeTagId={activeTagId}
+            selectionEmpty={editor.state.selection.empty}
             onPick={applyTag}
             onClear={clearTag}
             onClose={closePicker}
@@ -514,12 +516,14 @@ function ScriptToolbar({
 function ComponentSidePanel({
   components,
   activeTagId,
+  selectionEmpty,
   onPick,
   onClear,
   onClose,
 }: {
   components: { domain: RubricDomain; component: RubricComponent }[];
   activeTagId: string | null;
+  selectionEmpty: boolean;
   onPick: (component: RubricComponent) => void;
   onClear: () => void;
   onClose: () => void;
@@ -567,7 +571,7 @@ function ComponentSidePanel({
           onClick={onClear}
           className="text-destructive border-b px-3 py-1.5 text-left text-xs hover:bg-red-50"
         >
-          Remove tag from selection
+          {selectionEmpty ? 'Remove this tag' : 'Remove tag from selection'}
         </button>
       ) : null}
 
