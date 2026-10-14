@@ -297,6 +297,23 @@ export const appSettings = z.object({
     audioTranscription: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
     scriptAutoTag: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
   }),
+  /** Which script auto-tag options observers may pick. Read through
+   *  `resolveScriptAutoTagControls`; every piece defaults to on. */
+  scriptAutoTagControls: z
+    .object({
+      components: z
+        .object({ assigned: z.boolean(), preferAssigned: z.boolean(), full: z.boolean() })
+        .partial()
+        .default({}),
+      detail: z
+        .object({ key: z.boolean(), balanced: z.boolean(), thorough: z.boolean() })
+        .partial()
+        .default({}),
+      rationale: z.boolean().default(true),
+      confidence: z.boolean().default(true),
+      rerun: z.boolean().default(true),
+    })
+    .default({ components: {}, detail: {}, rationale: true, confidence: true, rerun: true }),
   /** Where security alerts go. */
   securityAdminEmail: email,
   /** Send-as address for finalized observation notification emails. Must be

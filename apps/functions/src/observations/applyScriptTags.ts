@@ -17,6 +17,7 @@ import {
   transactionReader,
   type ScriptTagSuggestion,
 } from './scriptTagging.js';
+import { latestRunRef, recordDecisions, type StoredScriptTagRun } from './scriptTagRun.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -46,8 +47,9 @@ interface ApplyScriptTagsResponse {
  * Step 2 of the two-step auto-tag flow: write `componentTag` marks for the
  * subset of suggestions the observer approved in the review dialog.
  *
- * Suggestions are NOT persisted between the two steps — the client passes the
- * approved subset straight back — so this function treats them as untrusted
+ * The client passes the approved subset straight back (the saved run in
+ * scriptTagRun.ts is only used to record the observer's decisions, never as
+ * the source of what gets written), so this function treats them as untrusted
  * input and re-runs the same verbatim match `suggestScriptTags` ran, against
  * the script as it exists *at write time*, inside a transaction. A review
  * dialog left open while the observer kept editing therefore cannot smear
@@ -111,6 +113,8 @@ export const applyScriptTags = onCall(
       // same transaction, so every re-validation below must happen up here.
       const snap = await tx.get(ctx.obsRef);
       if (!snap.exists) throw new HttpsError('not-found', 'Observation not found');
+      const runRef = latestRunRef(db, observationId);
+      const savedRun = (await tx.get(runRef)).data() as Partial<StoredScriptTagRun> | undefined;
       const obs = snap.data() as unknown as Observation;
 
       // Re-check permission and draft status against the transaction's own
@@ -140,6 +144,13 @@ export const applyScriptTags = onCall(
         paragraphs,
         validComponentIds,
       );
+      // Remember what the observer kept and left out, so reopening the saved
+      // run shows their earlier decisions.
+      if (Array.isArray(savedRun?.suggestions)) {
+        tx.update(runRef, {
+          suggestions: recordDecisions(savedRun.suggestions, accepted, rejected),
+        });
+      }
       if (accepted.length === 0) {
         // Every approved span went stale — leave the script exactly as it is.
         return { appliedCount: 0, rejectedCount: rejected.length, scriptDoc: currentDoc };

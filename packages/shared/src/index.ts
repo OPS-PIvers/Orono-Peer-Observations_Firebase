@@ -20,3 +20,4 @@ export * from './firestoreDefaults.js';
 export * from './firestoreQuery.js';
 export * from './toDate.js';
 export * from './url.js';
+export * from './scriptAutoTagOptions.js';
