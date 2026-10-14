@@ -9,10 +9,12 @@ import {
   resolveAiModels,
   resolveFeatureModel,
   resolveGeminiFeature,
+  resolveScriptAutoTagControls,
   type AiFeatureKey,
   type AiModel,
   type AppSettings,
   type ResolvedGeminiFeature,
+  type ScriptAutoTagControls,
 } from '@ops/shared';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -38,6 +40,7 @@ type Tab = (typeof TABS)[number]['value'];
 interface Draft {
   models: AiModel[];
   features: Record<AiFeatureKey, ResolvedGeminiFeature>;
+  autoTagControls: ScriptAutoTagControls;
 }
 
 function draftFrom(settings: Partial<AppSettings> | null): Draft {
@@ -47,6 +50,7 @@ function draftFrom(settings: Partial<AppSettings> | null): Draft {
       audioTranscription: resolveGeminiFeature(settings?.gemini?.audioTranscription),
       scriptAutoTag: resolveGeminiFeature(settings?.gemini?.scriptAutoTag),
     },
+    autoTagControls: resolveScriptAutoTagControls(settings?.scriptAutoTagControls),
   };
 }
 
@@ -99,7 +103,9 @@ export function AiModelsPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const modelsDirty = JSON.stringify(draft.models) !== JSON.stringify(saved.models);
-  const featuresDirty = JSON.stringify(draft.features) !== JSON.stringify(saved.features);
+  const featuresDirty =
+    JSON.stringify(draft.features) !== JSON.stringify(saved.features) ||
+    JSON.stringify(draft.autoTagControls) !== JSON.stringify(saved.autoTagControls);
   const dirty = modelsDirty || featuresDirty;
 
   const month = useUsageSummary(daily.data, rangeStartKey('month'));
@@ -129,6 +135,7 @@ export function AiModelsPage() {
         {
           aiModels: draft.models,
           gemini: features,
+          scriptAutoTagControls: draft.autoTagControls,
           updatedAt: serverTimestamp(),
           updatedBy: user?.email ?? null,
         },
@@ -207,6 +214,10 @@ export function AiModelsPage() {
           features={draft.features}
           onChange={(key, next) =>
             setDraft((d) => ({ ...d, features: { ...d.features, [key]: next } }))
+          }
+          autoTagControls={draft.autoTagControls}
+          onAutoTagControlsChange={(autoTagControls) =>
+            setDraft((d) => ({ ...d, autoTagControls }))
           }
           monthByFeature={month.byFeature}
           claudeConfigured={claudeConfigured}

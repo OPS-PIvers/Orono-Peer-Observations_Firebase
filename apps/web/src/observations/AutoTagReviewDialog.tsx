@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import type { AutoTagConfidence, ScriptAutoTagControls, ScriptAutoTagOptions } from '@ops/shared';
+import { AutoTagOptionsFields, hasAutoTagChoices } from './AutoTagOptions';
 
 /**
  * Where a suggestion stands after earlier reviews of the same run (see
@@ -29,6 +31,10 @@ export interface AutoTagSuggestion {
   /** The whole paragraph the span came from, shown as context. */
   paragraphText: string;
   status: AutoTagSuggestionStatus;
+  /** How sure the model said it was; null when the admin turned confidence off. */
+  confidence: AutoTagConfidence | null;
+  /** One line on what the model saw; empty when reasons were turned off. */
+  rationale: string;
 }
 
 export interface AutoTagColor {
@@ -44,6 +50,8 @@ export interface AutoTagRunInfo {
   createdBy: string;
   runCount: number;
   reason: string | null;
+  /** The options this run was made with. */
+  options: ScriptAutoTagOptions;
 }
 
 /** Mirrors RERUN_REASON_MIN_LENGTH in functions/src/observations/scriptTagRun.ts. */
@@ -54,6 +62,30 @@ const RERUN_REASON_MAX_LENGTH = 1000;
 const ACCEPT_ALL_ID = 'autotag-accept-all';
 const ROW_ID_PREFIX = 'autotag-suggestion-';
 const RERUN_REASON_ID = 'autotag-rerun-reason';
+
+const CONFIDENCE_LABEL: Record<AutoTagConfidence, string> = {
+  high: 'High confidence',
+  medium: 'Medium confidence',
+  low: 'Low confidence',
+};
+
+const CONFIDENCE_CLASS: Record<AutoTagConfidence, string> = {
+  high: 'border-green-300 text-green-800',
+  medium: 'border-amber-300 text-amber-800',
+  low: 'border-ops-red-light text-ops-red-dark',
+};
+
+const FOCUS_LABEL: Record<ScriptAutoTagOptions['components'], string> = {
+  assigned: 'Assigned only',
+  preferAssigned: 'Full rubric, prefer assigned',
+  full: 'Full rubric',
+};
+
+const DETAIL_LABEL: Record<ScriptAutoTagOptions['detail'], string> = {
+  key: 'Key evidence only',
+  balanced: 'Balanced',
+  thorough: 'Thorough',
+};
 
 const STATUS_LABEL: Partial<Record<AutoTagSuggestionStatus, string>> = {
   applied: 'Applied',
@@ -82,6 +114,11 @@ export interface AutoTagReviewDialogProps {
   /** Suggestions the AI returned that the server already discarded. */
   skippedCount: number;
   run: AutoTagRunInfo;
+  /** Options a re-run will use; editable in the Run again form. */
+  options: ScriptAutoTagOptions;
+  onOptionsChange: (next: ScriptAutoTagOptions) => void;
+  /** What the admin allows: hides confidence, re-runs and disallowed options. */
+  controls: ScriptAutoTagControls;
   applying: boolean;
   /** A re-run is in flight. */
   rerunning: boolean;
@@ -114,6 +151,9 @@ export function AutoTagReviewDialog({
   colorById,
   skippedCount,
   run,
+  options,
+  onOptionsChange,
+  controls,
   applying,
   rerunning,
   error,
@@ -155,6 +195,14 @@ export function AutoTagReviewDialog({
       else next.add(index);
       return next;
     });
+  }
+
+  const selectedLowCount = controls.confidence
+    ? suggestions.filter((s, i) => selected.has(i) && s.confidence === 'low').length
+    : 0;
+
+  function uncheckLowConfidence() {
+    setSelected((prev) => new Set([...prev].filter((i) => suggestions[i]?.confidence !== 'low')));
   }
 
   function toggleAll() {
@@ -205,8 +253,20 @@ export function AutoTagReviewDialog({
                 />
                 <span>Accept all</span>
               </label>
-              <span className="text-muted-foreground text-xs">
-                {String(keptCount)} of {String(selectableIndexes.length)} selected
+              <span className="flex items-center gap-3">
+                {selectedLowCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={uncheckLowConfidence}
+                    disabled={busy}
+                    className="text-ops-blue text-xs underline-offset-2 hover:underline"
+                  >
+                    Uncheck low confidence ({String(selectedLowCount)})
+                  </button>
+                ) : null}
+                <span className="text-muted-foreground text-xs">
+                  {String(keptCount)} of {String(selectableIndexes.length)} selected
+                </span>
               </span>
             </div>
 
@@ -249,6 +309,13 @@ export function AutoTagReviewDialog({
                             {suggestion.componentId}
                           </span>
                           <span className="text-sm font-medium">{suggestion.componentTitle}</span>
+                          {controls.confidence && suggestion.confidence ? (
+                            <span
+                              className={`rounded-full border px-1.5 py-px text-[11px] ${CONFIDENCE_CLASS[suggestion.confidence]}`}
+                            >
+                              {CONFIDENCE_LABEL[suggestion.confidence]}
+                            </span>
+                          ) : null}
                           {statusLabel ? (
                             <Badge tone={suggestion.status === 'applied' ? 'active' : 'neutral'}>
                               {statusLabel}
@@ -262,6 +329,11 @@ export function AutoTagReviewDialog({
                             color={color}
                           />
                         </span>
+                        {suggestion.rationale ? (
+                          <span className="mt-0.5 block text-xs italic">
+                            {suggestion.rationale}
+                          </span>
+                        ) : null}
                       </span>
                     </label>
                   </li>
@@ -289,6 +361,23 @@ export function AutoTagReviewDialog({
               placeholder="e.g. I added notes from the second half of the lesson, and the last run missed the questioning in the exit discussion."
               className="min-h-16 text-sm"
             />
+            {hasAutoTagChoices(controls) ? (
+              <details className="rounded-md border bg-white/60 px-2 py-1.5">
+                <summary className="cursor-pointer text-xs font-medium">
+                  Options: {FOCUS_LABEL[options.components]} · {DETAIL_LABEL[options.detail]}
+                  {options.rationale ? ' · Explain each tag' : ''}
+                </summary>
+                <div className="pt-2">
+                  <AutoTagOptionsFields
+                    value={options}
+                    onChange={onOptionsChange}
+                    disabled={rerunning}
+                    idPrefix="autotag-rerun"
+                    controls={controls}
+                  />
+                </div>
+              </details>
+            ) : null}
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground text-xs">
                 {reasonReady ? '' : `At least ${String(RERUN_REASON_MIN_LENGTH)} characters.`}
@@ -323,7 +412,7 @@ export function AutoTagReviewDialog({
         ) : null}
 
         <DialogFooter className="sm:justify-between">
-          {!rerunOpen ? (
+          {!rerunOpen && controls.rerun ? (
             <Button
               type="button"
               variant="ghost"
@@ -373,6 +462,9 @@ function RunMeta({ run }: { run: AutoTagRunInfo }) {
   return (
     <div className="text-muted-foreground space-y-0.5 text-xs">
       <p>{parts.join(' · ')}</p>
+      <p>
+        {FOCUS_LABEL[run.options.components]} · {DETAIL_LABEL[run.options.detail]}
+      </p>
       {run.reason ? <p className="italic">“{run.reason}”</p> : null}
     </div>
   );

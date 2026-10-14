@@ -1,6 +1,11 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { DocumentReference, Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, OBSERVATION_SUBCOLLECTIONS } from '@ops/shared';
+import {
+  COLLECTIONS,
+  OBSERVATION_SUBCOLLECTIONS,
+  type AutoTagConfidence,
+  type ScriptAutoTagOptions,
+} from '@ops/shared';
 import {
   filterVerbatimSuggestions,
   type ScriptTagSuggestion,
@@ -41,7 +46,15 @@ export const RUN_CLAIM_TTL_MS = 150_000;
  */
 export type SuggestionStatus = 'pending' | 'applied' | 'dismissed' | 'stale';
 
-export interface StoredScriptTagSuggestion extends ScriptTagSuggestion {
+/** What the model returns for one tag, before the verbatim check. */
+export interface ModelScriptTagSuggestion extends ScriptTagSuggestion {
+  /** Null when the admin turned confidence off. */
+  confidence: AutoTagConfidence | null;
+  /** One line on what the model saw; empty when the observer turned reasons off. */
+  rationale: string;
+}
+
+export interface StoredScriptTagSuggestion extends ModelScriptTagSuggestion {
   componentTitle: string;
   paragraphText: string;
   status: SuggestionStatus;
@@ -49,6 +62,7 @@ export interface StoredScriptTagSuggestion extends ScriptTagSuggestion {
 
 export interface StoredScriptTagRun {
   scope: TagScope;
+  options: ScriptAutoTagOptions;
   suggestions: StoredScriptTagSuggestion[];
   componentColors: { componentId: string; bg: string; fg: string }[];
   skippedCount: number;

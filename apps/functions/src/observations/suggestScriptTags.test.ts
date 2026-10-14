@@ -76,12 +76,16 @@ interface FakeDocRef {
 }
 
 /** In-memory Firestore covering the reads auto-tag makes and the run doc it writes. */
-function buildDb(obs: Record<string, unknown>, savedRun?: Record<string, unknown>) {
+function buildDb(
+  obs: Record<string, unknown>,
+  savedRun?: Record<string, unknown>,
+  controls?: Record<string, unknown>,
+) {
   const docs = new Map<string, Record<string, unknown>>([
     [OBS_PATH, obs],
     [
       `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`,
-      { gemini: { scriptAutoTag: { access: 'all' } } },
+      { gemini: { scriptAutoTag: { access: 'all' } }, scriptAutoTagControls: controls },
     ],
     [
       `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId('teacher', 1)}`,
@@ -105,6 +109,12 @@ function buildDb(obs: Record<string, unknown>, savedRun?: Record<string, unknown
                 id: '2b',
                 title: 'Culture for Learning',
                 color: { bg: '#dcfce7', fg: '#14532d' },
+                lookFors: [],
+              },
+              {
+                id: '3c',
+                title: 'Engaging Students',
+                color: { bg: '#fef3c7', fg: '#78350f' },
                 lookFors: [],
               },
             ],
@@ -178,21 +188,49 @@ function callerRequest(data: Record<string, unknown>): Partial<CallableRequest> 
 }
 
 interface SuggestResult {
-  suggestions: { text: string; componentId: string; status: string }[];
-  run: { reused: boolean; runCount: number; reason: string | null; scope: string };
+  suggestions: {
+    text: string;
+    componentId: string;
+    status: string;
+    confidence: string | null;
+    rationale: string;
+  }[];
+  run: {
+    reused: boolean;
+    runCount: number;
+    reason: string | null;
+    scope: string;
+    options: { components: string; detail: string; rationale: boolean };
+  };
 }
 
 const MODEL_REPLY = JSON.stringify({
   tags: [
-    { paragraphIndex: 0, text: 'turned and talked', componentId: '2b' },
-    { paragraphIndex: 1, text: 'circulated', componentId: '1a' },
+    {
+      paragraphIndex: 0,
+      text: 'turned and talked',
+      componentId: '2b',
+      confidence: 'high',
+      rationale: 'Students talk with each other about the work.',
+    },
+    {
+      paragraphIndex: 1,
+      text: 'circulated',
+      componentId: '1a',
+      confidence: 'sure',
+      rationale: 'Teacher monitors.',
+    },
   ],
 });
 
 let docs: Map<string, Record<string, unknown>>;
 
-function install(obs = observation(), savedRun?: Record<string, unknown>) {
-  const built = buildDb(obs, savedRun);
+function install(
+  obs = observation(),
+  savedRun?: Record<string, unknown>,
+  controls?: Record<string, unknown>,
+) {
+  const built = buildDb(obs, savedRun, controls);
   h.db = built.db;
   docs = built.docs;
 }
@@ -205,6 +243,7 @@ beforeEach(() => {
 function savedRun(over: Record<string, unknown> = {}) {
   return {
     scope: 'assigned',
+    options: { components: 'assigned', detail: 'balanced', rationale: true },
     suggestions: [
       {
         paragraphIndex: 0,
@@ -344,5 +383,126 @@ describe('suggestScriptTags — one AI run per observation', () => {
   it('still checks access before reopening a saved run', async () => {
     install(observation({ status: OBSERVATION_STATUS.finalized }), savedRun());
     await expect(run(callerRequest({ observationId: OBS_ID }))).rejects.toThrow(/finalized/);
+  });
+});
+
+describe('suggestScriptTags — run options', () => {
+  const promptOf = () => (h.generateText.mock.calls[0]?.[1] as { prompt: string }).prompt;
+
+  it('returns confidence and a reason with each suggestion by default', async () => {
+    const res = (await run(callerRequest({ observationId: OBS_ID }))) as SuggestResult;
+    expect(res.suggestions.map((s) => s.confidence)).toEqual(['high', 'medium']);
+    expect(res.suggestions[0]?.rationale).toBe('Students talk with each other about the work.');
+    expect(res.run.options).toEqual({
+      components: 'assigned',
+      detail: 'balanced',
+      rationale: true,
+    });
+    expect(promptOf()).toContain('one short sentence');
+  });
+
+  it('drops reasons when the observer turned them off', async () => {
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, options: { rationale: false } }),
+    )) as SuggestResult;
+    expect(res.suggestions.every((s) => s.rationale === '')).toBe(true);
+    expect(promptOf()).toContain('"rationale" must be an empty string');
+  });
+
+  it('sends the whole rubric with assigned components marked for "prefer assigned"', async () => {
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, options: { components: 'preferAssigned' } }),
+    )) as SuggestResult;
+    expect(res.run.scope).toBe('full');
+    const prompt = promptOf();
+    expect(prompt).toContain('"id": "3c"');
+    expect(prompt).toContain('"assigned": false');
+    expect(prompt).toContain('use the assigned one');
+  });
+
+  it('leaves out unassigned components for "assigned only"', async () => {
+    await run(callerRequest({ observationId: OBS_ID, options: { components: 'assigned' } }));
+    expect(promptOf()).not.toContain('"id": "3c"');
+    expect(promptOf()).not.toContain('"assigned"');
+  });
+
+  it('weighs the whole rubric equally for "full"', async () => {
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, options: { components: 'full' } }),
+    )) as SuggestResult;
+    expect(res.run.scope).toBe('full');
+    expect(promptOf()).toContain('"id": "3c"');
+    expect(promptOf()).not.toContain('"assigned"');
+  });
+
+  it('still honours the older scope field when no options are sent', async () => {
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, scope: 'full' }),
+    )) as SuggestResult;
+    expect(res.run.options.components).toBe('full');
+  });
+
+  it('changes the tagging rule with the detail level', async () => {
+    await run(callerRequest({ observationId: OBS_ID, options: { detail: 'key' } }));
+    expect(promptOf()).toContain('strongest, most clearly demonstrated evidence');
+  });
+
+  it('reopens a saved run with the options it was made with', async () => {
+    install(
+      observation(),
+      savedRun({ scope: 'full', options: { components: 'full', detail: 'key', rationale: false } }),
+    );
+    const res = (await run(
+      callerRequest({ observationId: OBS_ID, options: { components: 'assigned' } }),
+    )) as SuggestResult;
+    expect(res.run.options).toEqual({ components: 'full', detail: 'key', rationale: false });
+  });
+});
+
+describe('suggestScriptTags — admin controls', () => {
+  const promptOf = () => (h.generateText.mock.calls[0]?.[1] as { prompt: string }).prompt;
+  const schemaOf = () =>
+    JSON.stringify((h.generateText.mock.calls[0]?.[1] as { jsonSchema: unknown }).jsonSchema);
+
+  it('refuses a re-run when the admin turned re-runs off', async () => {
+    install(observation(), savedRun(), { rerun: false });
+    await expect(
+      run(callerRequest({ observationId: OBS_ID, reason: 'Added the exit-ticket discussion.' })),
+    ).rejects.toThrow(/turned off/);
+    expect(h.generateText).not.toHaveBeenCalled();
+  });
+
+  it('still reopens the saved run when re-runs are off', async () => {
+    install(observation(), savedRun(), { rerun: false });
+    const res = (await run(callerRequest({ observationId: OBS_ID }))) as SuggestResult;
+    expect(res.run.reused).toBe(true);
+  });
+
+  it('moves a turned-off choice to the nearest allowed one', async () => {
+    install(observation(), undefined, {
+      components: { full: false },
+      detail: { thorough: false },
+      rationale: false,
+    });
+    const res = (await run(
+      callerRequest({
+        observationId: OBS_ID,
+        options: { components: 'full', detail: 'thorough', rationale: true },
+      }),
+    )) as SuggestResult;
+    expect(res.run.options).toEqual({
+      components: 'preferAssigned',
+      detail: 'balanced',
+      rationale: false,
+    });
+    expect(res.suggestions.every((s) => s.rationale === '')).toBe(true);
+  });
+
+  it('leaves confidence out of the prompt and the results when turned off', async () => {
+    install(observation(), undefined, { confidence: false });
+    const res = (await run(callerRequest({ observationId: OBS_ID }))) as SuggestResult;
+    expect(promptOf()).not.toContain('"confidence"');
+    expect(schemaOf()).not.toContain('confidence');
+    expect(res.suggestions.every((s) => s.confidence === null)).toBe(true);
   });
 });

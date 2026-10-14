@@ -7,6 +7,7 @@ import { httpsCallable } from 'firebase/functions';
 import {
   Bold,
   Check,
+  ChevronDown,
   Heading2,
   Heading3,
   Italic,
@@ -20,7 +21,13 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import type { RubricComponent, RubricDomain, TiptapDoc } from '@ops/shared';
+import type {
+  RubricComponent,
+  RubricDomain,
+  ScriptAutoTagControls,
+  ScriptAutoTagOptions,
+  TiptapDoc,
+} from '@ops/shared';
 import { cn } from '@/lib/utils';
 import { functions } from '@/lib/firebase';
 import { useGeminiAccess } from '@/hooks/useGeminiAccess';
@@ -37,6 +44,9 @@ import {
   type AutoTagSuggestion,
 } from './AutoTagReviewDialog';
 import { assertWritable } from '@/dev/viewAsGuard';
+import { AutoTagOptionsFields, hasAutoTagChoices } from './AutoTagOptions';
+import { useAutoTagOptions, useScriptAutoTagControls } from './useAutoTagOptions';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -49,7 +59,12 @@ const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
  * instead of calling the AI again. A new AI run needs a `reason`.
  */
 const suggestScriptTagsFn = httpsCallable<
-  { observationId: string; scope: AssignmentMode; reason?: string },
+  {
+    observationId: string;
+    scope: AssignmentMode;
+    options: ScriptAutoTagOptions;
+    reason?: string;
+  },
   {
     suggestions: AutoTagSuggestion[];
     componentColors: { componentId: string; bg: string; fg: string }[];
@@ -179,6 +194,8 @@ export function ScriptEditor({
   }, [editor]);
 
   const autoTagEnabled = useGeminiAccess().scriptAutoTag;
+  const autoTagControls = useScriptAutoTagControls();
+  const [autoTagOptions, setAutoTagOptions] = useAutoTagOptions(tagScope, autoTagControls);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [autoTagBusy, setAutoTagBusy] = useState(false);
@@ -279,7 +296,11 @@ export function ScriptEditor({
     setAutoTagNotice(null);
     try {
       assertWritable();
-      const res = await suggestScriptTagsFn({ observationId, scope: tagScope });
+      const res = await suggestScriptTagsFn({
+        observationId,
+        scope: tagScope,
+        options: autoTagOptions,
+      });
       showReview(res.data);
     } catch (err) {
       setAutoTagError(err instanceof Error ? err.message : 'Auto-tag failed');
@@ -295,7 +316,12 @@ export function ScriptEditor({
     setApplyError(null);
     try {
       assertWritable();
-      const res = await suggestScriptTagsFn({ observationId, scope: tagScope, reason });
+      const res = await suggestScriptTagsFn({
+        observationId,
+        scope: tagScope,
+        options: autoTagOptions,
+        reason,
+      });
       showReview(res.data);
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Auto-tag failed');
@@ -354,6 +380,9 @@ export function ScriptEditor({
           }}
           onAutoTag={observationId && autoTagEnabled ? () => void openAutoTag() : null}
           autoTagBusy={autoTagBusy}
+          autoTagOptions={autoTagOptions}
+          onAutoTagOptionsChange={setAutoTagOptions}
+          autoTagControls={autoTagControls}
         />
       ) : null}
       {autoTagError ? (
@@ -396,6 +425,9 @@ export function ScriptEditor({
           colorById={review.colorById}
           skippedCount={review.skippedCount}
           run={review.run}
+          options={autoTagOptions}
+          onOptionsChange={setAutoTagOptions}
+          controls={autoTagControls}
           applying={applyBusy}
           rerunning={rerunBusy}
           error={applyError}
@@ -418,6 +450,9 @@ function ScriptToolbar({
   onTogglePicker,
   onAutoTag,
   autoTagBusy,
+  autoTagOptions,
+  onAutoTagOptionsChange,
+  autoTagControls,
 }: {
   editor: Editor;
   activeTagId: string | null;
@@ -425,6 +460,9 @@ function ScriptToolbar({
   onTogglePicker: () => void;
   onAutoTag: (() => void) | null;
   autoTagBusy: boolean;
+  autoTagOptions: ScriptAutoTagOptions;
+  onAutoTagOptionsChange: (next: ScriptAutoTagOptions) => void;
+  autoTagControls: ScriptAutoTagControls;
 }) {
   const linkDialog = useLinkDialog(editor);
 
@@ -512,6 +550,33 @@ function ScriptToolbar({
           <Sparkles className={cn('h-4 w-4', autoTagBusy && 'animate-pulse')} />
           <span>{autoTagBusy ? 'Reviewing…' : 'Auto-tag'}</span>
         </button>
+      ) : null}
+      {onAutoTag && hasAutoTagChoices(autoTagControls) ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={autoTagBusy}
+              aria-label="Auto-tag options"
+              title="Auto-tag options"
+              className="hover:bg-accent hover:text-accent-foreground -ml-1 inline-flex h-8 w-6 items-center justify-center rounded-md transition-colors disabled:opacity-50"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3">
+            <p className="mb-2 text-xs font-medium">Auto-tag options</p>
+            <AutoTagOptionsFields
+              value={autoTagOptions}
+              onChange={onAutoTagOptionsChange}
+              idPrefix="autotag-toolbar"
+              controls={autoTagControls}
+            />
+            <p className="text-muted-foreground mt-2 text-xs">
+              Used for the next run. Remembered in this browser.
+            </p>
+          </PopoverContent>
+        </Popover>
       ) : null}
       <div className="ml-auto flex items-center gap-1">
         <ToolbarButton

@@ -4,14 +4,23 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ANTHROPIC_API_KEY, generateText, loadFeatureModel } from '../lib/aiClient.js';
-import type { AiModel, RubricComponent } from '@ops/shared';
+import {
+  autoTagUsesFullRubric,
+  clampScriptAutoTagOptions,
+  parseAutoTagConfidence,
+  parseScriptAutoTagOptions,
+  type AiModel,
+  type AutoTagDetail,
+  type RubricComponent,
+  type ScriptAutoTagOptions,
+} from '@ops/shared';
 import {
   assertScriptAutoTagAvailable,
   filterVerbatimSuggestions,
+  loadScriptAutoTagControls,
   loadScriptAutoTagFeature,
   loadTaggingContext,
   parseTagScope,
-  type ScriptTagSuggestion,
   type TagScope,
 } from './scriptTagging.js';
 import {
@@ -21,6 +30,7 @@ import {
   markStaleSuggestions,
   parseRerunReason,
   rerunPromptContext,
+  type ModelScriptTagSuggestion,
   type StoredScriptTagRun,
   type SuggestionStatus,
 } from './scriptTagRun.js';
@@ -29,8 +39,13 @@ if (getApps().length === 0) initializeApp();
 
 interface SuggestScriptTagsRequest {
   observationId?: string;
-  /** `'full'` to tag against the whole rubric; defaults to assigned only. */
+  /**
+   * `'full'` to tag against the whole rubric; defaults to assigned only.
+   * Superseded by `options.components` when that is sent.
+   */
   scope?: unknown;
+  /** The observer's run options; see ScriptAutoTagOptions. */
+  options?: unknown;
   /**
    * Required to run the AI again once a result exists: what changed, or what
    * the model should know this time. Without it the last result is returned.
@@ -39,7 +54,7 @@ interface SuggestScriptTagsRequest {
 }
 
 /** A suggestion enriched with everything the review dialog needs to render it. */
-export interface ReviewableScriptTagSuggestion extends ScriptTagSuggestion {
+export interface ReviewableScriptTagSuggestion extends ModelScriptTagSuggestion {
   componentTitle: string;
   /** Full text of the paragraph the span was found in, for context. */
   paragraphText: string;
@@ -56,6 +71,7 @@ interface SuggestScriptTagsResponse {
     /** True when this is the saved result of an earlier run, not a new AI call. */
     reused: boolean;
     scope: TagScope;
+    options: ScriptAutoTagOptions;
     createdAt: string | null;
     createdBy: string;
     runCount: number;
@@ -106,6 +122,7 @@ export const suggestScriptTags = onCall(
     const {
       observationId,
       scope: rawScope,
+      options: rawOptions,
       reason: rawReason,
     } = (request.data ?? {}) as SuggestScriptTagsRequest;
     if (!observationId) {
@@ -116,13 +133,34 @@ export const suggestScriptTags = onCall(
     const db = getFirestore();
     const feature = await loadScriptAutoTagFeature(db);
     assertScriptAutoTagAvailable(feature, userEmail);
+    const controls = await loadScriptAutoTagControls(db);
+    if (reason !== null && !controls.rerun) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Running auto-tag again is turned off. Reopen the last result instead.',
+      );
+    }
 
     const runRef = latestRunRef(db, observationId);
     const previous = (await runRef.get()).data() as Partial<StoredScriptTagRun> | undefined;
     const reuse = reason === null && hasCompletedRun(previous);
-    // Reopening shows the saved run under the scope it was made with, so
-    // Apply validates against the same component set.
-    const scope = reuse && previous?.scope ? previous.scope : parseTagScope(rawScope);
+    // Anything the admin has turned off moves to the nearest allowed choice.
+    const requested = clampScriptAutoTagOptions(
+      parseScriptAutoTagOptions(
+        rawOptions,
+        parseTagScope(rawScope) === 'full' ? 'full' : 'assigned',
+      ),
+      controls,
+    );
+    // Reopening shows the saved run under the options and scope it was made
+    // with, so Apply validates against the same component set.
+    const options = reuse && previous?.options ? previous.options : requested;
+    const scope: TagScope =
+      reuse && previous?.scope
+        ? previous.scope
+        : autoTagUsesFullRubric(options.components)
+          ? 'full'
+          : 'assigned';
 
     const callerRole = request.auth.token['role'] as string | undefined;
     // Runs before the reuse branch too: reopening a saved result needs the
@@ -149,6 +187,7 @@ export const suggestScriptTags = onCall(
         run: {
           reused: true,
           scope,
+          options,
           createdAt: toIso(previous.createdAt),
           createdBy: previous.createdBy ?? '',
           runCount: previous.runCount ?? 1,
@@ -187,7 +226,12 @@ export const suggestScriptTags = onCall(
         ctx.paragraphs,
         model,
         { userEmail, observationId },
-        extraContext,
+        {
+          options,
+          assignedIds: ctx.assignedComponentIds,
+          confidence: controls.confidence,
+          extraContext,
+        },
       );
 
       const { accepted, rejected } = filterVerbatimSuggestions(
@@ -214,6 +258,7 @@ export const suggestScriptTags = onCall(
       const createdAt = new Date();
       const stored: StoredScriptTagRun = {
         scope,
+        options,
         suggestions,
         componentColors,
         skippedCount: rejected.length,
@@ -240,6 +285,7 @@ export const suggestScriptTags = onCall(
         run: {
           reused: false,
           scope,
+          options,
           createdAt: createdAt.toISOString(),
           createdBy: userEmail,
           runCount: stored.runCount,
@@ -268,62 +314,116 @@ function toIso(value: unknown): string | null {
 
 // ─── Model call ──────────────────────────────────────────────────────────────
 
-const TAGS_SCHEMA = {
-  type: 'object',
-  properties: {
-    tags: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          paragraphIndex: { type: 'integer' },
-          text: { type: 'string' },
-          componentId: { type: 'string' },
-        },
-        required: ['paragraphIndex', 'text', 'componentId'],
-        additionalProperties: false,
+/** The JSON shape asked of the model; `confidence` only when the admin has it on. */
+function tagsSchema(withConfidence: boolean): Record<string, unknown> {
+  const properties: Record<string, unknown> = {
+    paragraphIndex: { type: 'integer' },
+    text: { type: 'string' },
+    componentId: { type: 'string' },
+    rationale: { type: 'string' },
+  };
+  const required = ['paragraphIndex', 'text', 'componentId', 'rationale'];
+  if (withConfidence) {
+    properties['confidence'] = { type: 'string', enum: ['high', 'medium', 'low'] };
+    required.push('confidence');
+  }
+  return {
+    type: 'object',
+    properties: {
+      tags: {
+        type: 'array',
+        items: { type: 'object', properties, required, additionalProperties: false },
       },
     },
-  },
-  required: ['tags'],
-  additionalProperties: false,
+    required: ['tags'],
+    additionalProperties: false,
+  };
+}
+
+const DETAIL_RULES: Record<AutoTagDetail, string> = {
+  key: '- Tag only the strongest, most clearly demonstrated evidence. Aim for a few tags across the whole script, not one per paragraph.',
+  balanced: '- Tag spans that show clear evidence; skip ambiguous text.',
+  thorough:
+    '- Tag every span that shows reasonable evidence, including smaller moments. Still skip text with no real connection to a component.',
 };
 
-async function callModelForTags(
+interface PromptOptions {
+  options: ScriptAutoTagOptions;
+  /** Assigned component ids, for the "prefer assigned" focus. */
+  assignedIds: ReadonlySet<string> | null;
+  /** Ask for a confidence level per tag (admin-controlled). */
+  confidence: boolean;
+  /** Re-run context appended after the script. */
+  extraContext: string;
+}
+
+/** Build the tagging prompt. Exported for tests. */
+export function buildTagPrompt(
   components: readonly RubricComponent[],
   paragraphs: readonly string[],
-  model: AiModel,
-  caller: { userEmail: string; observationId: string },
-  extraContext = '',
-): Promise<ScriptTagSuggestion[]> {
+  { options, assignedIds, confidence, extraContext }: PromptOptions,
+): string {
+  const preferAssigned = options.components === 'preferAssigned' && assignedIds !== null;
   const componentBlock = components.map((c) => ({
     id: c.id,
     title: c.title,
+    ...(preferAssigned ? { assigned: assignedIds.has(c.id) } : {}),
     proficiencyDescriptors: c.proficiencyLevels,
     lookFors: c.lookFors.map((lf) => lf.text),
   }));
 
   const paragraphBlock = paragraphs.map((text, i) => ({ paragraphIndex: i, text }));
 
-  const prompt = `You are tagging a teacher observation script with components from the Danielson Framework. For each paragraph, identify spans of text — verbatim substrings of that paragraph — that demonstrate evidence of any listed component.
+  const rules = [
+    '- "text" MUST be an exact verbatim substring of the paragraph at "paragraphIndex". Do not paraphrase, summarize, or correct.',
+    DETAIL_RULES[options.detail],
+    '- A paragraph may produce zero, one, or many tags.',
+    '- Use the component "id" exactly as listed.',
+  ];
+  if (preferAssigned) {
+    rules.push(
+      '- Components marked "assigned": true are this observation\'s focus. Tag evidence for any component, but when a span fits an assigned component and an unassigned one about equally, use the assigned one.',
+    );
+  }
+  if (confidence) {
+    rules.push(
+      '- "confidence" is how clearly the span shows evidence of that component: "high" (unmistakable), "medium" (reasonable reading), or "low" (plausible but arguable).',
+    );
+  }
+  rules.push(
+    options.rationale
+      ? '- "rationale" is one short sentence (under 20 words) saying what in the span shows that component.'
+      : '- "rationale" must be an empty string.',
+  );
+  rules.push(
+    `- Output strict JSON matching: { "tags": [ { "paragraphIndex": number, "text": string, "componentId": string, ${confidence ? '"confidence": "high" | "medium" | "low", ' : ''}"rationale": string } ] }`,
+    '- No prose, no markdown, no explanation outside the JSON.',
+  );
+
+  return `You are tagging a teacher observation script with components from the Danielson Framework. For each paragraph, identify spans of text — verbatim substrings of that paragraph — that demonstrate evidence of any listed component.
 
 RULES:
-- "text" MUST be an exact verbatim substring of the paragraph at "paragraphIndex". Do not paraphrase, summarize, or correct.
-- Only tag spans that show clear evidence; skip ambiguous text.
-- A paragraph may produce zero, one, or many tags.
-- Use the component "id" exactly as listed.
-- Output strict JSON matching: { "tags": [ { "paragraphIndex": number, "text": string, "componentId": string } ] }
-- No prose, no markdown, no explanation outside the JSON.
+${rules.join('\n')}
 
 COMPONENTS:
 ${JSON.stringify(componentBlock, null, 2)}
 
 SCRIPT:
 ${JSON.stringify(paragraphBlock, null, 2)}${extraContext}`;
+}
+
+async function callModelForTags(
+  components: readonly RubricComponent[],
+  paragraphs: readonly string[],
+  model: AiModel,
+  caller: { userEmail: string; observationId: string },
+  promptOptions: PromptOptions,
+): Promise<ModelScriptTagSuggestion[]> {
+  const prompt = buildTagPrompt(components, paragraphs, promptOptions);
 
   const raw = await generateText(
     model,
-    { prompt, jsonSchema: TAGS_SCHEMA, temperature: 0.2 },
+    { prompt, jsonSchema: tagsSchema(promptOptions.confidence), temperature: 0.2 },
     { feature: 'scriptAutoTag', logContext: 'suggestScriptTags', ...caller },
   );
   if (!raw) throw new HttpsError('internal', 'The AI model returned no content');
@@ -341,10 +441,16 @@ ${JSON.stringify(paragraphBlock, null, 2)}${extraContext}`;
 
   const tags = (parsed as { tags?: unknown }).tags;
   if (!Array.isArray(tags)) return [];
-  const out: ScriptTagSuggestion[] = [];
+  const out: ModelScriptTagSuggestion[] = [];
   for (const t of tags) {
     if (!t || typeof t !== 'object') continue;
-    const tt = t as { paragraphIndex?: unknown; text?: unknown; componentId?: unknown };
+    const tt = t as {
+      paragraphIndex?: unknown;
+      text?: unknown;
+      componentId?: unknown;
+      confidence?: unknown;
+      rationale?: unknown;
+    };
     if (
       typeof tt.paragraphIndex === 'number' &&
       typeof tt.text === 'string' &&
@@ -354,6 +460,11 @@ ${JSON.stringify(paragraphBlock, null, 2)}${extraContext}`;
         paragraphIndex: tt.paragraphIndex,
         text: tt.text,
         componentId: tt.componentId,
+        confidence: promptOptions.confidence ? parseAutoTagConfidence(tt.confidence) : null,
+        rationale:
+          promptOptions.options.rationale && typeof tt.rationale === 'string'
+            ? tt.rationale.trim().slice(0, 300)
+            : '',
       });
     }
   }
