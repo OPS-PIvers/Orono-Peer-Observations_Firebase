@@ -5,10 +5,10 @@ import { logger } from 'firebase-functions';
 
 /**
  * Region for Vertex AI Gemini calls. Override with VERTEX_LOCATION in
- * `apps/functions/.env.peer-evaluator-rubric`; use `global` if the chosen
- * model isn't offered regionally.
+ * `apps/functions/.env.peer-evaluator-rubric`. Gemini 3.x models are served
+ * only from `global`; a regional location returns 404 for them.
  */
-const VERTEX_LOCATION = defineString('VERTEX_LOCATION', { default: 'us-central1' });
+const VERTEX_LOCATION = defineString('VERTEX_LOCATION', { default: 'global' });
 
 let authClient: GoogleAuth | null = null;
 
