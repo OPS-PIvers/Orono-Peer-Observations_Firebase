@@ -58,6 +58,9 @@ export const DRIVE_OAUTH_REFRESH_TOKEN = defineSecret('DRIVE_OAUTH_REFRESH_TOKEN
 export const DRIVE_SECRETS = [GOOGLE_OAUTH_CLIENT_SECRET, DRIVE_OAUTH_REFRESH_TOKEN];
 
 let driveClient: drive_v3.Drive | null = null;
+/** Access token for the same identity as `driveClient`, for the raw resumable
+ *  upload calls the googleapis client has no API for. */
+let driveAccessToken: (() => Promise<string | null | undefined>) | null = null;
 
 export async function getDriveClient(): Promise<drive_v3.Drive> {
   if (driveClient) return driveClient;
@@ -70,12 +73,14 @@ export async function getDriveClient(): Promise<drive_v3.Drive> {
     });
     auth.setCredentials({ refresh_token: refreshToken });
     driveClient = google.drive({ version: 'v3', auth });
+    driveAccessToken = async () => (await auth.getAccessToken()).token;
   } else if (process.env['FUNCTIONS_EMULATOR'] === 'true') {
     // Local emulator without a token: runtime credentials, as before.
     const auth = new google.auth.GoogleAuth({
       scopes: ['https://www.googleapis.com/auth/drive'],
     });
     driveClient = google.drive({ version: 'v3', auth });
+    driveAccessToken = () => auth.getAccessToken();
   } else {
     throw new Error(
       'DRIVE_OAUTH_REFRESH_TOKEN is empty. Add DRIVE_SECRETS to this function’s ' +
@@ -147,6 +152,132 @@ export async function uploadFileToFolder(args: {
   return { fileId: result.data.id, fileName: result.data.name };
 }
 
+const RESUMABLE_UPLOAD_ENDPOINT = 'https://www.googleapis.com/upload/drive/v3/files';
+
+/** Thrown when Drive no longer knows a resumable upload session (it expired
+ *  or never existed); the caller has to start the upload over. */
+export class ResumableUploadGoneError extends Error {
+  constructor() {
+    super('Drive upload session expired');
+    this.name = 'ResumableUploadGoneError';
+  }
+}
+
+/**
+ * True for a Drive resumable upload session URL, the only URL
+ * `putResumableChunk` will send bytes to. Session URLs round-trip through the
+ * browser, so this is what keeps a caller from pointing the function at an
+ * arbitrary host.
+ */
+export function isResumableSessionUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'https:' &&
+    url.host === 'www.googleapis.com' &&
+    url.pathname === '/upload/drive/v3/files' &&
+    Boolean(url.searchParams.get('upload_id'))
+  );
+}
+
+/**
+ * Open a Drive resumable upload for a new file in `folderId` and return its
+ * session URL. Bytes are then sent in pieces with `putResumableChunk`, which
+ * is how audio larger than one Cloud Functions request (32 MiB) gets in.
+ */
+export async function startResumableUpload(args: {
+  folderId: string;
+  filename: string;
+  mimeType: string;
+  totalBytes: number;
+}): Promise<string> {
+  await getDriveClient();
+  const token = driveAccessToken ? await driveAccessToken() : null;
+  if (!token) throw new Error('No Drive access token');
+  const response = await fetch(
+    `${RESUMABLE_UPLOAD_ENDPOINT}?uploadType=resumable&supportsAllDrives=true`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': args.mimeType,
+        'X-Upload-Content-Length': String(args.totalBytes),
+      },
+      body: JSON.stringify({
+        name: args.filename,
+        parents: [args.folderId],
+        mimeType: args.mimeType,
+      }),
+    },
+  );
+  const location = response.headers.get('location');
+  if (!response.ok || !location) {
+    throw new Error(
+      `Drive resumable upload start failed (${String(response.status)}): ${await response.text()}`,
+    );
+  }
+  return location;
+}
+
+export type ResumableUploadStatus =
+  | { done: false; received: number }
+  | { done: true; fileId: string; fileName: string };
+
+/**
+ * Send one piece of a resumable upload, starting at byte `offset`. An empty
+ * `chunk` sends nothing and asks Drive how much it has, which is how a client
+ * whose last request died mid-flight finds out where to resume.
+ */
+export async function putResumableChunk(args: {
+  sessionUrl: string;
+  chunk: Buffer;
+  offset: number;
+  totalBytes: number;
+}): Promise<ResumableUploadStatus> {
+  if (!isResumableSessionUrl(args.sessionUrl)) throw new Error('Not a Drive upload session URL');
+  const { chunk, offset, totalBytes } = args;
+  const range =
+    chunk.length === 0
+      ? `bytes */${String(totalBytes)}`
+      : `bytes ${String(offset)}-${String(offset + chunk.length - 1)}/${String(totalBytes)}`;
+  const response = await fetch(args.sessionUrl, {
+    method: 'PUT',
+    headers: { 'Content-Range': range },
+    body: chunk.length === 0 ? null : new Uint8Array(chunk),
+  });
+  return parseResumableResponse(response);
+}
+
+/** Exported for tests. */
+export async function parseResumableResponse(response: Response): Promise<ResumableUploadStatus> {
+  if (response.status === 308) {
+    // "bytes=0-12345": Drive has bytes 0 through 12345. No header: nothing yet.
+    const match = /bytes=0-(\d+)/.exec(response.headers.get('range') ?? '');
+    return { done: false, received: match ? Number(match[1]) + 1 : 0 };
+  }
+  if (response.status === 404 || response.status === 410) throw new ResumableUploadGoneError();
+  if (!response.ok) {
+    throw new Error(
+      `Drive resumable upload failed (${String(response.status)}): ${await response.text()}`,
+    );
+  }
+  const file = (await response.json()) as { id?: string; name?: string };
+  if (!file.id || !file.name) throw new Error('Drive upload returned no id/name');
+  return { done: true, fileId: file.id, fileName: file.name };
+}
+
+/** The folders a Drive file sits in. */
+export async function getFileParents(fileId: string): Promise<string[]> {
+  const drive = await getDriveClient();
+  const result = await drive.files.get({ fileId, fields: 'parents', supportsAllDrives: true });
+  return result.data.parents ?? [];
+}
+
 /**
  * Replace an existing Drive file's content (and name) in place, keeping its
  * fileId — and therefore every previously-shared link — stable. Used on
@@ -202,6 +333,20 @@ export async function trashDriveFile(fileId: string): Promise<void> {
     const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
   }
+}
+
+/**
+ * A Drive file's bytes as a stream. `getAudio` pipes this straight to the
+ * response: a streamed (chunked) response is the only way Cloud Functions
+ * will return more than 32 MiB.
+ */
+export async function downloadFileStream(fileId: string): Promise<Readable> {
+  const drive = await getDriveClient();
+  const result = await drive.files.get(
+    { fileId, alt: 'media', supportsAllDrives: true },
+    { responseType: 'stream' },
+  );
+  return result.data;
 }
 
 export async function downloadFile(fileId: string): Promise<Buffer> {
