@@ -18,18 +18,16 @@
  * messaging sender id.
  */
 
+import { MAX_AUDIO_UPLOAD_BYTES } from '@ops/shared';
+
 /** Read-only access to the files the user picks, nothing else in their Drive. */
 const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const HOSTED_DOMAIN = 'orono.k12.mn.us';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 const GAPI_SRC = 'https://apis.google.com/js/api.js';
 
-/**
- * Largest file we try to import. Cloud Functions reject request bodies over
- * 32 MiB, so leave headroom. A Voice Memo at the default (compressed) quality
- * is about half a megabyte per minute, so this is roughly an hour of audio.
- */
-export const MAX_DRIVE_AUDIO_BYTES = 31 * 1024 * 1024;
+/** Largest file we try to import: the same cap as an in-app recording. */
+export const MAX_DRIVE_AUDIO_BYTES = MAX_AUDIO_UPLOAD_BYTES;
 
 /** Audio types the Picker shows. Drive labels Voice Memos `audio/x-m4a`. */
 const PICKER_MIME_TYPES = [

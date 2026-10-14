@@ -1,3 +1,4 @@
+import { pipeline } from 'node:stream/promises';
 import { onRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
@@ -7,7 +8,7 @@ import { COLLECTIONS } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
-  downloadFile,
+  downloadFileStream,
   getDriveClient,
 } from '../lib/drive.js';
 import { canReadRecording } from './recordingAccess.js';
@@ -107,14 +108,19 @@ export const getAudio = onRequest(
         fields: 'mimeType, name',
         supportsAllDrives: true,
       });
-      const buffer = await downloadFile(audioFileId);
+      const audio = await downloadFileStream(audioFileId);
       res.setHeader('Content-Type', meta.data.mimeType ?? 'audio/webm');
       res.setHeader('Content-Disposition', `inline; filename="${meta.data.name ?? 'audio.webm'}"`);
       res.setHeader('Cache-Control', 'private, max-age=3600');
-      res.status(200).send(buffer);
+      res.status(200);
+      // Streamed with no Content-Length, so the response goes out chunked:
+      // Cloud Functions refuse a buffered response over 32 MiB, which a
+      // class-period recording is.
+      await pipeline(audio, res);
     } catch (err) {
       logger.error('getAudio: failed', err);
-      res.status(500).send('Failed to fetch audio');
+      if (res.headersSent) res.destroy();
+      else res.status(500).send('Failed to fetch audio');
     }
   },
 );

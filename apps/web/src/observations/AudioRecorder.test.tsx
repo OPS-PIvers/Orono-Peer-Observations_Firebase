@@ -205,7 +205,7 @@ describe('<AudioRecorder> upload from Drive', () => {
     drive.pickDriveAudio.mockResolvedValue({
       accessToken: 'tok',
       files: [
-        { id: 'd1', name: 'Huge.m4a', mimeType: 'audio/x-m4a', sizeBytes: 200 * 1024 * 1024 },
+        { id: 'd1', name: 'Huge.m4a', mimeType: 'audio/x-m4a', sizeBytes: 500 * 1024 * 1024 },
         { id: 'd2', name: 'Notes.caf', mimeType: 'audio/x-caf', sizeBytes: 10 },
       ],
     });
@@ -231,5 +231,103 @@ describe('<AudioRecorder> upload from Drive', () => {
     });
     expect(drive.uploadObservationAudio).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('<AudioRecorder> recording', () => {
+  /** Stands in for the browser recorder: one chunk of audio, then stop. */
+  class FakeMediaRecorder {
+    static isTypeSupported = () => true;
+    static options: MediaRecorderOptions | undefined;
+    state: RecordingState = 'inactive';
+    mimeType = 'audio/webm;codecs=opus';
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      FakeMediaRecorder.options = options;
+    }
+    start() {
+      this.state = 'recording';
+    }
+    stop() {
+      this.state = 'inactive';
+      this.ondataavailable?.({ data: new Blob(['audio-bytes'], { type: this.mimeType }) });
+      this.onstop?.();
+    }
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => Promise.resolve({ getTracks: () => [] }) },
+    });
+  });
+
+  async function recordAndStop() {
+    await userEvent.click(screen.getByRole('button', { name: 'Record' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }));
+  }
+
+  it('records speech at a low bitrate so long recordings stay small', async () => {
+    drive.uploadObservationAudio.mockResolvedValue({ audioFileId: 'new1' });
+    renderRecorder();
+    await recordAndStop();
+    expect(FakeMediaRecorder.options?.audioBitsPerSecond).toBe(32_000);
+    await waitFor(() => {
+      expect(drive.uploadObservationAudio).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('keeps a recording whose upload failed, and retries it on request', async () => {
+    drive.uploadObservationAudio
+      .mockRejectedValueOnce(new Error("Couldn't reach the server to upload the audio."))
+      .mockResolvedValueOnce({ audioFileId: 'new1' });
+    const onUploaded = vi.fn();
+    renderRecorder({ onUploaded });
+    await recordAndStop();
+
+    expect(await screen.findByText(/The recording is still here/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save to computer' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try upload again' }));
+
+    await waitFor(() => {
+      expect(onUploaded).toHaveBeenCalledWith('new1');
+    });
+    const [first, second] = drive.uploadObservationAudio.mock.calls.map(
+      ([args]) => (args as { blob: Blob }).blob,
+    );
+    expect(second).toBe(first);
+    expect(screen.queryByRole('button', { name: 'Try upload again' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record' })).toBeEnabled();
+  });
+
+  it('warns before leaving the page while a recording is not uploaded', async () => {
+    drive.uploadObservationAudio.mockRejectedValue(new Error('Upload failed (500): Upload failed'));
+    renderRecorder();
+    await recordAndStop();
+    await screen.findByText(/The recording is still here/);
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('discards a failed recording only after confirming', async () => {
+    drive.uploadObservationAudio.mockRejectedValue(new Error('Upload failed (500): Upload failed'));
+    renderRecorder();
+    await recordAndStop();
+    await userEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard recording' }));
+
+    expect(screen.queryByText(/The recording is still here/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record' })).toBeEnabled();
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 });

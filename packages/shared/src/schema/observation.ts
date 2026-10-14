@@ -28,6 +28,22 @@ import { OBSERVATION_STATUS, OBSERVATION_TYPES } from '../constants.js';
 /** Longest label an observer can give an audio recording. */
 export const RECORDING_LABEL_MAX = 80;
 
+/**
+ * Largest audio file an observer can add, recorded in the app or uploaded
+ * from Drive. Uploads go to `uploadAudio` in pieces (Cloud Functions reject
+ * any single request over 32 MiB), so this is a sanity cap, not a platform
+ * limit: over three hours of an iPhone Voice Memo (about 1 MB a minute),
+ * and small enough for the transcription worker to hold in memory.
+ */
+export const MAX_AUDIO_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+/**
+ * Size of each piece the browser sends to `uploadAudio`. Drive's resumable
+ * upload needs every piece but the last to be a multiple of 256 KiB, and the
+ * request has to stay under the 32 MiB Cloud Functions limit.
+ */
+export const AUDIO_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+
 export const observationStatus = z.enum([OBSERVATION_STATUS.draft, OBSERVATION_STATUS.finalized]);
 export const observationType = z.enum([
   OBSERVATION_TYPES.standard,
