@@ -76,7 +76,8 @@ describe('parseTranscriptTurns', () => {
   });
 
   it('keeps fillers, false starts and [inaudible] word for word', () => {
-    const said = 'Um, so I- I think we, we should, uh, [inaudible] the the fractions first?';
+    const said =
+      'Shh, shh. Um, so I- I think we, we should, uh, [inaudible] the the fractions first? Vroom, boom!';
     const raw = JSON.stringify({ turns: [{ start: '00:07', speaker: 'Student', text: said }] });
     expect(formatTranscriptTurns(parseTranscriptTurns(raw) ?? [])).toBe(`[00:07] Student: ${said}`);
   });

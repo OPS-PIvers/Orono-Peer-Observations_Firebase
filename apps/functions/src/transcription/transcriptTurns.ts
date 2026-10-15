@@ -14,10 +14,11 @@ export const TRANSCRIPTION_PROMPT = `Transcribe the attached classroom audio rec
 
 This must be a true verbatim transcript: exactly what was said, as it was said, and nothing else.
 - Keep every filler word and sound (um, uh, er, like, you know, mm-hmm).
+- Write down every sound a person makes with their voice, spelled the way it sounds, as part of that person's turn: shushing ("shh"), sound effects ("vroom", "boom", "pew pew"), laughs ("haha"), gasps, groans and sighs ("ugh", "whoa", "hmm"), clicks and whistles ("tsk", "pfft").
 - Keep false starts, stutters, cut-off words, repeated words and self-corrections exactly as spoken ("I- I think we, we should...").
 - Keep the speaker's own wording and grammar. Do not fix grammar, finish sentences, reword, summarize, shorten or tidy anything up.
 - Do not add words that were not spoken. If a word or phrase cannot be made out, write [inaudible] in its place instead of guessing.
-- Do not add commentary, descriptions of sounds or actions, headings or notes.
+- Do not add commentary, headings or notes, and do not describe noises that are not made by a voice (a door, chairs, a bell).
 - If no one is speaking for a stretch, write nothing for it.
 
 Start a new turn every time the speaker changes. For each turn give:
