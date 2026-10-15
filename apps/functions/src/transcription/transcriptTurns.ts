@@ -10,12 +10,21 @@
  * script insert and PDF keep working on plain lines.
  */
 
-export const TRANSCRIPTION_PROMPT = `Transcribe the attached classroom audio recording verbatim, split into speaker turns.
+export const TRANSCRIPTION_PROMPT = `Transcribe the attached classroom audio recording word for word, split into speaker turns.
+
+This must be a true verbatim transcript: exactly what was said, as it was said, and nothing else.
+- Keep every filler word and sound (um, uh, er, like, you know, mm-hmm).
+- Write down every sound a person makes with their voice, spelled the way it sounds, as part of that person's turn: shushing ("shh"), sound effects ("vroom", "boom", "pew pew"), laughs ("haha"), gasps, groans and sighs ("ugh", "whoa", "hmm"), clicks and whistles ("tsk", "pfft").
+- Keep false starts, stutters, cut-off words, repeated words and self-corrections exactly as spoken ("I- I think we, we should...").
+- Keep the speaker's own wording and grammar. Do not fix grammar, finish sentences, reword, summarize, shorten or tidy anything up.
+- Do not add words that were not spoken. If a word or phrase cannot be made out, write [inaudible] in its place instead of guessing.
+- Do not add commentary, headings or notes, and do not describe noises that are not made by a voice (a door, chairs, a bell).
+- If no one is speaking for a stretch, write nothing for it.
 
 Start a new turn every time the speaker changes. For each turn give:
 - "start": when the turn begins, as "MM:SS" (or "H:MM:SS" past one hour), measured from the start of the recording.
 - "speaker": the speaker's role, never a name. Use "Teacher" for the adult leading the class, "Student" for one student, "Students" for several speaking at once, and "Other Adult" for any other adult (a co-teacher, paraprofessional or visitor). If you can reliably tell individual students apart, you may use "Student 1", "Student 2", and so on, keeping each number on the same student throughout.
-- "text": exactly what was said in that turn. No commentary, no descriptions of sounds.
+- "text": the verbatim words of that turn.
 
 Return JSON only, in this shape: {"turns": [{"start": "00:00", "speaker": "Teacher", "text": "..."}]}`;
 
@@ -121,11 +130,17 @@ export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
 
 /**
  * One line per speaker turn. Back-to-back turns by the same speaker are
- * merged so a new line always means a new speaker.
+ * merged so a new line always means a new speaker. When the observed
+ * teacher's name is known, it replaces the model's "Teacher" label.
  */
-export function formatTranscriptTurns(turns: TranscriptTurn[]): string {
+export function formatTranscriptTurns(
+  turns: TranscriptTurn[],
+  teacherName?: string | null,
+): string {
+  const name = teacherName?.trim();
   const merged: TranscriptTurn[] = [];
-  for (const turn of turns) {
+  for (const raw of turns) {
+    const turn = name && raw.speaker.toLowerCase() === 'teacher' ? { ...raw, speaker: name } : raw;
     const prev = merged[merged.length - 1];
     if (prev?.speaker === turn.speaker) {
       prev.text = `${prev.text} ${turn.text}`;

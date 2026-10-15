@@ -75,6 +75,13 @@ describe('parseTranscriptTurns', () => {
     ]);
   });
 
+  it('keeps fillers, false starts and [inaudible] word for word', () => {
+    const said =
+      'Shh, shh. Um, so I- I think we, we should, uh, [inaudible] the the fractions first? Vroom, boom!';
+    const raw = JSON.stringify({ turns: [{ start: '00:07', speaker: 'Student', text: said }] });
+    expect(formatTranscriptTurns(parseTranscriptTurns(raw) ?? [])).toBe(`[00:07] Student: ${said}`);
+  });
+
   it('returns null for plain text', () => {
     expect(parseTranscriptTurns('Good morning everyone.')).toBeNull();
   });
@@ -103,6 +110,19 @@ describe('formatTranscriptTurns', () => {
         { startSeconds: 9, speaker: 'Student', text: 'Got it.' },
       ]),
     ).toBe('[00:00] Teacher: Okay. Page twelve.\n[00:09] Student: Got it.');
+  });
+
+  it("uses the observed teacher's name in place of Teacher", () => {
+    expect(
+      formatTranscriptTurns(
+        [
+          { startSeconds: 0, speaker: 'Teacher', text: 'Shh.' },
+          { startSeconds: 2, speaker: 'Student', text: 'Sorry.' },
+          { startSeconds: 4, speaker: 'Other Adult', text: 'Okay.' },
+        ],
+        ' Jane Smith ',
+      ),
+    ).toBe('[00:00] Jane Smith: Shh.\n[00:02] Student: Sorry.\n[00:04] Other Adult: Okay.');
   });
 
   it('leaves the timestamp off when it could not be read', () => {
