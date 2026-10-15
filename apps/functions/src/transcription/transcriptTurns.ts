@@ -130,11 +130,17 @@ export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
 
 /**
  * One line per speaker turn. Back-to-back turns by the same speaker are
- * merged so a new line always means a new speaker.
+ * merged so a new line always means a new speaker. When the observed
+ * teacher's name is known, it replaces the model's "Teacher" label.
  */
-export function formatTranscriptTurns(turns: TranscriptTurn[]): string {
+export function formatTranscriptTurns(
+  turns: TranscriptTurn[],
+  teacherName?: string | null,
+): string {
+  const name = teacherName?.trim();
   const merged: TranscriptTurn[] = [];
-  for (const turn of turns) {
+  for (const raw of turns) {
+    const turn = name && raw.speaker.toLowerCase() === 'teacher' ? { ...raw, speaker: name } : raw;
     const prev = merged[merged.length - 1];
     if (prev?.speaker === turn.speaker) {
       prev.text = `${prev.text} ${turn.text}`;

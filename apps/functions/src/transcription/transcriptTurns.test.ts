@@ -112,6 +112,19 @@ describe('formatTranscriptTurns', () => {
     ).toBe('[00:00] Teacher: Okay. Page twelve.\n[00:09] Student: Got it.');
   });
 
+  it("uses the observed teacher's name in place of Teacher", () => {
+    expect(
+      formatTranscriptTurns(
+        [
+          { startSeconds: 0, speaker: 'Teacher', text: 'Shh.' },
+          { startSeconds: 2, speaker: 'Student', text: 'Sorry.' },
+          { startSeconds: 4, speaker: 'Other Adult', text: 'Okay.' },
+        ],
+        ' Jane Smith ',
+      ),
+    ).toBe('[00:00] Jane Smith: Shh.\n[00:02] Student: Sorry.\n[00:04] Other Adult: Okay.');
+  });
+
   it('leaves the timestamp off when it could not be read', () => {
     expect(formatTranscriptTurns([{ startSeconds: null, speaker: 'Teacher', text: 'Hi.' }])).toBe(
       'Teacher: Hi.',

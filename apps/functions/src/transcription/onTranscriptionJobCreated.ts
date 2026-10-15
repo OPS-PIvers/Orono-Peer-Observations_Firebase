@@ -104,7 +104,9 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         model: model.id,
       });
 
+      const observedName = (await obsRef.get()).get('observedName') as unknown;
       const transcript = await transcribeWithGcsUri(audioUri, mimeType, model, {
+        teacherName: typeof observedName === 'string' ? observedName : null,
         userEmail: (snapshot.data() as { requestedBy?: string }).requestedBy ?? null,
         observationId: job.observationId,
       });
@@ -160,7 +162,10 @@ async function transcribeWithGcsUri(
   fileUri: string,
   mimeType: string,
   model: AiModel,
-  caller: { userEmail: string | null; observationId: string },
+  {
+    teacherName,
+    ...caller
+  }: { teacherName: string | null; userEmail: string | null; observationId: string },
 ): Promise<string> {
   const text = await generateText(
     model,
@@ -177,7 +182,7 @@ async function transcribeWithGcsUri(
     throw new Error('Gemini returned no transcript text');
   }
   const turns = parseTranscriptTurns(text);
-  if (turns && turns.length > 0) return formatTranscriptTurns(turns);
+  if (turns && turns.length > 0) return formatTranscriptTurns(turns, teacherName);
   // The model answered in plain text instead of JSON: keep what it said.
   if (!/^\s*(```|[[{])/.test(text)) return text.trim();
   throw new Error('Gemini returned a transcript that could not be read');
