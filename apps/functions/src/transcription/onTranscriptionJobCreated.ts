@@ -168,6 +168,8 @@ async function transcribeWithGcsUri(
       prompt: TRANSCRIPTION_PROMPT,
       fileData: { fileUri, mimeType },
       jsonSchema: TRANSCRIPT_TURNS_SCHEMA,
+      // Lowest randomness: the model should copy what it hears, not rephrase.
+      temperature: 0,
     },
     { feature: 'audioTranscription', logContext: 'onTranscriptionJobCreated', ...caller },
   );

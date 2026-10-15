@@ -75,6 +75,12 @@ describe('parseTranscriptTurns', () => {
     ]);
   });
 
+  it('keeps fillers, false starts and [inaudible] word for word', () => {
+    const said = 'Um, so I- I think we, we should, uh, [inaudible] the the fractions first?';
+    const raw = JSON.stringify({ turns: [{ start: '00:07', speaker: 'Student', text: said }] });
+    expect(formatTranscriptTurns(parseTranscriptTurns(raw) ?? [])).toBe(`[00:07] Student: ${said}`);
+  });
+
   it('returns null for plain text', () => {
     expect(parseTranscriptTurns('Good morning everyone.')).toBeNull();
   });
