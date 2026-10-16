@@ -48,7 +48,7 @@ function hhmmToMinutes(value: string): number {
 
 export function SchedulingSettingsPage() {
   const { user } = useAuth();
-  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
+  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH, { cached: false });
 
   const [form, setForm] = useState<SchedulingSettings>(DEFAULT_SCHEDULING_SETTINGS);
   const [saving, setSaving] = useState(false);

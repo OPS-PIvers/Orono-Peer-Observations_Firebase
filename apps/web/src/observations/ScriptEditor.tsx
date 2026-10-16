@@ -124,6 +124,13 @@ export interface ScriptEditorProps {
   tagScope?: AssignmentMode;
   /** Observation id, required for the Auto-tag callable. Omit to hide the button. */
   observationId?: string;
+  /**
+   * Saves the editor's pending draft right away; resolves false if the save
+   * failed. Auto-tag reads and rewrites the stored script, so it waits for
+   * this first: otherwise the server would tag (and Apply would hand back) a
+   * script missing the last few seconds of typing.
+   */
+  saveDraft?: () => Promise<boolean>;
   placeholder?: string;
   minHeight?: string;
 }
@@ -143,6 +150,7 @@ export function ScriptEditor({
   availableComponents,
   tagScope = 'assigned',
   observationId,
+  saveDraft,
   placeholder,
   minHeight = '0',
 }: ScriptEditorProps) {
@@ -275,6 +283,13 @@ export function ScriptEditor({
     clearComponentTag(editor);
   }
 
+  /** Throws when the latest script edits couldn't be saved. */
+  async function saveBeforeAutoTag() {
+    if (saveDraft && !(await saveDraft())) {
+      throw new Error('Your latest changes have not saved yet. Try again once they are saved.');
+    }
+  }
+
   function showReview(data: Awaited<ReturnType<typeof suggestScriptTagsFn>>['data']) {
     setApplyError(null);
     setReview({
@@ -297,6 +312,7 @@ export function ScriptEditor({
     setAutoTagNotice(null);
     try {
       assertWritable();
+      await saveBeforeAutoTag();
       const res = await suggestScriptTagsFn({
         observationId,
         scope: tagScope,
@@ -317,6 +333,7 @@ export function ScriptEditor({
     setApplyError(null);
     try {
       assertWritable();
+      await saveBeforeAutoTag();
       const res = await suggestScriptTagsFn({
         observationId,
         scope: tagScope,
@@ -337,6 +354,7 @@ export function ScriptEditor({
     setApplyError(null);
     try {
       assertWritable();
+      await saveBeforeAutoTag();
       const res = await applyScriptTagsFn({
         observationId,
         suggestions: kept.map(({ paragraphIndex, text, componentId }) => ({

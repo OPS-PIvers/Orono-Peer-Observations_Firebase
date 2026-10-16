@@ -54,7 +54,7 @@ export function hasPendingEditorWork(refs: PendingEditorWorkRefs): boolean {
  */
 export function createForcedSignOutFlushCallback(
   refs: PendingEditorWorkRefs,
-  flush: () => Promise<void>,
+  flush: () => Promise<unknown>,
 ): () => Promise<void> {
   return async () => {
     if (!hasPendingEditorWork(refs)) return;

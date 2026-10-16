@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
 
@@ -86,5 +86,36 @@ describe('useFirestoreDoc', () => {
       expect(result.current.data).not.toBeNull();
     });
     expect(result.current.data).toEqual({ to: 'someone@orono.k12.mn.us', id: 'msg-1' });
+  });
+
+  it('skips a stale cached copy when asked to, until the live snapshot arrives', () => {
+    // Regression: the observation editor hydrated its draft from a cached copy
+    // that could be minutes old, then wrote it back over newer edits.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const path = `${COLLECTIONS.mail}/msg-1`;
+    client.setQueryData(['firestore-doc', path], { to: 'stale', id: 'msg-1' });
+    let deliver: ((snap: unknown) => void) | null = null;
+    mockOnSnapshot.mockImplementation((_ref: unknown, next: (snap: unknown) => void) => {
+      deliver = next;
+      return () => undefined;
+    });
+    const cacheWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const fromCache = renderHook(() => useFirestoreDoc(path), { wrapper: cacheWrapper });
+    expect(fromCache.result.current.data).toEqual({ to: 'stale', id: 'msg-1' });
+
+    const live = renderHook(() => useFirestoreDoc(path, { cached: false }), {
+      wrapper: cacheWrapper,
+    });
+    expect(live.result.current.data).toBeNull();
+    expect(live.result.current.loading).toBe(true);
+
+    act(() => {
+      deliver?.({ exists: () => true, data: () => ({ to: 'fresh' }), id: 'msg-1' });
+    });
+    expect(live.result.current.data).toEqual({ to: 'fresh', id: 'msg-1' });
+    expect(live.result.current.loading).toBe(false);
   });
 });

@@ -19,6 +19,7 @@ export function RubricEditorPage() {
   const navigate = useNavigate();
   const { data, loading, error } = useFirestoreDoc<Rubric>(
     `${COLLECTIONS.rubrics}/${rubricId ?? ''}`,
+    { cached: false },
   );
 
   const [draft, setDraft] = useState<DraftRubric | null>(null);

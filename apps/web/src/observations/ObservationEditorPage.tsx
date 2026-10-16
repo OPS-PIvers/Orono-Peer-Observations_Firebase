@@ -186,7 +186,11 @@ export function ObservationEditorPage() {
     data: observation,
     loading,
     error,
-  } = useFirestoreDoc<Observation>(`${COLLECTIONS.observations}/${observationId ?? ''}`);
+    // Never from the cache: the draft below is hydrated once and written back
+    // whole, so a stale cached copy would overwrite newer edits.
+  } = useFirestoreDoc<Observation>(`${COLLECTIONS.observations}/${observationId ?? ''}`, {
+    cached: false,
+  });
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
@@ -377,8 +381,9 @@ export function ObservationEditorPage() {
     draftRef.current = next;
   });
 
-  const flush = useCallback(async () => {
-    if (!observation) return;
+  // Resolves true once the current draft is stored, false if the write failed.
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (!observation) return false;
     setSavingState('saving');
     setSaveError(null);
     try {
@@ -407,11 +412,24 @@ export function ObservationEditorPage() {
         setSavingState('saved');
       }
       autoRetryCountRef.current = 0;
+      return true;
     } catch (err) {
       setSavingState('error');
       setSaveError(err instanceof Error ? err.message : 'Save failed');
+      return false;
     }
   }, [observation]);
+
+  // Write the draft now, skipping the debounce, for server work that reads
+  // the stored document (auto-tagging the script). Firestore applies writes
+  // in order, so this also lands after any save already in flight.
+  const saveNow = useCallback(() => {
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flushTimer.current = null;
+    }
+    return flush();
+  }, [flush]);
 
   // Debounce only — leave the visible indicator on its prior state ('saved'
   // or 'idle') during the wait. flush() itself flips to 'saving', and the
@@ -1330,6 +1348,7 @@ export function ObservationEditorPage() {
             availableComponents={taggableComponents}
             tagScope={assignmentMode}
             observationId={observation.id}
+            saveDraft={saveNow}
             placeholder="Start typing what you see and hear during the observation…"
           />
         </ScriptDrawer>

@@ -13,6 +13,7 @@ import {
   SPECIAL_ROLES,
   canCreateObservations,
   observeBlockReason,
+  observationWasFinalized,
   staffCycleStatus,
   type EmailTemplate,
   type Observation,
@@ -447,7 +448,9 @@ export function StaffPersonPage() {
               key={o.id}
               observation={o}
               showType={showsObservationTypes(myRole)}
-              canDelete={!isViewingAs && o.observerEmail === currentEmail}
+              canDelete={
+                !isViewingAs && o.observerEmail === currentEmail && !observationWasFinalized(o)
+              }
               confirmingDelete={confirmingDeleteId === o.id}
               onRequestDelete={() => setConfirmingDeleteId(o.id)}
               onCancelDelete={() => setConfirmingDeleteId(null)}

@@ -85,7 +85,7 @@ export function AiModelsPage() {
     ? (params.get('tab') as Tab)
     : 'spending';
 
-  const settings = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
+  const settings = useFirestoreDoc<AppSettings>(SETTINGS_PATH, { cached: false });
   const { daily, events } = useAiUsage();
   const claudeConfigured = useClaudeConfigured();
 
