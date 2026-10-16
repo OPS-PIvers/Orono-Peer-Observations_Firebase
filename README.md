@@ -58,7 +58,7 @@ before it starts. See docs/local-dev-windows.md.
 
 ## Branches
 
-- `dev-paul` — work-in-progress; auto-deploys to a Hosting preview channel against live Firestore
+- `dev-paul` — work-in-progress; auto-deploys hosting to a preview channel against live Firestore, and deploys Firestore rules, indexes, Storage rules and Cloud Functions to the live project
 - `main` — production; auto-deploys to live once CI passes on main (manual re-run available via the "Deploy — production" workflow)
 
 ## See also

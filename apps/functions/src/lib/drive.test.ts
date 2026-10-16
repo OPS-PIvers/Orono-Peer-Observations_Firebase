@@ -1,9 +1,39 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ResumableUploadGoneError,
+  deleteObservationFolder,
+  ensureObservationFolder,
   isResumableSessionUrl,
   parseResumableResponse,
 } from './drive.js';
+
+// A fake Drive client behind the real getDriveClient, so the folder guards are
+// tested together with the getFileParents/deleteDriveFolder calls they make.
+const h = vi.hoisted(() => ({
+  files: { get: vi.fn(), list: vi.fn(), delete: vi.fn(), create: vi.fn() },
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock('firebase-functions', () => ({ logger: h.logger }));
+vi.mock('firebase-functions/params', () => ({
+  defineString: () => ({ value: () => 'client-id' }),
+  defineSecret: () => ({ value: () => 'refresh-token' }),
+}));
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      OAuth2: class {
+        setCredentials = vi.fn();
+        getAccessToken(): Promise<{ token: string }> {
+          return Promise.resolve({ token: 't' });
+        }
+      },
+    },
+    drive: () => ({ files: h.files }),
+  },
+}));
+
+const PARENT = 'parent-folder';
 
 const SESSION =
   'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&upload_id=ABC123';
@@ -60,5 +90,95 @@ describe('parseResumableResponse', () => {
     await expect(
       parseResumableResponse(new Response('quota', { status: 403 })),
     ).rejects.toThrow(/403/);
+  });
+});
+
+describe('deleteObservationFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.files.list.mockResolvedValue({ data: { files: [{ id: 'child1' }] } });
+    h.files.delete.mockResolvedValue({});
+  });
+
+  it('refuses the parent folder itself', async () => {
+    expect(await deleteObservationFolder({ folderId: PARENT, parentFolderId: PARENT })).toBe(
+      'refused',
+    );
+    expect(h.files.delete).not.toHaveBeenCalled();
+    expect(h.logger.error).toHaveBeenCalled();
+  });
+
+  it('refuses a folder that is not a direct child of the parent', async () => {
+    h.files.get.mockResolvedValue({ data: { parents: ['somewhere-else'] } });
+    expect(await deleteObservationFolder({ folderId: 'f1', parentFolderId: PARENT })).toBe(
+      'refused',
+    );
+    expect(h.files.list).not.toHaveBeenCalled();
+    expect(h.files.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes a direct child of the parent, children first', async () => {
+    h.files.get.mockResolvedValue({ data: { parents: [PARENT] } });
+    expect(await deleteObservationFolder({ folderId: 'f1', parentFolderId: PARENT })).toBe(
+      'deleted',
+    );
+    expect(h.files.delete.mock.calls.map(([arg]) => (arg as { fileId: string }).fileId)).toEqual([
+      'child1',
+      'f1',
+    ]);
+  });
+
+  it('refuses when the parent folder is not configured', async () => {
+    expect(await deleteObservationFolder({ folderId: 'f1', parentFolderId: '' })).toBe('refused');
+    expect(h.files.get).not.toHaveBeenCalled();
+    expect(h.files.delete).not.toHaveBeenCalled();
+  });
+
+  it('treats a folder that is already gone as deleted', async () => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('not found'), { code: 404 }));
+    expect(await deleteObservationFolder({ folderId: 'f1', parentFolderId: PARENT })).toBe(
+      'deleted',
+    );
+    expect(h.files.delete).not.toHaveBeenCalled();
+  });
+
+  it('propagates other Drive errors without deleting', async () => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('forbidden'), { code: 403 }));
+    await expect(
+      deleteObservationFolder({ folderId: 'f1', parentFolderId: PARENT }),
+    ).rejects.toThrow('forbidden');
+    expect(h.files.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureObservationFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws rather than reuse the parent folder as an observation folder', async () => {
+    await expect(
+      ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: PARENT,
+      }),
+    ).rejects.toThrow('Observation folder id is the Drive parent folder');
+    expect(h.files.get).not.toHaveBeenCalled();
+    expect(h.files.create).not.toHaveBeenCalled();
+  });
+
+  it('still reuses an existing folder outside the parent (legacy folders)', async () => {
+    h.files.get.mockResolvedValue({ data: { id: 'legacy' } });
+    expect(
+      await ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: 'legacy',
+      }),
+    ).toBe('legacy');
+    expect(h.files.create).not.toHaveBeenCalled();
   });
 });

@@ -377,6 +377,115 @@ describe('observations: create', () => {
     });
   });
 
+  describe('server-owned fields on create', () => {
+    // Exactly the key set newDraftObservationDoc writes, with server-owned
+    // fields empty.
+    function draftDoc(observerEmail: string, overrides: Record<string, unknown> = {}) {
+      return {
+        observerEmail,
+        observerName: 'PE',
+        observerRole: 'peer-evaluator',
+        observedEmail: OBSERVED_EMAIL,
+        observedName: 'X',
+        observedRole: 'teacher',
+        observedYear: 2,
+        observedBuildings: ['OMS'],
+        status: 'Draft',
+        type: 'Standard',
+        questionSetId: 'qs1',
+        observationName: '',
+        observationData: {},
+        componentNotes: {},
+        evidenceLinks: {},
+        componentTags: [],
+        workProductAnswers: [],
+        audioDriveFileIds: [],
+        transcripts: {},
+        driveFolderId: null,
+        pdfDriveFileId: null,
+        observationDate: new Date(),
+        createdAt: new Date(),
+        lastModifiedAt: new Date(),
+        finalizedAt: null,
+        ...overrides,
+      };
+    }
+    const peDb = () => testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+
+    it('PE can create with the exact newDraftObservationDoc key set', async () => {
+      await assertSucceeds(setDoc(doc(peDb(), 'observations/full'), draftDoc(PE_EMAIL)));
+    });
+
+    it('PE CANNOT create a Draft pointing at a Drive folder', async () => {
+      await assertFails(
+        setDoc(
+          doc(peDb(), 'observations/folder'),
+          draftDoc(PE_EMAIL, { driveFolderId: 'some-folder' }),
+        ),
+      );
+    });
+
+    const injected: [string, unknown][] = [
+      ['pdfDriveFileId', 'x'],
+      ['audioDriveFileIds', ['x']],
+      ['evidenceLinks', { c1: [{ fileId: 'x' }] }],
+      ['transcripts', { a: {} }],
+      ['finalizedAt', new Date()],
+      ['componentTags', [{ componentId: 'c1' }]],
+      ['workProductAnswers', [{ questionId: 'q1', answer: 'x' }]],
+    ];
+    for (const [field, value] of injected) {
+      it(`PE CANNOT create with a non-empty ${field}`, async () => {
+        await assertFails(
+          setDoc(doc(peDb(), `observations/inj-${field}`), draftDoc(PE_EMAIL, { [field]: value })),
+        );
+      });
+    }
+
+    for (const [field, value] of [
+      ['rubricSnapshot', {}],
+      ['windowId', 'w'],
+    ] as const) {
+      it(`PE CANNOT create with an unknown key (${field})`, async () => {
+        await assertFails(
+          setDoc(
+            doc(peDb(), `observations/extra-${field}`),
+            draftDoc(PE_EMAIL, { [field]: value }),
+          ),
+        );
+      });
+    }
+
+    it('building Administrator CANNOT create with an injected driveFolderId', async () => {
+      const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const fs = ctx.firestore();
+        await setDoc(doc(fs, 'staff', ADMIN_EMAIL), {
+          email: ADMIN_EMAIL,
+          role: 'administrator',
+          buildings: ['OMS'],
+        });
+        await setDoc(doc(fs, 'staff', OBSERVED_EMAIL), {
+          email: OBSERVED_EMAIL,
+          role: 'teacher',
+          year: 2,
+          cycleStatus: 'high',
+          buildings: ['OMS'],
+          isActive: true,
+        });
+      });
+      const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
+      // Control: the same payload without the folder is allowed.
+      await assertSucceeds(setDoc(doc(db, 'observations/adm-ok'), draftDoc(ADMIN_EMAIL)));
+      await assertFails(
+        setDoc(
+          doc(db, 'observations/adm-folder'),
+          draftDoc(ADMIN_EMAIL, { driveFolderId: 'some-folder' }),
+        ),
+      );
+    });
+  });
+
   it('teacher cannot create observations', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher()).firestore();
     await assertFails(

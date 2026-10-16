@@ -48,8 +48,10 @@ jobs:
             Focus on, in order:
             - Correctness bugs and regressions
             - Security, especially Firestore/Storage rules and access control
-            - Anything that could break the production deploy (merging to
-              main auto-deploys hosting, functions and the pdf-renderer)
+            - Anything that could break production.
+              Merging to dev-paul deploys Firestore/Storage rules, indexes and
+              Cloud Functions to the live project; merging to main also
+              deploys hosting and the pdf-renderer.
             - Missing or inadequate tests for changed behavior
 
             Skip style nits that lint/prettier already enforce. Only report
