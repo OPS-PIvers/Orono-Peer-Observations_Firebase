@@ -468,7 +468,8 @@ service cloud.firestore {
     //     type, Draft or Finalized), or the ack fields on a Finalized
     //     observation (must stamp their own email).
     //
-    // Delete: oversight, or the observer while the observation is still a Draft.
+    // Delete: oversight, or the observer while the observation is a Draft
+    // that was never finalized.
     match /observations/{observationId} {
       // Ownership model (mirrors observationAccess in @ops/shared):
       //   owner       — the observer who created it: full control of a Draft.
@@ -580,7 +581,13 @@ service cloud.firestore {
         || (oversees() && unchanged('observedEmail')))
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
-      allow delete: if ((ownsObs() && resource.data.status == 'Draft') || oversees())
+      // A reopened observation is a Draft again but keeps the PDF the
+      // teacher was sent (pdfDriveFileId), so only oversight may delete it.
+      // Mirrors observationWasFinalized in @ops/shared.
+      allow delete: if ((ownsObs()
+          && resource.data.status == 'Draft'
+          && resource.data.get('pdfDriveFileId', null) in [null, ''])
+        || oversees())
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
       // Evaluator check-offs for dashboard steps tied to this observation.

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 process.env['FIREBASE_CONFIG'] = JSON.stringify({ projectId: 'test' });
 process.env['GCLOUD_PROJECT'] = 'test';
-const { coObserverChanges, isNewlyAcknowledged } = await import('./onObservationWritten.js');
+const { coObserverChanges, draftFolderToDelete, isNewlyAcknowledged } =
+  await import('./onObservationWritten.js');
 
 describe('isNewlyAcknowledged', () => {
   it('fires only when acknowledgedAt goes from unset to set', () => {
@@ -43,5 +44,25 @@ describe('coObserverChanges', () => {
         { ...base, coObserverEmails: [] },
       ),
     ).toEqual({ added: [], removed: [] });
+  });
+});
+
+describe('draftFolderToDelete', () => {
+  it("deletes a never-finalized Draft's folder", () => {
+    expect(
+      draftFolderToDelete({ status: 'Draft', driveFolderId: 'f1', pdfDriveFileId: null }),
+    ).toBe('f1');
+  });
+
+  it('keeps the folder of a reopened Draft, which holds the PDF the teacher was sent', () => {
+    expect(
+      draftFolderToDelete({ status: 'Draft', driveFolderId: 'f1', pdfDriveFileId: 'pdf1' }),
+    ).toBeNull();
+  });
+
+  it('keeps a Finalized folder, and does nothing without a folder', () => {
+    expect(draftFolderToDelete({ status: 'Finalized', driveFolderId: 'f1' })).toBeNull();
+    expect(draftFolderToDelete({ status: 'Draft', driveFolderId: null })).toBeNull();
+    expect(draftFolderToDelete(undefined)).toBeNull();
   });
 });

@@ -11,6 +11,7 @@ import {
   SLOT_BLOCKED_REASON,
   WINDOW_SUBCOLLECTIONS,
   cancelBookingInput,
+  observationHasRecordedContent,
   type Building,
   type ObservationSlot,
   type ObservationWindow,
@@ -26,12 +27,28 @@ import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 if (getApps().length === 0) initializeApp();
 
 /**
+ * What cancelling a booking does to its observation:
+ *   - 'delete': an untouched Draft (nothing recorded, not being finalized).
+ *   - 'unlink': any other Draft, including a reopened one. It is evaluation
+ *     data, so it is kept and only detached from the freed slot.
+ *   - 'leave':  a Finalized observation stays exactly as it was.
+ */
+export function releaseForCancelledBooking(
+  obs: Record<string, unknown>,
+): 'delete' | 'unlink' | 'leave' {
+  if (obs['status'] !== OBSERVATION_STATUS.draft) return 'leave';
+  if (obs['finalizeStartedAt'] != null || observationHasRecordedContent(obs)) return 'unlink';
+  return 'delete';
+}
+
+/**
  * Cancel an existing booking, freeing the slot back to the pool.
  *
  * Allowed for an admin, the window observer, or the staff member who booked
  * the slot. Reverses the booking in a transaction (slot freed, ledger entry
  * removed, invitee + window status reset), then best-effort recomputes blocked
- * slots, deletes the still-Draft observation, and emails both parties.
+ * slots, releases the observation (deletes it only if it is an untouched
+ * Draft; see below), and emails both parties.
  */
 export const cancelBooking = onCall(
   { region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
@@ -136,26 +153,52 @@ export const cancelBooking = onCall(
     }
     const staffEmail = cancelledStaffEmail as string | null;
     const observationId = cancelledObservationId as string | null;
+    /** true: Draft kept (unlinked); false: empty Draft deleted; null: untouched. */
+    let observationKept: boolean | null = null;
 
     await recomputeBlockedSlots(db, input.windowId).catch((err: unknown) =>
       logger.error('cancelBooking: recomputeBlockedSlots failed', err),
     );
 
-    // Delete the Draft observation, if it's still a Draft.
+    // Release the observation from the cancelled slot. A Draft nobody has
+    // written anything on yet is deleted with the booking. Anything else is
+    // kept, because it is evaluation data: a Draft with ratings, notes,
+    // script, audio or answers, a reopened observation (the teacher already
+    // has its PDF), or one being finalized right now. A kept Draft is
+    // unlinked from the slot; a Finalized one is left exactly as it was.
+    // Decided in a transaction so it can't race finalizeObservation's claim.
     if (observationId) {
       try {
         const obsRef = db.collection(COLLECTIONS.observations).doc(observationId);
-        const obsSnap = await obsRef.get();
-        if (obsSnap.exists && obsSnap.data()?.['status'] === OBSERVATION_STATUS.draft) {
-          // Best-effort: tear down any Google Calendar events first so the
-          // deleted booking doesn't linger on the parties' calendars.
+        const outcome = await db.runTransaction(async (tx) => {
+          const obsSnap = await tx.get(obsRef);
+          if (!obsSnap.exists) return null;
           const obsData = obsSnap.data() ?? {};
-          const gcalEventIds = (obsData['gcalEventIds'] ?? {}) as {
+          const release = releaseForCancelledBooking(obsData);
+          if (release === 'leave') return null;
+          if (release === 'delete') {
+            tx.delete(obsRef);
+            return { obsData, kept: false };
+          }
+          tx.update(obsRef, {
+            slotId: null,
+            scheduledStartAt: null,
+            scheduledEndAt: null,
+            gcalEventIds: {},
+            lastModifiedAt: FieldValue.serverTimestamp(),
+          });
+          return { obsData, kept: true };
+        });
+        observationKept = outcome?.kept ?? null;
+
+        // The booking is gone either way, so take it off both calendars.
+        if (outcome) {
+          const gcalEventIds = (outcome.obsData['gcalEventIds'] ?? {}) as {
             observer?: string;
             observed?: string;
           };
-          const observerEmail: unknown = obsData['observerEmail'];
-          const observedEmail: unknown = obsData['observedEmail'];
+          const observerEmail: unknown = outcome.obsData['observerEmail'];
+          const observedEmail: unknown = outcome.obsData['observedEmail'];
           const calCleanup: Promise<void>[] = [];
           if (gcalEventIds.observer && typeof observerEmail === 'string') {
             calCleanup.push(deleteObservationEvent(observerEmail, gcalEventIds.observer));
@@ -166,11 +209,9 @@ export const cancelBooking = onCall(
           await Promise.all(calCleanup).catch((err: unknown) =>
             logger.warn('cancelBooking: calendar event cleanup failed', err),
           );
-
-          await obsRef.delete();
         }
       } catch (err) {
-        logger.error('cancelBooking: observation delete failed', err);
+        logger.error('cancelBooking: observation release failed', err);
       }
     }
 
@@ -225,6 +266,7 @@ export const cancelBooking = onCall(
         slotId: input.slotId,
         reason: input.reason,
         observationId,
+        observationKept,
       },
     });
 
