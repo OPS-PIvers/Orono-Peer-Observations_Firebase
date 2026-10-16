@@ -8,7 +8,7 @@ import { canEditObservationContent, COLLECTIONS, type Observation } from '@ops/s
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
-  deleteDriveFolder,
+  deleteObservationFolder,
   ensureObservationFolder,
   getDriveClient,
   shareObservationFolderWithObservers,
@@ -148,7 +148,7 @@ export const uploadEvidenceFile = onCall(
         // Another concurrent call already claimed the observation's Drive
         // folder; best-effort delete the duplicate we just created.
         try {
-          await deleteDriveFolder(folderId);
+          await deleteObservationFolder({ folderId, parentFolderId: PARENT_FOLDER_ID.value() });
         } catch (err) {
           logger.warn('uploadEvidenceFile: duplicate folder cleanup failed', { folderId, err });
         }
