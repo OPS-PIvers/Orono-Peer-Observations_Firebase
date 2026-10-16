@@ -43,7 +43,7 @@ const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
 
 export function SettingsPage() {
   const { user } = useAuth();
-  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
+  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH, { cached: false });
 
   const [form, setForm] = useState<Partial<AppSettings>>({});
   const [saving, setSaving] = useState(false);

@@ -162,7 +162,7 @@ export function BuildingSchedulePage() {
     buildingId ? `${COLLECTIONS.buildings}/${buildingId}` : '',
   );
   const schedulePath = buildingId ? `${COLLECTIONS.buildingSchedules}/${buildingId}` : '';
-  const schedule = useFirestoreDoc<BuildingSchedule>(schedulePath);
+  const schedule = useFirestoreDoc<BuildingSchedule>(schedulePath, { cached: false });
 
   // Archived year snapshots + the staged next-year draft. The live doc
   // (doc id = buildingId) stays the only thing slot generation reads.

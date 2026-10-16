@@ -110,6 +110,9 @@ export function useWorkProductAnswers(
     if (!observationId) return;
     timerRef.current = null;
     const now = new Date();
+    // Edits made while this write is in flight start a fresh set. If the
+    // write fails, these questions go back into it (below), so a retry
+    // writes the local text rather than the stored answer.
     const dirty = dirtyRef.current;
     dirtyRef.current = new Set();
     const next: WorkProductAnswer[] = [];
@@ -154,11 +157,15 @@ export function useWorkProductAnswers(
     )
       .then(() => {
         if (!mountedRef.current) return;
+        // Another edit is queued, or an earlier failed write's answers are
+        // still unsaved: "Saved" would be wrong.
+        if (timerRef.current || dirtyRef.current.size > 0) return;
         setSaveState('saved');
         setSaveError(null);
       })
       .catch((err: unknown) => {
         console.error('useWorkProductAnswers: autosave failed', err);
+        for (const questionId of dirty) dirtyRef.current.add(questionId);
         if (!mountedRef.current) return;
         setSaveState('error');
         setSaveError(err instanceof Error ? err.message : 'Unknown error');

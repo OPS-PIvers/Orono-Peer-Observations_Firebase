@@ -18,7 +18,7 @@ const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB
 
 export function BrandingPage() {
   const { user } = useAuth();
-  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH);
+  const { data, loading, error } = useFirestoreDoc<AppSettings>(SETTINGS_PATH, { cached: false });
   const [appName, setAppName] = useState<string>(OPS_BRAND.defaultAppName);
   const [primaryColor, setPrimaryColor] = useState<string>(OPS_BRAND.defaultPrimaryColor);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
