@@ -35,7 +35,7 @@ export interface CoObserversSectionProps {
  * lists and edit the Draft's content; finalize, delete and sharing stay with
  * the owner. Enforced by the /observations rules (see observationAccessFor).
  * Only people who can observe are offered, and the setCoObservers callable
- * (the only writer of the list) refuses anyone else.
+ * refuses anyone else.
  */
 export function CoObserversSection({
   observationId,

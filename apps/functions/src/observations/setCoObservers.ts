@@ -27,8 +27,9 @@ interface CoObserverStaffFields {
  * Co-observers read and edit the Draft and get the Drive folder shared with
  * them (onObservationWritten), so they must hold an observer role: a Peer
  * Evaluator, Administrator or Full Access. Firestore rules can't check the
- * role of every address in a list, so this callable is the only writer of
- * `coObserverEmails`; the owner's direct write is blocked in firestore.rules.
+ * role of every address in a list, so the app writes `coObserverEmails` only
+ * through this callable. The owner's direct write comes out of
+ * firestore.rules once this client is live on main.
  *
  * Only *added* addresses are checked. Ones already on the list stay even if
  * they no longer qualify (role change, deactivation), so the owner can still
