@@ -18,6 +18,9 @@ export const COLLECTIONS = {
   rubrics: 'rubrics',
   roleYearMappings: 'roleYearMappings',
   observations: 'observations',
+  /** Server-written, teacher-safe projection of each observation; see
+   *  schema/teacherView.ts. */
+  teacherViews: 'teacherViews',
   workProductQuestions: 'workProductQuestions',
   emailTemplates: 'emailTemplates',
   appSettings: 'appSettings',

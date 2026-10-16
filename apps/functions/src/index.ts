@@ -36,6 +36,7 @@ export { getAiProviderStatus } from './ai/getAiProviderStatus.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
+export { onObservationTeacherView } from './observations/onObservationTeacherView.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';
 export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js';
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';

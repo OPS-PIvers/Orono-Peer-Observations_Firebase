@@ -606,6 +606,14 @@ service cloud.firestore {
       }
     }
 
+    // --- /teacherViews/{observationId} --------------------------------------
+    // Teacher-safe projection of each observation (onObservationTeacherView).
+    // Readable only by the observed staff member; written only by Functions.
+    match /teacherViews/{observationId} {
+      allow get, list: if isFromOronoDomain() && isCurrentUserEmail(resource.data.observedEmail);
+      allow write: if false;
+    }
+
     // --- /userCalendarTokens/{email} ----------------------------------------
     // Per-user Google Calendar OAuth credentials. Server-only — refresh
     // tokens never leave the backend. Cloud Functions use the Admin SDK
