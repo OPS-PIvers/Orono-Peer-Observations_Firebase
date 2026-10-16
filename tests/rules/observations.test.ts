@@ -557,6 +557,24 @@ describe('observations: delete', () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertFails(deleteDoc(doc(db, 'observations/finalObs')));
   });
+
+  it('observer can delete a Draft with an explicitly null pdfDriveFileId', async () => {
+    await seedDraftObs('newDraft', { pdfDriveFileId: null });
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(deleteDoc(doc(db, 'observations/newDraft')));
+  });
+
+  it('observer CANNOT delete a reopened observation (a Draft that has a PDF)', async () => {
+    await seedDraftObs('reopened', { pdfDriveFileId: 'pdf1', driveFolderId: 'folder1' });
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(deleteDoc(doc(db, 'observations/reopened')));
+  });
+
+  it('Full Access (oversight) can still delete a reopened observation', async () => {
+    await seedDraftObs('reopened', { pdfDriveFileId: 'pdf1', driveFolderId: 'folder1' });
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertSucceeds(deleteDoc(doc(db, 'observations/reopened')));
+  });
 });
 
 describe('observations: acknowledge (observed staff)', () => {

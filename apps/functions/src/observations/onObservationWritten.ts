@@ -4,7 +4,12 @@ import { logger } from 'firebase-functions';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { OBSERVATION_TYPES, displayYear, type EmailTriggerType } from '@ops/shared';
+import {
+  OBSERVATION_TYPES,
+  displayYear,
+  observationWasFinalized,
+  type EmailTriggerType,
+} from '@ops/shared';
 import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
@@ -394,21 +399,29 @@ function pdfUrl(fileId: unknown): string {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
+/** The Drive folder to remove with a deleted observation: only a Draft that
+ *  was never finalized. A reopened Draft's folder holds the PDF the teacher
+ *  was already sent. */
+export function draftFolderToDelete(beforeData: ObsLike | null | undefined): string | null {
+  if (beforeData?.['status'] !== 'Draft' || observationWasFinalized(beforeData)) return null;
+  const folderId = beforeData['driveFolderId'];
+  return typeof folderId === 'string' && folderId !== '' ? folderId : null;
+}
+
 async function handleDeletion(
   sheetId: string,
   observationId: string,
   beforeData: ObsLike | null | undefined,
 ): Promise<void> {
-  // 1. Delete the Drive folder for Draft observations only. Finalized
+  // 1. Delete the Drive folder for never-finalized Drafts only. Finalized
   //    observations have their folder shared with the observed staff member —
   //    deleting it would revoke their access to audio, evidence, and the PDF.
-  if (
-    beforeData?.['status'] === 'Draft' &&
-    typeof beforeData['driveFolderId'] === 'string' &&
-    beforeData['driveFolderId']
-  ) {
+  //    A reopened observation is a Draft again but its folder still holds
+  //    the PDF the teacher was sent, so it is kept too.
+  const folderToDelete = draftFolderToDelete(beforeData);
+  if (folderToDelete) {
     try {
-      await deleteDriveFolder(beforeData['driveFolderId']);
+      await deleteDriveFolder(folderToDelete);
     } catch (err) {
       logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
     }

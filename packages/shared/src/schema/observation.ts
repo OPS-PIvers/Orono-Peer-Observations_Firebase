@@ -109,6 +109,58 @@ function tiptapNodeHasText(node: unknown): boolean {
   return false;
 }
 
+/** True once an observation has been finalized at least once: it has a PDF
+ *  the observed staff member was sent. A reopened observation is a Draft
+ *  again but keeps its `pdfDriveFileId` (see reopenObservation). */
+export function observationWasFinalized(obs: { readonly pdfDriveFileId?: unknown }): boolean {
+  const pdf = obs.pdfDriveFileId;
+  return typeof pdf === 'string' && pdf !== '';
+}
+
+/** True if anyone has recorded anything on the observation: ratings,
+ *  notes, script, tags, evidence, audio, meeting notes or dates, the
+ *  teacher's answers, or a finalized PDF. Accepts raw (unvalidated)
+ *  Firestore data, so absent fields and legacy shapes are fine. */
+export function observationHasRecordedContent(obs: Record<string, unknown>): boolean {
+  if (observationWasFinalized(obs)) return true;
+  const nonEmptyArray = (v: unknown) => Array.isArray(v) && v.length > 0;
+  const entries = (v: unknown): unknown[] =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.values(v) : [];
+
+  const rated = entries(obs['observationData']).some((e) => {
+    if (!e || typeof e !== 'object') return false;
+    const entry = e as {
+      proficiency?: unknown;
+      selectedLookForIds?: unknown;
+      scratchNotes?: unknown;
+    };
+    return (
+      entry.proficiency != null ||
+      nonEmptyArray(entry.selectedLookForIds) ||
+      (typeof entry.scratchNotes === 'string' && entry.scratchNotes.trim() !== '')
+    );
+  });
+  if (rated) return true;
+  if (entries(obs['componentNotes']).some(tiptapNodeHasText)) return true;
+  if (entries(obs['evidenceLinks']).some(nonEmptyArray)) return true;
+  if (nonEmptyArray(obs['componentTags']) || nonEmptyArray(obs['audioDriveFileIds'])) return true;
+  for (const key of [
+    'scriptDoc',
+    'preObsNotes',
+    'postObsNotes',
+    'goalsNextSteps',
+    'goalsResponse',
+  ]) {
+    if (tiptapNodeHasText(obs[key])) return true;
+  }
+  if (obs['preObsDate'] != null || obs['postObsDate'] != null) return true;
+  const answers = obs['workProductAnswers'];
+  return (
+    Array.isArray(answers) &&
+    answers.some((a) => workProductAnswerHasText((a as { answer?: unknown } | null)?.answer))
+  );
+}
+
 /**
  * What the observed staff member may see on a Draft. Display gating only —
  * rules gate whole documents and the teacher already has `get` on their own
