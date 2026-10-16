@@ -133,3 +133,46 @@ test.describe('observation create -> edit -> autosave', () => {
     expect(page.url().startsWith(`${baseURL ?? ''}/observations/`)).toBe(true);
   });
 });
+
+test.describe('co-observers', () => {
+  // Co-observers are saved through the setCoObservers callable (the rules no
+  // longer let the client write the list), so this exercises the callable
+  // end to end against the Functions emulator.
+  test('owner adds and removes a Peer Evaluator co-observer', async ({ page }) => {
+    await devSignIn(page, SEED_PE_EMAIL);
+
+    await page.goto('/observations/new');
+    await page
+      .getByPlaceholder('Search by name, email, role, or building')
+      .fill(SEED_TEACHER_EMAIL);
+    await page.getByRole('button', { name: 'Observe', exact: true }).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create observation' }).click();
+    await page.waitForURL(
+      (url) =>
+        /^\/observations\/[A-Za-z0-9]+$/.test(url.pathname) &&
+        !url.pathname.endsWith('/observations/new'),
+      { timeout: 15_000 },
+    );
+
+    await page.getByRole('button', { name: /^Sharing:/ }).click();
+    const coObservers = page.getByRole('list', { name: 'Co-observers' });
+
+    // Only observers are offered, so a teacher search finds no one.
+    const add = page.getByLabel('Add a co-observer');
+    await add.fill('Teacher One');
+    await expect(page.getByText('No observers match.', { exact: false })).toBeVisible();
+
+    await add.fill('Beta Peer');
+    await page.getByRole('button', { name: /Beta Peer Evaluator/ }).click();
+    await expect(coObservers.getByText('Beta Peer Evaluator')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Could not update co-observers', { exact: false })).toHaveCount(0);
+
+    // Persisted, not just local state.
+    await page.reload();
+    await page.getByRole('button', { name: /^Sharing:/ }).click();
+    await expect(coObservers.getByText('Beta Peer Evaluator')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'Remove Beta Peer Evaluator' }).click();
+    await expect(coObservers).toHaveCount(0, { timeout: 15_000 });
+  });
+});

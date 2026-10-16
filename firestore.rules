@@ -562,15 +562,13 @@ service cloud.firestore {
         && (notDemoEdit() || isDemoStaff(request.resource.data.observedEmail));
 
       allow update: if ((
-          // Owner: Draft content, the teacher-visibility switchboard and who
-          // co-observes. The owner can't add themselves or the observed
-          // teacher as a co-observer.
+          // Owner: Draft content and the teacher-visibility switchboard.
+          // Co-observers are set through the setCoObservers callable, which
+          // checks each added person holds an observer role (rules can't
+          // check the role of every address in a list).
           ownsObs()
           && resource.data.status == 'Draft'
-          && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility', 'coObserverEmails']))
-          && !(request.auth.token.email in request.resource.data.get('coObserverEmails', []))
-          && !(resource.data.observedEmail in request.resource.data.get('coObserverEmails', []))
-          && request.resource.data.get('coObserverEmails', []).size() <= 10
+          && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility']))
         )
         || (
           // Co-observer: Draft content only — not sharing or visibility.
