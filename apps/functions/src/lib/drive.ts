@@ -100,6 +100,16 @@ export async function ensureObservationFolder(args: {
   parentFolderId: string;
   existingFolderId: string | null;
 }): Promise<string> {
+  if (args.existingFolderId && args.existingFolderId === args.parentFolderId) {
+    // A Draft must never adopt the district parent folder as its own: files
+    // would land beside every observation folder, and sharing it would grant
+    // the caller reader access to all of them.
+    logger.error('ensureObservationFolder: existing folder is the Drive parent folder', {
+      observationId: args.observationId,
+      folderId: args.existingFolderId,
+    });
+    throw new Error('Observation folder id is the Drive parent folder');
+  }
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
@@ -541,6 +551,47 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
     const status = (err as { code?: number }).code;
     if (status !== 404) throw err;
   });
+}
+
+/**
+ * Delete an observation's Drive folder, but only when it is a direct child of
+ * the observations parent folder. `deleteDriveFolder` empties whatever folder
+ * it is given, so a `driveFolderId` that pointed at the parent (or anywhere
+ * else) would wipe every observation in the district. Anything that fails the
+ * check is left in place and logged; that includes legacy folders the Shared
+ * Drive move skipped, which someone can delete by hand.
+ */
+export async function deleteObservationFolder(args: {
+  folderId: string;
+  parentFolderId: string;
+}): Promise<'deleted' | 'refused'> {
+  const { folderId, parentFolderId } = args;
+  if (!parentFolderId || folderId === parentFolderId) {
+    logger.error('deleteObservationFolder: refused', { folderId, parentFolderId });
+    return 'refused';
+  }
+  let parents: string[];
+  try {
+    parents = await getFileParents(folderId);
+  } catch (err) {
+    // Already gone: nothing to delete.
+    if (driveErrorCode(err) === 404) return 'deleted';
+    throw err;
+  }
+  if (!parents.includes(parentFolderId)) {
+    logger.error('deleteObservationFolder: folder is not under the parent folder; refused', {
+      folderId,
+      parentFolderId,
+      parents,
+    });
+    return 'refused';
+  }
+  await deleteDriveFolder(folderId);
+  return 'deleted';
+}
+
+function driveErrorCode(err: unknown): unknown {
+  return typeof err === 'object' && err !== null && 'code' in err ? err.code : undefined;
 }
 
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {

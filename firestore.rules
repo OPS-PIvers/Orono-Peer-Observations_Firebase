@@ -519,6 +519,28 @@ service cloud.firestore {
       function changedKeys() {
         return request.resource.data.diff(resource.data).affectedKeys();
       }
+      // Fields a client may set when creating a Draft (newDraftObservationDoc).
+      // Server-owned fields (Drive ids, transcripts, finalize/ack state) must be
+      // empty: the Functions trust them, so a client-chosen driveFolderId would
+      // let an observer reuse or delete any Drive folder the app can reach.
+      function createKeys() {
+        return ['observerEmail','observerName','observerRole','observedEmail','observedName',
+          'observedRole','observedYear','observedBuildings','status','type','questionSetId',
+          'observationName','observationData','componentNotes','evidenceLinks','componentTags',
+          'workProductAnswers','audioDriveFileIds','transcripts','driveFolderId','pdfDriveFileId',
+          'observationDate','createdAt','lastModifiedAt','finalizedAt','coObserverEmails'];
+      }
+      function serverOwnedFieldsEmpty() {
+        let d = request.resource.data;
+        return d.get('driveFolderId', null) == null
+          && d.get('pdfDriveFileId', null) == null
+          && d.get('finalizedAt', null) == null
+          && d.get('audioDriveFileIds', []).size() == 0
+          && d.get('transcripts', {}).size() == 0
+          && d.get('evidenceLinks', {}).size() == 0
+          && d.get('componentTags', []).size() == 0
+          && d.get('workProductAnswers', []).size() == 0;
+      }
 
       allow get: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
       // Rules aren't filters: an observer's queries must constrain
@@ -529,6 +551,8 @@ service cloud.firestore {
         && role() in ['administrator', 'peer-evaluator', 'full-access']
         && request.resource.data.observerEmail == request.auth.token.email
         && request.resource.data.status == 'Draft'
+        && request.resource.data.keys().hasOnly(createKeys())
+        && serverOwnedFieldsEmpty()
         && request.resource.data.get('coObserverEmails', []).size() == 0
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.

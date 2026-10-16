@@ -14,7 +14,7 @@ import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
-  deleteDriveFolder,
+  deleteObservationFolder,
   removeReaderFromFile,
   shareObservationFolderWithObservers,
 } from '../lib/drive.js';
@@ -28,6 +28,7 @@ if (getApps().length === 0) initializeApp();
  * (e.g., before Phase 0h ops setup) the trigger no-ops gracefully.
  */
 const MASTER_LOG_SHEET_ID = defineString('MASTER_LOG_SHEET_ID');
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 const HEADER_ROW = [
   'Observation ID',
@@ -421,7 +422,12 @@ async function handleDeletion(
   const folderToDelete = draftFolderToDelete(beforeData);
   if (folderToDelete) {
     try {
-      await deleteDriveFolder(folderToDelete);
+      // Refuses (and logs) anything that isn't a direct child of the parent
+      // folder, so a bad driveFolderId can't empty someone else's folder.
+      await deleteObservationFolder({
+        folderId: folderToDelete,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+      });
     } catch (err) {
       logger.warn('onObservationWritten: Drive folder cleanup failed', { observationId, err });
     }
