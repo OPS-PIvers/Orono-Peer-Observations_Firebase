@@ -77,10 +77,42 @@ beforeEach(() => {
 });
 
 describe('onStaffWritten — claim sync', () => {
-  it('no-ops when no auth user exists yet (user-not-found)', async () => {
+  it('skips claims but still sends the invite when no auth user exists yet', async () => {
     state.getUserByEmail = vi.fn().mockRejectedValue(authError('auth/user-not-found'));
     await invoke(
-      makeEvent({ email: 'new@orono.k12.mn.us', after: { role: 'teacher', isActive: true } }),
+      makeEvent({
+        email: 'new@orono.k12.mn.us',
+        before: null,
+        after: { role: 'teacher', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).toHaveBeenCalledOnce();
+    const arg = state.sendTemplatedEmail?.mock.calls[0]?.[0] as { triggerType: string };
+    expect(arg.triggerType).toBe('staff.created');
+  });
+
+  it('no invite when the auth user does not exist and the doc is an update', async () => {
+    state.getUserByEmail = vi.fn().mockRejectedValue(authError('auth/user-not-found'));
+    await invoke(
+      makeEvent({
+        email: 'pending@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'peer-evaluator', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
+  });
+
+  it('no invite for inactive new staff without an auth user', async () => {
+    state.getUserByEmail = vi.fn().mockRejectedValue(authError('auth/user-not-found'));
+    await invoke(
+      makeEvent({
+        email: 'dormant@orono.k12.mn.us',
+        before: null,
+        after: { role: 'teacher', isActive: false },
+      }),
     );
     expect(state.setClaims).not.toHaveBeenCalled();
     expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
