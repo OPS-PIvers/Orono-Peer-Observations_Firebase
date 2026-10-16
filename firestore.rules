@@ -564,7 +564,10 @@ service cloud.firestore {
       allow update: if ((
           // Owner: Draft content, the teacher-visibility switchboard and who
           // co-observes. The owner can't add themselves or the observed
-          // teacher as a co-observer.
+          // teacher as a co-observer. The app now sets co-observers through
+          // the setCoObservers callable (which checks each person's role);
+          // coObserverEmails comes off this list once that client is live on
+          // main, so the production site keeps working in between.
           ownsObs()
           && resource.data.status == 'Draft'
           && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility', 'coObserverEmails']))

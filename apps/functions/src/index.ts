@@ -30,6 +30,7 @@ export { backfillScriptTagColors } from './observations/backfillScriptTagColors.
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { regenerateObservationPdf } from './observations/regenerateObservationPdf.js';
 export { reopenObservation } from './observations/reopenObservation.js';
+export { setCoObservers } from './observations/setCoObservers.js';
 export { suggestScriptTags } from './observations/suggestScriptTags.js';
 export { applyScriptTags } from './observations/applyScriptTags.js';
 export { getAiProviderStatus } from './ai/getAiProviderStatus.js';
