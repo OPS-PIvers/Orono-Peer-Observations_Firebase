@@ -16,6 +16,7 @@ describe('functions index', () => {
     expect(typeof mod.finalizeObservation).not.toBe('undefined');
     expect(typeof mod.reopenObservation).not.toBe('undefined');
     expect(typeof mod.onObservationWritten).not.toBe('undefined');
+    expect(typeof mod.onObservationTeacherView).not.toBe('undefined');
     expect(typeof mod.suggestScriptTags).not.toBe('undefined');
     expect(typeof mod.applyScriptTags).not.toBe('undefined');
     expect(typeof mod.pruneAuditLog).not.toBe('undefined');

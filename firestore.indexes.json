@@ -603,6 +603,64 @@
       ]
     },
     {
+      "collectionGroup": "teacherViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "teacherViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "teacherViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "observedEmail",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "finalizedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "transcriptionJobs",
       "queryScope": "COLLECTION",
       "fields": [
