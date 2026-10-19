@@ -181,6 +181,37 @@ describe('applyTagsToScriptDoc', () => {
     expect(runs[0]?.marks?.map((m) => m.type)).toEqual(['bold', 'componentTag']);
   });
 
+  it('tags text inside and after lists and blockquotes', () => {
+    const para = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
+    const d = {
+      type: 'doc',
+      content: [
+        para('Opening routine.'),
+        {
+          type: 'bulletList',
+          content: [
+            { type: 'listItem', content: [para('Students turned and talked.')] },
+            { type: 'listItem', content: [para('The teacher circulated.')] },
+          ],
+        },
+        { type: 'blockquote', content: [para('"Who can explain?"')] },
+        para('Exit ticket collected.'),
+      ],
+    } as unknown as TiptapDoc;
+    // Index the suggestions the way suggestScriptTags does: by position in
+    // extractParagraphs, empty container entries included.
+    const paragraphs = extractParagraphs(d);
+    const wanted = ['turned', 'circulated', 'explain', 'Exit ticket'];
+    const suggestions = wanted.map((text) => ({
+      paragraphIndex: paragraphs.findIndex((p) => p.includes(text)),
+      text,
+      componentId: '1a',
+    }));
+    const out = applyTagsToScriptDoc(d, suggestions, COLORS);
+    expect(taggedRuns(out).map((r) => r.text)).toEqual(wanted);
+    expect(extractParagraphs(out)).toEqual(paragraphs);
+  });
+
   it('is a no-op when there are no suggestions', () => {
     const source = doc('Students turned and talked.');
     const out = applyTagsToScriptDoc(source, [], COLORS);
