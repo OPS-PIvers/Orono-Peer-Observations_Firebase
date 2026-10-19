@@ -386,30 +386,29 @@ export function applyTagsToScriptDoc(
     byParagraph.set(s.paragraphIndex, list);
   }
 
+  // Number textblocks exactly as extractParagraphs does: children before
+  // their parent, so a paragraph inside a list item or blockquote gets its
+  // own index and the container gets the next one. Numbering the container
+  // first (and not descending into it) shifted every later paragraph by one,
+  // so tags inside or after a list silently matched nothing.
   let paragraphCounter = -1;
-  function visit(input: unknown): unknown {
+  function visit(input: unknown, depth: number): unknown {
     if (!input || typeof input !== 'object') return input;
     const node = input as MaybeNode;
-    if (typeof node.type === 'string' && isTextblockType(node.type)) {
+    const content = Array.isArray(node.content)
+      ? (node.content as MaybeNode[]).map((c) => visit(c, depth + 1) as MaybeNode)
+      : node.content;
+    if (typeof node.type === 'string' && depth > 0 && isTextblockType(node.type)) {
       paragraphCounter += 1;
       const localTags = byParagraph.get(paragraphCounter);
-      const newContent = applyTagsWithinParagraph(
-        (node.content ?? []) as MaybeNode[],
-        localTags ?? [],
-        colorMap,
-      );
-      return { ...node, content: newContent };
+      if (localTags && Array.isArray(content)) {
+        return { ...node, content: applyTagsWithinParagraph(content, localTags, colorMap) };
+      }
     }
-    if (Array.isArray(node.content)) {
-      return {
-        ...node,
-        content: (node.content as MaybeNode[]).map((c) => visit(c)),
-      };
-    }
-    return node;
+    return content === node.content ? node : { ...node, content };
   }
 
-  return visit(doc) as TiptapDoc;
+  return visit(doc, 0) as TiptapDoc;
 }
 
 function applyTagsWithinParagraph(
