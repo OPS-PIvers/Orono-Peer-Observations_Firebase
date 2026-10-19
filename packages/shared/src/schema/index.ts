@@ -21,6 +21,7 @@ export * from './rubric.js';
 export * from './ai.js';
 export * from './settings.js';
 export * from './observation.js';
+export * from './teacherView.js';
 export * from './workProductQuestion.js';
 export * from './buildingSchedule.js';
 export * from './signupField.js';

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import type { CallableRequest } from 'firebase-functions/v2/https';
+import type { Timestamp as TimestampClass } from 'firebase-admin/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES } from '@ops/shared';
 
 type Fn = ((...args: unknown[]) => unknown) | undefined;
@@ -81,6 +82,11 @@ vi.mock('../lib/emailUtils.js', () => ({
 }));
 
 const { finalizeObservation } = await import('./finalizeObservation.js');
+// The module mock above has no Timestamp; the fixture needs the real class so
+// the observation date arrives the way the Admin SDK hands it over.
+const { Timestamp } = await vi.importActual<{ Timestamp: typeof TimestampClass }>(
+  'firebase-admin/firestore',
+);
 
 const run = (req: Partial<CallableRequest>) =>
   (finalizeObservation as unknown as { run: (r: unknown) => Promise<unknown> }).run(req);
@@ -196,7 +202,7 @@ function draftObservation(over: Record<string, unknown> = {}) {
     observedRole: 'teacher',
     observedYear: 1,
     observationName: 'Spring Visit',
-    observationDate: new Date('2026-04-01'),
+    observationDate: Timestamp.fromDate(new Date('2026-04-01T15:00:00Z')),
     ...over,
   };
 }
@@ -421,6 +427,21 @@ describe('finalizeObservation — finalize flow', () => {
     };
     expect(snapshot.assignedComponentIds).toEqual(expected);
     expect(snapshot.domains.map((d) => d.id)).toEqual(['d1', 'd2']);
+  });
+
+  it('renders with real Dates, not Admin SDK Timestamps, and a finalizedAt', async () => {
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    await run(observerRequest());
+
+    const renderArgs = vi.mocked(h.renderObservationPdf as Mock).mock.calls[0]?.[0] as {
+      observation: { observationDate: unknown; finalizedAt: unknown };
+    };
+    expect(renderArgs.observation.observationDate).toBeInstanceOf(Date);
+    expect((renderArgs.observation.observationDate as Date).toISOString()).toBe(
+      '2026-04-01T15:00:00.000Z',
+    );
+    expect(renderArgs.observation.finalizedAt).toBeInstanceOf(Date);
   });
 
   it('permits Full Access (oversight) who is not the observer to finalize', async () => {

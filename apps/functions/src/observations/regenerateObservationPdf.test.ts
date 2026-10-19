@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { CallableRequest } from 'firebase-functions/v2/https';
-import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
+import {
+  APP_SETTINGS_DOC_ID,
+  COLLECTIONS,
+  OBSERVATION_STATUS,
+  OBSERVATION_TYPES,
+} from '@ops/shared';
 
 type Fn = ((...args: unknown[]) => unknown) | undefined;
 
@@ -97,6 +102,10 @@ interface DbConfig {
   role?: Record<string, unknown> & { id: string };
   rubric?: Record<string, unknown>;
   mapping?: Record<string, unknown> | null;
+  /** Rows for db.collection('workProductQuestions') queries. */
+  questions?: Record<string, unknown>[];
+  /** The appSettings/app doc (undefined → missing). */
+  appSettings?: Record<string, unknown>;
 }
 
 interface Recorder {
@@ -134,6 +143,15 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
           }),
       };
     }
+    if (path === `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`) {
+      return {
+        get: () =>
+          Promise.resolve({
+            exists: config.appSettings !== undefined,
+            data: () => config.appSettings,
+          }),
+      };
+    }
     if (path.startsWith(`${COLLECTIONS.roleYearMappings}/`)) {
       return {
         get: () =>
@@ -156,7 +174,15 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
           return Promise.resolve({ exists: false, data: () => undefined });
         },
       }),
-      where: () => ({ limit: () => ({ get: () => Promise.resolve({ empty: true, docs: [] }) }) }),
+      where: (field: string, _op: string, val: unknown) => {
+        const rows =
+          name === COLLECTIONS.workProductQuestions
+            ? (config.questions ?? []).filter((r) => r[field] === val)
+            : [];
+        const docs = rows.map((r) => ({ data: () => r }));
+        const result = Promise.resolve({ empty: docs.length === 0, docs });
+        return { limit: () => ({ get: () => result }), get: () => result };
+      },
       add: (data: Record<string, unknown>) => {
         if (name === COLLECTIONS.auditLog) rec.auditAdds.push(data);
         return Promise.resolve({ id: 'audit-1' });
@@ -177,6 +203,7 @@ const OBSERVED = 'observed@orono.k12.mn.us';
 function finalizedObservation(over: Record<string, unknown> = {}) {
   return {
     status: OBSERVATION_STATUS.finalized,
+    type: OBSERVATION_TYPES.standard,
     observerEmail: OBSERVER,
     observedEmail: OBSERVED,
     observedName: 'Observed Person',
@@ -371,5 +398,45 @@ describe('regenerateObservationPdf — report contents and file handling', () =>
       ['c1', 'c2'],
       ['c4'],
     ]);
+  });
+
+  it('renders with the question texts and branding a finalize would use', async () => {
+    const config = happyConfig({
+      workProductAnswers: [{ questionId: 'q1', answer: 'My answer' }],
+    });
+    config.questions = [
+      { questionId: 'q1', text: 'What went well?', order: 0, isActive: true, type: 'standard' },
+    ];
+    config.appSettings = {
+      branding: { appName: 'Orono Observations', logoUrl: 'https://logo.test/x.png' },
+    };
+    const { db } = buildDb(config);
+    h.db = db;
+    await run(observerRequest());
+
+    const renderArgs = (h.renderObservationPdf as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+      workProductQuestions: { questionId: string; text: string; phase: string }[];
+      branding?: Record<string, unknown>;
+    };
+    expect(renderArgs.workProductQuestions).toEqual([
+      { questionId: 'q1', text: 'What went well?', phase: 'pre' },
+    ]);
+    expect(renderArgs.branding).toEqual({
+      appName: 'Orono Observations',
+      logoUrl: 'https://logo.test/x.png',
+    });
+  });
+
+  it('omits branding when appSettings has none', async () => {
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    await run(observerRequest());
+
+    const renderArgs = (h.renderObservationPdf as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as {
+      workProductQuestions: unknown[];
+      branding?: unknown;
+    };
+    expect(renderArgs.workProductQuestions).toEqual([]);
+    expect(renderArgs).not.toHaveProperty('branding');
   });
 });

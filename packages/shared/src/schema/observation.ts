@@ -354,6 +354,15 @@ export const reopenObservationInput = z.object({
 });
 export type ReopenObservationInput = z.infer<typeof reopenObservationInput>;
 
+/** Input for the setCoObservers callable (owner or oversight, Draft only).
+ *  The callable — not the client — checks that every added co-observer holds
+ *  an observer role, which Firestore rules can't do over a list. */
+export const setCoObserversInput = z.object({
+  observationId: z.string().min(1),
+  coObserverEmails: z.array(email).max(10),
+});
+export type SetCoObserversInput = z.infer<typeof setCoObserversInput>;
+
 /** Input for the removeEvidenceFile callable (observer-or-admin, draft-only
  *  unless admin — see removeEvidenceFile.ts for the full precondition). */
 export const removeEvidenceFileInput = z.object({

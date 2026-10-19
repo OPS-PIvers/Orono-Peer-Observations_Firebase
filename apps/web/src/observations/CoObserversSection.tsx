@@ -1,14 +1,25 @@
 import { useMemo, useState } from 'react';
-import { doc, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { UserPlus, X } from 'lucide-react';
-import { COLLECTIONS, canCreateObservations, type Staff } from '@ops/shared';
-import { db } from '@/lib/firebase';
+import {
+  COLLECTIONS,
+  canCreateObservations,
+  type SetCoObserversInput,
+  type Staff,
+} from '@ops/shared';
+import { functions } from '@/lib/firebase';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { assertWritable } from '@/dev/viewAsGuard';
 
 const MAX_CO_OBSERVERS = 10;
 const MAX_SUGGESTIONS = 6;
 const ACTIVE_STAFF = [where('isActive', '==', true)];
+
+const setCoObserversFn = httpsCallable<SetCoObserversInput, { ok: boolean }>(
+  functions,
+  'setCoObservers',
+);
 
 export interface CoObserversSectionProps {
   observationId: string;
@@ -23,7 +34,8 @@ export interface CoObserversSectionProps {
  * and associate principal observing together). Co-observers see it in their
  * lists and edit the Draft's content; finalize, delete and sharing stay with
  * the owner. Enforced by the /observations rules (see observationAccessFor).
- * Only people who can observe are offered.
+ * Only people who can observe are offered, and the setCoObservers callable
+ * refuses anyone else.
  */
 export function CoObserversSection({
   observationId,
@@ -57,10 +69,7 @@ export function CoObserversSection({
     setError(null);
     try {
       assertWritable();
-      await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
-        coObserverEmails: next,
-        lastModifiedAt: serverTimestamp(),
-      });
+      await setCoObserversFn({ observationId, coObserverEmails: next });
       setQuery('');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not save');

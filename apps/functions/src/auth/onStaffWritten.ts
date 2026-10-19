@@ -2,7 +2,7 @@ import { onDocumentWritten, type FirestoreEvent } from 'firebase-functions/v2/fi
 import type { Change, DocumentSnapshot } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
@@ -19,8 +19,8 @@ if (getApps().length === 0) initializeApp();
  *   - staff doc deleted entirely — claims cleared
  *
  * If the matching auth user doesn't exist yet (admin pre-provisioned a
- * staff member who hasn't signed in yet), this trigger no-ops; the claims
- * will be set on first sign-in via syncMyClaims.
+ * staff member who hasn't signed in yet), claims wait for first sign-in via
+ * syncMyClaims, but the new-staff invite still goes out on creation.
  *
  * Note: existing tokens still carry old claims until they refresh. The
  * web client's AuthProvider exposes `refreshClaims()` for promote-then-
@@ -55,22 +55,23 @@ export async function handleStaffWritten(
   const isAdmin = isAdminRole(role) || hasAdminAccess;
   const hasSpecialAccess = isSpecialRole(role) || isAdmin;
 
-  let user;
+  let user: UserRecord | null;
   try {
     user = await getAuth().getUserByEmail(email);
   } catch (err) {
     // user-not-found is the common case (staff doc created before the
-    // person ever signed in). Log and bail.
+    // person ever signed in). Skip claims, but fall through so a brand-new
+    // staff member still gets their invite.
     const code = typeof err === 'object' && err !== null && 'code' in err ? err.code : null;
-    if (code === 'auth/user-not-found') {
-      logger.info('onStaffWritten: no auth user yet for', { email });
-      return;
-    }
-    throw err;
+    if (code !== 'auth/user-not-found') throw err;
+    logger.info('onStaffWritten: no auth user yet for', { email });
+    user = null;
   }
 
-  await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
-  logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+  if (user) {
+    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
+    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+  }
 
   // New staff invite email — only on creation (before=null) for active staff
   const isNewStaff = !event.data?.before.exists && event.data?.after.exists;

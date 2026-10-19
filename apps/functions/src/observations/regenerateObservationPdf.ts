@@ -11,8 +11,6 @@ import {
   OBSERVATION_STATUS,
   resolveReportDomains,
   roleYearMappingDocId,
-  toDate as sharedToDate,
-  type DriveFileRef,
   type Observation,
   type RoleYearMapping,
   type Rubric,
@@ -33,6 +31,7 @@ import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -169,6 +168,7 @@ export const regenerateObservationPdf = onCall(
 
     const { rubric, reportDomains, roleDisplayName } = await loadRenderInputs(db, obs);
     const activeComponentIds = reportDomains.flatMap((d) => d.components.map((c) => c.id));
+    const { workProductQuestions, branding } = await loadPdfQuestionsAndBranding(db, obs);
 
     const parentFolderId = PARENT_FOLDER_ID.value();
     if (!parentFolderId) {
@@ -184,6 +184,8 @@ export const regenerateObservationPdf = onCall(
         observation: toRendererObservation(obs, roleDisplayName),
         rubric,
         activeComponentIds,
+        workProductQuestions,
+        ...(branding ? { branding } : {}),
       });
     } catch (err) {
       logger.error('regenerateObservationPdf: PDF render failed', err);
@@ -344,46 +346,4 @@ async function loadRenderInputs(
 
 function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
-}
-
-/**
- * Coerce a Firestore value to a real `Date`. Date fields are typed `Date` but
- * arrive from the Admin SDK as `Timestamp`s at runtime; left as-is they survive
- * the gaxios JSON POST to the pdf-renderer as `{_seconds,_nanoseconds}` blobs
- * the template can't format. (Mirrors finalizeObservation's `toDate`.)
- */
-function toDate(value: unknown): Date | undefined {
-  return sharedToDate(value) ?? undefined;
-}
-
-/**
- * Build the observation payload for the pdf-renderer: swap the role slug for its
- * display name and normalize every rendered date to a real `Date`. Unlike
- * finalize, a regenerate keeps the existing `finalizedAt` (the observation is
- * already Finalized), falling back to now only if it is somehow unset.
- */
-function toRendererObservation(
-  obs: Observation & { id: string },
-  roleDisplayName: string,
-): Observation {
-  const normalized: Observation = {
-    ...obs,
-    observationId: obs.id,
-    observedRole: roleDisplayName,
-    observationDate: toDate(obs.observationDate) ?? obs.observationDate,
-    finalizedAt: toDate(obs.finalizedAt) ?? new Date(),
-  };
-  const preObsDate = toDate(obs.preObsDate);
-  if (preObsDate) normalized.preObsDate = preObsDate;
-  const postObsDate = toDate(obs.postObsDate);
-  if (postObsDate) normalized.postObsDate = postObsDate;
-  if (obs.evidenceLinks) {
-    normalized.evidenceLinks = Object.fromEntries(
-      Object.entries(obs.evidenceLinks).map(([cId, refs]): [string, DriveFileRef[]] => [
-        cId,
-        refs.map((ref) => ({ ...ref, uploadedAt: toDate(ref.uploadedAt) ?? ref.uploadedAt })),
-      ]),
-    );
-  }
-  return normalized;
 }

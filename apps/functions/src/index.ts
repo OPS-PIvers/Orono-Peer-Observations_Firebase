@@ -30,12 +30,14 @@ export { backfillScriptTagColors } from './observations/backfillScriptTagColors.
 export { finalizeObservation } from './observations/finalizeObservation.js';
 export { regenerateObservationPdf } from './observations/regenerateObservationPdf.js';
 export { reopenObservation } from './observations/reopenObservation.js';
+export { setCoObservers } from './observations/setCoObservers.js';
 export { suggestScriptTags } from './observations/suggestScriptTags.js';
 export { applyScriptTags } from './observations/applyScriptTags.js';
 export { getAiProviderStatus } from './ai/getAiProviderStatus.js';
 export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
+export { onObservationTeacherView } from './observations/onObservationTeacherView.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';
 export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js';
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';

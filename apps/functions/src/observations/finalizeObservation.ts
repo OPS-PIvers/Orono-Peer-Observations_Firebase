@@ -5,23 +5,16 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
-  APP_SETTINGS_DOC_ID,
   canManageObservation,
   COLLECTIONS,
   displayYear,
   OBSERVATION_STATUS,
-  QUESTION_TYPE_BY_OBSERVATION_TYPE,
-  questionsForObservation,
-  questionPhase,
   resolveReportDomains,
   roleYearMappingDocId,
-  workProductAnswerHasText,
-  type AppSettings,
   type Observation,
   type Role,
   type RoleYearMapping,
   type Rubric,
-  type WorkProductQuestion,
 } from '@ops/shared';
 import {
   DRIVE_SECRETS,
@@ -46,6 +39,7 @@ import {
   reportFileName,
 } from '../lib/acknowledgeEmail.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
  * Pull a human-readable cause out of a Drive/Gaxios error so the message the
@@ -219,51 +213,7 @@ export const finalizeObservation = onCall(
       );
       const activeComponentIds = snapshotDomains.flatMap((d) => d.components.map((c) => c.id));
 
-      // Every observation type stores its reflection answers as Q&A keyed on
-      // questionId. Fetch the observation's question set so the PDF can print
-      // each answer under its question text. Every question of the set is
-      // fetched (not just active ones) so answers to since-deactivated
-      // questions still make it into the permanent record; an answer whose
-      // question was deleted prints under the text it was written against.
-      const questionType = QUESTION_TYPE_BY_OBSERVATION_TYPE[obs.type];
-      let workProductQuestions: Pick<WorkProductQuestion, 'questionId' | 'text' | 'phase'>[] = [];
-      {
-        const questionsSnap = await db
-          .collection(COLLECTIONS.workProductQuestions)
-          .where('type', '==', questionType)
-          .get();
-        const answered = (obs.workProductAnswers ?? []).filter((a) =>
-          workProductAnswerHasText(a.answer),
-        );
-        const answeredIds = new Set(answered.map((a) => a.questionId));
-        const inSet = questionsForObservation(
-          questionsSnap.docs.map((doc) => doc.data() as WorkProductQuestion),
-          obs,
-        );
-        const known = new Set(inSet.map((q) => q.questionId));
-        workProductQuestions = [
-          ...inSet
-            .filter((q) => q.isActive || answeredIds.has(q.questionId))
-            .sort((a, b) => a.order - b.order)
-            .map((q) => ({ questionId: q.questionId, text: q.text, phase: questionPhase(q) })),
-          ...answered
-            .filter((a) => !known.has(a.questionId) && a.questionText)
-            .map((a) => ({
-              questionId: a.questionId,
-              text: a.questionText ?? '',
-              phase: a.questionPhase ?? ('post' as const),
-            })),
-        ];
-      }
-
-      // Thread admin-configured branding into the PDF so the archived
-      // record matches the web app / finalized-observation email header.
-      // Missing/unset appSettings is fine — the renderer falls back to the
-      // packaged OPS look.
-      const appSettingsSnap = await db
-        .doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`)
-        .get();
-      const branding = (appSettingsSnap.data() as AppSettings | undefined)?.branding;
+      const { workProductQuestions, branding } = await loadPdfQuestionsAndBranding(db, obs);
 
       const parentFolderId = PARENT_FOLDER_ID.value();
       if (!parentFolderId) {
@@ -274,12 +224,12 @@ export const finalizeObservation = onCall(
       }
 
       // The renderer expects a human-readable role label in `observedRole`,
-      // not the slug we now store. Override at the renderer boundary so the
-      // template doesn't need to know about the lookup.
+      // not the slug we now store, and real Dates rather than the Admin SDK's
+      // Timestamps. finalizedAt is still unset on the doc, so pass now.
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await renderObservationPdf({
-          observation: { ...obs, observationId: obs.id, observedRole: role.displayName },
+          observation: toRendererObservation(obs, role.displayName, new Date()),
           rubric,
           activeComponentIds,
           workProductQuestions,
