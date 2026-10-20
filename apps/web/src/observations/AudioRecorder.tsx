@@ -53,6 +53,7 @@ import {
   preloadDrivePicker,
 } from './driveAudioPicker';
 import { assertWritable, isViewAsActive } from '@/dev/viewAsGuard';
+import { registerSignOutHold } from '@/auth/signOutHold';
 
 interface RequestTranscriptionResponse {
   jobId?: string;
@@ -95,6 +96,10 @@ export interface AudioRecorderProps {
   /** Notifies the parent when recording phase changes — used by the
    *  toolbar to render a red-dot indicator while recording is in flight. */
   onPhaseChange?: (phase: Phase) => void;
+  /** True while audio exists only in this tab: the mic is opening, a
+   *  recording or Drive import is in progress, or a finished recording hasn't
+   *  reached Drive. The editor blocks Finalize while it is. */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
   /** Appends the finished transcript for a recording into the observation's
    *  script doc. Omit to hide the "Insert into script" action. */
   onInsertTranscript?: ((audioFileId: string) => void) | undefined;
@@ -140,6 +145,7 @@ export function AudioRecorder({
   readOnly = false,
   onUploaded,
   onPhaseChange,
+  onBusyChange,
   onInsertTranscript,
 }: AudioRecorderProps) {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -147,6 +153,9 @@ export function AudioRecorder({
     onPhaseChange?.(phase);
   }, [phase, onPhaseChange]);
   const [error, setError] = useState<string | null>(null);
+  /** The mic is being opened (permission prompt up); Record is disabled. */
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [unsaved, setUnsaved] = useState<UnsavedRecording | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
@@ -235,8 +244,11 @@ export function AudioRecorder({
     [onInsertTranscript],
   );
 
+  const mountedRef = useRef(true);
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       stopTracks();
       if (tickerRef.current) clearInterval(tickerRef.current);
     };
@@ -245,6 +257,18 @@ export function AudioRecorder({
   // Until a recording is in Drive it exists only in this tab, so warn before
   // the tab is closed or reloaded.
   const holdsUnsavedAudio = phase === 'recording' || unsaved !== null;
+
+  // Wider than the above: also the mic prompt and a Drive import in flight.
+  // Finalize waits for it, and so does a session-timeout sign-out, whose
+  // navigation to /sign-in would unmount this recorder (signOutHold.ts).
+  const busy = starting || holdsUnsavedAudio || phase === 'uploading' || phase === 'importing';
+  const busyRef = useRef(busy);
+  useEffect(() => {
+    busyRef.current = busy;
+    onBusyChange?.(busy);
+  }, [busy, onBusyChange]);
+  useEffect(() => registerSignOutHold(() => busyRef.current), []);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => {
     if (!holdsUnsavedAudio) return;
     function handleBeforeUnload(e: BeforeUnloadEvent) {
@@ -265,12 +289,21 @@ export function AudioRecorder({
   }
 
   async function startRecording() {
+    // A second tap while the mic permission prompt is up would start a second
+    // recorder sharing chunksRef and leave the first stream's mic on.
+    if (startingRef.current || recorderRef.current?.state === 'recording') return;
+    startingRef.current = true;
+    setStarting(true);
     setError(null);
     chunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: { ideal: 1 } },
       });
+      if (!mountedRef.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       streamRef.current = stream;
       const mimeType = pickSupportedMimeType();
       const recorder = new MediaRecorder(stream, {
@@ -301,8 +334,12 @@ export function AudioRecorder({
         setElapsed((t) => t + 1);
       }, 1000);
     } catch (err) {
+      stopTracks();
       setError(err instanceof Error ? err.message : 'Could not access microphone');
       setPhase('error');
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
     }
   }
 
@@ -471,7 +508,7 @@ export function AudioRecorder({
         <div className="flex shrink-0 flex-col items-stretch gap-2">
           <RecordButton
             phase={phase}
-            disabled={readOnly || phase === 'importing' || unsaved !== null}
+            disabled={readOnly || starting || phase === 'importing' || unsaved !== null}
             onStart={startRecording}
             onStop={stopRecording}
           />

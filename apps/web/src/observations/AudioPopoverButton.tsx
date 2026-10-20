@@ -15,6 +15,8 @@ export interface AudioPopoverButtonProps {
   /** Appends a completed transcript into the observation's script doc.
    *  Omit to hide the per-recording "Insert into script" action. */
   onInsertTranscript?: (audioFileId: string) => void;
+  /** See AudioRecorder's `onBusyChange`. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -36,6 +38,7 @@ export function AudioPopoverButton({
   observedName,
   readOnly,
   onInsertTranscript,
+  onBusyChange,
 }: AudioPopoverButtonProps) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -109,6 +112,7 @@ export function AudioPopoverButton({
           observedName={observedName}
           readOnly={readOnly}
           onPhaseChange={setPhase}
+          onBusyChange={onBusyChange}
           onInsertTranscript={onInsertTranscript}
         />
       </div>

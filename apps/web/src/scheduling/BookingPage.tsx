@@ -48,19 +48,29 @@ interface OkResult {
   ok: true;
 }
 
+// Booking, cancelling and rescheduling call Google Calendar and may run for
+// 120s server-side; the SDK's default 70s timeout would report a failure for
+// a booking that then goes through.
+const BOOKING_CALLABLE_TIMEOUT = { timeout: 130_000 };
+
 const bookObservationSlotFn = httpsCallable<BookObservationSlotInput, BookResult>(
   functions,
   'bookObservationSlot',
+  BOOKING_CALLABLE_TIMEOUT,
 );
 const submitDayPreferenceFn = httpsCallable<SubmitDayPreferenceInput, OkResult>(
   functions,
   'submitDayPreference',
 );
-const cancelBookingFn = httpsCallable<CancelBookingInput, OkResult>(functions, 'cancelBooking');
+const cancelBookingFn = httpsCallable<CancelBookingInput, OkResult>(
+  functions,
+  'cancelBooking',
+  BOOKING_CALLABLE_TIMEOUT,
+);
 const rescheduleBookingFn = httpsCallable<
   RescheduleBookingInput,
   { observationId: string | null; calendarConflictWarning?: boolean }
->(functions, 'rescheduleBooking');
+>(functions, 'rescheduleBooking', BOOKING_CALLABLE_TIMEOUT);
 const checkSlotConflictsFn = httpsCallable<CheckSlotConflictsInput, CheckSlotConflictsResult>(
   functions,
   'checkSlotConflicts',

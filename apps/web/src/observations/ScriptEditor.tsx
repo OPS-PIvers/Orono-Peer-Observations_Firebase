@@ -72,7 +72,11 @@ const suggestScriptTagsFn = httpsCallable<
     skippedCount: number;
     run: AutoTagRunInfo & { scope: AssignmentMode };
   }
->(functions, 'suggestScriptTags');
+>(functions, 'suggestScriptTags', {
+  // Server allows 120s for the AI run; the SDK default (70s) would report a
+  // failure on a long script while the run finishes and is saved.
+  timeout: 130_000,
+});
 
 const applyScriptTagsFn = httpsCallable<
   {
