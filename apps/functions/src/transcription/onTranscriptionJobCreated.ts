@@ -9,7 +9,7 @@ import {
   downloadFile,
   getDriveClient,
 } from '../lib/drive.js';
-import { generateText, loadFeatureModel } from '../lib/aiClient.js';
+import { generateTextResult, loadFeatureModel } from '../lib/aiClient.js';
 import { deleteTranscriptionAudio, uploadTranscriptionAudio } from '../lib/transcriptionStorage.js';
 import {
   TRANSCRIPTION_PROMPT,
@@ -153,6 +153,10 @@ export const onTranscriptionJobCreated = onDocumentCreated(
   },
 );
 
+/** Appended when the model ran out of output before the recording ended. */
+export const TRANSCRIPT_CUT_OFF_NOTE =
+  '[Transcript stops here: the recording was too long to transcribe in full. The rest of the audio is in the recording.]';
+
 /**
  * Calls Vertex generateContent referencing the uploaded audio by gs:// URI.
  * No base64 encoding, no size cap. Returns one line per speaker turn,
@@ -167,7 +171,7 @@ async function transcribeWithGcsUri(
     ...caller
   }: { teacherName: string | null; userEmail: string | null; observationId: string },
 ): Promise<string> {
-  const text = await generateText(
+  const { text, truncated } = await generateTextResult(
     model,
     {
       prompt: TRANSCRIPTION_PROMPT,
@@ -182,8 +186,15 @@ async function transcribeWithGcsUri(
     throw new Error('Gemini returned no transcript text');
   }
   const turns = parseTranscriptTurns(text);
-  if (turns && turns.length > 0) return formatTranscriptTurns(turns, teacherName);
+  if (turns && turns.length > 0) {
+    const transcript = formatTranscriptTurns(turns, teacherName);
+    // Keep what was transcribed, but never let a cut-off transcript pass for
+    // the whole recording.
+    return truncated ? `${transcript}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : transcript;
+  }
   // The model answered in plain text instead of JSON: keep what it said.
-  if (!/^\s*(```|[[{])/.test(text)) return text.trim();
+  if (!/^\s*(```|[[{])/.test(text)) {
+    return truncated ? `${text.trim()}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : text.trim();
+  }
   throw new Error('Gemini returned a transcript that could not be read');
 }

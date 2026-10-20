@@ -23,6 +23,31 @@ function eventIdsEmpty(value: unknown): boolean {
   return !obj['observer'] && !obj['observed'];
 }
 
+function sameInstant(a: unknown, b: unknown): boolean {
+  return (toDate(a)?.getTime() ?? null) === (toDate(b)?.getTime() ?? null);
+}
+
+/**
+ * Whether this write is the moment to create the booking's calendar events:
+ * the observation was just booked (created with, or newly given, a window and
+ * start time), moved to a new time, or had its event ids cleared. Every other
+ * write to a booked observation without events (each autosave while neither
+ * party has a connected calendar) is skipped, rather than retrying creation,
+ * writing a `calendar.eventSkipped` audit row and refreshing OAuth tokens
+ * once per autosave, and racing a concurrent write into duplicate events.
+ * Pure + exported for unit tests.
+ */
+export function isNewBookingForCalendar(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown>,
+): boolean {
+  if (!before) return true;
+  if (before['windowId'] !== after['windowId']) return true;
+  if (!sameInstant(before['scheduledStartAt'], after['scheduledStartAt'])) return true;
+  if (!sameInstant(before['scheduledEndAt'], after['scheduledEndAt'])) return true;
+  return !eventIdsEmpty(before['gcalEventIds']);
+}
+
 /** The observation fields a calendar event's title/time depend on. */
 const SYNCED_FIELDS = ['observationName', 'type', 'scheduledStartAt', 'scheduledEndAt'] as const;
 
@@ -145,11 +170,12 @@ export const onObservationBooked = onDocumentWritten(
     if (!windowId || typeof windowId !== 'string') return;
     if (!scheduledStartAt) return;
 
+    const before = event.data?.before.exists
+      ? ((event.data.before.data() as Record<string, unknown> | undefined) ?? null)
+      : null;
+
     if (!eventIdsEmpty(after['gcalEventIds'])) {
       // Events already exist for this observation — sync instead of create.
-      const before = event.data?.before.exists
-        ? (event.data.before.data() as Record<string, unknown> | undefined)
-        : null;
       const observationId = event.params.observationId;
       if (before) {
         await syncObservationEvent(getFirestore(), observationId, before, after).catch(
@@ -162,6 +188,8 @@ export const onObservationBooked = onDocumentWritten(
       }
       return; // already created → never re-create, no loop
     }
+
+    if (!isNewBookingForCalendar(before, after)) return;
 
     const observationId = event.params.observationId;
     const observation = { ...(after as object), observationId } as unknown as Observation;

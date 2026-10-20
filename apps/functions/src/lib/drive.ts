@@ -113,14 +113,20 @@ export async function ensureObservationFolder(args: {
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
-      await drive.files.get({
+      const existing = await drive.files.get({
         fileId: args.existingFolderId,
-        fields: 'id',
+        fields: 'id, trashed',
         supportsAllDrives: true,
       });
-      return args.existingFolderId;
-    } catch {
-      // Folder was deleted out from under us; fall through and recreate.
+      if (!existing.data.trashed) return args.existingFolderId;
+      // Trashed: treat as gone and recreate below.
+    } catch (err) {
+      // Only a folder that is really gone gets replaced. Any other error (a
+      // 429 or 5xx during a burst of end-of-period uploads, an expired token)
+      // is rethrown so the caller fails and retries: recreating here would
+      // repoint the observation at a second folder and strand the recordings
+      // already in the first one.
+      if (!isDriveNotFound(err)) throw err;
     }
   }
   const created = await drive.files.create({
@@ -317,8 +323,7 @@ export async function replaceFileContent(args: {
     });
     return result.data.id ?? null;
   } catch (err) {
-    const status = (err as { code?: number }).code;
-    if (status === 404) return null;
+    if (isDriveNotFound(err)) return null;
     throw err;
   }
 }
@@ -340,8 +345,7 @@ export async function trashDriveFile(fileId: string): Promise<void> {
       supportsAllDrives: true,
     });
   } catch (err) {
-    const status = (err as { code?: number }).code;
-    if (status !== 404) throw err;
+    if (!isDriveNotFound(err)) throw err;
   }
 }
 
@@ -498,8 +502,7 @@ export async function deleteDriveFile(fileId: string): Promise<void> {
   try {
     await drive.files.delete({ fileId, supportsAllDrives: true });
   } catch (err) {
-    const status = (err as { code?: number }).code;
-    if (status === 404) return; // already gone — nothing to delete
+    if (isDriveNotFound(err)) return; // already gone — nothing to delete
     throw err;
   }
 }
@@ -548,8 +551,7 @@ export async function deleteDriveFolder(folderId: string): Promise<void> {
   } while (pageToken);
 
   await drive.files.delete({ fileId: folderId, supportsAllDrives: true }).catch((err: unknown) => {
-    const status = (err as { code?: number }).code;
-    if (status !== 404) throw err;
+    if (!isDriveNotFound(err)) throw err;
   });
 }
 
@@ -575,7 +577,7 @@ export async function deleteObservationFolder(args: {
     parents = await getFileParents(folderId);
   } catch (err) {
     // Already gone: nothing to delete.
-    if (driveErrorCode(err) === 404) return 'deleted';
+    if (isDriveNotFound(err)) return 'deleted';
     throw err;
   }
   if (!parents.includes(parentFolderId)) {
@@ -590,8 +592,13 @@ export async function deleteObservationFolder(args: {
   return 'deleted';
 }
 
-function driveErrorCode(err: unknown): unknown {
-  return typeof err === 'object' && err !== null && 'code' in err ? err.code : undefined;
+/** True when a Drive API error means the file or folder doesn't exist.
+ *  Gaxios sets `code` from the API error body and `status` from the HTTP
+ *  response; either may be the one present, so check both. */
+function isDriveNotFound(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const { code, status } = err as { code?: unknown; status?: unknown };
+  return Number(code) === 404 || Number(status) === 404;
 }
 
 export async function getDriveLinks(fileId: string): Promise<DriveLink> {

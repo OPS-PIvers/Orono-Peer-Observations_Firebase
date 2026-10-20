@@ -64,6 +64,17 @@ export function withPersonNameVars(vars: TemplateVars): TemplateVars {
   return out;
 }
 
+/**
+ * The observer's name for {{observerName}}: the name stored on the
+ * observation, falling back to the email's local part only for documents
+ * written before observerName existed.
+ */
+export function observerNameOf(obs: { observerName?: unknown; observerEmail?: unknown }): string {
+  if (typeof obs.observerName === 'string' && obs.observerName.trim()) return obs.observerName;
+  if (typeof obs.observerEmail === 'string') return obs.observerEmail.split('@')[0] ?? '';
+  return '';
+}
+
 /** Replace all {{varName}} occurrences in a string with values from the bag,
  *  HTML-escaping each substituted value. Person names are normalized and the
  *  first-name variables derived here (withPersonNameVars), so every send path

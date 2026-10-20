@@ -18,7 +18,7 @@ import {
   removeReaderFromFile,
   shareObservationFolderWithObservers,
 } from '../lib/drive.js';
-import { APP_URL, formatDate, sendTemplatedEmail } from '../lib/emailUtils.js';
+import { APP_URL, formatDate, observerNameOf, sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -135,7 +135,7 @@ export const onObservationWritten = onDocumentWritten(
           triggerType,
           to: observedEmail,
           vars: {
-            observerName: observerEmail.split('@')[0],
+            observerName: observerNameOf(afterData),
             observerEmail,
             observedName,
             observedEmail,
@@ -250,14 +250,13 @@ export function isNewlyAcknowledged(before: ObsLike, after: ObsLike): boolean {
 async function sendAcknowledgedEmail(observationId: string, data: ObsLike): Promise<void> {
   const observerEmail = (data['observerEmail'] as string | undefined) ?? '';
   if (!observerEmail) return;
-  const observerName = (data['observerName'] as string | undefined) ?? '';
   try {
     await sendTemplatedEmail({
       db: getFirestore(),
       triggerType: 'observation.acknowledged',
       to: observerEmail,
       vars: {
-        observerName: observerName || (observerEmail.split('@')[0] ?? ''),
+        observerName: observerNameOf(data),
         observerEmail,
         observedName: (data['observedName'] as string | undefined) ?? '',
         observedEmail: (data['observedEmail'] as string | undefined) ?? '',
