@@ -886,11 +886,17 @@ describe('observations: co-observers', () => {
     await seedDraftObs('obs1');
   });
 
-  // The app sets co-observers through the setCoObservers callable; the
-  // owner's direct write stays allowed until that client is live on main.
-  it('owner can share a Draft with a co-observer', async () => {
+  // Co-observers are set through the setCoObservers callable (Admin SDK),
+  // which checks each added person's role; the client can't write the list.
+  it('owner cannot set coObserverEmails directly', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
-    await assertSucceeds(updateDoc(doc(db, 'observations/obs1'), { coObserverEmails: [AP_EMAIL] }));
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { coObserverEmails: [AP_EMAIL] }));
+  });
+
+  it('owner cannot remove co-observers directly either', async () => {
+    await seedDraftObs('shared', { coObserverEmails: [AP_EMAIL] });
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/shared'), { coObserverEmails: [] }));
   });
 
   it('owner can still edit content and visibility on a shared Draft', async () => {
