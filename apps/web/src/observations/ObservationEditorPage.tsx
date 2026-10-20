@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -56,6 +56,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useSidebarWidth } from '@/hooks/useSidebarWidth';
 import { usePublishChromeHeight } from '@/hooks/usePublishChromeHeight';
 import {
@@ -108,11 +109,10 @@ interface FinalizeResponse {
 // "failed" while the server finishes. Server timeout plus a margin.
 const LONG_CALLABLE_TIMEOUT_MS = 310_000;
 
-const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeResponse>(
-  functions,
-  'finalizeObservation',
-  { timeout: LONG_CALLABLE_TIMEOUT_MS },
-);
+const finalizeObservationFn = httpsCallable<
+  { observationId: string; deleteAudio: boolean },
+  FinalizeResponse
+>(functions, 'finalizeObservation', { timeout: LONG_CALLABLE_TIMEOUT_MS });
 
 const reopenObservationFn = httpsCallable<ReopenObservationInput, { ok: boolean }>(
   functions,
@@ -933,7 +933,7 @@ export function ObservationEditorPage() {
     [canEdit, scheduleSave],
   );
 
-  async function handleFinalize() {
+  async function handleFinalize(deleteAudio: boolean) {
     if (!observation || audioBusy) return;
     setFinalizing(true);
     setFinalizeError(null);
@@ -951,7 +951,7 @@ export function ObservationEditorPage() {
         );
         return;
       }
-      const result = await finalizeObservationFn({ observationId: observation.id });
+      const result = await finalizeObservationFn({ observationId: observation.id, deleteAudio });
       setJustFinalized(result.data);
       // Drop a stale "PDF regenerated" banner from a previous
       // reopen→regenerate cycle — it no longer reflects the latest PDF.
@@ -1189,7 +1189,7 @@ export function ObservationEditorPage() {
           unscoredComponents={unscoredComponents}
           unansweredPostQuestions={unansweredPostQuestions.map((q) => q.text)}
           audioBusy={audioBusy}
-          onConfirm={() => void handleFinalize()}
+          onConfirm={(deleteAudio) => void handleFinalize(deleteAudio)}
         />
 
         <ReopenDialog
@@ -1668,8 +1668,15 @@ function FinalizeDialog({
   unansweredPostQuestions: string[];
   /** Audio is recording or not yet uploaded: Finalize is disabled. */
   audioBusy: boolean;
-  onConfirm: () => void;
+  onConfirm: (deleteAudio: boolean) => void;
 }) {
+  const recordingCount = observation.audioDriveFileIds.length;
+  // Off each time the dialog opens: deleting is the choice to make, not keeping.
+  const [deleteAudio, setDeleteAudio] = useState(false);
+  const deleteAudioId = useId();
+  useEffect(() => {
+    if (open) setDeleteAudio(false);
+  }, [open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -1686,11 +1693,36 @@ function FinalizeDialog({
           <li>· Type: {observation.type}</li>
           <li>
             · Audio recordings:{' '}
-            {observation.audioDriveFileIds.length === 0
+            {recordingCount === 0
               ? 'none'
-              : `${String(observation.audioDriveFileIds.length)} (will remain in the Drive folder)`}
+              : deleteAudio
+                ? `${String(recordingCount)} (will be deleted)`
+                : `${String(recordingCount)} (will remain in the Drive folder)`}
           </li>
         </ul>
+        {recordingCount > 0 ? (
+          <label
+            htmlFor={deleteAudioId}
+            className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+          >
+            <Checkbox
+              id={deleteAudioId}
+              className="mt-0.5"
+              checked={deleteAudio}
+              onChange={(e) => setDeleteAudio(e.target.checked)}
+              disabled={finalizing}
+            />
+            <span>
+              <span className="font-medium">
+                Delete the audio {recordingCount === 1 ? 'recording' : 'recordings'}
+              </span>
+              <span className="text-muted-foreground block text-xs">
+                {recordingCount === 1 ? 'Its transcript is' : 'Their transcripts are'} removed too
+                and left out of the PDF. Anything you inserted into the script stays.
+              </span>
+            </span>
+          </label>
+        ) : null}
         {unscoredComponents.length > 0 ? (
           <div className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1759,7 +1791,7 @@ function FinalizeDialog({
           >
             Cancel
           </Button>
-          <Button onClick={onConfirm} disabled={finalizing || audioBusy}>
+          <Button onClick={() => onConfirm(deleteAudio)} disabled={finalizing || audioBusy}>
             {finalizing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
