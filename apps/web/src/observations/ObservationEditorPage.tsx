@@ -450,9 +450,11 @@ export function ObservationEditorPage() {
       // Don't claim "saved" if the user kept typing during the round-trip —
       // another flush is already queued, and flipping to 'saved' here would
       // briefly mislead them before the next 'saving' transition. Nor while
-      // an earlier failed save's fields are still waiting for their retry.
+      // an earlier failed save's fields are still waiting for their retry,
+      // and then the draft isn't stored, so callers (Finalize, auto-tag)
+      // must not go ahead as if it were.
       if (dirtyFieldsRef.current.size > 0 && flushTimer.current === null) {
-        return true;
+        return false;
       }
       if (flushTimer.current === null) {
         setSavingState('saved');
