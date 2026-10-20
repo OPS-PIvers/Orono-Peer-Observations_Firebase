@@ -89,6 +89,7 @@ import { auth } from '@/lib/firebase';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { AuthProvider, useAuth } from './AuthProvider';
 import { registerForcedSignOutFlush } from './forcedSignOutFlush';
+import { SIGN_OUT_HOLD_MAX_MS, registerSignOutHold } from './signOutHold';
 
 // ─── Test helpers ───────────────────────────────────────────────────────────
 
@@ -421,5 +422,44 @@ describe('AuthProvider — flushing pending editor work before a forced sign-out
     });
 
     expect(mockSignOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AuthProvider — holding a forced sign-out for a recording', () => {
+  it('waits while a recording is unsaved, saying so, and signs out once it is saved', async () => {
+    let holding = true;
+    const unregister = registerSignOutHold(() => holding);
+    try {
+      renderProvider();
+      await signIn(-1000);
+      expect(
+        await screen.findByText(/signed out once your recording is saved/i),
+      ).toBeInTheDocument();
+      expect(mockSignOut).not.toHaveBeenCalled();
+
+      holding = false;
+      // The next deadline check (focus is one of its triggers) signs out.
+      act(() => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      unregister();
+    }
+  });
+
+  it('stops holding once the session is too far past its deadline', async () => {
+    const unregister = registerSignOutHold(() => true);
+    try {
+      renderProvider();
+      await signIn(-SIGN_OUT_HOLD_MAX_MS - 1000);
+      await waitFor(() => {
+        expect(mockSignOut).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      unregister();
+    }
   });
 });

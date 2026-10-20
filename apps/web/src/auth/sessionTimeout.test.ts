@@ -50,7 +50,7 @@ describe('computeSessionTimeoutStatus', () => {
       sessionDurationMs: SESSION_DURATION_MS,
       nowMs: deadlineMs,
     });
-    expect(status).toEqual({ kind: 'expired' });
+    expect(status).toEqual({ kind: 'expired', overdueMs: 0 });
   });
 
   it('expires once now is past the deadline', () => {
@@ -60,7 +60,7 @@ describe('computeSessionTimeoutStatus', () => {
       sessionDurationMs: SESSION_DURATION_MS,
       nowMs: deadlineMs + 1,
     });
-    expect(status).toEqual({ kind: 'expired' });
+    expect(status).toEqual({ kind: 'expired', overdueMs: 1 });
   });
 
   it('a real re-authentication (fresh auth_time) pushes the deadline out', () => {

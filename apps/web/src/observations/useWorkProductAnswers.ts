@@ -10,6 +10,7 @@ import {
 } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
+import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -106,8 +107,8 @@ export function useWorkProductAnswers(
     storedRef.current = stored;
   }, [stored]);
 
-  const flushNow = useCallback(() => {
-    if (!observationId) return;
+  const flushNow = useCallback((): Promise<void> => {
+    if (!observationId) return Promise.resolve();
     timerRef.current = null;
     const now = new Date();
     // Edits made while this write is in flight start a fresh set. If the
@@ -150,7 +151,7 @@ export function useWorkProductAnswers(
       // mounted): nothing to persist.
     }
     setSaveState('saving');
-    setDoc(
+    return setDoc(
       doc(db, COLLECTIONS.observations, observationId),
       { workProductAnswers: next, lastModifiedAt: serverTimestamp() },
       { merge: true },
@@ -175,7 +176,7 @@ export function useWorkProductAnswers(
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaveState('saving');
-    timerRef.current = setTimeout(flushNow, SAVE_DEBOUNCE_MS);
+    timerRef.current = setTimeout(() => void flushNow(), SAVE_DEBOUNCE_MS);
   }, [flushNow]);
 
   // Flush a pending debounce on unmount so navigating away mid-typing does
@@ -184,10 +185,22 @@ export function useWorkProductAnswers(
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
-        flushNow();
+        void flushNow();
       }
     };
   }, [flushNow]);
+
+  // A session-timeout sign-out unmounts this page after auth is gone, too
+  // late for the unmount flush above; land a pending or failed save first.
+  useEffect(
+    () =>
+      registerForcedSignOutFlush(() => {
+        if (!timerRef.current && dirtyRef.current.size === 0) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        return flushNow();
+      }),
+    [flushNow],
+  );
 
   const setAnswer = useCallback(
     (questionId: string, value: TiptapDoc) => {
@@ -208,7 +221,7 @@ export function useWorkProductAnswers(
 
   const retry = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    flushNow();
+    void flushNow();
   }, [flushNow]);
 
   const docs = canAnswer ? localDocs : liveDocs;

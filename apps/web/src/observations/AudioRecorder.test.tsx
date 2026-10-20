@@ -331,3 +331,63 @@ describe('<AudioRecorder> recording', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 });
+
+describe('<AudioRecorder> starting a recording', () => {
+  class FakeMediaRecorder {
+    static isTypeSupported = () => true;
+    state: 'inactive' | 'recording' = 'inactive';
+    mimeType = 'audio/webm';
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    start() {
+      this.state = 'recording';
+    }
+    stop() {
+      this.state = 'inactive';
+      this.onstop?.();
+    }
+  }
+
+  function mockMic() {
+    let grant!: (stream: MediaStream) => void;
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          grant = resolve;
+        }),
+    );
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+    const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+    return { getUserMedia, grant: () => grant(stream) };
+  }
+
+  it('ignores a second tap while the mic prompt is up', async () => {
+    const mic = mockMic();
+    renderRecorder();
+    await userEvent.click(screen.getByRole('button', { name: 'Record' }));
+    expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Record' }));
+    expect(mic.getUserMedia).toHaveBeenCalledTimes(1);
+    mic.grant();
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
+  });
+
+  it('reports itself busy, and holds a session sign-out, from the mic prompt on', async () => {
+    const { isSignOutHeld } = await import('@/auth/signOutHold');
+    const mic = mockMic();
+    const onBusyChange = vi.fn();
+    renderRecorder({ onBusyChange });
+    expect(isSignOutHeld()).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Record' }));
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+    expect(isSignOutHeld()).toBe(true);
+    mic.grant();
+    await screen.findByRole('button', { name: 'Stop' });
+    expect(isSignOutHeld()).toBe(true);
+  });
+});

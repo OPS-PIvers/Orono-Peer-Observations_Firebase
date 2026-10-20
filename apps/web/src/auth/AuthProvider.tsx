@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { DialogInterruptProvider, useHasOpenDialogLayer } from '@/components/ui/dialog-interrupt';
 import { cn } from '@/lib/utils';
 import { runForcedSignOutFlush } from './forcedSignOutFlush';
+import { SIGN_OUT_HOLD_MAX_MS, isSignOutHeld } from './signOutHold';
 import {
   DEFAULT_SESSION_DURATION_HOURS,
   SESSION_CHECK_INTERVAL_MS,
@@ -225,6 +226,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         nowMs: Date.now(),
       });
       if (result.kind === 'expired') {
+        // A recording that hasn't reached Drive yet would be lost by the
+        // sign-out's navigation, so wait for it (bounded) and say so in the
+        // banner. See signOutHold.ts.
+        if (result.overdueMs < SIGN_OUT_HOLD_MAX_MS && isSignOutHeld()) {
+          setSessionWarningRemainingMs(0);
+          return;
+        }
         setSessionWarningRemainingMs(null);
         setReauthError(null);
         forceSignOutForTimeout();
@@ -465,7 +473,9 @@ function SessionTimeoutBanner({
       )}
     >
       <span>
-        Your session will expire in {formatRemaining(remainingMs)}
+        {remainingMs > 0
+          ? `Your session will expire in ${formatRemaining(remainingMs)}`
+          : 'Your session has expired. You will be signed out once your recording is saved'}
         {error ? `. ${error}` : '.'}
       </span>
       <Button size="sm" onClick={onStaySignedIn} disabled={pending}>

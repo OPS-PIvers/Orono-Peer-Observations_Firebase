@@ -39,7 +39,10 @@ const uploadEvidenceFn = httpsCallable<
     base64Data: string;
   },
   { driveFileId: string; name: string }
->(functions, 'uploadEvidenceFile');
+>(functions, 'uploadEvidenceFile', {
+  // Up to 20 MB over school Wi-Fi; the server allows 120s, the SDK default is 70s.
+  timeout: 130_000,
+});
 
 const removeEvidenceFn = httpsCallable<
   { observationId: string; componentId: string; driveFileId: string },

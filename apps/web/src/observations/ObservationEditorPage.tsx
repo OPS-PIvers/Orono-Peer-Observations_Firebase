@@ -103,9 +103,15 @@ interface FinalizeResponse {
   pdfWebViewLink: string;
 }
 
+// The SDK gives up after 70s by default; this function may run for 300s
+// (renderer cold start + Drive), and a client-side timeout would show
+// "failed" while the server finishes. Server timeout plus a margin.
+const LONG_CALLABLE_TIMEOUT_MS = 310_000;
+
 const finalizeObservationFn = httpsCallable<{ observationId: string }, FinalizeResponse>(
   functions,
   'finalizeObservation',
+  { timeout: LONG_CALLABLE_TIMEOUT_MS },
 );
 
 const reopenObservationFn = httpsCallable<ReopenObservationInput, { ok: boolean }>(
@@ -118,6 +124,7 @@ const reopenObservationFn = httpsCallable<ReopenObservationInput, { ok: boolean 
 const regenerateObservationPdfFn = httpsCallable<{ observationId: string }, FinalizeResponse>(
   functions,
   'regenerateObservationPdf',
+  { timeout: LONG_CALLABLE_TIMEOUT_MS },
 );
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -156,6 +163,16 @@ const emptyDraft: EditorDraft = {
   observationName: '',
   observationDate: undefined,
 };
+
+/** The stored values of `fields` (an unset optional field is written as null). */
+function draftFieldsForSave(
+  draft: EditorDraft,
+  fields: ReadonlySet<keyof EditorDraft>,
+): Partial<Record<keyof EditorDraft, unknown>> {
+  const out: Partial<Record<keyof EditorDraft, unknown>> = {};
+  for (const field of fields) out[field] = draft[field] ?? null;
+  return out;
+}
 
 /** `#planning` / `#reflection` in the URL opens that panel on arrival. */
 function panelFromHash(hash: string): 'pre' | 'post' | null {
@@ -302,6 +319,11 @@ export function ObservationEditorPage() {
   const [savingState, setSavingState] = useState<EditorSavingState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const draftRef = useRef<EditorDraft>(emptyDraft);
+  // Draft fields edited since the last save started, and fields whose save
+  // is in flight. flush() writes only these; see there.
+  const dirtyFieldsRef = useRef(new Set<keyof EditorDraft>());
+  const inFlightFieldsRef = useRef(new Set<keyof EditorDraft>());
+  const loadedObservationId = observation?.id ?? null;
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Number of consecutive automatic retries attempted since the last
   // successful save; reset to 0 on success. Drives the backoff schedule
@@ -329,6 +351,10 @@ export function ObservationEditorPage() {
   const isFirstOnlineRender = useRef(true);
 
   const [finalizeOpen, setFinalizeOpen] = useState(false);
+  // Audio that so far exists only in this tab (recording, uploading, or a
+  // failed upload awaiting retry). Finalizing then would lock the Draft and
+  // the upload would be refused, so Finalize waits for it.
+  const [audioBusy, setAudioBusy] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const [justFinalized, setJustFinalized] = useState<FinalizeResponse | null>(null);
@@ -381,44 +407,73 @@ export function ObservationEditorPage() {
     draftRef.current = next;
   });
 
+  // The draft is hydrated once, but the server can move the date afterwards
+  // (rescheduleBooking). Follow it unless the evaluator has an edit of their
+  // own to the date that isn't stored yet.
+  const storedObservationDateMs = toJsDate(observation?.observationDate)?.getTime() ?? null;
+  useEffect(() => {
+    if (dirtyFieldsRef.current.has('observationDate')) return;
+    if (inFlightFieldsRef.current.has('observationDate')) return;
+    if ((draftRef.current.observationDate?.getTime() ?? null) === storedObservationDateMs) return;
+    const next: EditorDraft = {
+      ...draftRef.current,
+      observationDate:
+        storedObservationDateMs === null ? undefined : new Date(storedObservationDateMs),
+    };
+    draftRef.current = next;
+    setDraft(next);
+  }, [storedObservationDateMs]);
+
   // Resolves true once the current draft is stored, false if the write failed.
+  //
+  // Writes only the fields edited here since the last save. Rewriting the
+  // whole draft would put back anything this page hydrated before someone
+  // else changed it: a teacher's reschedule moves observationDate
+  // server-side, and an untouched copy of the old date must not overwrite it.
+  // A save with nothing edited still writes (lastModifiedAt), so callers that
+  // await it also wait for every earlier write: Firestore acks them in order.
   const flush = useCallback(async (): Promise<boolean> => {
-    if (!observation) return false;
+    if (!loadedObservationId) return false;
+    const fields = dirtyFieldsRef.current;
+    dirtyFieldsRef.current = new Set();
+    inFlightFieldsRef.current = new Set([...inFlightFieldsRef.current, ...fields]);
     setSavingState('saving');
     setSaveError(null);
     try {
       assertWritable();
       await setDoc(
-        doc(db, `${COLLECTIONS.observations}/${observation.id}`),
-        {
-          observationData: draftRef.current.observationData,
-          componentNotes: draftRef.current.componentNotes,
-          scriptDoc: draftRef.current.scriptDoc ?? null,
-          preObsDate: draftRef.current.preObsDate ?? null,
-          preObsNotes: draftRef.current.preObsNotes ?? null,
-          postObsDate: draftRef.current.postObsDate ?? null,
-          postObsNotes: draftRef.current.postObsNotes ?? null,
-          goalsNextSteps: draftRef.current.goalsNextSteps ?? null,
-          observationName: draftRef.current.observationName,
-          observationDate: draftRef.current.observationDate ?? null,
-          lastModifiedAt: serverTimestamp(),
-        },
+        doc(db, `${COLLECTIONS.observations}/${loadedObservationId}`),
+        { ...draftFieldsForSave(draftRef.current, fields), lastModifiedAt: serverTimestamp() },
         { merge: true },
       );
+      for (const field of fields) inFlightFieldsRef.current.delete(field);
       // Don't claim "saved" if the user kept typing during the round-trip —
       // another flush is already queued, and flipping to 'saved' here would
-      // briefly mislead them before the next 'saving' transition.
+      // briefly mislead them before the next 'saving' transition. Nor while
+      // an earlier failed save's fields are still waiting for their retry,
+      // and then the draft isn't stored, so callers (Finalize, auto-tag)
+      // must not go ahead as if it were.
+      if (dirtyFieldsRef.current.size > 0 && flushTimer.current === null) {
+        return false;
+      }
       if (flushTimer.current === null) {
         setSavingState('saved');
       }
       autoRetryCountRef.current = 0;
       return true;
     } catch (err) {
+      // Put the fields back so the retry writes them.
+      for (const field of fields) {
+        inFlightFieldsRef.current.delete(field);
+        dirtyFieldsRef.current.add(field);
+      }
       setSavingState('error');
       setSaveError(err instanceof Error ? err.message : 'Save failed');
       return false;
     }
-  }, [observation]);
+    // Keyed on the id, not the snapshot: a new flush identity on every
+    // snapshot re-ran the retry effect, spending the retry budget unretried.
+  }, [loadedObservationId]);
 
   // Write the draft now, skipping the debounce, for server work that reads
   // the stored document (auto-tagging the script). Firestore applies writes
@@ -434,13 +489,17 @@ export function ObservationEditorPage() {
   // Debounce only — leave the visible indicator on its prior state ('saved'
   // or 'idle') during the wait. flush() itself flips to 'saving', and the
   // indicator defers rendering that label so fast writes don't flash.
-  const scheduleSave = useCallback(() => {
-    if (flushTimer.current) clearTimeout(flushTimer.current);
-    flushTimer.current = setTimeout(() => {
-      flushTimer.current = null;
-      void flush();
-    }, AUTOSAVE_DEBOUNCE_MS);
-  }, [flush]);
+  const scheduleSave = useCallback(
+    (field: keyof EditorDraft) => {
+      dirtyFieldsRef.current.add(field);
+      if (flushTimer.current) clearTimeout(flushTimer.current);
+      flushTimer.current = setTimeout(() => {
+        flushTimer.current = null;
+        void flush();
+      }, AUTOSAVE_DEBOUNCE_MS);
+    },
+    [flush],
+  );
 
   // Flush any pending save on unmount.
   useEffect(() => {
@@ -724,7 +783,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, observationData: nextEntries };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('observationData');
     },
     [canEdit, scheduleSave],
   );
@@ -755,7 +814,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, componentNotes: nextNotes };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('componentNotes');
     },
     [canEdit, scheduleSave],
   );
@@ -766,7 +825,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, scriptDoc: document };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('scriptDoc');
     },
     [canEdit, scheduleSave],
   );
@@ -792,7 +851,7 @@ export function ObservationEditorPage() {
       };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('scriptDoc');
     },
     [canEdit, observation, scheduleSave],
   );
@@ -803,7 +862,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, preObsDate: date };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('preObsDate');
     },
     [canEdit, scheduleSave],
   );
@@ -814,7 +873,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, preObsNotes: doc };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('preObsNotes');
     },
     [canEdit, scheduleSave],
   );
@@ -825,7 +884,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, postObsDate: date };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('postObsDate');
     },
     [canEdit, scheduleSave],
   );
@@ -836,7 +895,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, postObsNotes: doc };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('postObsNotes');
     },
     [canEdit, scheduleSave],
   );
@@ -847,7 +906,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, goalsNextSteps: doc };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('goalsNextSteps');
     },
     [canEdit, scheduleSave],
   );
@@ -858,7 +917,7 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, observationName: name };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('observationName');
     },
     [canEdit, scheduleSave],
   );
@@ -869,13 +928,13 @@ export function ObservationEditorPage() {
       const next: EditorDraft = { ...draftRef.current, observationDate: date };
       draftRef.current = next;
       setDraft(next);
-      scheduleSave();
+      scheduleSave('observationDate');
     },
     [canEdit, scheduleSave],
   );
 
   async function handleFinalize() {
-    if (!observation) return;
+    if (!observation || audioBusy) return;
     setFinalizing(true);
     setFinalizeError(null);
     try {
@@ -884,7 +943,14 @@ export function ObservationEditorPage() {
         clearTimeout(flushTimer.current);
         flushTimer.current = null;
       }
-      await flush();
+      // If that save failed, the PDF would miss the latest edits, and once
+      // the observation is finalized the rules refuse every retry.
+      if (!(await flush())) {
+        setFinalizeError(
+          'Your latest changes have not saved yet, so the observation was not finalized. Check your connection and try again.',
+        );
+        return;
+      }
       const result = await finalizeObservationFn({ observationId: observation.id });
       setJustFinalized(result.data);
       // Drop a stale "PDF regenerated" banner from a previous
@@ -1082,6 +1148,7 @@ export function ObservationEditorPage() {
         canEdit={canEdit}
         rubric={visibleRubric}
         onInsertTranscript={insertTranscriptIntoScript}
+        onAudioBusyChange={setAudioBusy}
         showFinalize={showFinalize}
         onFinalize={() => setFinalizeOpen(true)}
         showReopen={showReopen}
@@ -1121,6 +1188,7 @@ export function ObservationEditorPage() {
           error={finalizeError}
           unscoredComponents={unscoredComponents}
           unansweredPostQuestions={unansweredPostQuestions.map((q) => q.text)}
+          audioBusy={audioBusy}
           onConfirm={() => void handleFinalize()}
         />
 
@@ -1363,6 +1431,7 @@ interface EditorToolbarProps {
   canEdit: boolean;
   rubric: Rubric | null;
   onInsertTranscript: (audioFileId: string) => void;
+  onAudioBusyChange: (busy: boolean) => void;
   showFinalize: boolean;
   onFinalize: () => void;
   showReopen: boolean;
@@ -1392,6 +1461,7 @@ function EditorToolbar({
   canEdit,
   rubric,
   onInsertTranscript,
+  onAudioBusyChange,
   showFinalize,
   onFinalize,
   showReopen,
@@ -1429,6 +1499,7 @@ function EditorToolbar({
               observedName={observation.observedName}
               readOnly={!canEdit}
               onInsertTranscript={onInsertTranscript}
+              onBusyChange={onAudioBusyChange}
             />
           ) : null}
           {showFinalize ? (
@@ -1584,6 +1655,7 @@ function FinalizeDialog({
   error,
   unscoredComponents,
   unansweredPostQuestions,
+  audioBusy,
   onConfirm,
 }: {
   open: boolean;
@@ -1594,6 +1666,8 @@ function FinalizeDialog({
   unscoredComponents: ActiveComponent[];
   /** Reflection question texts the observed staff member has not answered. */
   unansweredPostQuestions: string[];
+  /** Audio is recording or not yet uploaded: Finalize is disabled. */
+  audioBusy: boolean;
   onConfirm: () => void;
 }) {
   return (
@@ -1659,6 +1733,18 @@ function FinalizeDialog({
             </div>
           </div>
         ) : null}
+        {audioBusy ? (
+          <div
+            role="status"
+            className="flex gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              A recording hasn&apos;t finished uploading. Stop the recording and wait for the upload
+              (or retry it) from the microphone button, then finalize.
+            </p>
+          </div>
+        ) : null}
         {error ? (
           <div className="border-destructive bg-ops-red-lighter text-ops-red-dark rounded-md border-l-4 px-3 py-2 text-sm">
             {error}
@@ -1673,7 +1759,7 @@ function FinalizeDialog({
           >
             Cancel
           </Button>
-          <Button onClick={onConfirm} disabled={finalizing}>
+          <Button onClick={onConfirm} disabled={finalizing || audioBusy}>
             {finalizing ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />

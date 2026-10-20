@@ -3,6 +3,7 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { COLLECTIONS, type Observation, type TiptapDoc } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
+import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import type { AnswerSaveState } from './useWorkProductAnswers';
 import { EMPTY_ANSWER_DOC } from './workProductAnswerDoc';
 
@@ -34,6 +35,8 @@ export function useGoalsResponse(
   const [saveState, setSaveState] = useState<AnswerSaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The last write failed and nothing has been saved since. */
+  const failedRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -50,22 +53,24 @@ export function useGoalsResponse(
 
   const observationId = observation?.id ?? null;
 
-  const flushNow = useCallback(() => {
-    if (!observationId) return;
+  const flushNow = useCallback((): Promise<void> => {
+    if (!observationId) return Promise.resolve();
     timerRef.current = null;
     setSaveState('saving');
-    setDoc(
+    return setDoc(
       doc(db, COLLECTIONS.observations, observationId),
       { goalsResponse: localRef.current ?? null, lastModifiedAt: serverTimestamp() },
       { merge: true },
     )
       .then(() => {
+        failedRef.current = false;
         if (!mountedRef.current) return;
         setSaveState('saved');
         setSaveError(null);
       })
       .catch((err: unknown) => {
         console.error('useGoalsResponse: autosave failed', err);
+        failedRef.current = true;
         if (!mountedRef.current) return;
         setSaveState('error');
         setSaveError(err instanceof Error ? err.message : 'Unknown error');
@@ -78,10 +83,22 @@ export function useGoalsResponse(
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
-        flushNow();
+        void flushNow();
       }
     };
   }, [flushNow]);
+
+  // A session-timeout sign-out unmounts this page after auth is gone, too
+  // late for the unmount flush above; land a pending or failed save first.
+  useEffect(
+    () =>
+      registerForcedSignOutFlush(() => {
+        if (!timerRef.current && !failedRef.current) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        return flushNow();
+      }),
+    [flushNow],
+  );
 
   const setValue = useCallback(
     (value: TiptapDoc) => {
@@ -93,14 +110,14 @@ export function useGoalsResponse(
       setLocal(value);
       if (timerRef.current) clearTimeout(timerRef.current);
       setSaveState('saving');
-      timerRef.current = setTimeout(flushNow, SAVE_DEBOUNCE_MS);
+      timerRef.current = setTimeout(() => void flushNow(), SAVE_DEBOUNCE_MS);
     },
     [canWrite, flushNow],
   );
 
   const retry = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    flushNow();
+    void flushNow();
   }, [flushNow]);
 
   return {
