@@ -10,6 +10,7 @@ import {
   sendTemplatedEmail,
   substituteVariables,
   withPersonNameVars,
+  observerNameOf,
 } from './emailUtils.js';
 
 /**
@@ -836,5 +837,20 @@ describe('withPersonNameVars', () => {
 
   it('skips missing names', () => {
     expect(withPersonNameVars({})).toEqual({});
+  });
+});
+
+describe('observerNameOf', () => {
+  it('uses the stored observer name', () => {
+    expect(observerNameOf({ observerName: 'Paul Ivers', observerEmail: 'paul.ivers@x.org' })).toBe(
+      'Paul Ivers',
+    );
+  });
+  it('falls back to the email local part only when no name is stored', () => {
+    expect(observerNameOf({ observerName: '  ', observerEmail: 'paul.ivers@x.org' })).toBe(
+      'paul.ivers',
+    );
+    expect(observerNameOf({ observerEmail: 'paul.ivers@x.org' })).toBe('paul.ivers');
+    expect(observerNameOf({})).toBe('');
   });
 });

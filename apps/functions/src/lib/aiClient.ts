@@ -43,6 +43,14 @@ interface CallResult {
   text: string;
   inputTokens: number;
   outputTokens: number;
+  /** The model hit its output limit, so `text` stops mid-answer. */
+  truncated: boolean;
+}
+
+export interface AiTextResult {
+  text: string;
+  /** The model hit its output limit, so `text` stops mid-answer. */
+  truncated: boolean;
 }
 
 /**
@@ -69,6 +77,17 @@ export async function generateText(
   request: AiTextRequest,
   ctx: AiCallContext,
 ): Promise<string> {
+  return (await generateTextResult(model, request, ctx)).text;
+}
+
+/** generateText, also saying whether the answer was cut off at the model's
+ *  output limit. Callers whose output can run long (a class-period
+ *  transcript) must check it: a cut-off answer otherwise looks complete. */
+export async function generateTextResult(
+  model: AiModel,
+  request: AiTextRequest,
+  ctx: AiCallContext,
+): Promise<AiTextResult> {
   const started = Date.now();
   try {
     const result =
@@ -81,7 +100,13 @@ export async function generateText(
       outputTokens: result.outputTokens,
       latencyMs: Date.now() - started,
     });
-    return result.text;
+    if (result.truncated) {
+      logger.warn(`${ctx.logContext}: AI answer hit the output limit`, {
+        model: model.id,
+        outputTokens: result.outputTokens,
+      });
+    }
+    return { text: result.text, truncated: result.truncated };
   } catch (err) {
     await recordAiUsage(model, ctx, {
       ok: false,
@@ -114,8 +139,14 @@ async function callGemini(
     ctx.logContext,
   );
   const usage = data.usageMetadata ?? {};
+  const candidate = data.candidates?.[0];
   return {
-    text: data.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
+    // The answer can span several parts; reading only the first dropped the rest.
+    text: (candidate?.content?.parts ?? [])
+      .filter((part) => !part.thought)
+      .map((part) => part.text ?? '')
+      .join(''),
+    truncated: candidate?.finishReason === 'MAX_TOKENS',
     inputTokens: usage.promptTokenCount ?? 0,
     // Thinking tokens bill at the output rate.
     outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
@@ -160,6 +191,7 @@ async function callClaude(
       .join('');
     return {
       text,
+      truncated: response.stop_reason === 'max_tokens',
       inputTokens:
         response.usage.input_tokens +
         (response.usage.cache_creation_input_tokens ?? 0) +
