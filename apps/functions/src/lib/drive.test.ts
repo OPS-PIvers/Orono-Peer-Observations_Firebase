@@ -181,4 +181,43 @@ describe('ensureObservationFolder', () => {
     ).toBe('legacy');
     expect(h.files.create).not.toHaveBeenCalled();
   });
+
+  it('recreates the folder only when Drive says it is gone', async () => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('File not found'), { code: 404 }));
+    h.files.create.mockResolvedValue({ data: { id: 'fresh' } });
+    expect(
+      await ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: 'gone',
+      }),
+    ).toBe('fresh');
+  });
+
+  it('recreates a trashed folder', async () => {
+    h.files.get.mockResolvedValue({ data: { id: 'old', trashed: true } });
+    h.files.create.mockResolvedValue({ data: { id: 'fresh' } });
+    expect(
+      await ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: 'old',
+      }),
+    ).toBe('fresh');
+  });
+
+  it('rethrows a transient Drive error instead of making a second folder', async () => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('Rate limit'), { code: 429 }));
+    await expect(
+      ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: 'busy',
+      }),
+    ).rejects.toThrow('Rate limit');
+    expect(h.files.create).not.toHaveBeenCalled();
+  });
 });

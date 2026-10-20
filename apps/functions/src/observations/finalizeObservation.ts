@@ -30,6 +30,7 @@ import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import {
   APP_URL,
   formatDate as formatDateReadable,
+  observerNameOf,
   sendTemplatedEmail,
 } from '../lib/emailUtils.js';
 import {
@@ -342,7 +343,7 @@ export const finalizeObservation = onCall(
           triggerType: 'observation.finalized',
           to: obs.observedEmail,
           vars: {
-            observerName: obs.observerEmail.split('@')[0] ?? '',
+            observerName: observerNameOf(obs),
             observerEmail: obs.observerEmail,
             observedName: obs.observedName,
             observedEmail: obs.observedEmail,

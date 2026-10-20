@@ -113,14 +113,21 @@ export async function ensureObservationFolder(args: {
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
-      await drive.files.get({
+      const existing = await drive.files.get({
         fileId: args.existingFolderId,
-        fields: 'id',
+        fields: 'id, trashed',
         supportsAllDrives: true,
       });
-      return args.existingFolderId;
-    } catch {
-      // Folder was deleted out from under us; fall through and recreate.
+      if (!existing.data.trashed) return args.existingFolderId;
+      // Trashed: treat as gone and recreate below.
+    } catch (err) {
+      // Only a folder that is really gone gets replaced. Any other error (a
+      // 429 or 5xx during a burst of end-of-period uploads, an expired token)
+      // is rethrown so the caller fails and retries: recreating here would
+      // repoint the observation at a second folder and strand the recordings
+      // already in the first one.
+      const status = (err as { code?: number }).code;
+      if (status !== 404) throw err;
     }
   }
   const created = await drive.files.create({

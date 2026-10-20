@@ -1,3 +1,4 @@
+import type * as EmailUtils from '../lib/emailUtils.js';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import type { CallableRequest } from 'firebase-functions/v2/https';
@@ -75,9 +76,10 @@ vi.mock('../lib/pdfRenderer.js', () => ({
   renderObservationPdf: (...a: unknown[]) => h.renderObservationPdf?.(...a),
 }));
 
-vi.mock('../lib/emailUtils.js', () => ({
+vi.mock('../lib/emailUtils.js', async (importOriginal) => ({
   APP_URL: 'https://app.test',
   formatDate: () => 'formatted-date',
+  observerNameOf: (await importOriginal<typeof EmailUtils>()).observerNameOf,
   sendTemplatedEmail: (...a: unknown[]) => h.sendTemplatedEmail?.(...a),
 }));
 
@@ -196,6 +198,7 @@ function draftObservation(over: Record<string, unknown> = {}) {
     status: OBSERVATION_STATUS.draft,
     type: OBSERVATION_TYPES.standard,
     observerEmail: OBSERVER,
+    observerName: 'Pat Observer',
     coObserverEmails: [CO_OBSERVER],
     observedEmail: OBSERVED,
     observedName: 'Observed Person',
@@ -365,6 +368,8 @@ describe('finalizeObservation — finalize flow', () => {
       attachments?: { contentType: string; content: string }[];
       requiredBlock?: { html: string; unlessUses: string };
     };
+    // The teacher reads the observer's name, not their email prefix.
+    expect(emailArgs.vars['observerName']).toBe('Pat Observer');
     expect(emailArgs.vars['acknowledgeLink']).toMatch(
       /^https:\/\/app\.test\/observations\/.+\?ack=1$/,
     );

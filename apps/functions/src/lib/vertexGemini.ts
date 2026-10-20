@@ -19,10 +19,12 @@ function getAuth(): GoogleAuth {
 
 export interface GeminiContentPart {
   text?: string;
+  /** A thought summary, not answer text. */
+  thought?: boolean;
 }
 
 export interface GeminiGenerateContentResponse {
-  candidates?: { content?: { parts?: GeminiContentPart[] } }[];
+  candidates?: { content?: { parts?: GeminiContentPart[] }; finishReason?: string }[];
   usageMetadata?: {
     promptTokenCount?: number;
     candidatesTokenCount?: number;

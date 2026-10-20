@@ -22,6 +22,7 @@ import {
   APP_URL,
   formatDate,
   loadActiveTemplate,
+  observerNameOf,
   sendEmail,
   sendTemplatedEmail,
   substituteVariables,
@@ -273,7 +274,7 @@ export const scheduledEmailReminders = onSchedule(
       for (const docSnap of snap.docs) {
         const obs = docSnap.data();
         const vars = {
-          observerName: (obs['observerEmail'] as string | undefined)?.split('@')[0] ?? '',
+          observerName: observerNameOf(obs),
           observerEmail: (obs['observerEmail'] as string | undefined) ?? '',
           observedName: (obs['observedName'] as string | undefined) ?? '',
           observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
@@ -417,7 +418,7 @@ export const scheduledEmailReminders = onSchedule(
         if (!observerEmail) continue;
 
         const vars = {
-          observerName: observerEmail.split('@')[0] ?? '',
+          observerName: observerNameOf(obs),
           observerEmail,
           observedName: (obs['observedName'] as string | undefined) ?? '',
           observedEmail: (obs['observedEmail'] as string | undefined) ?? '',
@@ -477,10 +478,7 @@ export const scheduledEmailReminders = onSchedule(
         const pdfFileId = obs['pdfDriveFileId'] as string | null | undefined;
         const pdfLink = pdfFileId ? `https://drive.google.com/file/d/${pdfFileId}/view` : null;
         const acknowledgeLink = acknowledgeLinkFor(APP_URL, docSnap.id);
-        // Denormalized display name; legacy docs fall back to the email's local part.
-        const storedObserverName = (obs['observerName'] as string | undefined)?.trim() ?? '';
-        const observerName =
-          storedObserverName !== '' ? storedObserverName : (observerEmail.split('@')[0] ?? '');
+        const observerName = observerNameOf(obs);
         try {
           await sendTemplatedEmail({
             db,
