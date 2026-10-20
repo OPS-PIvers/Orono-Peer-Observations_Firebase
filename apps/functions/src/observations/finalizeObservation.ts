@@ -24,6 +24,7 @@ import {
   replaceFileContent,
   shareObservationFolderWithObservers,
   shareWithUser,
+  trashDriveFile,
   uploadFileToFolder,
 } from '../lib/drive.js';
 import { renderObservationPdf } from '../lib/pdfRenderer.js';
@@ -68,7 +69,14 @@ const FINALIZE_CLAIM_TTL_MS = 10 * 60 * 1000;
 
 interface FinalizeRequest {
   observationId?: string;
+  /** Remove the audio recordings (and their transcripts) as part of
+   *  finalizing, and move the files to the Drive trash. */
+  deleteAudio?: unknown;
 }
+
+/** Drive file ids are `[A-Za-z0-9_-]`; checked before an id becomes part of
+ *  a Firestore field path. */
+const DRIVE_FILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Finalize a Draft observation:
@@ -86,6 +94,11 @@ interface FinalizeRequest {
  *   7. Flip status to Finalized, stamp finalizedAt, store pdfDriveFileId.
  *   8. Write an /auditLog entry.
  *   9. Send the observation.finalized email template (non-blocking).
+ *
+ * With `deleteAudio`, the recordings and their transcripts are left out of
+ * the PDF and dropped in the same write as the status flip (so a failed
+ * finalize loses nothing), then the files are trashed best-effort, like
+ * removeRecording. Text already inserted into the script stays.
  *
  * Any failure after the claim (step 2) clears `finalizeStartedAt` so the
  * user can retry instead of being permanently locked out of finalizing.
@@ -109,7 +122,7 @@ export const finalizeObservation = onCall(
     const userEmail = request.auth.token.email?.toLowerCase();
     if (!userEmail) throw new HttpsError('unauthenticated', 'Token has no email');
 
-    const { observationId } = (request.data ?? {}) as FinalizeRequest;
+    const { observationId, deleteAudio } = (request.data ?? {}) as FinalizeRequest;
     if (!observationId) {
       throw new HttpsError('invalid-argument', 'observationId required');
     }
@@ -161,6 +174,12 @@ export const finalizeObservation = onCall(
       }
       tx.update(obsRef, { finalizeStartedAt: FieldValue.serverTimestamp() });
     });
+
+    // Ids from the doc read above. Finalize is blocked in the UI while a
+    // recording is in flight, and arrayRemove below leaves any other id alone.
+    const removedAudioIds =
+      deleteAudio === true ? obs.audioDriveFileIds.filter((id) => DRIVE_FILE_ID_RE.test(id)) : [];
+    const reportObs = removedAudioIds.length > 0 ? withoutRecordings(obs, removedAudioIds) : obs;
 
     try {
       // Look up rubric via the observed role slug. (Legacy observations may
@@ -230,7 +249,7 @@ export const finalizeObservation = onCall(
       let pdfBuffer: Buffer;
       try {
         pdfBuffer = await renderObservationPdf({
-          observation: toRendererObservation(obs, role.displayName, new Date()),
+          observation: toRendererObservation(reportObs, role.displayName, new Date()),
           rubric,
           activeComponentIds,
           workProductQuestions,
@@ -313,6 +332,22 @@ export const finalizeObservation = onCall(
         },
         lastModifiedAt: finalizedAt,
         finalizeStartedAt: FieldValue.delete(),
+        ...recordingRemovalPatch(removedAudioIds),
+      });
+
+      // Best-effort, after the status flip: a file left behind only needs
+      // cleanup in Drive, and the observation no longer points at it.
+      const trashResults = await Promise.allSettled(
+        removedAudioIds.map((id) => trashDriveFile(id)),
+      );
+      trashResults.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          logger.warn('finalizeObservation: Drive trash failed, recording still removed', {
+            observationId,
+            audioFileId: removedAudioIds[i],
+            err: r.reason as unknown,
+          });
+        }
       });
 
       await db.collection(COLLECTIONS.auditLog).add({
@@ -325,6 +360,7 @@ export const finalizeObservation = onCall(
           observedName: obs.observedName,
           pdfDriveFileId: pdfFileId,
           driveFolderId: folderId,
+          ...(removedAudioIds.length > 0 ? { deletedAudioFileIds: removedAudioIds } : {}),
         },
       });
 
@@ -383,6 +419,30 @@ export const finalizeObservation = onCall(
     }
   },
 );
+
+/** The observation as it will read once these recordings are removed. */
+function withoutRecordings<T extends Observation>(obs: T, ids: string[]): T {
+  const drop = new Set(ids);
+  const keep = <V>(m: Record<string, V> | undefined) =>
+    m ? Object.fromEntries(Object.entries(m).filter(([id]) => !drop.has(id))) : m;
+  return {
+    ...obs,
+    audioDriveFileIds: obs.audioDriveFileIds.filter((id) => !drop.has(id)),
+    transcripts: keep(obs.transcripts) ?? {},
+    audioRecordings: keep(obs.audioRecordings),
+  };
+}
+
+/** Same fields removeRecording clears, for each id. */
+function recordingRemovalPatch(ids: string[]): Record<string, unknown> {
+  if (ids.length === 0) return {};
+  const patch: Record<string, unknown> = { audioDriveFileIds: FieldValue.arrayRemove(...ids) };
+  for (const id of ids) {
+    patch[`audioRecordings.${id}`] = FieldValue.delete();
+    patch[`transcripts.${id}`] = FieldValue.delete();
+  }
+  return patch;
+}
 
 function formatDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);

@@ -16,6 +16,7 @@ interface HState {
     replaceFileContent: Fn;
     shareObservationFolderWithObservers: Fn;
     shareWithUser: Fn;
+    trashDriveFile: Fn;
     uploadFileToFolder: Fn;
   };
   renderObservationPdf: Fn;
@@ -37,6 +38,7 @@ const h = vi.hoisted((): HState => ({
     replaceFileContent: undefined,
     shareObservationFolderWithObservers: undefined,
     shareWithUser: undefined,
+    trashDriveFile: undefined,
     uploadFileToFolder: undefined,
   },
   renderObservationPdf: undefined,
@@ -50,6 +52,7 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     serverTimestamp: () => '__server_ts__',
     delete: () => '__delete__',
+    arrayRemove: (...ids: unknown[]) => ({ __arrayRemove__: ids }),
   },
 }));
 
@@ -69,6 +72,7 @@ vi.mock('../lib/drive.js', () => ({
   shareObservationFolderWithObservers: (...a: unknown[]) =>
     h.drive.shareObservationFolderWithObservers?.(...a),
   shareWithUser: (...a: unknown[]) => h.drive.shareWithUser?.(...a),
+  trashDriveFile: (...a: unknown[]) => h.drive.trashDriveFile?.(...a),
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
 }));
 
@@ -242,6 +246,7 @@ function installHappyDrive() {
   h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
   h.drive.shareObservationFolderWithObservers = vi.fn().mockResolvedValue(undefined);
   h.drive.shareWithUser = vi.fn().mockResolvedValue(undefined);
+  h.drive.trashDriveFile = vi.fn().mockResolvedValue(undefined);
   h.drive.getDriveLinks = vi.fn().mockResolvedValue({ webViewLink: 'https://drive/view/pdf-1' });
   h.renderObservationPdf = vi.fn().mockResolvedValue(Buffer.from('pdf'));
   h.sendTemplatedEmail = vi.fn().mockResolvedValue(true);
@@ -501,5 +506,89 @@ describe('finalizeObservation — finalize flow', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     await expect(run(observerRequest())).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Delete audio at finalize
+// ---------------------------------------------------------------------------
+
+describe('finalizeObservation — deleteAudio', () => {
+  const withAudio = {
+    audioDriveFileIds: ['aud-1', 'aud-2'],
+    transcripts: { 'aud-1': 'first transcript', 'aud-2': 'second transcript' },
+    audioRecordings: {
+      'aud-1': { recordedAt: new Date(), durationSec: 60, label: 'One' },
+      'aud-2': { recordedAt: new Date(), durationSec: 90, label: 'Two' },
+    },
+  };
+
+  it('keeps recordings and transcripts when deleteAudio is not set', async () => {
+    const { db, rec } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest());
+
+    const renderArgs = vi.mocked(h.renderObservationPdf as Mock).mock.calls[0]?.[0] as {
+      observation: { audioDriveFileIds: string[]; transcripts: Record<string, string> };
+    };
+    expect(renderArgs.observation.audioDriveFileIds).toEqual(['aud-1', 'aud-2']);
+    expect(Object.keys(renderArgs.observation.transcripts)).toEqual(['aud-1', 'aud-2']);
+    const finalUpdate = rec.obsUpdates.find((u) => u['status'] === OBSERVATION_STATUS.finalized);
+    expect(finalUpdate).not.toHaveProperty('audioDriveFileIds');
+    expect(h.drive.trashDriveFile).not.toHaveBeenCalled();
+  });
+
+  it('drops recordings from the PDF and the doc in the status flip, then trashes the files', async () => {
+    const { db, rec } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } }));
+
+    const renderArgs = vi.mocked(h.renderObservationPdf as Mock).mock.calls[0]?.[0] as {
+      observation: { audioDriveFileIds: string[]; transcripts: Record<string, string> };
+    };
+    expect(renderArgs.observation.audioDriveFileIds).toEqual([]);
+    expect(renderArgs.observation.transcripts).toEqual({});
+
+    const finalUpdate = rec.obsUpdates.find((u) => u['status'] === OBSERVATION_STATUS.finalized);
+    expect(finalUpdate).toMatchObject({
+      audioDriveFileIds: { __arrayRemove__: ['aud-1', 'aud-2'] },
+      'audioRecordings.aud-1': '__delete__',
+      'audioRecordings.aud-2': '__delete__',
+      'transcripts.aud-1': '__delete__',
+      'transcripts.aud-2': '__delete__',
+    });
+    expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-1');
+    expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-2');
+    expect(rec.auditAdds[0]?.['details']).toMatchObject({
+      deletedAudioFileIds: ['aud-1', 'aud-2'],
+    });
+  });
+
+  it('still finalizes when trashing a file fails', async () => {
+    h.drive.trashDriveFile = vi.fn().mockRejectedValue(new Error('drive down'));
+    const { db } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await expect(
+      run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } })),
+    ).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
+  });
+
+  it('keeps the audio when finalize fails before the status flip', async () => {
+    h.renderObservationPdf = vi.fn().mockRejectedValue(new Error('renderer down'));
+    const { db, rec } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await expect(
+      run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } })),
+    ).rejects.toMatchObject({ code: 'internal' });
+    expect(rec.obsUpdates.some((u) => 'audioDriveFileIds' in u)).toBe(false);
+    expect(h.drive.trashDriveFile).not.toHaveBeenCalled();
+  });
+
+  it('only honors a literal true', async () => {
+    const { db, rec } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: 'yes' } }));
+    expect(rec.obsUpdates.some((u) => 'audioDriveFileIds' in u)).toBe(false);
+    expect(h.drive.trashDriveFile).not.toHaveBeenCalled();
   });
 });
