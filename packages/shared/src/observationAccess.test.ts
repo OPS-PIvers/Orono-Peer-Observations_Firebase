@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canEditObservationAudio,
   canEditObservationContent,
   canManageObservation,
   hasObservationOversight,
@@ -36,6 +37,14 @@ describe('observationAccessFor', () => {
     expect(canManageObservation('owner')).toBe(true);
     expect(canEditObservationContent('observed')).toBe(false);
     expect(canEditObservationContent(null)).toBe(false);
+  });
+
+  it('keeps audio to the owner and co-observers', () => {
+    expect(canEditObservationAudio('owner')).toBe(true);
+    expect(canEditObservationAudio('coObserver')).toBe(true);
+    expect(canEditObservationAudio('oversight')).toBe(false);
+    expect(canEditObservationAudio('observed')).toBe(false);
+    expect(canEditObservationAudio(null)).toBe(false);
   });
 });
 

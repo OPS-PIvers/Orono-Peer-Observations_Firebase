@@ -52,9 +52,18 @@ export function observationAccessFor(
   return null;
 }
 
-/** May edit the Draft's content (rubric, notes, script, evidence, audio). */
+/** May edit the Draft's content (rubric, notes, script, evidence). Audio is
+ *  narrower: see canEditObservationAudio. */
 export function canEditObservationContent(access: ObservationAccess): boolean {
   return access === 'owner' || access === 'coObserver' || access === 'oversight';
+}
+
+/** May record, upload, transcribe, rename or delete the Draft's audio. Only
+ *  the people in the room: oversight doesn't record on someone else's Draft,
+ *  and the audio functions (uploadAudio, requestTranscription,
+ *  requireObserverOnDraft) refuse it. */
+export function canEditObservationAudio(access: ObservationAccess): boolean {
+  return access === 'owner' || access === 'coObserver';
 }
 
 /** May finalize, delete, share, or change teacher visibility. */

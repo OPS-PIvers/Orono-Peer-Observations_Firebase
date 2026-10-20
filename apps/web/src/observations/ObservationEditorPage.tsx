@@ -17,6 +17,7 @@ import {
   COLLECTIONS,
   DRAFT_VISIBILITY_HIDDEN,
   OBSERVATION_STATUS,
+  canEditObservationAudio,
   canEditObservationContent,
   canManageObservation,
   observationAccessFor,
@@ -594,6 +595,9 @@ export function ObservationEditorPage() {
   // a mistake, when the admin isn't necessarily the original observer.
   const access = observation ? observationAccessFor(observation, myEmail, hasOversight) : null;
   const canEdit = !isViewingAs && !isReadOnly && canEditObservationContent(access);
+  // Full Access editing someone else's Draft can see its recordings but not
+  // record or change them; the audio functions only accept the observers.
+  const canEditAudio = canEdit && canEditObservationAudio(access);
   // Finalize, sharing and co-observers are the owner's (or oversight's).
   const canManage = !isViewingAs && canManageObservation(access);
   const showFinalize = canEdit && canManage && observation?.status === OBSERVATION_STATUS.draft;
@@ -1146,6 +1150,7 @@ export function ObservationEditorPage() {
         chromeRef={chromeRef}
         observation={observation}
         canEdit={canEdit}
+        canEditAudio={canEditAudio}
         rubric={visibleRubric}
         onInsertTranscript={insertTranscriptIntoScript}
         onAudioBusyChange={setAudioBusy}
@@ -1429,6 +1434,8 @@ interface EditorToolbarProps {
   chromeRef: React.RefObject<HTMLDivElement | null>;
   observation: Observation & { id: string };
   canEdit: boolean;
+  /** Owner or co-observer: may record and manage audio. */
+  canEditAudio: boolean;
   rubric: Rubric | null;
   onInsertTranscript: (audioFileId: string) => void;
   onAudioBusyChange: (busy: boolean) => void;
@@ -1459,6 +1466,7 @@ function EditorToolbar({
   chromeRef,
   observation,
   canEdit,
+  canEditAudio,
   rubric,
   onInsertTranscript,
   onAudioBusyChange,
@@ -1472,6 +1480,8 @@ function EditorToolbar({
 }: EditorToolbarProps) {
   usePublishChromeHeight(chromeRef);
   const hasDomains = !!rubric && rubric.domains.length > 0;
+  // Without audio rights, show the recordings read-only, and only if any exist.
+  const showAudio = canEditAudio || (canEdit && observation.audioDriveFileIds.length > 0);
 
   return (
     <div
@@ -1490,14 +1500,14 @@ function EditorToolbar({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {sharing ? <SharingPopover {...sharing} /> : null}
-          {canEdit ? (
+          {showAudio ? (
             <AudioPopoverButton
               observationId={observation.id}
               audioFileIds={observation.audioDriveFileIds}
               transcripts={observation.transcripts}
               recordings={observation.audioRecordings}
               observedName={observation.observedName}
-              readOnly={!canEdit}
+              readOnly={!canEditAudio}
               onInsertTranscript={onInsertTranscript}
               onBusyChange={onAudioBusyChange}
             />
