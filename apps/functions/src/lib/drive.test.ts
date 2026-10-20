@@ -182,8 +182,12 @@ describe('ensureObservationFolder', () => {
     expect(h.files.create).not.toHaveBeenCalled();
   });
 
-  it('recreates the folder only when Drive says it is gone', async () => {
-    h.files.get.mockRejectedValue(Object.assign(new Error('File not found'), { code: 404 }));
+  it.each([
+    ['numeric code', { code: 404 }],
+    ['string code', { code: '404' }],
+    ['HTTP status only', { status: 404 }],
+  ])('recreates the folder only when Drive says it is gone (%s)', async (_label, shape) => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('File not found'), shape));
     h.files.create.mockResolvedValue({ data: { id: 'fresh' } });
     expect(
       await ensureObservationFolder({
