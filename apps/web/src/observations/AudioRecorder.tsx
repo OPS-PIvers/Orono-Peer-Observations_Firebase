@@ -1068,32 +1068,34 @@ function RecordingItem({
           <span>{errMsg}</span>
         </p>
       ) : null}
+      {transcriptionEnabled && transcript && !readOnly && onInsert ? (
+        // Above the transcript, not under it: a long recording's transcript
+        // would otherwise push the button far down the popover.
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onInsert(audioFileId);
+            }}
+            className="h-7 text-xs"
+            title="Append this transcript to the observation script so it can be tagged as rubric evidence"
+          >
+            <FileInput className="h-3 w-3" />
+            {isInserted ? 'Insert into script again' : 'Insert into script'}
+          </Button>
+          {isInserted ? (
+            <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+              <Check className="h-3 w-3" />
+              Added to script
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       {transcriptionEnabled && transcript ? (
-        <details className="mt-2" open>
+        <details className="mt-2">
           <summary className="text-muted-foreground cursor-pointer text-xs">Transcript</summary>
           <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
-          {!readOnly && onInsert ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onInsert(audioFileId);
-                }}
-                className="h-7 text-xs"
-                title="Append this transcript to the observation script so it can be tagged as rubric evidence"
-              >
-                <FileInput className="h-3 w-3" />
-                {isInserted ? 'Insert into script again' : 'Insert into script'}
-              </Button>
-              {isInserted ? (
-                <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-                  <Check className="h-3 w-3" />
-                  Added to script
-                </span>
-              ) : null}
-            </div>
-          ) : null}
         </details>
       ) : null}
     </li>
