@@ -12,6 +12,7 @@ describe('functions index', () => {
     expect(typeof mod.uploadAudio).not.toBe('undefined');
     expect(typeof mod.getAudio).not.toBe('undefined');
     expect(typeof mod.requestTranscription).not.toBe('undefined');
+    expect(typeof mod.summarizeTranscript).not.toBe('undefined');
     expect(typeof mod.onTranscriptionJobCreated).not.toBe('undefined');
     expect(typeof mod.finalizeObservation).not.toBe('undefined');
     expect(typeof mod.reopenObservation).not.toBe('undefined');

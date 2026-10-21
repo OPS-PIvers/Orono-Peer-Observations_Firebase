@@ -104,9 +104,9 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         model: model.id,
       });
 
-      const observedName = (await obsRef.get()).get('observedName') as unknown;
+      // No names go to the model or into the transcript: speakers are
+      // labeled by role only (Teacher, Student) for privacy.
       const transcript = await transcribeWithGcsUri(audioUri, mimeType, model, {
-        teacherName: typeof observedName === 'string' ? observedName : null,
         userEmail: (snapshot.data() as { requestedBy?: string }).requestedBy ?? null,
         observationId: job.observationId,
       });
@@ -166,10 +166,7 @@ async function transcribeWithGcsUri(
   fileUri: string,
   mimeType: string,
   model: AiModel,
-  {
-    teacherName,
-    ...caller
-  }: { teacherName: string | null; userEmail: string | null; observationId: string },
+  caller: { userEmail: string | null; observationId: string },
 ): Promise<string> {
   const { text, truncated } = await generateTextResult(
     model,
@@ -187,7 +184,7 @@ async function transcribeWithGcsUri(
   }
   const turns = parseTranscriptTurns(text);
   if (turns && turns.length > 0) {
-    const transcript = formatTranscriptTurns(turns, teacherName);
+    const transcript = formatTranscriptTurns(turns);
     // Keep what was transcribed, but never let a cut-off transcript pass for
     // the whole recording.
     return truncated ? `${transcript}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : transcript;

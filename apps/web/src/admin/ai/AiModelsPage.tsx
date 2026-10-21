@@ -49,6 +49,7 @@ function draftFrom(settings: Partial<AppSettings> | null): Draft {
     features: {
       audioTranscription: resolveGeminiFeature(settings?.gemini?.audioTranscription),
       scriptAutoTag: resolveGeminiFeature(settings?.gemini?.scriptAutoTag),
+      transcriptSummary: resolveGeminiFeature(settings?.gemini?.transcriptSummary),
     },
     autoTagControls: resolveScriptAutoTagControls(settings?.scriptAutoTagControls),
   };

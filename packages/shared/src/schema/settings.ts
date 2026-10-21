@@ -166,6 +166,7 @@ export type GeminiFeature = z.infer<typeof geminiFeature>;
 export const geminiFeatures = z.object({
   audioTranscription: geminiFeature.default({ betaEmails: [], model: DEFAULT_GEMINI_MODEL }),
   scriptAutoTag: geminiFeature.default({ betaEmails: [], model: DEFAULT_GEMINI_MODEL }),
+  transcriptSummary: geminiFeature.default({ betaEmails: [], model: DEFAULT_GEMINI_MODEL }),
 });
 export type GeminiFeatures = z.infer<typeof geminiFeatures>;
 export type GeminiFeatureKey = keyof GeminiFeatures;
@@ -296,6 +297,7 @@ export const appSettings = z.object({
   gemini: geminiFeatures.default({
     audioTranscription: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
     scriptAutoTag: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
+    transcriptSummary: { betaEmails: [], model: DEFAULT_GEMINI_MODEL },
   }),
   /** Which script auto-tag options observers may pick. Read through
    *  `resolveScriptAutoTagControls`; every piece defaults to on. */

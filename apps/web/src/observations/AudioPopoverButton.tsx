@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Mic } from 'lucide-react';
-import type { Observation } from '@ops/shared';
+import type { Observation, TranscriptSummary } from '@ops/shared';
 import { Button } from '@/components/ui/button';
 import { AudioRecorder, type Phase } from './AudioRecorder';
+import type { SendToScriptComponent } from './SendToScript';
 
 export interface AudioPopoverButtonProps {
   observationId: string;
@@ -15,6 +16,10 @@ export interface AudioPopoverButtonProps {
   /** Appends a completed transcript into the observation's script doc.
    *  Omit to hide the per-recording "Insert into script" action. */
   onInsertTranscript?: (audioFileId: string) => void;
+  /** Appends a condensed transcript; see AudioRecorder's `onInsertSummary`. */
+  onInsertSummary?: (audioFileId: string, summary: TranscriptSummary) => void;
+  /** Assigned components, shown on the "Send to script" evidence option. */
+  assignedComponents?: SendToScriptComponent[];
   /** See AudioRecorder's `onBusyChange`. */
   onBusyChange?: (busy: boolean) => void;
 }
@@ -38,6 +43,8 @@ export function AudioPopoverButton({
   observedName,
   readOnly,
   onInsertTranscript,
+  onInsertSummary,
+  assignedComponents,
   onBusyChange,
 }: AudioPopoverButtonProps) {
   const [open, setOpen] = useState(false);
@@ -114,6 +121,8 @@ export function AudioPopoverButton({
           onPhaseChange={setPhase}
           onBusyChange={onBusyChange}
           onInsertTranscript={onInsertTranscript}
+          onInsertSummary={onInsertSummary}
+          assignedComponents={assignedComponents}
         />
       </div>
     </div>
