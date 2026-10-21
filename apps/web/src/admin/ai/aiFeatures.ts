@@ -3,6 +3,7 @@ import { email as emailSchema, type AiFeatureKey, type GeminiAccess } from '@ops
 export const AI_FEATURE_TITLES: Record<AiFeatureKey, string> = {
   audioTranscription: 'Audio transcription',
   scriptAutoTag: 'Script auto-tag',
+  transcriptSummary: 'Transcript summaries',
 };
 
 export const AI_FEATURE_META: {
@@ -25,6 +26,14 @@ export const AI_FEATURE_META: {
     description:
       'One-click button in the script editor that asks the model to tag verbatim spans with rubric components.',
     hiddenWhenUnavailable: 'The Auto-tag button is hidden from the script editor toolbar.',
+  },
+  {
+    key: 'transcriptSummary',
+    title: AI_FEATURE_TITLES.transcriptSummary,
+    description:
+      'Send to script options for a finished transcript: timestamped evidence for the assigned components, or a summary around a focus the observer types. Built from the stored transcript, so text-only models work.',
+    hiddenWhenUnavailable:
+      'Only the full transcript can be sent to the script (the Insert into script button). Needs Audio transcription too.',
   },
 ];
 

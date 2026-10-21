@@ -23,6 +23,7 @@ export { getRecordingDriveLink } from './audio/getRecordingDriveLink.js';
 export { backfillRecordingMetadata } from './audio/backfillRecordingMetadata.js';
 export { monitorDriveQuota } from './drive/monitorDriveQuota.js';
 export { requestTranscription } from './transcription/requestTranscription.js';
+export { summarizeTranscript } from './transcription/summarizeTranscript.js';
 export { onTranscriptionJobCreated } from './transcription/onTranscriptionJobCreated.js';
 export { sweepStaleTranscriptionJobs } from './transcription/sweepStaleTranscriptionJobs.js';
 export { pruneOrphanGeminiFiles } from './transcription/pruneOrphanGeminiFiles.js';

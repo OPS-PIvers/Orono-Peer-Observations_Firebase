@@ -22,6 +22,7 @@ export const RATE_LIMIT_COUNTERS_COLLECTION = 'rateLimitCounters';
 export const RATE_LIMIT_KEYS = {
   audioUpload: 'audioUpload',
   transcription: 'transcription',
+  transcriptSummary: 'transcriptSummary',
   pdfRegeneration: 'pdfRegeneration',
   manualEmailBroadcast: 'manualEmailBroadcast',
 } as const;

@@ -23,6 +23,7 @@ describe('Gemini model options', () => {
     expect(geminiFeature.parse({}).model).toBe(DEFAULT_GEMINI_MODEL);
     expect(geminiFeatures.parse({}).audioTranscription.model).toBe(DEFAULT_GEMINI_MODEL);
     expect(geminiFeatures.parse({}).scriptAutoTag.model).toBe(DEFAULT_GEMINI_MODEL);
+    expect(geminiFeatures.parse({}).transcriptSummary.model).toBe(DEFAULT_GEMINI_MODEL);
   });
 });
 

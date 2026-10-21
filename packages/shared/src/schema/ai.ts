@@ -131,13 +131,18 @@ export const AI_MODEL_PRESETS: AiModel[] = [
   },
 ];
 
-export const AI_FEATURE_KEYS = ['audioTranscription', 'scriptAutoTag'] as const;
+export const AI_FEATURE_KEYS = [
+  'audioTranscription',
+  'scriptAutoTag',
+  'transcriptSummary',
+] as const;
 export type AiFeatureKey = (typeof AI_FEATURE_KEYS)[number];
 
 /** What each feature needs from a model. */
 export const AI_FEATURE_REQUIREMENTS: Record<AiFeatureKey, { audio: boolean }> = {
   audioTranscription: { audio: true },
   scriptAutoTag: { audio: false },
+  transcriptSummary: { audio: false },
 };
 
 /** Whether `model` can run `feature` (enabled, and audio-capable where needed). */
