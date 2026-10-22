@@ -4,6 +4,8 @@ import {
   formatTranscriptTurns,
   parseTimestamp,
   parseTranscriptTurns,
+  readTranscriptTurns,
+  replyShape,
 } from './transcriptTurns.js';
 
 describe('parseTimestamp', () => {
@@ -123,6 +125,28 @@ describe('parseTranscriptTurns', () => {
 
   it('returns null for plain text', () => {
     expect(parseTranscriptTurns('Good morning everyone.')).toBeNull();
+  });
+});
+
+describe('readTranscriptTurns', () => {
+  it('counts the turns it had to leave out', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."},' +
+      ' {"start": "00:04", "speaker": "Student", "text": "I said "no" already"},' +
+      ' {"start": "00:09", "speaker": "Teacher", "text": "Thank you."}]}';
+    expect(readTranscriptTurns(raw)?.skipped).toBe(1);
+  });
+
+  it('counts nothing for a clean or merely cut-off reply', () => {
+    const clean = '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."}]}';
+    expect(readTranscriptTurns(clean)?.skipped).toBe(0);
+    expect(readTranscriptTurns(clean.slice(0, -2) + ', {"start": "00:0')?.skipped).toBe(0);
+  });
+});
+
+describe('replyShape', () => {
+  it('masks words but keeps the JSON punctuation', () => {
+    expect(replyShape('{"text": "Élan 42\\q"}')).toBe('{"xxxx": "xxxx xx\\x"}');
   });
 });
 

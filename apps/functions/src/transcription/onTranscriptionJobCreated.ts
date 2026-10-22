@@ -15,7 +15,8 @@ import {
   TRANSCRIPTION_PROMPT,
   TRANSCRIPT_TURNS_SCHEMA,
   formatTranscriptTurns,
-  parseTranscriptTurns,
+  readTranscriptTurns,
+  replyShape,
 } from './transcriptTurns.js';
 
 if (getApps().length === 0) initializeApp();
@@ -157,6 +158,11 @@ export const onTranscriptionJobCreated = onDocumentCreated(
 export const TRANSCRIPT_CUT_OFF_NOTE =
   '[Transcript stops here: the recording was too long to transcribe in full. The rest of the audio is in the recording.]';
 
+/** Appended when some turns of the reply could not be read and were left out. */
+export function transcriptGapsNote(skipped: number): string {
+  return `[${String(skipped)} part${skipped === 1 ? '' : 's'} of this transcript could not be read and ${skipped === 1 ? 'is' : 'are'} missing. The full audio is in the recording.]`;
+}
+
 /**
  * Calls Vertex generateContent referencing the uploaded audio by gs:// URI.
  * No base64 encoding, no size cap. Returns one line per speaker turn,
@@ -182,12 +188,15 @@ async function transcribeWithGcsUri(
   if (!text.trim()) {
     throw new Error('Gemini returned no transcript text');
   }
-  const turns = parseTranscriptTurns(text);
-  if (turns && turns.length > 0) {
-    const transcript = formatTranscriptTurns(turns);
-    // Keep what was transcribed, but never let a cut-off transcript pass for
-    // the whole recording.
-    return truncated ? `${transcript}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : transcript;
+  const read = readTranscriptTurns(text);
+  if (read) {
+    // Keep what was transcribed, but never let a cut-off or gappy transcript
+    // pass for the whole recording.
+    const notes = [
+      ...(read.skipped > 0 ? [transcriptGapsNote(read.skipped)] : []),
+      ...(truncated ? [TRANSCRIPT_CUT_OFF_NOTE] : []),
+    ];
+    return [formatTranscriptTurns(read.turns), ...notes].join('\n\n');
   }
   // The model answered in plain text instead of JSON: keep what it said.
   if (!/^\s*(```|[[{])/.test(text)) {
@@ -195,13 +204,13 @@ async function transcribeWithGcsUri(
   }
   // Shape only, so the next unreadable reply can be diagnosed from the logs:
   // where it starts and how it ends says whether it was cut off, looped, or
-  // broke the JSON.
+  // broke the JSON. Words are masked; classroom speech stays out of the logs.
   logger.error('onTranscriptionJobCreated: unreadable transcript reply', {
     model: model.id,
     truncated,
     length: text.length,
-    head: text.slice(0, 120),
-    tail: text.slice(-200),
+    head: replyShape(text.slice(0, 120)),
+    tail: replyShape(text.slice(-200)),
   });
   throw new Error(
     truncated

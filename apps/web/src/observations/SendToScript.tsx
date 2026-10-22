@@ -51,6 +51,8 @@ export interface SendToScriptProps {
   assignedComponents: SendToScriptComponent[];
   /** What was added to the script from this recording this session. */
   added: string[];
+  /** True while a summary is being written, false when it settles. */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /**
@@ -66,6 +68,7 @@ export function SendToScript({
   onInsertSummary,
   assignedComponents,
   added,
+  onBusyChange,
 }: SendToScriptProps) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<Choice>('domains');
@@ -113,6 +116,7 @@ export function SendToScript({
     const typed = normalizeTranscriptFocus(focus);
     if (choice === 'custom' && !typed) return;
     setBusy(choice);
+    onBusyChange?.(true);
     try {
       assertWritable();
       const { data } = await summarizeTranscriptFn({
@@ -127,6 +131,7 @@ export function SendToScript({
       setError(err instanceof Error ? err.message : 'Could not generate this. Try again.');
     } finally {
       setBusy(null);
+      onBusyChange?.(false);
     }
   }
 
