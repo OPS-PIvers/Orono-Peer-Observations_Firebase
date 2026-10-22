@@ -336,6 +336,12 @@ describe('buildSummaryPrompt', () => {
     expect(prompt).toContain('Write one section per component');
     expect(prompt).toContain('Never use anyone');
   });
+
+  it('spells out the JSON shape, since Gemini is not sent the schema', () => {
+    const prompt = buildSummaryPrompt({ mode: 'custom', focus: 'Q', components, transcript: 'T' });
+    expect(prompt).toContain('"sections": [ { "componentId": string');
+    expect(prompt).toContain('"reflectionQuestions": [ string ]');
+  });
 });
 
 describe('redactTeacherName', () => {

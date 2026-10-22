@@ -250,6 +250,8 @@ RULES:
 - Keep it concise: at most five evidence items per section, the clearest ones.
 - "reflectionQuestions" are two or three open questions the evaluator could ask the teacher in a coaching conversation${mode === 'domains' ? ', each starting with the component id it relates to (e.g. "2b: ...")' : ''}.
 - Write in plain, professional language for educators.
+- Output strict JSON matching: { "summary": string, "sections": [ { "componentId": string, "heading": string, "noticed": string, "evidence": [ { "time": string, "text": string } ] } ], "reflectionQuestions": [ string ] }
+- No prose, no markdown, no explanation outside the JSON.
 
 COMPONENTS:
 ${JSON.stringify(componentBlock, null, 2)}
