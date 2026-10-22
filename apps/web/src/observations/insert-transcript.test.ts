@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { TiptapDoc } from '@ops/shared';
-import { appendTranscriptToScriptDoc, isScriptDocEmpty } from './insert-transcript';
+import type { TiptapDoc, TranscriptSummary } from '@ops/shared';
+import {
+  appendTranscriptSummaryToScriptDoc,
+  appendTranscriptToScriptDoc,
+  isScriptDocEmpty,
+} from './insert-transcript';
 
 const EMPTY_DOC: TiptapDoc = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -74,5 +78,129 @@ describe('appendTranscriptToScriptDoc', () => {
     const result = appendTranscriptToScriptDoc(EMPTY_DOC, 'A.\nB.', 'Transcript — Recording 2');
     const types = result.content.map((n) => (n as { type: string }).type);
     expect(types).toEqual(['heading', 'paragraph', 'paragraph']);
+  });
+});
+
+describe('appendTranscriptSummaryToScriptDoc', () => {
+  const summary: TranscriptSummary = {
+    mode: 'domains',
+    focus: null,
+    summary: 'A lesson on peer pressure.',
+    sections: [
+      {
+        componentId: '2b',
+        heading: 'Culture for Learning',
+        noticed: 'Sharing was voluntary.',
+        evidence: [
+          { time: '04:53', text: 'Teacher invites students to share.' },
+          { time: null, text: 'Thanks a volunteer.' },
+        ],
+      },
+      { componentId: null, heading: 'Other', noticed: '', evidence: [] },
+    ],
+    reflectionQuestions: ['2b: What helped students share?'],
+    components: [
+      { componentId: '2b', title: 'Culture for Learning', bg: '#dcfce7', fg: '#14532d' },
+    ],
+  };
+  const tag = {
+    type: 'componentTag',
+    attrs: { componentId: '2b', bg: '#dcfce7', fg: '#14532d', source: 'script' },
+  };
+
+  it('appends summary, tagged evidence and reflection questions under the label', () => {
+    const result = appendTranscriptSummaryToScriptDoc(
+      docWithText('Typed note.'),
+      summary,
+      'Assigned-domain evidence — Recording 1',
+    );
+    expect(result.content).toEqual([
+      { type: 'paragraph', content: [{ type: 'text', text: 'Typed note.' }] },
+      {
+        type: 'heading',
+        attrs: { level: 3 },
+        content: [{ type: 'text', text: 'Assigned-domain evidence — Recording 1' }],
+      },
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Summary. ', marks: [{ type: 'bold' }] },
+          { type: 'text', text: 'A lesson on peer pressure.' },
+        ],
+      },
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: '2b Culture for Learning. ', marks: [{ type: 'bold' }] },
+          { type: 'text', text: 'Sharing was voluntary.' },
+        ],
+      },
+      {
+        type: 'bulletList',
+        content: [
+          {
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  { type: 'text', text: '[04:53] ' },
+                  { type: 'text', text: 'Teacher invites students to share.', marks: [tag] },
+                ],
+              },
+            ],
+          },
+          {
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: 'Thanks a volunteer.', marks: [tag] }],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Other', marks: [{ type: 'bold' }] }],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Reflection questions', marks: [{ type: 'bold' }] }],
+      },
+      {
+        type: 'orderedList',
+        content: [
+          {
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: '2b: What helped students share?' }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('leads with the focus for a custom summary and replaces an empty script', () => {
+    const result = appendTranscriptSummaryToScriptDoc(
+      EMPTY_DOC,
+      { ...summary, mode: 'custom', focus: 'Feedback', sections: [], reflectionQuestions: [] },
+      'Custom focus',
+    );
+    expect(result.content.slice(1, 2)).toEqual([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Focus. ', marks: [{ type: 'bold' }] },
+          { type: 'text', text: 'Feedback' },
+        ],
+      },
+    ]);
+    expect(result.content).toHaveLength(3);
   });
 });

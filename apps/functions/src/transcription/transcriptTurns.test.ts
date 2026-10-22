@@ -4,6 +4,8 @@ import {
   formatTranscriptTurns,
   parseTimestamp,
   parseTranscriptTurns,
+  readTranscriptTurns,
+  replyShape,
 } from './transcriptTurns.js';
 
 describe('parseTimestamp', () => {
@@ -82,8 +84,79 @@ describe('parseTranscriptTurns', () => {
     expect(formatTranscriptTurns(parseTranscriptTurns(raw) ?? [])).toBe(`[00:07] Student: ${said}`);
   });
 
+  it('keeps the other turns when one turn is broken JSON', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."},' +
+      ' {"start": "00:04", "speaker": "Student", "text": "I said "no" already"},' +
+      ' {"start": "00:09", "speaker": "Teacher", "text": "Thank you."}]}';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: 'Okay.' },
+      { startSeconds: 9, speaker: 'Teacher', text: 'Thank you.' },
+    ]);
+  });
+
+  it('repairs a stray backslash and a raw line break inside a turn', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "That\\\'s it,\nfolks."},' +
+      ' {"start": "00:05", "speaker": "Student", "text": "Okay.\t"}]}';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: "That's it, folks." },
+      { startSeconds: 5, speaker: 'Student', text: 'Okay.' },
+    ]);
+  });
+
+  it('keeps the finished turns when a cut-off reply also has a broken turn', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "One \\q two."},' +
+      ' {"start": "00:03", "speaker": "Student", "text": "Three."},' +
+      ' {"start": "00:06", "speaker": "Teacher", "text": "Fo';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: 'One q two.' },
+      { startSeconds: 3, speaker: 'Student', text: 'Three.' },
+    ]);
+  });
+
+  it('returns null when no turn finished', () => {
+    expect(
+      parseTranscriptTurns('{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "um um'),
+    ).toBeNull();
+    expect(parseTranscriptTurns('{"turns": []}')).toBeNull();
+  });
+
   it('returns null for plain text', () => {
     expect(parseTranscriptTurns('Good morning everyone.')).toBeNull();
+  });
+});
+
+describe('readTranscriptTurns', () => {
+  it('counts the turns it had to leave out', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."},' +
+      ' {"start": "00:04", "speaker": "Student", "text": "I said "no" already"},' +
+      ' {"start": "00:09", "speaker": "Teacher", "text": "Thank you."}]}';
+    expect(readTranscriptTurns(raw)?.skipped).toBe(1);
+  });
+
+  it('counts a turn left without its closing brace', () => {
+    const raw =
+      '{"turns":[{"start":"00:01","speaker":"Teacher","text":"a", ' +
+      '{"start":"00:02","speaker":"Student","text":"b"}]}';
+    expect(readTranscriptTurns(raw)).toEqual({
+      turns: [{ startSeconds: 2, speaker: 'Student', text: 'b' }],
+      skipped: 1,
+    });
+  });
+
+  it('counts nothing for a clean or merely cut-off reply', () => {
+    const clean = '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."}]}';
+    expect(readTranscriptTurns(clean)?.skipped).toBe(0);
+    expect(readTranscriptTurns(clean.slice(0, -2) + ', {"start": "00:0')?.skipped).toBe(0);
+  });
+});
+
+describe('replyShape', () => {
+  it('masks words but keeps the JSON punctuation', () => {
+    expect(replyShape('{"text": "Élan 42\\q"}')).toBe('{"xxxx": "xxxx xx\\x"}');
   });
 });
 
@@ -112,17 +185,14 @@ describe('formatTranscriptTurns', () => {
     ).toBe('[00:00] Teacher: Okay. Page twelve.\n[00:09] Student: Got it.');
   });
 
-  it("uses the observed teacher's name in place of Teacher", () => {
+  it('keeps role labels and never names the teacher', () => {
     expect(
-      formatTranscriptTurns(
-        [
-          { startSeconds: 0, speaker: 'Teacher', text: 'Shh.' },
-          { startSeconds: 2, speaker: 'Student', text: 'Sorry.' },
-          { startSeconds: 4, speaker: 'Other Adult', text: 'Okay.' },
-        ],
-        ' Jane Smith ',
-      ),
-    ).toBe('[00:00] Jane Smith: Shh.\n[00:02] Student: Sorry.\n[00:04] Other Adult: Okay.');
+      formatTranscriptTurns([
+        { startSeconds: 0, speaker: 'Teacher', text: 'Shh.' },
+        { startSeconds: 2, speaker: 'Student', text: 'Sorry.' },
+        { startSeconds: 4, speaker: 'Other Adult', text: 'Okay.' },
+      ]),
+    ).toBe('[00:00] Teacher: Shh.\n[00:02] Student: Sorry.\n[00:04] Other Adult: Okay.');
   });
 
   it('leaves the timestamp off when it could not be read', () => {

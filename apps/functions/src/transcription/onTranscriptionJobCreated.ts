@@ -15,7 +15,8 @@ import {
   TRANSCRIPTION_PROMPT,
   TRANSCRIPT_TURNS_SCHEMA,
   formatTranscriptTurns,
-  parseTranscriptTurns,
+  readTranscriptTurns,
+  replyShape,
 } from './transcriptTurns.js';
 
 if (getApps().length === 0) initializeApp();
@@ -104,9 +105,9 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         model: model.id,
       });
 
-      const observedName = (await obsRef.get()).get('observedName') as unknown;
+      // No names go to the model or into the transcript: speakers are
+      // labeled by role only (Teacher, Student) for privacy.
       const transcript = await transcribeWithGcsUri(audioUri, mimeType, model, {
-        teacherName: typeof observedName === 'string' ? observedName : null,
         userEmail: (snapshot.data() as { requestedBy?: string }).requestedBy ?? null,
         observationId: job.observationId,
       });
@@ -157,6 +158,11 @@ export const onTranscriptionJobCreated = onDocumentCreated(
 export const TRANSCRIPT_CUT_OFF_NOTE =
   '[Transcript stops here: the recording was too long to transcribe in full. The rest of the audio is in the recording.]';
 
+/** Appended when some turns of the reply could not be read and were left out. */
+export function transcriptGapsNote(skipped: number): string {
+  return `[${String(skipped)} part${skipped === 1 ? '' : 's'} of this transcript could not be read and ${skipped === 1 ? 'is' : 'are'} missing. The full audio is in the recording.]`;
+}
+
 /**
  * Calls Vertex generateContent referencing the uploaded audio by gs:// URI.
  * No base64 encoding, no size cap. Returns one line per speaker turn,
@@ -166,10 +172,7 @@ async function transcribeWithGcsUri(
   fileUri: string,
   mimeType: string,
   model: AiModel,
-  {
-    teacherName,
-    ...caller
-  }: { teacherName: string | null; userEmail: string | null; observationId: string },
+  caller: { userEmail: string | null; observationId: string },
 ): Promise<string> {
   const { text, truncated } = await generateTextResult(
     model,
@@ -185,16 +188,33 @@ async function transcribeWithGcsUri(
   if (!text.trim()) {
     throw new Error('Gemini returned no transcript text');
   }
-  const turns = parseTranscriptTurns(text);
-  if (turns && turns.length > 0) {
-    const transcript = formatTranscriptTurns(turns, teacherName);
-    // Keep what was transcribed, but never let a cut-off transcript pass for
-    // the whole recording.
-    return truncated ? `${transcript}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : transcript;
+  const read = readTranscriptTurns(text);
+  if (read) {
+    // Keep what was transcribed, but never let a cut-off or gappy transcript
+    // pass for the whole recording.
+    const notes = [
+      ...(read.skipped > 0 ? [transcriptGapsNote(read.skipped)] : []),
+      ...(truncated ? [TRANSCRIPT_CUT_OFF_NOTE] : []),
+    ];
+    return [formatTranscriptTurns(read.turns), ...notes].join('\n\n');
   }
   // The model answered in plain text instead of JSON: keep what it said.
   if (!/^\s*(```|[[{])/.test(text)) {
     return truncated ? `${text.trim()}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : text.trim();
   }
-  throw new Error('Gemini returned a transcript that could not be read');
+  // Shape only, so the next unreadable reply can be diagnosed from the logs:
+  // where it starts and how it ends says whether it was cut off, looped, or
+  // broke the JSON. Words are masked; classroom speech stays out of the logs.
+  logger.error('onTranscriptionJobCreated: unreadable transcript reply', {
+    model: model.id,
+    truncated,
+    length: text.length,
+    head: replyShape(text.slice(0, 120)),
+    tail: replyShape(text.slice(-200)),
+  });
+  throw new Error(
+    truncated
+      ? 'Gemini ran out of room before finishing the first part of the transcript'
+      : 'Gemini returned a transcript that could not be read',
+  );
 }

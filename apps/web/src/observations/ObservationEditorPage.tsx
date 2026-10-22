@@ -33,6 +33,7 @@ import {
   type RubricDomain,
   type SignupFieldAnswer,
   type TiptapDoc,
+  type TranscriptSummary,
   type WorkProductQuestion,
   roleYearMappingDocId,
   displayYear,
@@ -87,7 +88,12 @@ import {
 import { useReflectionUnlock } from './useReflectionUnlock';
 import { AudioPopoverButton } from './AudioPopoverButton';
 import { recordingTitle } from './recordings';
-import { appendTranscriptToScriptDoc } from './insert-transcript';
+import {
+  appendTranscriptSummaryToScriptDoc,
+  appendTranscriptToScriptDoc,
+} from './insert-transcript';
+import { colorFor } from './component-colors';
+import type { SendToScriptComponent } from './SendToScript';
 import { SaveStatusIndicator, StatusBadge } from './GlobalToolsBar';
 import { computeUnscoredComponents, type ActiveComponent } from './unscoredComponents';
 import {
@@ -860,6 +866,40 @@ export function ObservationEditorPage() {
     [canEdit, observation, scheduleSave],
   );
 
+  // Same bridge for "Send to script" → assigned-domain evidence / custom
+  // focus: the server condensed the transcript; append it under its own
+  // heading with the evidence already tagged.
+  const insertTranscriptSummaryIntoScript = useCallback(
+    (audioFileId: string, summary: TranscriptSummary) => {
+      if (!canEdit || !observation) return;
+      const kind = summary.mode === 'domains' ? 'Assigned-domain evidence' : 'Custom focus';
+      const recordingIndex = observation.audioDriveFileIds.indexOf(audioFileId);
+      const label =
+        recordingIndex >= 0
+          ? `${kind} — ${recordingTitle(observation.audioRecordings?.[audioFileId], recordingIndex)}`
+          : kind;
+      const next: EditorDraft = {
+        ...draftRef.current,
+        scriptDoc: appendTranscriptSummaryToScriptDoc(draftRef.current.scriptDoc, summary, label),
+      };
+      draftRef.current = next;
+      setDraft(next);
+      scheduleSave('scriptDoc');
+    },
+    [canEdit, observation, scheduleSave],
+  );
+
+  // The assigned components, as chips on the "Send to script" evidence option.
+  const assignedSendComponents = useMemo<SendToScriptComponent[]>(
+    () =>
+      activeComponents.map(({ component }) => ({
+        id: component.id,
+        title: component.title,
+        ...colorFor(component),
+      })),
+    [activeComponents],
+  );
+
   const setPreObsDate = useCallback(
     (date: Date | undefined) => {
       if (!canEdit) return;
@@ -1153,6 +1193,8 @@ export function ObservationEditorPage() {
         canEditAudio={canEditAudio}
         rubric={visibleRubric}
         onInsertTranscript={insertTranscriptIntoScript}
+        onInsertSummary={insertTranscriptSummaryIntoScript}
+        assignedComponents={assignedSendComponents}
         onAudioBusyChange={setAudioBusy}
         showFinalize={showFinalize}
         onFinalize={() => setFinalizeOpen(true)}
@@ -1438,6 +1480,8 @@ interface EditorToolbarProps {
   canEditAudio: boolean;
   rubric: Rubric | null;
   onInsertTranscript: (audioFileId: string) => void;
+  onInsertSummary: (audioFileId: string, summary: TranscriptSummary) => void;
+  assignedComponents: SendToScriptComponent[];
   onAudioBusyChange: (busy: boolean) => void;
   showFinalize: boolean;
   onFinalize: () => void;
@@ -1469,6 +1513,8 @@ function EditorToolbar({
   canEditAudio,
   rubric,
   onInsertTranscript,
+  onInsertSummary,
+  assignedComponents,
   onAudioBusyChange,
   showFinalize,
   onFinalize,
@@ -1509,6 +1555,8 @@ function EditorToolbar({
               observedName={observation.observedName}
               readOnly={!canEditAudio}
               onInsertTranscript={onInsertTranscript}
+              onInsertSummary={onInsertSummary}
+              assignedComponents={assignedComponents}
               onBusyChange={onAudioBusyChange}
             />
           ) : null}
@@ -1782,8 +1830,8 @@ function FinalizeDialog({
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              A recording hasn&apos;t finished uploading. Stop the recording and wait for the upload
-              (or retry it) from the microphone button, then finalize.
+              A recording hasn&apos;t finished uploading, or a transcript is still being sent to the
+              script. Finish it from the microphone button, then finalize.
             </p>
           </div>
         ) : null}

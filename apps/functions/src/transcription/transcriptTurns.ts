@@ -100,17 +100,75 @@ function turnsFrom(parsed: unknown): TranscriptTurn[] | null {
 }
 
 /**
- * Read Gemini's JSON reply. A long recording can hit the output limit and cut
- * the JSON off mid-turn; in that case keep every turn that finished.
- * Returns null when nothing usable can be read.
+ * Fixes the two slips that break JSON.parse on a long reply: a backslash
+ * before a character JSON does not escape (\' or \a), and a raw tab or
+ * line break inside a string.
  */
-export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
+function repairJson(text: string): string {
+  return text
+    .replace(/\\(\\|["/bfnrtu])|\\/g, (match, kept: string | undefined) =>
+      kept === undefined ? '' : match,
+    )
+    .replace(/[\t\n\r\f\v]/g, ' ');
+}
+
+/**
+ * Last resort for a reply that does not parse as a whole: read each flat
+ * {...} object on its own and keep the ones that are turns. One bad turn
+ * then costs that turn, not the whole class period. `skipped` counts the
+ * objects that still could not be read, so the gap can be marked.
+ */
+function salvageTurns(text: string): TranscriptRead {
+  const turns: TranscriptTurn[] = [];
+  let skipped = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      // A turn left open (no closing brace) before the next one starts is
+      // lost too. The outer {"turns": [ wrapper has no "text" key.
+      if (start !== -1 && text.slice(start, i).includes('"text"')) skipped++;
+      start = i;
+    } else if (ch === '}' && start !== -1) {
+      const candidate = text.slice(start, i + 1);
+      start = -1;
+      let read = false;
+      for (const attempt of [candidate, repairJson(candidate)]) {
+        try {
+          const turn = toTurn(JSON.parse(attempt));
+          if (turn) turns.push(turn);
+          read = true;
+          break;
+        } catch {
+          // try the repaired text, then give up on this object
+        }
+      }
+      if (!read) skipped++;
+    }
+  }
+  return { turns, skipped };
+}
+
+export interface TranscriptRead {
+  turns: TranscriptTurn[];
+  /** Turn objects in the reply that could not be read and were left out. */
+  skipped: number;
+}
+
+/**
+ * Read Gemini's JSON reply. A long recording can hit the output limit and cut
+ * the JSON off mid-turn; in that case keep every turn that finished. A turn
+ * the model wrote as broken JSON is dropped (and counted in `skipped`) and
+ * the rest are kept. Returns null when nothing usable can be read.
+ */
+export function readTranscriptTurns(raw: string): TranscriptRead | null {
   const text = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '');
   try {
-    return turnsFrom(JSON.parse(text));
+    const turns = turnsFrom(JSON.parse(text));
+    if (turns && turns.length > 0) return { turns, skipped: 0 };
   } catch {
     // Truncated: close the array after the last complete turn object.
     const lastClose = text.lastIndexOf('}');
@@ -119,28 +177,29 @@ export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
     for (const tail of [']}', ']']) {
       try {
         const turns = turnsFrom(JSON.parse(head + tail));
-        if (turns && turns.length > 0) return turns;
+        if (turns && turns.length > 0) return { turns, skipped: 0 };
       } catch {
         // try the next closing shape
       }
     }
-    return null;
   }
+  const salvaged = salvageTurns(text);
+  return salvaged.turns.length > 0 ? salvaged : null;
+}
+
+/** readTranscriptTurns without the skipped count. */
+export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
+  return readTranscriptTurns(raw)?.turns ?? null;
 }
 
 /**
  * One line per speaker turn. Back-to-back turns by the same speaker are
- * merged so a new line always means a new speaker. When the observed
- * teacher's name is known, it replaces the model's "Teacher" label.
+ * merged so a new line always means a new speaker. Speakers keep the role
+ * labels the model gave them; the teacher's name is never put in (privacy).
  */
-export function formatTranscriptTurns(
-  turns: TranscriptTurn[],
-  teacherName?: string | null,
-): string {
-  const name = teacherName?.trim();
+export function formatTranscriptTurns(turns: TranscriptTurn[]): string {
   const merged: TranscriptTurn[] = [];
-  for (const raw of turns) {
-    const turn = name && raw.speaker.toLowerCase() === 'teacher' ? { ...raw, speaker: name } : raw;
+  for (const turn of turns) {
     const prev = merged[merged.length - 1];
     if (prev?.speaker === turn.speaker) {
       prev.text = `${prev.text} ${turn.text}`;
@@ -154,4 +213,13 @@ export function formatTranscriptTurns(
       return `${stamp}${turn.speaker}: ${turn.text}`;
     })
     .join('\n');
+}
+
+/**
+ * Masks letters and digits, keeping punctuation, quotes, backslashes and
+ * spacing: enough to see how a reply's JSON broke without logging what was
+ * said in the classroom.
+ */
+export function replyShape(text: string): string {
+  return text.replace(/[\p{L}\p{N}]/gu, 'x');
 }

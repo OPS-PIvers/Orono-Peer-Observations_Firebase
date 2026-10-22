@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
-  Check,
   Download,
   ExternalLink,
-  FileInput,
   FolderOpen,
   Loader2,
   Mic,
@@ -17,7 +15,13 @@ import {
   Upload,
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
-import { RECORDING_LABEL_MAX, type AudioRecordingMeta, type TranscriptionJob } from '@ops/shared';
+import {
+  RECORDING_LABEL_MAX,
+  transcriptSummaryLabel,
+  type AudioRecordingMeta,
+  type TranscriptSummary,
+  type TranscriptionJob,
+} from '@ops/shared';
 import { functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +37,7 @@ import { useAuth } from '@/auth/AuthProvider';
 import { useGeminiAccess } from '@/hooks/useGeminiAccess';
 import { cn } from '@/lib/utils';
 import { useTranscriptionJobs } from './useTranscriptionJobs';
+import { SendToScript, type SendToScriptComponent } from './SendToScript';
 import {
   fetchRecordingBlob,
   formatRecordedAt,
@@ -103,6 +108,12 @@ export interface AudioRecorderProps {
   /** Appends the finished transcript for a recording into the observation's
    *  script doc. Omit to hide the "Insert into script" action. */
   onInsertTranscript?: ((audioFileId: string) => void) | undefined;
+  /** Appends a condensed transcript (assigned-domain evidence or a custom
+   *  focus). Omit, or have transcript summaries off, to offer only the full
+   *  transcript. */
+  onInsertSummary?: ((audioFileId: string, summary: TranscriptSummary) => void) | undefined;
+  /** Assigned components, shown on the "Send to script" evidence option. */
+  assignedComponents?: SendToScriptComponent[] | undefined;
 }
 
 export type Phase = 'idle' | 'recording' | 'uploading' | 'importing' | 'error';
@@ -147,6 +158,8 @@ export function AudioRecorder({
   onPhaseChange,
   onBusyChange,
   onInsertTranscript,
+  onInsertSummary,
+  assignedComponents = [],
 }: AudioRecorderProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   useEffect(() => {
@@ -168,10 +181,12 @@ export function AudioRecorder({
    *  job doc even exists) — separate from a job's own `status: 'Failed'`,
    *  which is surfaced from `jobsByAudioFileId` below. */
   const [requestError, setRequestError] = useState<Record<string, string>>({});
-  /** fileIds whose transcript has been inserted into the script this
-   *  session (local feedback only — inserting again is always allowed). */
-  const [insertedIds, setInsertedIds] = useState<Set<string>>(new Set());
-  const transcriptionEnabled = useGeminiAccess().audioTranscription;
+  /** What was sent to the script from each recording this session (local
+   *  feedback only — sending again is always allowed). */
+  const [addedByFileId, setAddedByFileId] = useState<Record<string, string[]>>({});
+  const geminiAccess = useGeminiAccess();
+  const transcriptionEnabled = geminiAccess.audioTranscription;
+  const summariesEnabled = transcriptionEnabled && geminiAccess.transcriptSummary;
   const { user } = useAuth();
   // Job docs are the source of truth for in-flight/failed state so it
   // survives a page reload — no local "transcribing" flag to lose.
@@ -210,11 +225,9 @@ export function AudioRecorder({
       });
       // A re-transcribe produces new text, so the "inserted" feedback for
       // this recording no longer reflects what's in the script.
-      setInsertedIds((prev) => {
-        if (!prev.has(audioFileId)) return prev;
-        const next = new Set(prev);
-        next.delete(audioFileId);
-        return next;
+      setAddedByFileId((prev) => {
+        if (!(audioFileId in prev)) return prev;
+        return Object.fromEntries(Object.entries(prev).filter(([id]) => id !== audioFileId));
       });
       try {
         assertWritable();
@@ -235,13 +248,26 @@ export function AudioRecorder({
     if (driveImportEnabled) preloadDrivePicker();
   }, [driveImportEnabled]);
 
+  const noteAdded = useCallback((audioFileId: string, label: string) => {
+    setAddedByFileId((prev) => ({ ...prev, [audioFileId]: [...(prev[audioFileId] ?? []), label] }));
+  }, []);
+
   const handleInsertTranscript = useCallback(
     (audioFileId: string) => {
       if (!onInsertTranscript) return;
       onInsertTranscript(audioFileId);
-      setInsertedIds((prev) => new Set(prev).add(audioFileId));
+      noteAdded(audioFileId, 'Full transcript');
     },
-    [onInsertTranscript],
+    [onInsertTranscript, noteAdded],
+  );
+
+  const handleInsertSummary = useCallback(
+    (audioFileId: string, summary: TranscriptSummary) => {
+      if (!onInsertSummary) return;
+      onInsertSummary(audioFileId, summary);
+      noteAdded(audioFileId, transcriptSummaryLabel(summary));
+    },
+    [onInsertSummary, noteAdded],
   );
 
   const mountedRef = useRef(true);
@@ -258,10 +284,22 @@ export function AudioRecorder({
   // the tab is closed or reloaded.
   const holdsUnsavedAudio = phase === 'recording' || unsaved !== null;
 
-  // Wider than the above: also the mic prompt and a Drive import in flight.
-  // Finalize waits for it, and so does a session-timeout sign-out, whose
-  // navigation to /sign-in would unmount this recorder (signOutHold.ts).
-  const busy = starting || holdsUnsavedAudio || phase === 'uploading' || phase === 'importing';
+  // "Send to script" summaries being written. Each lands in the script when
+  // it returns, so Finalize and a sign-out must wait for them too.
+  const [summarizing, setSummarizing] = useState(0);
+  const handleSummaryBusy = useCallback((on: boolean) => {
+    setSummarizing((n) => Math.max(0, n + (on ? 1 : -1)));
+  }, []);
+
+  // Wider than the above: also the mic prompt, a Drive import and a summary
+  // in flight. Finalize waits for it, and so does a session-timeout sign-out,
+  // whose navigation to /sign-in would unmount this recorder (signOutHold.ts).
+  const busy =
+    starting ||
+    holdsUnsavedAudio ||
+    phase === 'uploading' ||
+    phase === 'importing' ||
+    summarizing > 0;
   const busyRef = useRef(busy);
   useEffect(() => {
     busyRef.current = busy;
@@ -492,8 +530,18 @@ export function AudioRecorder({
             {transcriptionEnabled ? (
               <>
                 {' '}
-                When a transcript is ready, use <strong>Insert into script</strong> to add it to the
-                observation script for tagging.
+                {summariesEnabled ? (
+                  <>
+                    When a transcript is ready, use <strong>Send to script</strong> to add the full
+                    transcript, evidence for the assigned components, or a summary with your own
+                    focus.
+                  </>
+                ) : (
+                  <>
+                    When a transcript is ready, use <strong>Insert into script</strong> to add it to
+                    the observation script for tagging.
+                  </>
+                )}
               </>
             ) : null}
             {driveImportEnabled ? (
@@ -591,7 +639,10 @@ export function AudioRecorder({
         transcriptionEnabled={transcriptionEnabled}
         readOnly={readOnly}
         onInsert={onInsertTranscript ? handleInsertTranscript : null}
-        insertedIds={insertedIds}
+        onInsertSummary={summariesEnabled && onInsertSummary ? handleInsertSummary : null}
+        assignedComponents={assignedComponents}
+        addedByFileId={addedByFileId}
+        onSummaryBusyChange={handleSummaryBusy}
       />
     </div>
   );
@@ -695,7 +746,10 @@ function RecordingsList({
   transcriptionEnabled,
   readOnly,
   onInsert,
-  insertedIds,
+  onInsertSummary,
+  assignedComponents,
+  addedByFileId,
+  onSummaryBusyChange,
 }: {
   observationId: string;
   audioFileIds: string[];
@@ -708,7 +762,10 @@ function RecordingsList({
   transcriptionEnabled: boolean;
   readOnly: boolean;
   onInsert: ((audioFileId: string) => void) | null;
-  insertedIds: Set<string>;
+  onInsertSummary: ((audioFileId: string, summary: TranscriptSummary) => void) | null;
+  assignedComponents: SendToScriptComponent[];
+  addedByFileId: Record<string, string[]>;
+  onSummaryBusyChange: (busy: boolean) => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; title: string } | null>(
     null,
@@ -762,7 +819,10 @@ function RecordingsList({
             transcriptionEnabled={transcriptionEnabled}
             readOnly={readOnly}
             onInsert={onInsert}
-            isInserted={insertedIds.has(fileId)}
+            onInsertSummary={onInsertSummary}
+            assignedComponents={assignedComponents}
+            added={addedByFileId[fileId] ?? []}
+            onSummaryBusyChange={onSummaryBusyChange}
             deleting={deletingId === fileId}
             onDelete={(title) => setConfirmingDelete({ id: fileId, title })}
           />
@@ -813,7 +873,10 @@ function RecordingItem({
   transcriptionEnabled,
   readOnly,
   onInsert,
-  isInserted,
+  onInsertSummary,
+  assignedComponents,
+  added,
+  onSummaryBusyChange,
   deleting,
   onDelete,
 }: {
@@ -829,7 +892,10 @@ function RecordingItem({
   transcriptionEnabled: boolean;
   readOnly: boolean;
   onInsert: ((audioFileId: string) => void) | null;
-  isInserted: boolean;
+  onInsertSummary: ((audioFileId: string, summary: TranscriptSummary) => void) | null;
+  assignedComponents: SendToScriptComponent[];
+  added: string[];
+  onSummaryBusyChange: (busy: boolean) => void;
   deleting: boolean;
   onDelete: (title: string) => void;
 }) {
@@ -1071,30 +1137,23 @@ function RecordingItem({
       {transcriptionEnabled && transcript && !readOnly && onInsert ? (
         // Above the transcript, not under it: a long recording's transcript
         // would otherwise push the button far down the popover.
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              onInsert(audioFileId);
-            }}
-            className="h-7 text-xs"
-            title="Append this transcript to the observation script so it can be tagged as rubric evidence"
-          >
-            <FileInput className="h-3 w-3" />
-            {isInserted ? 'Insert into script again' : 'Insert into script'}
-          </Button>
-          {isInserted ? (
-            <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
-              <Check className="h-3 w-3" />
-              Added to script
-            </span>
-          ) : null}
-        </div>
+        <SendToScript
+          observationId={observationId}
+          audioFileId={audioFileId}
+          onInsertFull={() => onInsert(audioFileId)}
+          onInsertSummary={
+            onInsertSummary ? (summary) => onInsertSummary(audioFileId, summary) : null
+          }
+          assignedComponents={assignedComponents}
+          added={added}
+          onBusyChange={onSummaryBusyChange}
+        />
       ) : null}
       {transcriptionEnabled && transcript ? (
         <details className="mt-2">
-          <summary className="text-muted-foreground cursor-pointer text-xs">Transcript</summary>
+          <summary className="text-muted-foreground cursor-pointer text-xs">
+            Full transcript
+          </summary>
           <p className="text-foreground mt-1 text-sm whitespace-pre-line">{transcript}</p>
         </details>
       ) : null}

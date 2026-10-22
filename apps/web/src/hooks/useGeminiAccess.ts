@@ -28,12 +28,13 @@ export function useGeminiAccess(): GeminiAccessMap {
   // Firestore docs predate the access field for existing tenants, so read
   // through resolveGeminiFeature rather than trusting the inferred type.
   const gemini = data?.gemini as Partial<Record<GeminiFeatureKey, unknown>> | undefined;
-  if (!data) return { audioTranscription: false, scriptAutoTag: false };
+  if (!data) return { audioTranscription: false, scriptAutoTag: false, transcriptSummary: false };
   return {
     audioTranscription: canUseGeminiFeature(
       resolveGeminiFeature(gemini?.audioTranscription),
       email,
     ),
     scriptAutoTag: canUseGeminiFeature(resolveGeminiFeature(gemini?.scriptAutoTag), email),
+    transcriptSummary: canUseGeminiFeature(resolveGeminiFeature(gemini?.transcriptSummary), email),
   };
 }
