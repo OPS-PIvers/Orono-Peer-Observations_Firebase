@@ -137,6 +137,16 @@ describe('readTranscriptTurns', () => {
     expect(readTranscriptTurns(raw)?.skipped).toBe(1);
   });
 
+  it('counts a turn left without its closing brace', () => {
+    const raw =
+      '{"turns":[{"start":"00:01","speaker":"Teacher","text":"a", ' +
+      '{"start":"00:02","speaker":"Student","text":"b"}]}';
+    expect(readTranscriptTurns(raw)).toEqual({
+      turns: [{ startSeconds: 2, speaker: 'Student', text: 'b' }],
+      skipped: 1,
+    });
+  });
+
   it('counts nothing for a clean or merely cut-off reply', () => {
     const clean = '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."}]}';
     expect(readTranscriptTurns(clean)?.skipped).toBe(0);

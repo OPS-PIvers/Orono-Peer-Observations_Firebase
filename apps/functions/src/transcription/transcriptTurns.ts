@@ -125,6 +125,9 @@ function salvageTurns(text: string): TranscriptRead {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === '{') {
+      // A turn left open (no closing brace) before the next one starts is
+      // lost too. The outer {"turns": [ wrapper has no "text" key.
+      if (start !== -1 && text.slice(start, i).includes('"text"')) skipped++;
       start = i;
     } else if (ch === '}' && start !== -1) {
       const candidate = text.slice(start, i + 1);
