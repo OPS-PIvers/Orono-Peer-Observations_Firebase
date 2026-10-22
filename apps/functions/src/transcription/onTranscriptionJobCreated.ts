@@ -193,5 +193,19 @@ async function transcribeWithGcsUri(
   if (!/^\s*(```|[[{])/.test(text)) {
     return truncated ? `${text.trim()}\n\n${TRANSCRIPT_CUT_OFF_NOTE}` : text.trim();
   }
-  throw new Error('Gemini returned a transcript that could not be read');
+  // Shape only, so the next unreadable reply can be diagnosed from the logs:
+  // where it starts and how it ends says whether it was cut off, looped, or
+  // broke the JSON.
+  logger.error('onTranscriptionJobCreated: unreadable transcript reply', {
+    model: model.id,
+    truncated,
+    length: text.length,
+    head: text.slice(0, 120),
+    tail: text.slice(-200),
+  });
+  throw new Error(
+    truncated
+      ? 'Gemini ran out of room before finishing the first part of the transcript'
+      : 'Gemini returned a transcript that could not be read',
+  );
 }

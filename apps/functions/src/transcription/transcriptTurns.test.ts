@@ -82,6 +82,45 @@ describe('parseTranscriptTurns', () => {
     expect(formatTranscriptTurns(parseTranscriptTurns(raw) ?? [])).toBe(`[00:07] Student: ${said}`);
   });
 
+  it('keeps the other turns when one turn is broken JSON', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "Okay."},' +
+      ' {"start": "00:04", "speaker": "Student", "text": "I said "no" already"},' +
+      ' {"start": "00:09", "speaker": "Teacher", "text": "Thank you."}]}';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: 'Okay.' },
+      { startSeconds: 9, speaker: 'Teacher', text: 'Thank you.' },
+    ]);
+  });
+
+  it('repairs a stray backslash and a raw line break inside a turn', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "That\\\'s it,\nfolks."},' +
+      ' {"start": "00:05", "speaker": "Student", "text": "Okay.\t"}]}';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: "That's it, folks." },
+      { startSeconds: 5, speaker: 'Student', text: 'Okay.' },
+    ]);
+  });
+
+  it('keeps the finished turns when a cut-off reply also has a broken turn', () => {
+    const raw =
+      '{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "One \\q two."},' +
+      ' {"start": "00:03", "speaker": "Student", "text": "Three."},' +
+      ' {"start": "00:06", "speaker": "Teacher", "text": "Fo';
+    expect(parseTranscriptTurns(raw)).toEqual([
+      { startSeconds: 1, speaker: 'Teacher', text: 'One q two.' },
+      { startSeconds: 3, speaker: 'Student', text: 'Three.' },
+    ]);
+  });
+
+  it('returns null when no turn finished', () => {
+    expect(
+      parseTranscriptTurns('{"turns": [{"start": "00:01", "speaker": "Teacher", "text": "um um'),
+    ).toBeNull();
+    expect(parseTranscriptTurns('{"turns": []}')).toBeNull();
+  });
+
   it('returns null for plain text', () => {
     expect(parseTranscriptTurns('Good morning everyone.')).toBeNull();
   });

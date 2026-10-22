@@ -100,8 +100,51 @@ function turnsFrom(parsed: unknown): TranscriptTurn[] | null {
 }
 
 /**
+ * Fixes the two slips that break JSON.parse on a long reply: a backslash
+ * before a character JSON does not escape (\' or \a), and a raw tab or
+ * line break inside a string.
+ */
+function repairJson(text: string): string {
+  return text
+    .replace(/\\(\\|["/bfnrtu])|\\/g, (match, kept: string | undefined) =>
+      kept === undefined ? '' : match,
+    )
+    .replace(/[\t\n\r\f\v]/g, ' ');
+}
+
+/**
+ * Last resort for a reply that does not parse as a whole: read each flat
+ * {...} object on its own and keep the ones that are turns. One bad turn
+ * then costs that turn, not the whole class period.
+ */
+function salvageTurns(text: string): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      start = i;
+    } else if (ch === '}' && start !== -1) {
+      const candidate = text.slice(start, i + 1);
+      start = -1;
+      for (const attempt of [candidate, repairJson(candidate)]) {
+        try {
+          const turn = toTurn(JSON.parse(attempt));
+          if (turn) turns.push(turn);
+          break;
+        } catch {
+          // try the repaired text, then give up on this object
+        }
+      }
+    }
+  }
+  return turns;
+}
+
+/**
  * Read Gemini's JSON reply. A long recording can hit the output limit and cut
- * the JSON off mid-turn; in that case keep every turn that finished.
+ * the JSON off mid-turn; in that case keep every turn that finished. A turn
+ * the model wrote as broken JSON is dropped and the rest are kept.
  * Returns null when nothing usable can be read.
  */
 export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
@@ -110,7 +153,8 @@ export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/, '');
   try {
-    return turnsFrom(JSON.parse(text));
+    const turns = turnsFrom(JSON.parse(text));
+    if (turns && turns.length > 0) return turns;
   } catch {
     // Truncated: close the array after the last complete turn object.
     const lastClose = text.lastIndexOf('}');
@@ -124,8 +168,9 @@ export function parseTranscriptTurns(raw: string): TranscriptTurn[] | null {
         // try the next closing shape
       }
     }
-    return null;
   }
+  const salvaged = salvageTurns(text);
+  return salvaged.length > 0 ? salvaged : null;
 }
 
 /**
