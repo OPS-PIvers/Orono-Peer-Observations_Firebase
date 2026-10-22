@@ -24,9 +24,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { assertWritable } from '@/dev/viewAsGuard';
 import { cn } from '@/lib/utils';
 
+// The SDK gives up after 70s by default; summarizeTranscript may run for
+// 300s on a full class period. Server timeout plus a margin, so the client
+// never shows "failed" while the server finishes (and spends the quota).
 const summarizeTranscriptFn = httpsCallable<SummarizeTranscriptRequest, TranscriptSummary>(
   functions,
   'summarizeTranscript',
+  { timeout: 310_000 },
 );
 
 /** An assigned component, for the chips on the evidence option. */
