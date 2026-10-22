@@ -1830,8 +1830,8 @@ function FinalizeDialog({
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              A recording hasn&apos;t finished uploading. Stop the recording and wait for the upload
-              (or retry it) from the microphone button, then finalize.
+              A recording hasn&apos;t finished uploading, or a transcript is still being sent to the
+              script. Finish it from the microphone button, then finalize.
             </p>
           </div>
         ) : null}

@@ -17,12 +17,14 @@ interface HState {
   db: unknown;
   generate: Mock<GenerateTextResult>;
   allowed: boolean;
+  rateChecks: number;
 }
 
 const h = vi.hoisted((): HState => ({
   db: undefined,
   generate: vi.fn<GenerateTextResult>(),
   allowed: true,
+  rateChecks: 0,
 }));
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
@@ -35,7 +37,10 @@ vi.mock('../lib/aiClient.js', () => ({
 vi.mock('../lib/rateLimit.js', () => ({
   RATE_LIMIT_KEYS: { transcriptSummary: 'transcriptSummary' },
   rateLimitsFromSettings: () => ({ transcriptionRequestsPerDay: 50 }),
-  checkRateLimit: () => Promise.resolve({ allowed: h.allowed, remaining: 0, resetAtMs: 0 }),
+  checkRateLimit: () => {
+    h.rateChecks++;
+    return Promise.resolve({ allowed: h.allowed, remaining: 0, resetAtMs: 0 });
+  },
 }));
 
 const { summarizeTranscript, buildSummaryPrompt, parseSummaryResponse, redactTeacherName } =
@@ -80,7 +85,7 @@ function observation(over: Record<string, unknown> = {}) {
   };
 }
 
-function buildDb(obs: Record<string, unknown>, access = 'all') {
+function buildDb(obs: Record<string, unknown>, access = 'all', { rubric = true } = {}) {
   const docs = new Map<string, Record<string, unknown>>([
     [`${COLLECTIONS.observations}/${OBS_ID}`, obs],
     [
@@ -91,11 +96,13 @@ function buildDb(obs: Record<string, unknown>, access = 'all') {
       `${COLLECTIONS.roleYearMappings}/${roleYearMappingDocId('teacher', 1)}`,
       { roleId: 'teacher', year: 1, assignedComponentIds: ['2b', '2c'] },
     ],
-    [
-      `${COLLECTIONS.rubrics}/rubric-1`,
-      { rubricId: 'rubric-1', domains: [{ id: 'd2', components: COMPONENTS }] },
-    ],
   ]);
+  if (rubric) {
+    docs.set(`${COLLECTIONS.rubrics}/rubric-1`, {
+      rubricId: 'rubric-1',
+      domains: [{ id: 'd2', components: COMPONENTS }],
+    });
+  }
   const snapshot = (path: string) => {
     const data = docs.get(path);
     return { exists: data !== undefined, data: () => data };
@@ -148,6 +155,7 @@ beforeEach(() => {
   h.generate.mockReset();
   h.generate.mockResolvedValue({ text: MODEL_ANSWER, truncated: false });
   h.allowed = true;
+  h.rateChecks = 0;
 });
 
 describe('summarizeTranscript', () => {
@@ -248,6 +256,21 @@ describe('summarizeTranscript', () => {
     ).rejects.toMatchObject({ code: 'failed-precondition' });
   });
 
+  it('is refused when the observation has no transcripts at all', async () => {
+    h.db = buildDb(observation({ transcripts: undefined }));
+    await expect(
+      run(request({ observationId: OBS_ID, audioFileId: AUDIO_ID, mode: 'domains' })),
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+  });
+
+  it('uses no daily quota when the rubric is missing', async () => {
+    h.db = buildDb(observation(), 'all', { rubric: false });
+    await expect(
+      run(request({ observationId: OBS_ID, audioFileId: AUDIO_ID, mode: 'domains' })),
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect(h.rateChecks).toBe(0);
+  });
+
   it('is refused past the daily limit', async () => {
     h.db = buildDb(observation());
     h.allowed = false;
@@ -320,6 +343,12 @@ describe('redactTeacherName', () => {
     expect(
       redactTeacherName('[00:01] Jane Smith: Hi.\nStudent: Hi jane smith.', ' Jane Smith '),
     ).toBe('[00:01] Teacher: Hi.\nStudent: Hi the teacher.');
+  });
+
+  it('replaces the name only as a whole word', () => {
+    expect(redactTeacherName('Ann: Annual plans, ann.', 'Ann')).toBe(
+      'Teacher: Annual plans, the teacher.',
+    );
   });
 
   it('leaves the transcript alone without a name', () => {

@@ -23,6 +23,7 @@ import { callerObservationAccess } from '../lib/observationAccess.js';
 import { ANTHROPIC_API_KEY, generateTextResult, loadFeatureModel } from '../lib/aiClient.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, rateLimitsFromSettings } from '../lib/rateLimit.js';
 import { directReader, resolveActiveComponents } from '../observations/scriptTagging.js';
+import { replyShape } from './transcriptTurns.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -98,11 +99,20 @@ export const summarizeTranscript = onCall(
         'This observation is finalized. Reopen it before adding to the script.',
       );
     }
-    const stored = obs.transcripts[audioFileId];
+    // Raw Firestore data: an older doc may have no transcripts map at all.
+    const stored = (obs.transcripts as Observation['transcripts'] | undefined)?.[audioFileId];
     if (typeof stored !== 'string' || !stored.trim()) {
       throw new HttpsError('failed-precondition', 'This recording has no transcript yet.');
     }
     const transcript = redactTeacherName(stored, obs.observedName);
+
+    // Before the rate limit, so a missing role or rubric costs no quota.
+    const { activeComponents, componentColorMap } = await resolveActiveComponents(
+      db,
+      directReader,
+      obs,
+      'assigned',
+    );
 
     const limits = rateLimitsFromSettings(settings?.rateLimits);
     const decision = await checkRateLimit(db, {
@@ -117,13 +127,6 @@ export const summarizeTranscript = onCall(
         `Daily limit reached (${String(limits.transcriptionRequestsPerDay)}/day). Try again tomorrow.`,
       );
     }
-
-    const { activeComponents, componentColorMap } = await resolveActiveComponents(
-      db,
-      directReader,
-      obs,
-      'assigned',
-    );
 
     const model = await loadFeatureModel(db, 'transcriptSummary');
     const { text, truncated } = await generateTextResult(
@@ -153,7 +156,8 @@ export const summarizeTranscript = onCall(
     if (!parsed) {
       logger.error('summarizeTranscript: unreadable model answer', {
         model: model.id,
-        raw: text.slice(0, 500),
+        length: text.length,
+        shape: replyShape(text.slice(0, 500)),
       });
       throw new HttpsError('internal', 'The AI model returned an answer that could not be read.');
     }
@@ -326,7 +330,10 @@ export function redactTeacherName(transcript: string, observedName: string | und
   const name = observedName?.trim();
   if (!name) return transcript;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return transcript
-    .replace(new RegExp(`^((?:\\[[\\d:]+\\] )?)${escaped}:`, 'gm'), '$1Teacher:')
-    .replace(new RegExp(escaped, 'gi'), 'the teacher');
+  return (
+    transcript
+      .replace(new RegExp(`^((?:\\[[\\d:]+\\] )?)${escaped}:`, 'gm'), '$1Teacher:')
+      // Whole words only, so a short name can't rewrite part of another word.
+      .replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'), 'the teacher')
+  );
 }

@@ -284,10 +284,22 @@ export function AudioRecorder({
   // the tab is closed or reloaded.
   const holdsUnsavedAudio = phase === 'recording' || unsaved !== null;
 
-  // Wider than the above: also the mic prompt and a Drive import in flight.
-  // Finalize waits for it, and so does a session-timeout sign-out, whose
-  // navigation to /sign-in would unmount this recorder (signOutHold.ts).
-  const busy = starting || holdsUnsavedAudio || phase === 'uploading' || phase === 'importing';
+  // "Send to script" summaries being written. Each lands in the script when
+  // it returns, so Finalize and a sign-out must wait for them too.
+  const [summarizing, setSummarizing] = useState(0);
+  const handleSummaryBusy = useCallback((on: boolean) => {
+    setSummarizing((n) => Math.max(0, n + (on ? 1 : -1)));
+  }, []);
+
+  // Wider than the above: also the mic prompt, a Drive import and a summary
+  // in flight. Finalize waits for it, and so does a session-timeout sign-out,
+  // whose navigation to /sign-in would unmount this recorder (signOutHold.ts).
+  const busy =
+    starting ||
+    holdsUnsavedAudio ||
+    phase === 'uploading' ||
+    phase === 'importing' ||
+    summarizing > 0;
   const busyRef = useRef(busy);
   useEffect(() => {
     busyRef.current = busy;
@@ -630,6 +642,7 @@ export function AudioRecorder({
         onInsertSummary={summariesEnabled && onInsertSummary ? handleInsertSummary : null}
         assignedComponents={assignedComponents}
         addedByFileId={addedByFileId}
+        onSummaryBusyChange={handleSummaryBusy}
       />
     </div>
   );
@@ -736,6 +749,7 @@ function RecordingsList({
   onInsertSummary,
   assignedComponents,
   addedByFileId,
+  onSummaryBusyChange,
 }: {
   observationId: string;
   audioFileIds: string[];
@@ -751,6 +765,7 @@ function RecordingsList({
   onInsertSummary: ((audioFileId: string, summary: TranscriptSummary) => void) | null;
   assignedComponents: SendToScriptComponent[];
   addedByFileId: Record<string, string[]>;
+  onSummaryBusyChange: (busy: boolean) => void;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState<{ id: string; title: string } | null>(
     null,
@@ -807,6 +822,7 @@ function RecordingsList({
             onInsertSummary={onInsertSummary}
             assignedComponents={assignedComponents}
             added={addedByFileId[fileId] ?? []}
+            onSummaryBusyChange={onSummaryBusyChange}
             deleting={deletingId === fileId}
             onDelete={(title) => setConfirmingDelete({ id: fileId, title })}
           />
@@ -860,6 +876,7 @@ function RecordingItem({
   onInsertSummary,
   assignedComponents,
   added,
+  onSummaryBusyChange,
   deleting,
   onDelete,
 }: {
@@ -878,6 +895,7 @@ function RecordingItem({
   onInsertSummary: ((audioFileId: string, summary: TranscriptSummary) => void) | null;
   assignedComponents: SendToScriptComponent[];
   added: string[];
+  onSummaryBusyChange: (busy: boolean) => void;
   deleting: boolean;
   onDelete: (title: string) => void;
 }) {
@@ -1128,6 +1146,7 @@ function RecordingItem({
           }
           assignedComponents={assignedComponents}
           added={added}
+          onBusyChange={onSummaryBusyChange}
         />
       ) : null}
       {transcriptionEnabled && transcript ? (

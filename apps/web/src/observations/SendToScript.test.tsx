@@ -34,6 +34,7 @@ const COMPONENTS = [
 
 function setup(onInsertSummary: ((s: TranscriptSummary) => void) | null = vi.fn()) {
   const onInsertFull = vi.fn();
+  const onBusyChange = vi.fn();
   render(
     <SendToScript
       observationId="obs-1"
@@ -42,9 +43,10 @@ function setup(onInsertSummary: ((s: TranscriptSummary) => void) | null = vi.fn(
       onInsertSummary={onInsertSummary}
       assignedComponents={COMPONENTS}
       added={[]}
+      onBusyChange={onBusyChange}
     />,
   );
-  return { onInsertFull, onInsertSummary };
+  return { onInsertFull, onInsertSummary, onBusyChange };
 }
 
 beforeEach(() => {
@@ -89,6 +91,15 @@ describe('SendToScript', () => {
       audioFileId: 'a1',
       mode: 'domains',
     });
+  });
+
+  it('reports busy while the summary is being written', async () => {
+    summarize.fn.mockResolvedValue({ data: SUMMARY });
+    const { onInsertSummary, onBusyChange } = setup();
+    await userEvent.click(screen.getByRole('button', { name: /send to script/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Send evidence to script' }));
+    await waitFor(() => expect(onInsertSummary).toHaveBeenCalled());
+    expect(onBusyChange.mock.calls).toEqual([[true], [false]]);
   });
 
   it('needs a focus before a custom summary can be generated', async () => {
