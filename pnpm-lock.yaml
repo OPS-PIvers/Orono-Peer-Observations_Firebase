@@ -37,7 +37,7 @@ overrides:
   morgan: ^1.12.0
   csv-parse: ^7.0.2
   ts-deepmerge: ^8.0.0
-  '@hono/node-server': ^2.0.11
+  '@hono/node-server': ^2.1.5
   '@grpc/grpc-js@<1.14.4': ^1.14.4
   nanoid@<3.3.18: ^3.3.18
   stream-json: ^3.5.0
@@ -177,8 +177,8 @@ importers:
   apps/pdf-renderer:
     dependencies:
       '@hono/node-server':
-        specifier: ^2.0.11
-        version: 2.1.4(hono@4.13.13)
+        specifier: ^2.1.5
+        version: 2.1.5(hono@4.13.13)
       '@ops/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -1202,8 +1202,8 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@hono/node-server@2.1.4':
-    resolution: {integrity: sha512-2g1qeHl4BduwDn6L8nkAvDrPUWPMlkQ//a5NhP/zIyaXKMjZNRV+cG9Csu+BiJFf6+68pqzjf4Hi5sJGKHuS1g==}
+  '@hono/node-server@2.1.5':
+    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4.12.34
@@ -8144,7 +8144,7 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@hono/node-server@2.1.4(hono@4.13.13)':
+  '@hono/node-server@2.1.5(hono@4.13.13)':
     dependencies:
       hono: 4.13.13
 
@@ -8531,7 +8531,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.1(zod@4.6.7)':
     dependencies:
-      '@hono/node-server': 2.1.4(hono@4.13.13)
+      '@hono/node-server': 2.1.5(hono@4.13.13)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
