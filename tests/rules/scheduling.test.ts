@@ -185,9 +185,11 @@ describe('observationWindows rules', () => {
     await assertFails(getDoc(doc(db, 'observationWindows/w1')));
   });
 
-  it('PE can create a window they observe', async () => {
+  // Windows are created only by the createObservationWindow callable (Admin
+  // SDK), which writes the shape the scheduling jobs depend on.
+  it('PE cannot create a window from the client, even one they observe', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, 'observationWindows/w2'), {
         windowId: 'w2',
         observerEmail: PE_EMAIL,
@@ -198,40 +200,37 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('building Administrator can create a Standard window but not a Work Product one', async () => {
-    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
-    const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
-    const base = {
-      observerEmail: ADMIN_EMAIL,
-      bookingMode: 'direct',
-      invitedEmails: [],
-      status: 'open',
-    };
-    await assertSucceeds(
-      setDoc(doc(db, 'observationWindows/adm-std'), {
-        ...base,
-        windowId: 'adm-std',
-        defaultObservationType: 'Standard',
-      }),
-    );
+  it('PE cannot plant a malformed window doc', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertFails(
-      setDoc(doc(db, 'observationWindows/adm-wp'), {
-        ...base,
-        windowId: 'adm-wp',
-        defaultObservationType: 'Work Product',
+      setDoc(doc(db, 'observationWindows/!poison'), {
+        observerEmail: PE_EMAIL,
+        status: 'open',
+        endDate: '2099-12-31',
+        invitees: 1,
       }),
     );
   });
 
-  it('PE cannot create a window for a different observer', async () => {
-    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+  it('building Administrator and Full Access cannot create a window from the client', async () => {
+    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
+    const FULL_EMAIL = 'full@orono.k12.mn.us';
+    const base = { bookingMode: 'direct', invitedEmails: [], status: 'open' };
+    const adminDb = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
     await assertFails(
-      setDoc(doc(db, 'observationWindows/w3'), {
-        windowId: 'w3',
-        observerEmail: OTHER_EMAIL,
-        bookingMode: 'direct',
-        invitedEmails: [],
-        status: 'open',
+      setDoc(doc(adminDb, 'observationWindows/adm-std'), {
+        ...base,
+        windowId: 'adm-std',
+        observerEmail: ADMIN_EMAIL,
+        defaultObservationType: 'Standard',
+      }),
+    );
+    const fullDb = testEnv.authenticatedContext('full', claims.fullAccess(FULL_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(fullDb, 'observationWindows/full-1'), {
+        ...base,
+        windowId: 'full-1',
+        observerEmail: FULL_EMAIL,
       }),
     );
   });

@@ -339,9 +339,8 @@ service cloud.firestore {
 
     // --- /observationWindows/{windowId} -------------------------------------
     // A scheduling window. Read: special-access (PE/admin) or an invited
-    // staff member (their email is in invitedEmails). Create: special-access,
-    // and the observer must be the caller. Update/delete: oversight (Full
-    // Access) or the observer. Staff never write the window (or its peBusyIntervals /
+    // staff member (their email is in invitedEmails). Create: callable only.
+    // Update/delete: oversight (Full Access) or the observer. Staff never write the window (or its peBusyIntervals /
     // dayCounts) directly — booking + day-preference flow through callable
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
@@ -349,13 +348,10 @@ service cloud.firestore {
       allow get, list: if hasSpecialAccess()
         || canReadAll()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
-      allow create: if (hasSpecialAccess()
-        && role() in ['administrator', 'peer-evaluator', 'full-access']
-        && request.resource.data.observerEmail == request.auth.token.email
-        // Building Administrators' windows book Standard observations only.
-        && (role() != 'administrator'
-            || request.resource.data.defaultObservationType == 'Standard'))
-        && notDemoEdit();
+      // Create: only the createObservationWindow callable (Admin SDK). It
+      // checks the observer's role and scope and writes the full shape the
+      // scheduling jobs rely on; a client-written window could be any shape.
+      allow create: if false;
       // Delete: oversight or the observer.
       allow delete: if (hasObservationOversight()
         || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email))

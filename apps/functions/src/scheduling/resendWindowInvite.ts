@@ -5,7 +5,6 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
-  isAdminRole,
   resendWindowInviteInput,
   type Building,
   type ObservationWindow,
@@ -14,6 +13,7 @@ import {
 import { APP_URL, resendWindowInviteMailDocId, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { inviteeEntryKey } from './createObservationWindow.js';
 import { formatYMD } from './engine/schedulingEmail.js';
+import { assertCanManageWindow } from './windowAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -78,14 +78,12 @@ export const resendWindowInvite = onCall(
     if (!windowSnap.exists) throw new HttpsError('not-found', 'Window not found');
     const window = windowSnap.data() as ObservationWindow;
 
-    const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin && window.observerEmail !== callerEmail) {
-      throw new HttpsError(
-        'permission-denied',
-        'Only the observer or an admin can resend invites.',
-      );
-    }
+    await assertCanManageWindow(db, {
+      callerEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      window,
+      message: 'Only the observer or an admin can resend invites.',
+    });
 
     const invitee = findInvitee(window.invitees, inviteeEmail, buildingId);
     if (!invitee) {
