@@ -182,6 +182,9 @@ async function transcribeWithGcsUri(
       jsonSchema: TRANSCRIPT_TURNS_SCHEMA,
       // Lowest randomness: the model should copy what it hears, not rephrase.
       temperature: 0,
+      // Copying speech needs no reasoning, and thinking tokens count
+      // against the output limit a long class period already pushes.
+      minimalThinking: true,
     },
     { feature: 'audioTranscription', logContext: 'onTranscriptionJobCreated', ...caller },
   );
