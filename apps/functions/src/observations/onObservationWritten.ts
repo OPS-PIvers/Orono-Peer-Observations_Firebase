@@ -14,6 +14,7 @@ import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  assertObservationFolder,
   deleteObservationFolder,
   removeReaderFromFile,
   shareObservationFolderWithObservers,
@@ -182,11 +183,30 @@ async function syncCoObserverFolderAccess(
   if (typeof folderId !== 'string' || !folderId) return;
   const { added, removed } = coObserverChanges(before, after);
   if (added.length > 0) {
-    await shareObservationFolderWithObservers({
-      folderId,
-      observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
-      coObserverEmails: added,
-    });
+    // Share only the observation's own folder, never whatever driveFolderId
+    // happens to name. Revoking (below) is safe on any folder.
+    let shareable = true;
+    try {
+      await assertObservationFolder({
+        folderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
+    } catch (err) {
+      shareable = false;
+      logger.error('onObservationWritten: co-observer folder share refused', {
+        observationId,
+        folderId,
+        err,
+      });
+    }
+    if (shareable) {
+      await shareObservationFolderWithObservers({
+        folderId,
+        observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
+        coObserverEmails: added,
+      });
+    }
   }
   for (const email of removed) {
     try {

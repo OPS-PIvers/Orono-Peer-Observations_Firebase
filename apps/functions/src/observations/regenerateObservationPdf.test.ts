@@ -20,6 +20,7 @@ interface HState {
     uploadFileToFolder: Fn;
     deleteDriveFile: Fn;
     replaceFileContent: Fn;
+    filesInObservationFolder: Fn;
   };
   renderObservationPdf: Fn;
   loadRateLimits: Fn;
@@ -43,6 +44,7 @@ const h = vi.hoisted((): HState => ({
     uploadFileToFolder: undefined,
     deleteDriveFile: undefined,
     replaceFileContent: undefined,
+    filesInObservationFolder: undefined,
   },
   renderObservationPdf: undefined,
   loadRateLimits: undefined,
@@ -74,6 +76,7 @@ vi.mock('../lib/drive.js', () => ({
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
   deleteDriveFile: (...a: unknown[]) => h.drive.deleteDriveFile?.(...a),
   replaceFileContent: (...a: unknown[]) => h.drive.replaceFileContent?.(...a),
+  filesInObservationFolder: (...a: unknown[]) => h.drive.filesInObservationFolder?.(...a),
 }));
 
 vi.mock('../lib/pdfRenderer.js', () => ({
@@ -248,6 +251,10 @@ function installHappyDrive() {
   h.drive.deleteDriveFile = vi.fn().mockResolvedValue(undefined);
   // Old PDF gone by default, so the fresh-upload path runs.
   h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
+  // Every id is in the observation's folder unless a test says otherwise.
+  h.drive.filesInObservationFolder = vi.fn((args: unknown) =>
+    Promise.resolve((args as { fileIds: string[] }).fileIds),
+  );
   h.renderObservationPdf = vi.fn().mockResolvedValue(Buffer.from('pdf'));
 }
 
@@ -385,6 +392,19 @@ describe('regenerateObservationPdf — report contents and file handling', () =>
 
     expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
     expect(h.drive.deleteDriveFile).toHaveBeenCalledWith('pdf-old');
+    expect(result).toMatchObject({ pdfDriveFileId: 'pdf-new' });
+  });
+
+  it('neither overwrites nor deletes an old PDF outside the observation folder', async () => {
+    h.drive.filesInObservationFolder = vi.fn().mockResolvedValue([]);
+    h.drive.replaceFileContent = vi.fn().mockResolvedValue('pdf-old');
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    const result = await run(observerRequest());
+
+    expect(h.drive.replaceFileContent).not.toHaveBeenCalled();
+    expect(h.drive.deleteDriveFile).not.toHaveBeenCalled();
+    expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ pdfDriveFileId: 'pdf-new' });
   });
 
