@@ -17,10 +17,10 @@ export const onObservationWindowInviteViews = onDocumentWritten(
     document: 'observationWindows/{windowId}',
     region: 'us-central1',
     memory: '256MiB',
-    // A dropped event could leave an invitee with no view (and no way to
-    // book) until the window changes again; the sync is idempotent, so
-    // retrying is safe.
-    retry: true,
+    // No `retry`: it makes non-interactive deploys demand --force. A dropped
+    // event is repaired within the hour by backfillWindowInviteViews, which
+    // re-syncs every live window and every window whose views still say it is
+    // (so a missed cancel, fill or delete is caught too).
   },
   (event) => handleWindowInviteViews(event),
 );
