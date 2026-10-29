@@ -109,7 +109,7 @@ service cloud.firestore {
     function isCanonicalStaffEmail(email) {
       return email is string
         && email == email.lower()
-        && email.matches('[^@\\s]+@orono[.]k12[.]mn[.]us');
+        && email.matches('[^@\\s/]+@orono[.]k12[.]mn[.]us');
     }
 
     function isBuildingAdmin() {

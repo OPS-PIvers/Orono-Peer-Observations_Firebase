@@ -31,6 +31,7 @@ import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
@@ -227,13 +228,20 @@ export const regenerateObservationPdf = onCall(
         pdfFileId = uploaded.fileId;
       }
       // Re-grant Reader (idempotent) so the observed staff + observer can open
-      // the fresh PDF even if the folder was recreated.
-      await shareWithUser({
-        fileId: folderId,
-        email: obs.observedEmail,
-        role: 'reader',
-        sendNotificationEmail: false,
-      });
+      // the fresh PDF even if the folder was recreated. Only to a staff-backed
+      // address (see isStaffBackedEmail); otherwise the PDF still regenerates.
+      if (await isStaffBackedEmail(db, obs.observedEmail)) {
+        await shareWithUser({
+          fileId: folderId,
+          email: obs.observedEmail,
+          role: 'reader',
+          sendNotificationEmail: false,
+        });
+      } else {
+        logger.warn('regenerateObservationPdf: observedEmail has no staff record, not sharing', {
+          observationId: obs.id,
+        });
+      }
       await shareObservationFolderWithObservers({
         folderId,
         observerEmail: obs.observerEmail,

@@ -1,4 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
+import { logger } from 'firebase-functions';
 import { COLLECTIONS, isCanonicalStaffEmail } from '@ops/shared';
 
 /**
@@ -11,6 +12,8 @@ import { COLLECTIONS, isCanonicalStaffEmail } from '@ops/shared';
  *
  * Archived staff still count: they keep receiving their own observation's
  * mail, as before. Pass `cache` when checking many observations in a loop.
+ * Never throws: a lookup error counts as "not staff-backed", so one bad doc
+ * can't abort a loop over many observations.
  */
 export async function isStaffBackedEmail(
   db: Firestore,
@@ -20,7 +23,13 @@ export async function isStaffBackedEmail(
   if (!isCanonicalStaffEmail(email)) return false;
   const cached = cache?.get(email);
   if (cached !== undefined) return cached;
-  const snap = await db.doc(`${COLLECTIONS.staff}/${email}`).get();
-  cache?.set(email, snap.exists);
-  return snap.exists;
+  let exists: boolean;
+  try {
+    exists = (await db.doc(`${COLLECTIONS.staff}/${email}`).get()).exists;
+  } catch (err) {
+    logger.warn('isStaffBackedEmail: staff lookup failed, treating as not staff', { email, err });
+    exists = false;
+  }
+  cache?.set(email, exists);
+  return exists;
 }

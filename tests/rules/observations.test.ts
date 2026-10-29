@@ -206,6 +206,12 @@ describe('observations: create', () => {
       );
     });
 
+    it('PE CANNOT create for an address containing a path separator', async () => {
+      await assertFails(
+        setDoc(doc(peDb(), 'observations/slash'), obsFor(PE_EMAIL, 'x/y@orono.k12.mn.us')),
+      );
+    });
+
     it('PE CANNOT create for a district address with no staff doc', async () => {
       await assertFails(
         setDoc(doc(peDb(), 'observations/ghost'), obsFor(PE_EMAIL, 'ghost@orono.k12.mn.us')),

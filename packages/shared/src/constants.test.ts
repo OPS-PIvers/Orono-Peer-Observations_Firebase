@@ -14,6 +14,7 @@ describe('isCanonicalStaffEmail', () => {
     ['look-alike domain', 'jane.doe@orono.k12.mn.us.evil.com'],
     ['subdomain', 'jane.doe@x.orono.k12.mn.us'],
     ['two @ signs', 'a@b@orono.k12.mn.us'],
+    ['a path separator', 'x/y@orono.k12.mn.us'],
     ['no local part', '@orono.k12.mn.us'],
     ['empty', ''],
   ])('rejects %s', (_label, value) => {

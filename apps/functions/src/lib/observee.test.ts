@@ -34,6 +34,15 @@ describe('isStaffBackedEmail', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it('returns false instead of throwing when the lookup fails', async () => {
+    const db = {
+      doc: () => {
+        throw new Error('bad path');
+      },
+    } as unknown as Firestore;
+    await expect(isStaffBackedEmail(db, 'jane@orono.k12.mn.us')).resolves.toBe(false);
+  });
+
   it('reads each address once when given a cache', async () => {
     const { db, get } = fakeDb(['staff/jane@orono.k12.mn.us']);
     const cache = new Map<string, boolean>();
