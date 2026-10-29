@@ -362,6 +362,25 @@ export function SettingsPage() {
               }
             />
           </Field>
+          <Field
+            label="Manual emails per hour (per user)"
+            help="Caps how many single emails any one Peer Evaluator or admin can send from a staff member's page or the Email Templates test send."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.manualEmailsPerHour ?? 30}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
+                    manualEmailsPerHour: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
         </fieldset>
 
         {saveError ? (

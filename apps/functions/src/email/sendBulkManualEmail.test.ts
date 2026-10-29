@@ -58,7 +58,10 @@ vi.mock('firebase-admin/firestore', () => ({
           Promise.resolve({
             docs: ids
               .filter((id) => state.roster[id] !== undefined)
-              .map((id) => ({ id, data: () => ({ isActive: state.roster[id] }) })),
+              .map((id) => ({
+                id,
+                data: () => ({ ...state.docs[`staff/${id}`], isActive: state.roster[id] }),
+              })),
           }),
       }),
     }),
@@ -67,7 +70,9 @@ vi.mock('firebase-admin/firestore', () => ({
 
 vi.mock('../lib/emailUtils.js', () => ({
   sendEmail: (...args: unknown[]) => state.sendEmail?.(...args),
-  substituteVariables: (template: string) => template,
+  // Plain {{var}} substitution, so tests can see which values won.
+  substituteVariables: (template: string, vars: Record<string, string | undefined>) =>
+    template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? ''),
   APP_URL: 'https://app.test',
 }));
 
@@ -177,10 +182,10 @@ describe('chunkList', () => {
 /** Build a fake StaffRosterLookup over a roster of `email -> isActive`. */
 function fakeRoster(roster: Record<string, boolean>) {
   return vi.fn((ids: readonly string[]) => {
-    const out = new Map<string, boolean>();
+    const out = new Map<string, { isActive: boolean }>();
     for (const id of ids) {
       const isActive = roster[id];
-      if (isActive !== undefined) out.set(id, isActive);
+      if (isActive !== undefined) out.set(id, { isActive });
     }
     return Promise.resolve(out);
   });
@@ -189,14 +194,16 @@ function fakeRoster(roster: Record<string, boolean>) {
 describe('partitionRecipientsByRoster', () => {
   it('allows an active staff address', async () => {
     const lookup = fakeRoster({ 'teacher@orono.k12.mn.us': true });
-    await expect(partitionRecipientsByRoster(lookup, ['teacher@orono.k12.mn.us'])).resolves.toEqual(
-      { allowed: ['teacher@orono.k12.mn.us'], rejected: [] },
-    );
+    await expect(
+      partitionRecipientsByRoster(lookup, ['teacher@orono.k12.mn.us']),
+    ).resolves.toMatchObject({ allowed: ['teacher@orono.k12.mn.us'], rejected: [] });
   });
 
   it('rejects an external address that is not on the staff roster', async () => {
     const lookup = fakeRoster({ 'teacher@orono.k12.mn.us': true });
-    await expect(partitionRecipientsByRoster(lookup, ['attacker@example.com'])).resolves.toEqual({
+    await expect(
+      partitionRecipientsByRoster(lookup, ['attacker@example.com']),
+    ).resolves.toMatchObject({
       allowed: [],
       rejected: ['attacker@example.com'],
     });
@@ -204,9 +211,9 @@ describe('partitionRecipientsByRoster', () => {
 
   it('rejects an archived (inactive) staff address', async () => {
     const lookup = fakeRoster({ 'retired@orono.k12.mn.us': false });
-    await expect(partitionRecipientsByRoster(lookup, ['retired@orono.k12.mn.us'])).resolves.toEqual(
-      { allowed: [], rejected: ['retired@orono.k12.mn.us'] },
-    );
+    await expect(
+      partitionRecipientsByRoster(lookup, ['retired@orono.k12.mn.us']),
+    ).resolves.toMatchObject({ allowed: [], rejected: ['retired@orono.k12.mn.us'] });
   });
 
   it('splits a mixed list into allowed and rejected, preserving order', async () => {
@@ -222,7 +229,7 @@ describe('partitionRecipientsByRoster', () => {
         'retired@orono.k12.mn.us',
         'b@orono.k12.mn.us',
       ]),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       allowed: ['a@orono.k12.mn.us', 'b@orono.k12.mn.us'],
       rejected: ['attacker@example.com', 'retired@orono.k12.mn.us'],
     });
@@ -251,7 +258,7 @@ describe('partitionRecipientsByRoster', () => {
 
   it('makes no reads at all for an empty recipient list', async () => {
     const lookup = fakeRoster({});
-    await expect(partitionRecipientsByRoster(lookup, [])).resolves.toEqual({
+    await expect(partitionRecipientsByRoster(lookup, [])).resolves.toMatchObject({
       allowed: [],
       rejected: [],
     });
@@ -418,7 +425,7 @@ describe('authorizeBroadcast', () => {
     const guards = makeGuards({});
     await expect(
       authorizeBroadcast({ templateId: 'group-message', recipients, guards }),
-    ).resolves.toMatchObject({ templateId: 'group-message' });
+    ).resolves.toMatchObject({ template: { templateId: 'group-message' } });
     expect(guards.chargeRateLimit).toHaveBeenCalledTimes(1);
   });
 
@@ -593,5 +600,85 @@ describe('sendBulkManualEmail — authorization', () => {
       }),
     );
     expect(result).toMatchObject({ requested: 1, sent: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Template variables are server-built. Regression coverage for the finding
+// that a caller's `vars` (spread last) could replace the server signupLink,
+// signInLink and appName, putting an attacker's link in a district email.
+// ---------------------------------------------------------------------------
+
+describe('sendBulkManualEmail — template variables', () => {
+  const TEMPLATE_ID = 'observation-signup-request';
+  const PE = 'pe@orono.k12.mn.us';
+
+  function setup() {
+    state.docs = {
+      [`emailTemplates/${TEMPLATE_ID}`]: {
+        templateId: TEMPLATE_ID,
+        name: 'Signup request',
+        subject: 'Sign up — {{appName}}',
+        bodyHtml:
+          '<p>Hi {{observedName}}</p><a href="{{signupLink}}">Sign up</a><a href="{{signInLink}}">In</a><p>{{observerName}}</p>',
+        triggerType: 'manual',
+        isActive: true,
+      },
+      'appSettings/global': {
+        branding: { appName: 'Orono Peer Observations' },
+        signupLink: 'https://calendar.example/orono-signup',
+      },
+      [`staff/${PE}`]: { name: 'Pat Evaluator', role: 'peer-evaluator', isActive: true },
+      'staff/a@orono.k12.mn.us': { name: 'Ann Teacher' },
+      'staff/b@orono.k12.mn.us': { name: 'Bob Teacher' },
+    };
+    state.roster = { 'a@orono.k12.mn.us': true, 'b@orono.k12.mn.us': true };
+    state.sendEmail = vi.fn().mockResolvedValue({ queued: true });
+  }
+
+  interface SentMail {
+    to: string;
+    subject: string;
+    html: string;
+  }
+  const sent = () =>
+    (state.sendEmail as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as SentMail);
+
+  it('ignores caller vars for signupLink, signInLink, appName and names', async () => {
+    setup();
+    await run(
+      authedRequest(PE, 'peer-evaluator', {
+        templateId: TEMPLATE_ID,
+        toEmails: ['a@orono.k12.mn.us'],
+        vars: {
+          signupLink: 'https://attacker.example/sso',
+          signInLink: 'https://attacker.example/in',
+          appName: 'Urgent: password expired',
+          observerName: 'IT Help Desk',
+          observedName: 'Someone Else',
+        },
+      }),
+    );
+    const [mail] = sent();
+    expect(mail?.subject).toBe('Sign up — Orono Peer Observations');
+    expect(mail?.html).toContain('href="https://calendar.example/orono-signup"');
+    expect(mail?.html).toContain('href="https://app.test"');
+    expect(mail?.html).toContain('<p>Pat Evaluator</p>');
+    expect(mail?.html).not.toContain('attacker.example');
+    expect(mail?.html).not.toContain('IT Help Desk');
+    expect(mail?.html).not.toContain('Someone Else');
+  });
+
+  it("personalizes each recipient's email from their own /staff doc", async () => {
+    setup();
+    await run(
+      authedRequest(PE, 'peer-evaluator', {
+        templateId: TEMPLATE_ID,
+        toEmails: ['a@orono.k12.mn.us', 'b@orono.k12.mn.us'],
+      }),
+    );
+    const byRecipient = new Map(sent().map((m) => [m.to, m.html]));
+    expect(byRecipient.get('a@orono.k12.mn.us')).toContain('Hi Ann Teacher');
+    expect(byRecipient.get('b@orono.k12.mn.us')).toContain('Hi Bob Teacher');
   });
 });
