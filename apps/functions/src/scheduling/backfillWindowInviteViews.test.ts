@@ -22,11 +22,15 @@ vi.mock('./onObservationWindowInviteViews.js', () => ({
   },
 }));
 
-const { runWindowInviteViewBackfill, WINDOW_INVITE_VIEWS_BACKFILL_MARKER } =
+const { resyncOpenWindows, runWindowInviteViewBackfill, WINDOW_INVITE_VIEWS_BACKFILL_MARKER } =
   await import('./backfillWindowInviteViews.js');
 
 /** In-memory Firestore with just the calls the backfill makes. */
-function fakeDb(windowIds: string[], markerExists = false) {
+function fakeDb(
+  windowIds: string[],
+  markerExists = false,
+  openViews: { windowId?: unknown }[] = [],
+) {
   let marker: Record<string, unknown> | null = markerExists ? { done: true } : null;
   const ids = [...windowIds].sort();
   const page = (after: string | null, size: number) => ({
@@ -50,8 +54,23 @@ function fakeDb(windowIds: string[], markerExists = false) {
         },
       };
     },
-    collection: () => ({
+    collection: (name: string) => ({
       orderBy: () => ({ select: () => ({ limit: (n: number) => page(null, n) }) }),
+      // Open windows: ids starting "open-". Open views: `openViews`.
+      where: (field: string, op: string, statuses: string[]) => {
+        expect([field, op, statuses]).toEqual([
+          'status',
+          'in',
+          ['open', 'partially-booked', 'fully-booked'],
+        ]);
+        const docs =
+          name === 'windowInviteViews'
+            ? openViews.map((v) => ({
+                get: (f: string) => (f === 'windowId' ? v.windowId : undefined),
+              }))
+            : ids.filter((id) => id.startsWith('open-')).map((id) => ({ id }));
+        return { select: () => ({ get: () => Promise.resolve({ docs }) }) };
+      },
     }),
   };
   return { db: db as never, marker: () => marker };
@@ -86,5 +105,34 @@ describe('runWindowInviteViewBackfill', () => {
     const { db, marker } = fakeDb(['w1', 'w2', 'w3']);
     await expect(runWindowInviteViewBackfill(db)).rejects.toThrow('boom');
     expect(marker()).toBeNull();
+  });
+
+  it('after the marker, re-syncs only live windows', async () => {
+    const { db } = fakeDb(['open-1', 'open-2', 'closed-1'], true);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced.sort()).toEqual(['open-1', 'open-2']);
+    expect(result).toEqual({ windows: 2, viewsWritten: 4, viewsDeleted: 0 });
+  });
+
+  it('also re-syncs closed or deleted windows whose views still say live', async () => {
+    const { db } = fakeDb(['open-1', 'closed-1', 'closed-2'], true, [
+      { windowId: 'open-1' },
+      { windowId: 'closed-1' },
+      { windowId: 'deleted-1' },
+      { windowId: 42 },
+    ]);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced.sort()).toEqual(['closed-1', 'deleted-1', 'open-1']);
+    expect(result.windows).toBe(3);
+  });
+
+  it('keeps re-syncing the other windows when one fails', async () => {
+    state.failOn = 'open-03';
+    const ids = Array.from({ length: 25 }, (_, i) => `open-${String(i).padStart(2, '0')}`);
+    const { db } = fakeDb(ids, true);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced).toHaveLength(24);
+    expect(state.synced).not.toContain('open-03');
+    expect(result).toEqual({ windows: 25, viewsWritten: 48, viewsDeleted: 0 });
   });
 });
