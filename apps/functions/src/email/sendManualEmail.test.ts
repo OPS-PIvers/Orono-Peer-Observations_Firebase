@@ -49,7 +49,11 @@ vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
     doc: (path: string) => makeDocRef(path),
     collection: (name: string) => ({
-      doc: (id: string) => makeDocRef(`${name}/${id}`),
+      doc: (id: string) => {
+        // Like the Admin SDK: an id with a '/' is an odd-segment path.
+        if (id.includes('/')) throw new Error('documentPath must point to a document');
+        return makeDocRef(`${name}/${id}`);
+      },
       // resolveRole's legacy displayName fallback; no test relies on it.
       where: () => ({ limit: () => ({ get: () => Promise.resolve({ docs: [] }) }) }),
     }),
@@ -353,6 +357,20 @@ describe('sendManualEmail — template variables', () => {
     expect(mail.html).not.toContain('attacker.example');
     expect(mail.html).not.toContain('IT Help Desk');
     expect(mail.html).not.toContain('tomorrow');
+  });
+
+  it('falls back to the raw role when it is not a valid /roles doc id', async () => {
+    state.docs[`staff/${TARGET_EMAIL}`] = {
+      name: 'Some One',
+      role: 'Coach/TOSA',
+      year: 2,
+      isActive: true,
+    };
+    const result = await run(
+      authedRequest(PE, 'peer-evaluator', { templateId: TEMPLATE_ID, toEmail: TARGET_EMAIL }),
+    );
+    expect(result).toMatchObject({ sent: true });
+    expect(sentMail().html).toContain('Hi Some One (Coach/TOSA, year 2)');
   });
 
   it("keeps a console admin's sample vars for a test send, but never server-owned ones", async () => {

@@ -105,15 +105,26 @@ export async function loadStaffPerson(
 
 /**
  * Display labels for a set of stored role values (slug, or a legacy display
- * name), resolved through /roles. An unknown role falls back to its raw value.
+ * name), resolved through /roles. Best-effort, like the client's
+ * roleDisplayName: an unknown role, or one that isn't a valid doc id (a
+ * legacy label such as "Coach/TOSA" makes `.doc()` throw), falls back to its
+ * raw value rather than failing the send.
  */
 export async function loadRoleLabels(
   db: Firestore,
   roles: Iterable<string | undefined>,
 ): Promise<Map<string, string>> {
   const unique = [...new Set([...roles].filter((r): r is string => !!r))];
-  const resolved = await Promise.all(unique.map((r) => resolveRole(db, r)));
-  return new Map(unique.map((r, i) => [r, resolved[i]?.displayName ?? r]));
+  const resolved = await Promise.all(
+    unique.map(async (r) => {
+      try {
+        return (await resolveRole(db, r))?.displayName ?? r;
+      } catch {
+        return r;
+      }
+    }),
+  );
+  return new Map(unique.map((r, i) => [r, resolved[i] ?? r]));
 }
 
 /**
