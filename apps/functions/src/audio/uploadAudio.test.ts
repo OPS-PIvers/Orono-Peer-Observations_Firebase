@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
     getFileParents: vi.fn(),
   },
   checkRateLimit: vi.fn(),
+  archived: false,
 }));
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
@@ -66,6 +67,7 @@ vi.mock('../lib/rateLimit.js', () => ({
 vi.mock('../lib/callable.js', () => ({
   isDemoEditSession: () => false,
   isDemoStaff: () => Promise.resolve(false),
+  isArchivedStaff: () => Promise.resolve(h.archived),
 }));
 
 const { uploadAudio } = await import('./uploadAudio.js');
@@ -127,10 +129,22 @@ beforeEach(() => {
     driveFolderId: null,
   };
   h.obsUpdates = [];
+  h.archived = false;
   for (const fn of Object.values(h.drive)) fn.mockReset();
   h.drive.ensureObservationFolder.mockResolvedValue('folder1');
   h.drive.startResumableUpload.mockResolvedValue(SESSION);
   h.checkRateLimit.mockReset().mockResolvedValue({ allowed: true, resetAtMs: 0 });
+});
+
+describe('uploadAudio access', () => {
+  it('refuses an archived observer before touching Drive', async () => {
+    h.archived = true;
+    const res = await call({ 'x-audio-mime-type': 'audio/webm' }, Buffer.alloc(8));
+    expect(res.status).toBe(403);
+    expect(h.drive.uploadFileToFolder).not.toHaveBeenCalled();
+    expect(h.drive.startResumableUpload).not.toHaveBeenCalled();
+    expect(h.obsUpdates).toEqual([]);
+  });
 });
 
 describe('uploadAudio in pieces', () => {

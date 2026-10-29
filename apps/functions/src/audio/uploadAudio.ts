@@ -20,7 +20,7 @@ import {
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
 import { observationAccessFor } from '@ops/shared';
-import { isDemoEditSession, isDemoStaff } from '../lib/callable.js';
+import { isArchivedStaff, isDemoEditSession, isDemoStaff } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -135,6 +135,11 @@ export const uploadAudio = onRequest(
     }
 
     const db = getFirestore();
+    // onRequest, so the onCall wrapper's archived-staff refusal doesn't run.
+    if (await isArchivedStaff(db, userEmail)) {
+      res.status(403).send('Your staff account is archived');
+      return;
+    }
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
     const obsSnap = await obsRef.get();
     if (!obsSnap.exists) {

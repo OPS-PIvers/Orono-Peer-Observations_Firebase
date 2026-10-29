@@ -10,6 +10,7 @@ import {
   type Observation,
 } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
+import { callerObservationAccess } from '../lib/observationAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -18,7 +19,10 @@ if (getApps().length === 0) initializeApp();
  *
  *   1. Verify the caller has oversight (Full Access) — gated via a live
  *      /staff lookup (like migrateRolesToSlugs) so a role change since the
- *      token was minted takes effect.
+ *      token was minted takes effect — and that their relationship to this
+ *      observation is 'oversight' (callerObservationAccess, like the sibling
+ *      callables): never the observed staff member reopening their own
+ *      evaluation, and matching the editor, which shows Reopen only then.
  *   2. Atomically flip status Finalized → Draft (transaction, so a
  *      concurrent reopen/finalize can't double-fire), clearing finalizedAt
  *      and the observed staff member's acknowledgement (the content is about
@@ -72,6 +76,19 @@ export const reopenObservation = onCall(
         throw new HttpsError('not-found', 'Observation not found');
       }
       const data = snap.data() as Observation;
+      // Your own observation is never yours to oversee (observationAccessFor
+      // returns 'observed' first, and the rules' oversees() excludes it).
+      const access = await callerObservationAccess(db, data, {
+        email: userEmail,
+        tokenRole: callerRole,
+        auth: request.auth,
+      });
+      if (access !== 'oversight') {
+        throw new HttpsError(
+          'permission-denied',
+          'Only a district admin can reopen a finalized observation, and not one of themselves.',
+        );
+      }
       if (data.status !== OBSERVATION_STATUS.finalized) {
         throw new HttpsError(
           'failed-precondition',

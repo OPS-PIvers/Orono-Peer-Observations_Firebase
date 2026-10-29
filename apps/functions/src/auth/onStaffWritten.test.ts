@@ -140,6 +140,36 @@ describe('onStaffWritten — claim sync', () => {
     });
   });
 
+  it('drops all access when a full-access member is archived (role stays on the doc)', async () => {
+    await invoke(
+      makeEvent({
+        email: 'boss@orono.k12.mn.us',
+        before: { role: 'full-access', hasAdminAccess: true, isActive: true },
+        after: { role: 'full-access', hasAdminAccess: true, isActive: false },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('restores claims when an archived member is reactivated', async () => {
+    await invoke(
+      makeEvent({
+        email: 'pe@orono.k12.mn.us',
+        before: { role: 'peer-evaluator', isActive: false },
+        after: { role: 'peer-evaluator', isActive: true },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: 'peer-evaluator',
+      hasSpecialAccess: true,
+      isAdmin: false,
+    });
+  });
+
   it('clears claims (null role) when the staff doc is deleted', async () => {
     await invoke(
       makeEvent({ email: 'gone@orono.k12.mn.us', before: { role: 'teacher' }, after: null }),

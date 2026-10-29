@@ -47,12 +47,24 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
+    // Archived staff (isActive: false on their live staff doc) keep their
+    // old role/isAdmin claims until the token refreshes, so every claim-based
+    // tier below also requires this. Only read once a claim already passes,
+    // so ordinary callers pay nothing. A missing doc or field counts as
+    // active (the schema default), like callerMeetsAccessLevel.
+    function isActiveStaff() {
+      let path = /databases/$(database)/documents/staff/$(request.auth.token.email);
+      return !exists(path) || get(path).data.get('isActive', true) == true;
+    }
+
     function hasSpecialAccess() {
-      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true;
+      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true
+        && isActiveStaff();
     }
 
     function isAdmin() {
-      return isFromOronoDomain() && request.auth.token.isAdmin == true;
+      return isFromOronoDomain() && request.auth.token.isAdmin == true
+        && isActiveStaff();
     }
 
     // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
@@ -79,7 +91,7 @@ service cloud.firestore {
     // Admin Console, not other people's observations. Mirrors
     // hasObservationOversight in @ops/shared.
     function hasObservationOversight() {
-      return isFromOronoDomain() && role() == 'full-access';
+      return isFromOronoDomain() && role() == 'full-access' && isActiveStaff();
     }
 
     // canReadAll() for observation data: oversight, or a View As grant.
@@ -304,7 +316,7 @@ service cloud.firestore {
     // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
       function hasAdministratorRole() {
-        return isFromOronoDomain() && role() == 'administrator';
+        return isFromOronoDomain() && role() == 'administrator' && isActiveStaff();
       }
       function inOwnBuildingSet(data) {
         return data.get('type', '') == 'standard'

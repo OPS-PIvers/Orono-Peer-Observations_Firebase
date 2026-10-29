@@ -4,7 +4,7 @@ import {
   type CallableOptions,
   type CallableRequest,
 } from 'firebase-functions/v2/https';
-import type { Firestore } from 'firebase-admin/firestore';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, DEMO_EDIT_CLAIM } from '@ops/shared';
 
 /** A demo-edit session: someone driving this account via View As + Edit. */
@@ -16,17 +16,25 @@ export function isDemoEditSession(
 
 /**
  * Every callable goes through this instead of firebase-functions' onCall.
+ *
  * Demo-edit sessions are refused unless the callable opts in with
  * `allowDemoEdit` — and those that do must themselves confine the session
  * to demo staff (callerObservationAccess / assertDemoEditTarget). Default
  * deny, so a new callable can't accidentally let a demo session change
  * real data.
+ *
+ * Archived staff (`isActive: false` on their live /staff doc) are refused
+ * too, unless the callable opts in with `allowArchived` (only syncMyClaims,
+ * which downgrades their claims). Their ID token can still carry the role
+ * and isAdmin claims they held before archiving until it refreshes, and
+ * several callables authorize on those claims or on the live doc's role,
+ * so this one check covers them all.
  */
 export function onCall<T = unknown>(
-  opts: CallableOptions & { allowDemoEdit?: boolean },
+  opts: CallableOptions & { allowDemoEdit?: boolean; allowArchived?: boolean },
   handler: (request: CallableRequest<T>) => unknown,
 ) {
-  const { allowDemoEdit = false, ...rest } = opts;
+  const { allowDemoEdit = false, allowArchived = false, ...rest } = opts;
   return baseOnCall<T>(rest, (request: CallableRequest<T>) => {
     if (!allowDemoEdit && isDemoEditSession(request.auth)) {
       throw new HttpsError(
@@ -34,8 +42,29 @@ export function onCall<T = unknown>(
         'Not available while editing as someone else (demo). Only demo staff can be changed.',
       );
     }
-    return handler(request);
+    if (allowArchived || typeof request.auth?.token.email !== 'string') return handler(request);
+    return assertNotArchived(getFirestore(), request.auth).then(() => handler(request));
   });
+}
+
+/** Whether `email`'s live /staff doc is archived. A missing doc or one
+ *  without the field counts as active (the schema default). */
+export async function isArchivedStaff(db: Firestore, email: string): Promise<boolean> {
+  const snap = await db.doc(`${COLLECTIONS.staff}/${email.toLowerCase()}`).get();
+  return snap.exists && (snap.data() as { isActive?: unknown } | undefined)?.isActive === false;
+}
+
+/** Refuse an archived caller, whatever their token claims. For the
+ *  onRequest endpoints, which the onCall wrapper doesn't cover. */
+export async function assertNotArchived(
+  db: Firestore,
+  auth: { token: Record<string, unknown> } | null | undefined,
+): Promise<void> {
+  const email = auth?.token['email'];
+  if (typeof email !== 'string' || !email) return;
+  if (await isArchivedStaff(db, email)) {
+    throw new HttpsError('permission-denied', 'Your staff account is archived.');
+  }
 }
 
 /**
