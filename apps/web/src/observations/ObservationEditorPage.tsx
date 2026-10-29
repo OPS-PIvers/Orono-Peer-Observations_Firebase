@@ -44,6 +44,7 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useViewerObservation } from '@/hooks/useTeacherView';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { db, functions } from '@/lib/firebase';
@@ -206,15 +207,11 @@ export function ObservationEditorPage() {
   const sidebarWidth = useSidebarWidth();
   const reflectionUnlock = useReflectionUnlock();
 
-  const {
-    data: observation,
-    loading,
-    error,
-    // Never from the cache: the draft below is hydrated once and written back
-    // whole, so a stale cached copy would overwrite newer edits.
-  } = useFirestoreDoc<Observation>(`${COLLECTIONS.observations}/${observationId ?? ''}`, {
-    cached: false,
-  });
+  // The observed teacher reads a Draft through its teacher view (Draft
+  // privacy); everyone else reads the observation. Never from the cache: the
+  // draft below is hydrated once and written back whole, so a stale cached
+  // copy would overwrite newer edits.
+  const { data: observation, loading, error } = useViewerObservation(observationId);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
