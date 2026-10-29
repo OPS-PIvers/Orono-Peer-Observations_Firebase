@@ -72,7 +72,8 @@ export const sendManualEmail = onCall(
       throw new HttpsError('invalid-argument', 'templateId and toEmail are required');
     }
     const toEmail = rawToEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    // No '/': staff doc ids are the email, and a '/' is a path separator.
+    if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(toEmail)) {
       throw new HttpsError('invalid-argument', 'toEmail is not a valid email address');
     }
 

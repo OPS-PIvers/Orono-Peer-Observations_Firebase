@@ -231,6 +231,13 @@ describe('sendManualEmail — recipient allow-list', () => {
     expect(state.sendEmail).not.toHaveBeenCalled();
   });
 
+  it("rejects an address containing '/' as invalid-argument", async () => {
+    await expect(
+      run(authedRequest(PE, 'peer-evaluator', { templateId: TEMPLATE_ID, toEmail: 'a/b@x.org' })),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+    expect(state.sendEmail).not.toHaveBeenCalled();
+  });
+
   it('matches the roster case-insensitively', async () => {
     const result = await run(
       authedRequest(PE, 'peer-evaluator', {
