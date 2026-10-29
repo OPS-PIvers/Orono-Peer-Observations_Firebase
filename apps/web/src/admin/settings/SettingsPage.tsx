@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { deleteField, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, type AppSettings } from '@ops/shared';
+import { APP_SETTINGS_DOC_ID, COLLECTIONS, rateLimits, type AppSettings } from '@ops/shared';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthProvider';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -28,6 +28,8 @@ interface BackfillResult {
   spansUpdated: number;
   observationsSkipped: number;
 }
+
+const RATE_LIMIT_DEFAULTS = rateLimits.parse({});
 
 const migrateRolesToSlugsFn = httpsCallable<Record<string, never>, MigrateRolesResult>(
   functions,
@@ -267,13 +269,7 @@ export function SettingsPage() {
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
-                    ...(f.rateLimits ?? {
-                      observationSavesPerMinute: 60,
-                      audioUploadsPerHour: 20,
-                      transcriptionRequestsPerDay: 50,
-                      pdfRegenerationsPerHour: 10,
-                      manualEmailBroadcastsPerHour: 5,
-                    }),
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
                     observationSavesPerMinute: Number(e.target.value),
                   },
                 }))
@@ -289,13 +285,7 @@ export function SettingsPage() {
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
-                    ...(f.rateLimits ?? {
-                      observationSavesPerMinute: 60,
-                      audioUploadsPerHour: 20,
-                      transcriptionRequestsPerDay: 50,
-                      pdfRegenerationsPerHour: 10,
-                      manualEmailBroadcastsPerHour: 5,
-                    }),
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
                     audioUploadsPerHour: Number(e.target.value),
                   },
                 }))
@@ -311,13 +301,7 @@ export function SettingsPage() {
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
-                    ...(f.rateLimits ?? {
-                      observationSavesPerMinute: 60,
-                      audioUploadsPerHour: 20,
-                      transcriptionRequestsPerDay: 50,
-                      pdfRegenerationsPerHour: 10,
-                      manualEmailBroadcastsPerHour: 5,
-                    }),
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
                     transcriptionRequestsPerDay: Number(e.target.value),
                   },
                 }))
@@ -333,13 +317,7 @@ export function SettingsPage() {
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
-                    ...(f.rateLimits ?? {
-                      observationSavesPerMinute: 60,
-                      audioUploadsPerHour: 20,
-                      transcriptionRequestsPerDay: 50,
-                      pdfRegenerationsPerHour: 10,
-                      manualEmailBroadcastsPerHour: 5,
-                    }),
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
                     pdfRegenerationsPerHour: Number(e.target.value),
                   },
                 }))
@@ -358,14 +336,27 @@ export function SettingsPage() {
                 setForm((f) => ({
                   ...f,
                   rateLimits: {
-                    ...(f.rateLimits ?? {
-                      observationSavesPerMinute: 60,
-                      audioUploadsPerHour: 20,
-                      transcriptionRequestsPerDay: 50,
-                      pdfRegenerationsPerHour: 10,
-                      manualEmailBroadcastsPerHour: 5,
-                    }),
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
                     manualEmailBroadcastsPerHour: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
+          <Field
+            label="Script auto-tag runs per hour (per user)"
+            help="Caps how many paid AI auto-tag runs one observer can start in an hour, counting first runs and reruns on every observation. Reopening a saved result doesn't count."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.scriptAutoTagRunsPerHour ?? 20}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? RATE_LIMIT_DEFAULTS),
+                    scriptAutoTagRunsPerHour: Number(e.target.value),
                   },
                 }))
               }

@@ -5,6 +5,12 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ANTHROPIC_API_KEY, generateText, loadFeatureModel } from '../lib/aiClient.js';
 import {
+  RATE_LIMIT_KEYS,
+  checkRateLimitInTransaction,
+  loadRateLimits,
+  rateLimitCounterRef,
+} from '../lib/rateLimit.js';
+import {
   autoTagUsesFullRubric,
   clampScriptAutoTagOptions,
   parseAutoTagConfidence,
@@ -36,6 +42,9 @@ import {
 } from './scriptTagRun.js';
 
 if (getApps().length === 0) initializeApp();
+
+/** One hour, in milliseconds — the scriptAutoTagRunsPerHour window. */
+const HOUR_MS = 60 * 60 * 1000;
 
 interface SuggestScriptTagsRequest {
   observationId?: string;
@@ -91,7 +100,9 @@ interface SuggestScriptTagsResponse {
  * that returns the saved result instead of calling the model again. Running
  * it again requires the observer to say why, and that reason goes to the
  * model as extra context. An in-flight claim stops double clicks and a second
- * tab from starting parallel runs.
+ * tab from starting parallel runs. Every run that reaches the model, first
+ * run or rerun on any observation, counts against the caller's hourly
+ * `rateLimits.scriptAutoTagRunsPerHour`, whatever the rerun reason says.
  *
  * The model never paraphrases or rewrites: it only points at substrings the
  * observer typed. Suggestions whose `text` can't be located verbatim are
@@ -196,8 +207,20 @@ export const suggestScriptTags = onCall(
       };
     }
 
-    // Claim the run. Re-reads inside the transaction so two clicks that both
-    // got past the read above can't both reach the model.
+    // Claim the run and count it against the caller's hourly quota in one
+    // transaction. Re-reads inside the transaction so two clicks that both got
+    // past the read above can't both reach the model, and so parallel calls
+    // across tabs or observations can't overrun the quota. A refused claim
+    // costs no quota; a claimed run that later fails still does, because the
+    // model may already have been billed.
+    const limits = await loadRateLimits(db);
+    const limitOpts = {
+      userEmail,
+      key: RATE_LIMIT_KEYS.scriptAutoTag,
+      max: limits.scriptAutoTagRunsPerHour,
+      windowMs: HOUR_MS,
+    };
+    const limitRef = rateLimitCounterRef(db, limitOpts);
     const priorRunCount = await db.runTransaction(async (tx) => {
       const snap = await tx.get(runRef);
       const data = snap.data() as Partial<StoredScriptTagRun> | undefined;
@@ -211,6 +234,13 @@ export const suggestScriptTags = onCall(
         throw new HttpsError(
           'failed-precondition',
           'Auto-tag already ran for this observation. Click Auto-tag again to review the result.',
+        );
+      }
+      const decision = await checkRateLimitInTransaction(tx, limitRef, limitOpts);
+      if (!decision.allowed) {
+        throw new HttpsError(
+          'resource-exhausted',
+          `Auto-tag limit reached (${String(limitOpts.max)}/hour). Try again later.`,
         );
       }
       tx.set(runRef, { inFlight: { by: userEmail, startedAtMs: Date.now() } }, { merge: true });
