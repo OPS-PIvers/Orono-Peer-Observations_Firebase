@@ -122,6 +122,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
     }
 
+    // A canonical staff address: lowercase and on the district domain.
+    // Staff docs are keyed by this form and ids are case-sensitive, so a
+    // case variant would name a second doc for the same person. Mirrors
+    // isCanonicalStaffEmail in @ops/shared.
+    function isCanonicalStaffEmail(email) {
+      return email is string
+        && email == email.lower()
+        && email.matches('[^@\\s/]+@orono[.]k12[.]mn[.]us');
+    }
+
     function isBuildingAdmin() {
       return isAdmin() && role() == 'administrator';
     }
@@ -172,6 +182,7 @@ service cloud.firestore {
 
     function buildingAdminCanCreateStaff(email) {
       return isBuildingAdmin()
+        && isCanonicalStaffEmail(email)
         && request.resource.data.get('email', '') == email
         && buildingAdminCanWriteStaffData(request.resource.data)
         && request.resource.data.get('hasAdminAccess', false) == false
@@ -359,9 +370,8 @@ service cloud.firestore {
 
     // --- /observationWindows/{windowId} -------------------------------------
     // A scheduling window. Read: special-access (PE/admin) or an invited
-    // staff member (their email is in invitedEmails). Create: special-access,
-    // and the observer must be the caller. Update/delete: oversight (Full
-    // Access) or the observer. Staff never write the window (or its peBusyIntervals /
+    // staff member (their email is in invitedEmails). Create: callable only.
+    // Update/delete: oversight (Full Access) or the observer. Staff never write the window (or its peBusyIntervals /
     // dayCounts) directly — booking + day-preference flow through callable
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
@@ -369,13 +379,10 @@ service cloud.firestore {
       allow get, list: if hasSpecialAccess()
         || canReadAll()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
-      allow create: if (hasSpecialAccess()
-        && role() in ['administrator', 'peer-evaluator', 'full-access']
-        && request.resource.data.observerEmail == request.auth.token.email
-        // Building Administrators' windows book Standard observations only.
-        && (role() != 'administrator'
-            || request.resource.data.defaultObservationType == 'Standard'))
-        && notDemoEdit();
+      // Create: only the createObservationWindow callable (Admin SDK). It
+      // checks the observer's role and scope and writes the full shape the
+      // scheduling jobs rely on; a client-written window could be any shape.
+      allow create: if false;
       // Delete: oversight or the observer.
       allow delete: if (hasObservationOversight()
         || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email
@@ -585,6 +592,11 @@ service cloud.firestore {
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.
         && (role() != 'administrator' || request.resource.data.type == 'Standard')
+        // Every observer: the observee is a real staff record, named by its
+        // canonical id. The email and Drive paths send to this address, and
+        // a case variant would make adminCanObserve read some other doc.
+        && isCanonicalStaffEmail(request.resource.data.observedEmail)
+        && exists(/databases/$(database)/documents/staff/$(request.resource.data.observedEmail))
         // ...and only of staff they can observe (see adminCanObserve).
         && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail)))
         && (notDemoEdit() || isDemoStaff(request.resource.data.observedEmail));
@@ -669,6 +681,34 @@ service cloud.firestore {
     match /teacherViews/{observationId} {
       allow get, list: if isFromOronoDomain() && isCurrentUserEmail(resource.data.observedEmail);
       allow write: if false;
+    }
+
+    // --- /windowInviteViews/{windowId}_{email} -----------------------------
+    // One invitee's slice of an observation window
+    // (onObservationWindowInviteViews): the window settings booking needs
+    // plus that invitee's own entries, never anyone else's. Readable by the
+    // invitee and by whoever may read the window itself; written only by
+    // Functions.
+    match /windowInviteViews/{viewId} {
+      // get also succeeds (as not-found) on the reader's own id before the
+      // trigger has written it, so the booking page's listener stays open
+      // and picks the view up once it exists.
+      allow get: if hasSpecialAccess()
+        || canReadAll()
+        || (isFromOronoDomain()
+            && isOwnWindowInviteViewId(viewId)
+            && (resource == null || resource.data.email == request.auth.token.email));
+      allow list: if hasSpecialAccess()
+        || canReadAll()
+        || isCurrentUserEmail(resource.data.email);
+      allow write: if false;
+    }
+
+    // `{windowId}_{email}` where email is the caller's token email.
+    function isOwnWindowInviteViewId(viewId) {
+      let suffix = '_' + request.auth.token.email;
+      return viewId.size() > suffix.size()
+        && viewId[viewId.size() - suffix.size():viewId.size()] == suffix;
     }
 
     // --- /userCalendarTokens/{email} ----------------------------------------

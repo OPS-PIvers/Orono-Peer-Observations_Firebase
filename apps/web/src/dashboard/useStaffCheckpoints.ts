@@ -13,7 +13,7 @@ import {
   type AppSettings,
   type DashboardConfig,
   type Observation,
-  type ObservationWindow,
+  type WindowInviteView,
   type WorkProductQuestion,
 } from '@ops/shared';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
@@ -87,18 +87,15 @@ export function useStaffCheckpoints(
   const windowConstraints = useMemo(
     () =>
       emailLower
-        ? [
-            where('invitedEmails', 'array-contains', emailLower),
-            where('status', 'in', [...DASHBOARD_WINDOW_STATUSES]),
-          ]
+        ? [where('email', '==', emailLower), where('status', 'in', [...DASHBOARD_WINDOW_STATUSES])]
         : [],
     [emailLower],
   );
-  const { data: myWindows } = useFirestoreCollection<ObservationWindow>(
-    emailLower ? COLLECTIONS.observationWindows : '',
+  // The staff member's own slice of each window they're invited to; the
+  // window docs themselves list every co-invitee.
+  const { data: myWindows } = useFirestoreCollection<WindowInviteView>(
+    emailLower ? COLLECTIONS.windowInviteViews : '',
     windowConstraints,
-    // The status list is part of the key: the pre-fix query (open +
-    // partially-booked) must not share a cached snapshot with this one.
     [emailLower, DASHBOARD_WINDOW_STATUSES.join(',')],
   );
   const { openBooking, hasBookedSlot } = useMemo(

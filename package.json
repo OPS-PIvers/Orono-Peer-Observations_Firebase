@@ -50,6 +50,7 @@
     "backfill:teacher-views:emulator": "tsx scripts/backfill/backfill-teacher-views.ts --target=emulator",
     "backfill:teacher-views:prod": "tsx scripts/backfill/backfill-teacher-views.ts --target=prod",
     "report:coobservers:prod": "tsx scripts/backfill/report-non-observer-coobservers.ts --target=prod",
+    "report:noncanonical-emails:prod": "tsx scripts/backfill/report-noncanonical-emails.ts --target=prod",
     "report:drive-ids:prod": "tsx scripts/backfill/report-observation-drive-ids.ts",
     "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
     "drive:transfer": "tsx scripts/drive-auth/transfer-drive-ownership.ts",

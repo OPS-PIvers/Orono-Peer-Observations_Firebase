@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
+import { where } from 'firebase/firestore';
 import { CheckCircle2 } from 'lucide-react';
 import {
   COLLECTIONS,
@@ -12,11 +13,12 @@ import {
   type Observation,
   type ObservationPreference,
   type ObservationSlot,
-  type ObservationWindow,
   type RescheduleBookingInput,
   type SignupField,
   type SubmitDayPreferenceInput,
-  type WindowInvitee,
+  type WindowInviteEntry,
+  type WindowInviteView,
+  windowInviteViewId,
 } from '@ops/shared';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
@@ -109,27 +111,49 @@ export function BookingPage() {
   const token = searchParams.get('token') ?? '';
   const myEmail = useEffectiveEmail();
 
-  const windowPath = windowId ? `${COLLECTIONS.observationWindows}/${windowId}` : '';
-  const { data: windowDoc, loading: windowLoading } =
-    useFirestoreDoc<ObservationWindow>(windowPath);
+  // The invitee's own slice of the window (the window doc itself lists every
+  // co-invitee, so invitees read this view instead).
+  const windowPath =
+    windowId && myEmail
+      ? `${COLLECTIONS.windowInviteViews}/${windowInviteViewId(windowId, myEmail)}`
+      : '';
+  const { data: windowDoc, loading: windowLoading } = useFirestoreDoc<WindowInviteView>(windowPath);
 
+  // Only slots that are open or blocked: other people's bookings (who booked,
+  // the observation id) are not the invitee's to read. The invitee's own
+  // booked slot is read on its own below.
   const slotsPath = windowId
     ? `${COLLECTIONS.observationWindows}/${windowId}/${WINDOW_SUBCOLLECTIONS.slots}`
     : '';
-  const { data: slots } = useFirestoreCollection<ObservationSlot>(slotsPath);
+  const slotConstraints = useMemo(() => [where('status', 'in', ['available', 'blocked'])], []);
+  const { data: slots } = useFirestoreCollection<ObservationSlot>(slotsPath, slotConstraints, [
+    'available,blocked',
+  ]);
 
   const { data: signupFields } = useFirestoreCollection<SignupField>(COLLECTIONS.signupFields);
 
+  // The booked slot after a cancel or reschedule this page just made. The
+  // view is rewritten by a trigger a few seconds after the callable commits,
+  // so until it catches up this stands in for its bookedSlotId.
+  const [bookedOverride, setBookedOverride] = useState<{ slotId: string | null } | null>(null);
+
   // Find the invitee this link belongs to: email must match the signed-in
   // user AND the per-invitee token must match the one in the URL.
-  const invitee: WindowInvitee | null = useMemo(() => {
+  const viewEntry: WindowInviteEntry | null = useMemo(() => {
     if (!windowDoc || !token || !myEmail) return null;
-    return (
-      windowDoc.invitees.find(
-        (inv) => inv.email.toLowerCase() === myEmail && inv.inviteToken === token,
-      ) ?? null
-    );
+    if (windowDoc.email.toLowerCase() !== myEmail) return null;
+    return windowDoc.entries.find((e) => e.inviteToken === token) ?? null;
   }, [windowDoc, token, myEmail]);
+  const invitee: (WindowInviteEntry & { email: string }) | null = useMemo(() => {
+    if (!windowDoc || !viewEntry) return null;
+    const bookedSlotId = bookedOverride ? bookedOverride.slotId : viewEntry.bookedSlotId;
+    return { ...viewEntry, bookedSlotId, email: windowDoc.email };
+  }, [windowDoc, viewEntry, bookedOverride]);
+  // Drop the override once the view shows the same booking.
+  const viewBookedSlotId = viewEntry?.bookedSlotId ?? null;
+  useEffect(() => {
+    if (bookedOverride?.slotId === viewBookedSlotId) setBookedOverride(null);
+  }, [bookedOverride, viewBookedSlotId]);
 
   // Existing day-preference submission for this invitee (doc id = email).
   const prefPath =
@@ -137,6 +161,14 @@ export function BookingPage() {
       ? `${COLLECTIONS.observationWindows}/${windowId}/${WINDOW_SUBCOLLECTIONS.preferences}/${invitee.email}`
       : '';
   const { data: existingPref } = useFirestoreDoc<ObservationPreference>(prefPath);
+
+  // The invitee's own booked (direct) or assigned (day-preference) slot.
+  const mySlotId = invitee?.bookedSlotId ?? existingPref?.assignedSlotId ?? null;
+  const mySlotPath =
+    windowId && mySlotId
+      ? `${COLLECTIONS.observationWindows}/${windowId}/${WINDOW_SUBCOLLECTIONS.slots}/${mySlotId}`
+      : '';
+  const { data: mySlot } = useFirestoreDoc<ObservationSlot>(mySlotPath);
 
   const fields = useMemo(() => signupFields ?? [], [signupFields]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -265,9 +297,7 @@ export function BookingPage() {
 
     // Already booked: show the booked slot + Change time / Cancel buttons.
     if (invitee.bookedSlotId && !bookedConfirmation) {
-      const booked: SlotDoc | undefined = (slots ?? []).find(
-        (s) => s.slotId === invitee.bookedSlotId,
-      );
+      const booked: SlotDoc | null = mySlot?.slotId === invitee.bookedSlotId ? mySlot : null;
 
       // 'Change time' flow: pick a new slot; signup answers carry over.
       if (rescheduling) {
@@ -508,7 +538,7 @@ export function BookingPage() {
     }
 
     if (existingPref?.assignedSlotId != null) {
-      const assigned = (slots ?? []).find((s) => s.slotId === existingPref.assignedSlotId);
+      const assigned = mySlot?.slotId === existingPref.assignedSlotId ? mySlot : null;
       return (
         <div className="border-border bg-background rounded-lg border p-4">
           <div className="flex items-start gap-3">
@@ -608,13 +638,14 @@ export function BookingPage() {
     setSubmitting(true);
     try {
       assertWritable();
+      const slot = (slots ?? []).find((s) => s.slotId === slotId);
       const res = await bookObservationSlotFn({
         windowId,
         slotId,
         inviteToken: token,
         detailAnswers: buildDetailAnswers(fields, 'direct', answers),
       });
-      const slot = (slots ?? []).find((s) => s.slotId === slotId);
+      setBookedOverride({ slotId });
       setBookedConfirmation(slot ? formatLocalDateTime(slot.startUTC) : 'Your slot is reserved.');
       setConflictNote(res.data.calendarConflictWarning ? CONFLICT_WARNING_TEXT : null);
       setSelectedSlotId(null);
@@ -635,8 +666,9 @@ export function BookingPage() {
     setSubmitting(true);
     try {
       assertWritable();
-      const res = await rescheduleBookingFn({ windowId, newSlotId, inviteToken: token });
       const slot = (slots ?? []).find((s) => s.slotId === newSlotId);
+      const res = await rescheduleBookingFn({ windowId, newSlotId, inviteToken: token });
+      setBookedOverride({ slotId: newSlotId });
       setRescheduledNote(
         slot
           ? `Your booking was moved to ${formatLocalDateTime(slot.startUTC)}.`
@@ -663,6 +695,7 @@ export function BookingPage() {
     try {
       assertWritable();
       await cancelBookingFn({ windowId, slotId, reason: reason.trim() });
+      setBookedOverride({ slotId: null });
       setBookedConfirmation(null);
       setSelectedSlotId(null);
       setRescheduledNote(null);

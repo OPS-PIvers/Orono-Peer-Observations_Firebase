@@ -12,6 +12,7 @@ import {
 } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 import { formatYMD } from './engine/schedulingEmail.js';
+import { isProcessableWindow } from './windowShape.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -52,9 +53,23 @@ export const expireObservationWindows = onSchedule(
     const expiredWindows: ObservationWindow[] = [];
 
     for (const docSnap of snap.docs) {
-      const window = docSnap.data() as ObservationWindow;
+      // A malformed doc is skipped (and left open, so it shows up again
+      // until someone fixes it) rather than stopping the run for every
+      // other window.
+      const window: unknown = docSnap.data();
+      if (!isProcessableWindow(window)) {
+        logger.error('expireObservationWindows: skipping malformed window', {
+          windowId: docSnap.id,
+        });
+        continue;
+      }
       if (window.endDate < today) {
-        await docSnap.ref.update({ status: OBSERVATION_WINDOW_STATUS.expired, updatedAt: now });
+        try {
+          await docSnap.ref.update({ status: OBSERVATION_WINDOW_STATUS.expired, updatedAt: now });
+        } catch (err) {
+          logger.error('expireObservationWindows: expire failed', { windowId: docSnap.id, err });
+          continue;
+        }
         expired.push(docSnap.id);
         expiredWindows.push(window);
       }

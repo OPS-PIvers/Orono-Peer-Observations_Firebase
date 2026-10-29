@@ -8,7 +8,6 @@ import {
   COLLECTIONS,
   OBSERVATION_WINDOW_STATUS,
   WINDOW_SUBCOLLECTIONS,
-  isAdminRole,
   updateObservationWindowInput,
   type Building,
   type BuildingSchedule,
@@ -21,6 +20,7 @@ import { APP_URL, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow } from './engine/slotGeneration.js';
 import { recomputeBlockedSlots } from './engine/blocking.js';
 import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
+import { assertCanManageWindow } from './windowAccess.js';
 import { formatYMD } from './engine/schedulingEmail.js';
 import { loadSchedulingSettings, nextWindowStatus } from './bookObservationSlot.js';
 
@@ -80,11 +80,12 @@ export const updateObservationWindow = onCall(
     if (!windowSnap.exists) throw new HttpsError('not-found', 'Window not found');
     const window = windowSnap.data() as ObservationWindow;
 
-    const callerRole = request.auth.token['role'] as string | undefined;
-    const isAdmin = isAdminRole(callerRole ?? null);
-    if (!isAdmin && window.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or an admin can edit.');
-    }
+    await assertCanManageWindow(db, {
+      callerEmail: userEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      window,
+      message: 'Only the observer or an admin can edit.',
+    });
     if (window.status === OBSERVATION_WINDOW_STATUS.cancelled) {
       throw new HttpsError('failed-precondition', 'A cancelled window cannot be edited');
     }

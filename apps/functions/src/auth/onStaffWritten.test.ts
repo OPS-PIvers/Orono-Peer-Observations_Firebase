@@ -251,3 +251,37 @@ describe('onStaffWritten — new-staff invite', () => {
     expect(state.setClaims).toHaveBeenCalled();
   });
 });
+
+describe('onStaffWritten — non-canonical doc ids', () => {
+  it('leaves the real user’s claims alone and sends no invite for a mixed-case doc', async () => {
+    await invoke(
+      makeEvent({
+        email: 'Victim@orono.k12.mn.us',
+        before: null,
+        after: { role: 'teacher', isActive: true, name: 'Shadow' },
+      }),
+    );
+    expect(state.getUserByEmail).not.toHaveBeenCalled();
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not clear claims when a mixed-case doc is deleted', async () => {
+    await invoke(
+      makeEvent({ email: 'Victim@orono.k12.mn.us', before: { role: 'teacher' }, after: null }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
+  it('sends no invite to an off-domain doc id', async () => {
+    await invoke(
+      makeEvent({
+        email: 'someone@gmail.com',
+        before: null,
+        after: { role: 'teacher', isActive: true, name: 'Outsider' },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
+  });
+});

@@ -1,4 +1,4 @@
-import { OBSERVATION_WINDOW_STATUS, type ObservationWindow } from '@ops/shared';
+import { OBSERVATION_WINDOW_STATUS, type WindowInviteView } from '@ops/shared';
 import type { DeriveContext } from './dashboardEvents';
 
 /**
@@ -30,8 +30,8 @@ export function schoolYearStartYmd(now: Date): string {
 }
 
 /**
- * The booking signals the dashboard derives from a staff member's invited
- * windows:
+ * The booking signals the dashboard derives from a staff member's invite
+ * views (their own slice of each window they're invited to):
  *   - `openBooking` — an unbooked invite in a window that is still bookable.
  *   - `hasBookedSlot` — a booked invite in any window ending this school
  *     year. Fully-booked and expired windows are never deleted, so without
@@ -39,7 +39,7 @@ export function schoolYearStartYmd(now: Date): string {
  *     sign-up step done.
  */
 export function summarizeWindowBookings(
-  windows: readonly ObservationWindow[],
+  views: readonly WindowInviteView[],
   staffEmail: string,
   now: Date = new Date(),
 ): Pick<DeriveContext, 'openBooking' | 'hasBookedSlot'> {
@@ -47,16 +47,17 @@ export function summarizeWindowBookings(
   const yearStart = schoolYearStartYmd(now);
   let openBooking: DeriveContext['openBooking'] = null;
   let hasBookedSlot = false;
-  for (const w of windows) {
-    const inv = w.invitees.find((i) => i.email.toLowerCase() === email);
-    if (!inv) continue;
-    if (inv.bookedSlotId) {
-      if (w.endDate >= yearStart) hasBookedSlot = true;
-    } else if (!openBooking && BOOKABLE_STATUSES.has(w.status)) {
+  for (const v of views) {
+    if (v.email.toLowerCase() !== email) continue;
+    const first = v.entries[0];
+    if (!first) continue;
+    if (v.entries.some((e) => e.bookedSlotId)) {
+      if (v.endDate >= yearStart) hasBookedSlot = true;
+    } else if (!openBooking && BOOKABLE_STATUSES.has(v.status)) {
       openBooking = {
-        windowId: w.windowId,
-        token: inv.inviteToken,
-        endDate: w.endDate ? new Date(`${w.endDate}T12:00:00`) : null,
+        windowId: v.windowId,
+        token: first.inviteToken,
+        endDate: v.endDate ? new Date(`${v.endDate}T12:00:00`) : null,
       };
     }
   }

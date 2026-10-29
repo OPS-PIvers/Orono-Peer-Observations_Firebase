@@ -39,6 +39,7 @@ export { uploadEvidenceFile } from './observations/uploadEvidenceFile.js';
 export { removeEvidenceFile } from './observations/removeEvidenceFile.js';
 export { onObservationWritten } from './observations/onObservationWritten.js';
 export { onObservationTeacherView } from './observations/onObservationTeacherView.js';
+export { backfillTeacherViews } from './observations/backfillTeacherViews.js';
 export { pruneAuditLog } from './audit/pruneAuditLog.js';
 export { onRoleYearMappingWritten } from './settings/onRoleYearMappingWritten.js';
 export { scheduledEmailReminders } from './email/scheduledEmailReminders.js';
@@ -56,6 +57,8 @@ export { cancelObservationWindow } from './scheduling/cancelObservationWindow.js
 export { updateObservationWindow } from './scheduling/updateObservationWindow.js';
 export { expireObservationWindows } from './scheduling/expireObservationWindows.js';
 export { onBuildingScheduleWritten } from './scheduling/onBuildingScheduleWritten.js';
+export { onObservationWindowInviteViews } from './scheduling/onObservationWindowInviteViews.js';
+export { backfillWindowInviteViews } from './scheduling/backfillWindowInviteViews.js';
 export { bookObservationSlot } from './scheduling/bookObservationSlot.js';
 export { submitDayPreference } from './scheduling/submitDayPreference.js';
 export { assignObservationFromPreference } from './scheduling/assignObservationFromPreference.js';
