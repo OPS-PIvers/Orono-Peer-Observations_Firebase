@@ -430,6 +430,31 @@ describe('withdrawObservedFolderAccess', () => {
     expect(h.permissions.delete).toHaveBeenCalledOnce();
   });
 
+  it('makes no grant and no revoke when the teacher has no folder Reader', async () => {
+    h.permissions.list.mockResolvedValue({ data: { permissions: [] } });
+    await withdrawObservedFolderAccess({
+      folderId: 'obsFolder',
+      parentFolderId: PARENT,
+      observedEmail: TEACHER,
+      pdfDriveFileId: 'pdf1',
+    });
+    expect(h.permissions.create).not.toHaveBeenCalled();
+    expect(h.permissions.delete).not.toHaveBeenCalled();
+  });
+
+  it('still revokes the folder Reader when the PDF grant fails', async () => {
+    h.permissions.create.mockRejectedValue(Object.assign(new Error('no account'), { code: 400 }));
+    await withdrawObservedFolderAccess({
+      folderId: 'obsFolder',
+      parentFolderId: PARENT,
+      observedEmail: TEACHER,
+      pdfDriveFileId: 'pdf1',
+    });
+    expect(h.permissions.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ fileId: 'obsFolder', permissionId: 'perm-teacher' }),
+    );
+  });
+
   it('throws when Drive refuses the revoke, so an upload can stop', async () => {
     h.permissions.delete.mockRejectedValue(Object.assign(new Error('backend'), { code: 500 }));
     await expect(

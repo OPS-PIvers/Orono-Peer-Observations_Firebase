@@ -641,6 +641,19 @@ export async function withdrawObservedFolderAccess(args: {
 }): Promise<void> {
   const { folderId, parentFolderId, observedEmail, pdfDriveFileId } = args;
   if (!observedEmail) return;
+  const drive = await getDriveClient();
+  // Nothing to take back (never shared, or an earlier reopen or upload
+  // already did): no further Drive calls, so this never blocks an upload.
+  const existing = await drive.permissions.list({
+    fileId: folderId,
+    fields: 'permissions(id,emailAddress,role)',
+    supportsAllDrives: true,
+  });
+  const lower = observedEmail.toLowerCase();
+  const folderGrant = existing.data.permissions?.find(
+    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader',
+  );
+  if (!folderGrant?.id) return;
   if (pdfDriveFileId) {
     const [pdf] = await filesInObservationFolder({
       fileIds: [pdfDriveFileId],
@@ -651,17 +664,28 @@ export async function withdrawObservedFolderAccess(args: {
       // Not shareWithUser: its "already has Reader" check would see the grant
       // the PDF inherits from the folder and skip, and that one goes with
       // the folder grant below. A create for someone who already has a
-      // direct grant leaves them with one.
-      const drive = await getDriveClient();
-      await drive.permissions.create({
-        fileId: pdf,
-        sendNotificationEmail: false,
-        requestBody: { type: 'user', role: 'reader', emailAddress: observedEmail },
-        supportsAllDrives: true,
-      });
+      // direct grant leaves them with one. Best-effort: only the revoke
+      // below may stop an upload.
+      try {
+        await drive.permissions.create({
+          fileId: pdf,
+          sendNotificationEmail: false,
+          requestBody: { type: 'user', role: 'reader', emailAddress: observedEmail },
+          supportsAllDrives: true,
+        });
+      } catch (err) {
+        logger.warn('withdrawObservedFolderAccess: PDF grant failed (non-fatal)', {
+          fileId: pdf,
+          err,
+        });
+      }
     }
   }
-  await removeReaderFromFile({ fileId: folderId, email: observedEmail });
+  await drive.permissions.delete({
+    fileId: folderId,
+    permissionId: folderGrant.id,
+    supportsAllDrives: true,
+  });
 }
 
 /**
