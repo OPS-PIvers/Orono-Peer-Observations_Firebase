@@ -709,11 +709,15 @@ export function ProfilePage() {
     ADMIN_CONSTRAINTS,
   );
 
-  // Per-staff observations. Single equality filter — Firestore auto-indexes
-  // it, no composite index needed. Sorting + status filter happen below in
-  // `finalizedByYear`.
+  // Per-staff finalized observations. Two equality filters — Firestore serves
+  // them from automatic single-field indexes, no composite index needed.
+  // Sorting happens below in `finalizedByYear`. The status filter is required:
+  // the observed teacher may not read their Drafts here (Draft privacy).
   const obsConstraints = useMemo(
-    () => (email ? [where('observedEmail', '==', email)] : []),
+    () =>
+      email
+        ? [where('observedEmail', '==', email), where('status', '==', OBSERVATION_STATUS.finalized)]
+        : [],
     [email],
   );
   const { data: observations } = useFirestoreCollection<Observation>(

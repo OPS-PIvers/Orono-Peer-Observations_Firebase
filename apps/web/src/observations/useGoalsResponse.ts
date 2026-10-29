@@ -6,6 +6,7 @@ import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import type { AnswerSaveState } from './useWorkProductAnswers';
 import { EMPTY_ANSWER_DOC } from './workProductAnswerDoc';
+import { rememberSavedGoals, withSavedGoals } from './pendingTeacherWrites';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -46,9 +47,11 @@ export function useGoalsResponse(
   }, []);
 
   useHydratedDraft(observation?.id ?? null, observation, (src) => {
-    localRef.current = src.goalsResponse;
+    // The teacher's Draft copy can trail their last save (pendingTeacherWrites).
+    const value = withSavedGoals(src.id, src.goalsResponse);
+    localRef.current = value;
     hydratedRef.current = true;
-    setLocal(src.goalsResponse);
+    setLocal(value);
   });
 
   const observationId = observation?.id ?? null;
@@ -57,12 +60,14 @@ export function useGoalsResponse(
     if (!observationId) return Promise.resolve();
     timerRef.current = null;
     setSaveState('saving');
+    const saved = localRef.current ?? null;
     return setDoc(
       doc(db, COLLECTIONS.observations, observationId),
-      { goalsResponse: localRef.current ?? null, lastModifiedAt: serverTimestamp() },
+      { goalsResponse: saved, lastModifiedAt: serverTimestamp() },
       { merge: true },
     )
       .then(() => {
+        rememberSavedGoals(observationId, saved);
         failedRef.current = false;
         if (!mountedRef.current) return;
         setSaveState('saved');
