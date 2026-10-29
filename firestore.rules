@@ -446,10 +446,8 @@ service cloud.firestore {
     //
     // Read:
     //   - observer (creator) or co-observer of the observation
-    //   - observed staff member, Finalized only. A Draft's evaluator content
-    //     is private until finalize (Draft privacy); the observed teacher reads
-    //     a Draft through /teacherViews, which holds only what the observer
-    //     shared. Their writes below need no read access.
+    //   - observed staff member (the UI withholds Draft content per
+    //     draftVisibility)
     //   - Full Access (oversight), or staff with a View As grant
     //
     // Create: observer roles only (administrator / peer-evaluator /
@@ -495,11 +493,6 @@ service cloud.firestore {
       }
       function isObservedObs() {
         return isCurrentUserEmail(resource.data.observedEmail);
-      }
-      // The observed teacher's read: Finalized only (see the header). Their
-      // list queries must therefore filter status == 'Finalized'.
-      function isObservedFinalized() {
-        return isObservedObs() && resource.data.status == 'Finalized';
       }
       // Content an observer edits on a Draft. The autosave in
       // ObservationEditorPage writes exactly these fields (see its setDoc
@@ -549,10 +542,10 @@ service cloud.firestore {
           && d.get('workProductAnswers', []).size() == 0;
       }
 
-      allow get: if ownsObs() || isObservedFinalized() || coObservesObs() || canReadAllObservations();
+      allow get: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
       // Rules aren't filters: an observer's queries must constrain
       // observerEmail == me or coObserverEmails array-contains me.
-      allow list: if ownsObs() || isObservedFinalized() || coObservesObs() || canReadAllObservations();
+      allow list: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
 
       allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']

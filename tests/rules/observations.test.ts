@@ -78,11 +78,12 @@ describe('observations: read access', () => {
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
-  it('observed teacher CANNOT read a Draft observation about them (Draft privacy)', async () => {
-    // Their pages read the Draft through /teacherViews instead, which holds
-    // only what the observer shared (see teacherViews.test.ts).
+  it('observed teacher CAN read a Draft Standard observation about them', async () => {
+    // Loosened in May 2026: staff dashboard shows pre/obs/post cards the
+    // moment the peer evaluator creates the Draft, so the observed staff
+    // member needs read access to their own Draft regardless of type.
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
   });
 
   it('observed teacher CAN read a Finalized observation about them', async () => {
@@ -726,73 +727,24 @@ describe('observations: acknowledge (observed staff)', () => {
 });
 
 describe('observations: observed staff draft access and answers', () => {
-  // Draft privacy: the observed teacher reads Drafts through /teacherViews.
-  // Hidden ratings, notes, script and transcripts never reach their browser.
-  it.each(['Standard', 'Work Product', 'Instructional Round'])(
-    'observed teacher CANNOT read a %s Draft',
-    async (type) => {
-      await seedDraftObs('draft', { type, transcripts: { a1: 'classroom audio' } });
-      const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-      await assertFails(getDoc(doc(db, 'observations/draft')));
-    },
-  );
-
-  it('observed teacher CANNOT read a reopened observation (a Draft again)', async () => {
-    await seedDraftObs('reopened', { pdfDriveFileId: 'pdf1', finalizedAt: null });
+  it('observed teacher CAN read a Work Product Draft', async () => {
+    await seedDraftObs('wpObs', { type: 'Work Product' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(getDoc(doc(db, 'observations/reopened')));
+    await assertSucceeds(getDoc(doc(db, 'observations/wpObs')));
   });
 
-  it("observed teacher's list query succeeds only when filtered to Finalized", async () => {
-    await seedDraftObs('fin', { status: 'Finalized', finalizedAt: new Date() });
+  it('observed teacher CAN read an Instructional Round Draft', async () => {
+    await seedDraftObs('irObs', { type: 'Instructional Round' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    const mine = where('observedEmail', '==', OBSERVED_EMAIL);
-    await assertSucceeds(
-      getDocs(query(collection(db, 'observations'), mine, where('status', '==', 'Finalized'))),
-    );
-    await assertFails(getDocs(query(collection(db, 'observations'), mine)));
-    await assertFails(
-      getDocs(query(collection(db, 'observations'), mine, where('status', '==', 'Draft'))),
-    );
+    await assertSucceeds(getDoc(doc(db, 'observations/irObs')));
   });
 
-  it('observed teacher CAN still autosave answers and goals on a Draft they cannot read', async () => {
-    // The exact write useWorkProductAnswers / useGoalsResponse make: a merge
-    // setDoc, which Firestore treats as an update needing no read access.
-    await seedDraftObs('blind', { type: 'Standard', workProductAnswers: [] });
+  it('observed teacher CAN read a Standard Draft', async () => {
+    // Loosened in May 2026 so the staff dashboard surfaces pre/obs/post
+    // cards while the observation is still being drafted by the PE.
+    await seedDraftObs('stdObs', { type: 'Standard' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertFails(getDoc(doc(db, 'observations/blind')));
-    await assertSucceeds(
-      setDoc(
-        doc(db, 'observations/blind'),
-        {
-          workProductAnswers: [{ questionId: 'q1', answer: 'Mine', updatedAt: new Date() }],
-          lastModifiedAt: new Date(),
-        },
-        { merge: true },
-      ),
-    );
-    await assertSucceeds(
-      setDoc(
-        doc(db, 'observations/blind'),
-        {
-          goalsResponse: { type: 'doc', content: [{ type: 'paragraph' }] },
-          lastModifiedAt: new Date(),
-        },
-        { merge: true },
-      ),
-    );
-  });
-
-  it('observer, co-observer and Full Access still read the Draft', async () => {
-    await seedDraftObs('shared', { coObserverEmails: [OTHER_PE_EMAIL] });
-    for (const db of [
-      testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore(),
-      testEnv.authenticatedContext('pe2', claims.peerEval(OTHER_PE_EMAIL)).firestore(),
-      testEnv.authenticatedContext('fa', claims.fullAccess()).firestore(),
-    ]) {
-      await assertSucceeds(getDoc(doc(db, 'observations/shared')));
-    }
+    await assertSucceeds(getDoc(doc(db, 'observations/stdObs')));
   });
 
   it('observed teacher CAN save workProductAnswers on a WP Draft', async () => {
