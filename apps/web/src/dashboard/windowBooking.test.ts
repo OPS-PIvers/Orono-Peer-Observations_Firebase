@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STEPS, type ObservationWindow } from '@ops/shared';
+import { DEFAULT_STEPS, type WindowInviteView } from '@ops/shared';
 import { deriveCheckpoints } from './deriveCheckpoints';
 import type { DeriveContext } from './dashboardEvents';
 import {
@@ -12,24 +12,25 @@ const ME = 'teacher@orono.k12.mn.us';
 const NOW = new Date('2026-03-01T12:00:00');
 
 function win(partial: {
-  status: ObservationWindow['status'];
+  status: string;
   bookedSlotId?: string | null;
   endDate?: string;
   windowId?: string;
   email?: string;
-}): ObservationWindow {
+}): WindowInviteView {
   return {
     windowId: partial.windowId ?? 'w1',
+    email: partial.email ?? ME,
     status: partial.status,
     endDate: partial.endDate ?? '2026-03-10',
-    invitees: [
+    entries: [
       {
-        email: partial.email ?? ME,
+        buildingId: 'oms',
         inviteToken: 'tok',
         bookedSlotId: partial.bookedSlotId ?? null,
       },
     ],
-  } as unknown as ObservationWindow;
+  } as unknown as WindowInviteView;
 }
 
 describe('DASHBOARD_WINDOW_STATUSES', () => {

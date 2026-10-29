@@ -656,6 +656,34 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- /windowInviteViews/{windowId}_{email} -----------------------------
+    // One invitee's slice of an observation window
+    // (onObservationWindowInviteViews): the window settings booking needs
+    // plus that invitee's own entries, never anyone else's. Readable by the
+    // invitee and by whoever may read the window itself; written only by
+    // Functions.
+    match /windowInviteViews/{viewId} {
+      // get also succeeds (as not-found) on the reader's own id before the
+      // trigger has written it, so the booking page's listener stays open
+      // and picks the view up once it exists.
+      allow get: if hasSpecialAccess()
+        || canReadAll()
+        || (isFromOronoDomain()
+            && isOwnWindowInviteViewId(viewId)
+            && (resource == null || resource.data.email == request.auth.token.email));
+      allow list: if hasSpecialAccess()
+        || canReadAll()
+        || isCurrentUserEmail(resource.data.email);
+      allow write: if false;
+    }
+
+    // `{windowId}_{email}` where email is the caller's token email.
+    function isOwnWindowInviteViewId(viewId) {
+      let suffix = '_' + request.auth.token.email;
+      return viewId.size() > suffix.size()
+        && viewId[viewId.size() - suffix.size():viewId.size()] == suffix;
+    }
+
     // --- /userCalendarTokens/{email} ----------------------------------------
     // Per-user Google Calendar OAuth credentials. Server-only — refresh
     // tokens never leave the backend. Cloud Functions use the Admin SDK
