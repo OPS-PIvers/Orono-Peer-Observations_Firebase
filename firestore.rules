@@ -737,13 +737,13 @@ service cloud.firestore {
     }
 
     // --- /transcriptionJobs --------------------------------------------------
-    // Read: the requester and observation oversight / View As. Writes are
-    // server-only.
+    // Read: the requester (while active) and observation oversight / View
+    // As. Writes are server-only.
     match /transcriptionJobs/{id} {
       allow get: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow list: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow write: if false;
     }
 

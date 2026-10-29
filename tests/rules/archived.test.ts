@@ -222,6 +222,14 @@ describe('archived observers lose their own observations', () => {
     await assertFails(deleteDoc(doc(db, 'observationWindows/w1')));
   });
 
+  it("can't read their transcription jobs", async () => {
+    await seed('transcriptionJobs/j1', { requestedBy: PE, transcriptPreview: 'secret' });
+    const db = peDb();
+    await assertFails(getDoc(doc(db, 'transcriptionJobs/j1')));
+    await staff(PE, 'peer-evaluator', true);
+    await assertSucceeds(getDoc(doc(db, 'transcriptionJobs/j1')));
+  });
+
   it('the observed teacher still reads the observation', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(TEACHER)).firestore();
     await assertSucceeds(getDoc(doc(db, 'observations/mine')));
