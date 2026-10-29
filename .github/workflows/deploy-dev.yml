@@ -60,11 +60,13 @@ jobs:
         run: pnpm --filter @ops/functions build
 
       - name: Install functions production deps
-        # tsup writes lib/package.json during the build above. Running npm
-        # install here gives the Firebase CLI a lib/node_modules it can
-        # resolve firebase-functions from before uploading to Cloud Build.
+        # tsup writes lib/package.json and lib/package-lock.json (derived
+        # from pnpm-lock.yaml) during the build above. npm ci installs exactly
+        # that lock, giving the Firebase CLI a lib/node_modules it can resolve
+        # firebase-functions from before uploading to Cloud Build, which
+        # installs from the same lockfile.
         working-directory: apps/functions/lib
-        run: npm install --production --ignore-scripts
+        run: npm ci --omit=dev --ignore-scripts
 
       - name: Build web (with prod env)
         run: pnpm --filter @ops/web build
