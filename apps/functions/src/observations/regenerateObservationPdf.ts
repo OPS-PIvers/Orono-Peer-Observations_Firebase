@@ -21,6 +21,7 @@ import {
   DRIVE_SERVICE_ACCOUNT,
   deleteDriveFile,
   ensureObservationFolder,
+  filesInObservationFolder,
   getDriveLinks,
   replaceFileContent,
   shareObservationFolderWithObservers,
@@ -193,6 +194,9 @@ export const regenerateObservationPdf = onCall(
     }
 
     const previousPdfFileId = obs.pdfDriveFileId;
+    // Whether the previous PDF sits in the observation's own folder: only
+    // then is it overwritten or deleted. Anything else is left alone.
+    let previousPdfInFolder = false;
     let folderId: string;
     let pdfFileId: string;
     let webViewLink = '';
@@ -206,15 +210,26 @@ export const regenerateObservationPdf = onCall(
       const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
       // Replace the existing PDF's content in place so the fileId — and the
       // link already emailed to the observed staff member — keeps working.
-      // Falls back to a fresh upload if the old file is gone.
-      const replacedFileId = previousPdfFileId
-        ? await replaceFileContent({
-            fileId: previousPdfFileId,
-            filename,
-            mimeType: 'application/pdf',
-            body: pdfBuffer,
-          })
-        : null;
+      // Falls back to a fresh upload if the old file is gone, or is not in
+      // this observation's folder.
+      previousPdfInFolder = previousPdfFileId
+        ? (
+            await filesInObservationFolder({
+              fileIds: [previousPdfFileId],
+              folderId,
+              parentFolderId,
+            })
+          ).includes(previousPdfFileId)
+        : false;
+      const replacedFileId =
+        previousPdfFileId && previousPdfInFolder
+          ? await replaceFileContent({
+              fileId: previousPdfFileId,
+              filename,
+              mimeType: 'application/pdf',
+              body: pdfBuffer,
+            })
+          : null;
       if (replacedFileId) {
         pdfFileId = replacedFileId;
       } else {
@@ -266,7 +281,7 @@ export const regenerateObservationPdf = onCall(
 
     // Delete the superseded PDF (best-effort) — never roll back the
     // regeneration over a cleanup failure.
-    if (previousPdfFileId && previousPdfFileId !== pdfFileId) {
+    if (previousPdfFileId && previousPdfInFolder && previousPdfFileId !== pdfFileId) {
       try {
         await deleteDriveFile(previousPdfFileId);
       } catch (err) {

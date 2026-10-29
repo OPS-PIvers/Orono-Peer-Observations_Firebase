@@ -20,6 +20,7 @@ import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   ensureObservationFolder,
+  filesInObservationFolder,
   getDriveLinks,
   replaceFileContent,
   shareObservationFolderWithObservers,
@@ -275,8 +276,18 @@ export const finalizeObservation = onCall(
         // content in place so the fileId — and any link already emailed or
         // bookmarked — stays stable instead of a duplicate PDF piling up in
         // the folder. Falls back to a fresh upload if the old file is gone.
+        // Only a PDF in this observation's own folder is overwritten.
         let replacedFileId: string | null = null;
-        if (obs.pdfDriveFileId) {
+        const pdfInFolder = obs.pdfDriveFileId
+          ? (
+              await filesInObservationFolder({
+                fileIds: [obs.pdfDriveFileId],
+                folderId,
+                parentFolderId,
+              })
+            ).includes(obs.pdfDriveFileId)
+          : false;
+        if (obs.pdfDriveFileId && pdfInFolder) {
           replacedFileId = await replaceFileContent({
             fileId: obs.pdfDriveFileId,
             filename,
@@ -336,15 +347,27 @@ export const finalizeObservation = onCall(
       });
 
       // Best-effort, after the status flip: a file left behind only needs
-      // cleanup in Drive, and the observation no longer points at it.
-      const trashResults = await Promise.allSettled(
-        removedAudioIds.map((id) => trashDriveFile(id)),
-      );
+      // cleanup in Drive, and the observation no longer points at it. Only
+      // recordings in this observation's own folder are trashed.
+      let trashIds: string[] = [];
+      try {
+        trashIds = await filesInObservationFolder({
+          fileIds: removedAudioIds,
+          folderId,
+          parentFolderId,
+        });
+      } catch (err) {
+        logger.warn('finalizeObservation: recording folder check failed, nothing trashed', {
+          observationId,
+          err,
+        });
+      }
+      const trashResults = await Promise.allSettled(trashIds.map((id) => trashDriveFile(id)));
       trashResults.forEach((r, i) => {
         if (r.status === 'rejected') {
           logger.warn('finalizeObservation: Drive trash failed, recording still removed', {
             observationId,
-            audioFileId: removedAudioIds[i],
+            audioFileId: trashIds[i],
             err: r.reason as unknown,
           });
         }

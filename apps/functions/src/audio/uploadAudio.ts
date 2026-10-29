@@ -16,6 +16,7 @@ import {
   shareObservationFolderWithObservers,
   startResumableUpload,
   uploadFileToFolder,
+  withdrawObservedFolderAccess,
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
@@ -148,6 +149,7 @@ export const uploadAudio = onRequest(
       observedName: string;
       status: string;
       driveFolderId: string | null;
+      pdfDriveFileId?: string | null;
     };
     // The observers record: owner or co-observer.
     // A demo-edit session (View As + Edit) only records on demo staff.
@@ -210,6 +212,17 @@ export const uploadAudio = onRequest(
           observerEmail: obs.observerEmail,
           coObserverEmails: obs.coObserverEmails,
         });
+        // A reopened observation: take back the observed staff member's
+        // finalize-time folder grant before adding a Draft recording it
+        // would cover. Throws (no upload) if Drive can't confirm that.
+        if (obs.pdfDriveFileId) {
+          await withdrawObservedFolderAccess({
+            folderId: ensured,
+            parentFolderId: PARENT_FOLDER_ID.value(),
+            observedEmail: obs.observedEmail,
+            pdfDriveFileId: obs.pdfDriveFileId,
+          });
+        }
         folderId = ensured;
       }
       if (!folderId) {

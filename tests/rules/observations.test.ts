@@ -554,6 +554,46 @@ describe('observations: update', () => {
     );
   });
 
+  it.each([
+    ['driveFolderId', 'foreign-folder'],
+    ['pdfDriveFileId', 'foreign-file'],
+    ['audioDriveFileIds', ['foreign-file']],
+    ['evidenceLinks', { c1: [{ driveFileId: 'foreign-file', name: 'x' }] }],
+    ['transcripts', { 'foreign-file': 'text' }],
+    ['coObserverEmails', ['someone@orono.k12.mn.us']],
+    ['status', 'Archived'],
+    ['observerEmail', 'fullaccess@orono.k12.mn.us'],
+  ])('Full Access (oversight) CANNOT write the server-owned %s', async (field, value) => {
+    await seedDraftObs('finalObs', {
+      status: 'Finalized',
+      finalizedAt: new Date(),
+      driveFolderId: 'obs-folder',
+      pdfDriveFileId: 'obs-pdf',
+    });
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { [field]: value }));
+    await assertFails(updateDoc(doc(db, 'observations/finalObs'), { [field]: value }));
+  });
+
+  it('Full Access (oversight) can still autosave content and set Draft sharing', async () => {
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        observationData: {},
+        componentNotes: {},
+        scriptDoc: null,
+        observationName: 'Oversight edit',
+        lastModifiedAt: new Date(),
+      }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        draftVisibility: { ratings: true },
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
   it("Admin Console access does NOT grant editing or deleting others' observations", async () => {
     const db = await consolePeDb();
     await assertFails(updateDoc(doc(db, 'observations/obs1'), { observationName: 'Nope' }));

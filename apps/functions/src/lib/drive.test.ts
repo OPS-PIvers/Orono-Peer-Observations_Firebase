@@ -1,16 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ForeignDriveObjectError,
   ResumableUploadGoneError,
+  assertFilesInObservationFolder,
+  assertObservationFolder,
   deleteObservationFolder,
   ensureObservationFolder,
+  filesInObservationFolder,
   isResumableSessionUrl,
   parseResumableResponse,
+  withdrawObservedFolderAccess,
 } from './drive.js';
 
 // A fake Drive client behind the real getDriveClient, so the folder guards are
 // tested together with the getFileParents/deleteDriveFolder calls they make.
 const h = vi.hoisted(() => ({
   files: { get: vi.fn(), list: vi.fn(), delete: vi.fn(), create: vi.fn() },
+  permissions: { list: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
@@ -29,11 +35,12 @@ vi.mock('googleapis', () => ({
         }
       },
     },
-    drive: () => ({ files: h.files }),
+    drive: () => ({ files: h.files, permissions: h.permissions }),
   },
 }));
 
 const PARENT = 'parent-folder';
+const FOLDER = 'application/vnd.google-apps.folder';
 
 const SESSION =
   'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&upload_id=ABC123';
@@ -169,17 +176,40 @@ describe('ensureObservationFolder', () => {
     expect(h.files.create).not.toHaveBeenCalled();
   });
 
-  it('still reuses an existing folder outside the parent (legacy folders)', async () => {
-    h.files.get.mockResolvedValue({ data: { id: 'legacy' } });
+  it('reuses an existing folder that is a direct child of the parent', async () => {
+    h.files.get.mockResolvedValue({ data: { id: 'f1', mimeType: FOLDER, parents: [PARENT] } });
     expect(
       await ensureObservationFolder({
         observationId: 'obs1',
         observedName: 'T',
         parentFolderId: PARENT,
-        existingFolderId: 'legacy',
+        existingFolderId: 'f1',
       }),
-    ).toBe('legacy');
+    ).toBe('f1');
     expect(h.files.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a folder elsewhere', { mimeType: FOLDER, parents: ['somewhere-else'] }],
+    ['a file in the parent', { mimeType: 'application/pdf', parents: [PARENT] }],
+    ['an item with no parents', { mimeType: FOLDER }],
+  ])('never adopts %s: makes a fresh folder under the parent instead', async (_label, data) => {
+    h.files.get.mockResolvedValue({ data: { id: 'foreign', ...data } });
+    h.files.create.mockResolvedValue({ data: { id: 'fresh' } });
+    expect(
+      await ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'T',
+        parentFolderId: PARENT,
+        existingFolderId: 'foreign',
+      }),
+    ).toBe('fresh');
+    expect(h.files.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: expect.objectContaining({ parents: [PARENT] }) as unknown,
+      }),
+    );
+    expect(h.logger.error).toHaveBeenCalled();
   });
 
   it.each([
@@ -223,5 +253,183 @@ describe('ensureObservationFolder', () => {
       }),
     ).rejects.toThrow('Rate limit');
     expect(h.files.create).not.toHaveBeenCalled();
+  });
+});
+
+/** files.get answers by id: `{ id: { mimeType, parents } }`. */
+function driveTree(tree: Record<string, { mimeType?: string; parents?: string[] }>) {
+  h.files.get.mockImplementation(({ fileId }: { fileId: string }) => {
+    const item = tree[fileId];
+    if (!item) return Promise.reject(Object.assign(new Error('not found'), { code: 404 }));
+    return Promise.resolve({ data: item });
+  });
+}
+
+const TREE = {
+  obsFolder: { mimeType: FOLDER, parents: [PARENT] },
+  otherFolder: { mimeType: FOLDER, parents: ['elsewhere'] },
+  audio1: { mimeType: 'audio/webm', parents: ['obsFolder'] },
+  pdf1: { mimeType: 'application/pdf', parents: ['obsFolder'] },
+  foreignFile: { mimeType: 'audio/webm', parents: ['otherFolder'] },
+  siblingFile: { mimeType: 'application/pdf', parents: ['siblingObsFolder'] },
+};
+
+describe('assertObservationFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    driveTree(TREE);
+  });
+
+  it('accepts a folder directly under the parent', async () => {
+    await expect(
+      assertObservationFolder({ folderId: 'obsFolder', parentFolderId: PARENT }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('refuses the parent itself, an unset parent, other folders and files', async () => {
+    for (const [folderId, parentFolderId] of [
+      [PARENT, PARENT],
+      ['obsFolder', ''],
+      ['otherFolder', PARENT],
+      ['audio1', PARENT],
+    ] as const) {
+      await expect(assertObservationFolder({ folderId, parentFolderId })).rejects.toBeInstanceOf(
+        ForeignDriveObjectError,
+      );
+    }
+  });
+});
+
+describe('assertFilesInObservationFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    driveTree(TREE);
+  });
+
+  it('accepts files in the observation folder', async () => {
+    await expect(
+      assertFilesInObservationFolder({
+        fileIds: ['audio1', 'pdf1'],
+        folderId: 'obsFolder',
+        parentFolderId: PARENT,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['a file in a folder outside the tree', ['foreignFile'], 'obsFolder'],
+    ["another observation's file", ['siblingFile'], 'obsFolder'],
+    ['the folder itself', ['obsFolder'], 'obsFolder'],
+    ['a file named by a foreign folder', ['foreignFile'], 'otherFolder'],
+    ['a file on an observation with no folder', ['audio1'], null],
+  ])('refuses %s', async (_label, fileIds, folderId) => {
+    await expect(
+      assertFilesInObservationFolder({ fileIds, folderId, parentFolderId: PARENT }),
+    ).rejects.toBeInstanceOf(ForeignDriveObjectError);
+  });
+});
+
+describe('filesInObservationFolder', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    driveTree(TREE);
+  });
+
+  it('keeps only files in the folder, dropping foreign and missing ids', async () => {
+    expect(
+      await filesInObservationFolder({
+        fileIds: ['audio1', 'foreignFile', 'gone', 'pdf1'],
+        folderId: 'obsFolder',
+        parentFolderId: PARENT,
+      }),
+    ).toEqual(['audio1', 'pdf1']);
+  });
+
+  it('keeps nothing when the folder itself is refused', async () => {
+    expect(
+      await filesInObservationFolder({
+        fileIds: ['foreignFile'],
+        folderId: 'otherFolder',
+        parentFolderId: PARENT,
+      }),
+    ).toEqual([]);
+    expect(
+      await filesInObservationFolder({ fileIds: ['audio1'], folderId: null, parentFolderId: PARENT }),
+    ).toEqual([]);
+  });
+
+  it('propagates other Drive errors', async () => {
+    h.files.get.mockRejectedValue(Object.assign(new Error('forbidden'), { code: 403 }));
+    await expect(
+      filesInObservationFolder({ fileIds: ['audio1'], folderId: 'obsFolder', parentFolderId: PARENT }),
+    ).rejects.toThrow('forbidden');
+  });
+});
+
+describe('withdrawObservedFolderAccess', () => {
+  const TEACHER = 'teacher@orono.k12.mn.us';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    driveTree(TREE);
+    h.permissions.list.mockImplementation(({ fileId }: { fileId: string }) =>
+      Promise.resolve({
+        data: {
+          permissions:
+            fileId === 'obsFolder'
+              ? [
+                  { id: 'perm-teacher', emailAddress: 'Teacher@orono.k12.mn.us', role: 'reader' },
+                  { id: 'perm-owner', emailAddress: 'observations@orono.k12.mn.us', role: 'owner' },
+                ]
+              : [],
+        },
+      }),
+    );
+    h.permissions.create.mockResolvedValue({});
+    h.permissions.delete.mockResolvedValue({});
+  });
+
+  it('shares the PDF with the teacher, then removes their folder Reader', async () => {
+    await withdrawObservedFolderAccess({
+      folderId: 'obsFolder',
+      parentFolderId: PARENT,
+      observedEmail: TEACHER,
+      pdfDriveFileId: 'pdf1',
+    });
+    expect(h.permissions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileId: 'pdf1',
+        requestBody: { type: 'user', role: 'reader', emailAddress: TEACHER },
+      }),
+    );
+    expect(h.permissions.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ fileId: 'obsFolder', permissionId: 'perm-teacher' }),
+    );
+    const createOrder = h.permissions.create.mock.invocationCallOrder[0] ?? 0;
+    const deleteOrder = h.permissions.delete.mock.invocationCallOrder[0] ?? 0;
+    expect(createOrder).toBeLessThan(deleteOrder);
+  });
+
+  it('does not share a PDF that sits outside the observation folder', async () => {
+    await withdrawObservedFolderAccess({
+      folderId: 'obsFolder',
+      parentFolderId: PARENT,
+      observedEmail: TEACHER,
+      pdfDriveFileId: 'foreignFile',
+    });
+    expect(h.permissions.create).not.toHaveBeenCalled();
+    expect(h.permissions.delete).toHaveBeenCalledOnce();
+  });
+
+  it('throws when Drive refuses the revoke, so an upload can stop', async () => {
+    h.permissions.delete.mockRejectedValue(Object.assign(new Error('backend'), { code: 500 }));
+    await expect(
+      withdrawObservedFolderAccess({
+        folderId: 'obsFolder',
+        parentFolderId: PARENT,
+        observedEmail: TEACHER,
+        pdfDriveFileId: null,
+      }),
+    ).rejects.toThrow('backend');
   });
 });

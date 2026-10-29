@@ -14,6 +14,7 @@ import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  assertObservationFolder,
   deleteObservationFolder,
   removeReaderFromFile,
   shareObservationFolderWithObservers,
@@ -220,6 +221,19 @@ async function syncCoObserverFolderAccess(
   // with every observer, co-observers included.
   if (typeof folderId !== 'string' || !folderId) return;
   const { added, removed } = coObserverChanges(before, after);
+  if (added.length === 0 && removed.length === 0) return;
+  // Share or unshare only the observation's own folder, never whatever
+  // driveFolderId happens to name.
+  try {
+    await assertObservationFolder({ folderId, parentFolderId: PARENT_FOLDER_ID.value() });
+  } catch (err) {
+    logger.error('onObservationWritten: co-observer folder sync refused', {
+      observationId,
+      folderId,
+      err,
+    });
+    return;
+  }
   if (added.length > 0) {
     await shareObservationFolderWithObservers({
       folderId,

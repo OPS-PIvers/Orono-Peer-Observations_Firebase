@@ -13,6 +13,7 @@ import {
   getDriveClient,
   shareObservationFolderWithObservers,
   uploadFileToFolder,
+  withdrawObservedFolderAccess,
 } from '../lib/drive.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
 
@@ -136,7 +137,10 @@ export const uploadEvidenceFile = onCall(
       const winningFolderId = await db.runTransaction(async (tx) => {
         const snap = await tx.get(obsRef);
         const current = (snap.data() as Observation | undefined)?.driveFolderId ?? null;
-        if (current) return current;
+        // Another call already repointed the observation: use its folder.
+        // A folder ensureObservationFolder just replaced (trashed, or not
+        // under the parent) is overwritten, never reused.
+        if (current && current !== (obs.driveFolderId ?? null)) return current;
         tx.update(obsRef, {
           driveFolderId: folderId,
           lastModifiedAt: FieldValue.serverTimestamp(),
@@ -163,6 +167,18 @@ export const uploadEvidenceFile = onCall(
       observerEmail: obs.observerEmail,
       coObserverEmails: obs.coObserverEmails,
     });
+
+    // A reopened observation: make sure the observed staff member's
+    // finalize-time folder grant is gone before adding a Draft file it would
+    // cover. Throws (no upload) if Drive can't confirm that.
+    if (obs.pdfDriveFileId) {
+      await withdrawObservedFolderAccess({
+        folderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observedEmail: obs.observedEmail,
+        pdfDriveFileId: obs.pdfDriveFileId,
+      });
+    }
 
     // Upload file to Drive
     const buffer = Buffer.from(base64Data, 'base64');

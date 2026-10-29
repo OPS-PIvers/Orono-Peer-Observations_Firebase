@@ -90,9 +90,124 @@ export async function getDriveClient(): Promise<drive_v3.Drive> {
   return driveClient;
 }
 
+const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+
+/**
+ * Thrown when a Drive id stored on an observation does not name that
+ * observation's own folder (a direct child of DRIVE_PARENT_FOLDER_ID) or a
+ * file inside it. The Drive token has the full `drive` scope, so every id
+ * read from an observation is checked before the app shares, uploads into,
+ * downloads, overwrites or trashes what it names.
+ */
+export class ForeignDriveObjectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ForeignDriveObjectError';
+  }
+}
+
+/**
+ * Confirm `folderId` is an observation folder: a folder whose parent is the
+ * observations parent folder, and not the parent itself. Throws
+ * ForeignDriveObjectError otherwise; Drive errors (404 included) propagate.
+ */
+export async function assertObservationFolder(args: {
+  folderId: string;
+  parentFolderId: string;
+}): Promise<void> {
+  const { folderId, parentFolderId } = args;
+  if (!parentFolderId || !folderId || folderId === parentFolderId) {
+    throw new ForeignDriveObjectError('Not an observation folder');
+  }
+  const drive = await getDriveClient();
+  const meta = await drive.files.get({
+    fileId: folderId,
+    fields: 'mimeType, parents',
+    supportsAllDrives: true,
+  });
+  if (meta.data.mimeType !== FOLDER_MIME_TYPE || !meta.data.parents?.includes(parentFolderId)) {
+    logger.error('assertObservationFolder: folder is not under the parent folder', {
+      folderId,
+      parentFolderId,
+      parents: meta.data.parents,
+    });
+    throw new ForeignDriveObjectError('Not an observation folder');
+  }
+}
+
+/** Throws unless `fileId` is a file directly inside `folderId`. */
+async function assertFileInFolder(fileId: string, folderId: string): Promise<void> {
+  if (!fileId || fileId === folderId) {
+    throw new ForeignDriveObjectError('Not a file in the observation folder');
+  }
+  const parents = await getFileParents(fileId);
+  if (!parents.includes(folderId)) {
+    logger.error('assertFileInFolder: file is not in the observation folder', {
+      fileId,
+      folderId,
+      parents,
+    });
+    throw new ForeignDriveObjectError('Not a file in the observation folder');
+  }
+}
+
+/**
+ * Confirm every id in `fileIds` sits directly in the observation's folder,
+ * and that the folder is an observation folder (assertObservationFolder).
+ * An observation without a folder has no files the app may act on.
+ */
+export async function assertFilesInObservationFolder(args: {
+  fileIds: readonly string[];
+  folderId: string | null | undefined;
+  parentFolderId: string;
+}): Promise<void> {
+  const { fileIds, folderId, parentFolderId } = args;
+  if (!folderId) throw new ForeignDriveObjectError('Observation has no Drive folder');
+  await assertObservationFolder({ folderId, parentFolderId });
+  for (const fileId of fileIds) await assertFileInFolder(fileId, folderId);
+}
+
+/**
+ * The subset of `fileIds` that sit in the observation's folder, for
+ * best-effort cleanup that should skip, not fail on, anything else. A
+ * refused or missing folder keeps nothing. Logs what it drops.
+ */
+export async function filesInObservationFolder(args: {
+  fileIds: readonly string[];
+  folderId: string | null | undefined;
+  parentFolderId: string;
+}): Promise<string[]> {
+  const { fileIds, folderId, parentFolderId } = args;
+  if (fileIds.length === 0) return [];
+  try {
+    if (!folderId) throw new ForeignDriveObjectError('Observation has no Drive folder');
+    await assertObservationFolder({ folderId, parentFolderId });
+  } catch (err) {
+    if (!(err instanceof ForeignDriveObjectError) && !isDriveNotFound(err)) throw err;
+    logger.error('filesInObservationFolder: folder refused; skipping every file', {
+      folderId,
+      fileIds,
+    });
+    return [];
+  }
+  const kept: string[] = [];
+  for (const fileId of fileIds) {
+    try {
+      await assertFileInFolder(fileId, folderId);
+      kept.push(fileId);
+    } catch (err) {
+      if (!(err instanceof ForeignDriveObjectError) && !isDriveNotFound(err)) throw err;
+    }
+  }
+  return kept;
+}
+
 /**
  * Get or create the Drive folder for this observation. Returns the folder
- * ID. If `existingFolderId` is supplied and still exists, reuses it.
+ * ID. If `existingFolderId` is supplied and still exists, reuses it — but
+ * only when it is a folder directly under `parentFolderId`. Anything else is
+ * never adopted: a new folder is created and returned instead, and callers
+ * repoint `driveFolderId` at it.
  */
 export async function ensureObservationFolder(args: {
   observationId: string;
@@ -108,18 +223,34 @@ export async function ensureObservationFolder(args: {
       observationId: args.observationId,
       folderId: args.existingFolderId,
     });
-    throw new Error('Observation folder id is the Drive parent folder');
+    throw new ForeignDriveObjectError('Observation folder id is the Drive parent folder');
   }
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
       const existing = await drive.files.get({
         fileId: args.existingFolderId,
-        fields: 'id, trashed',
+        fields: 'id, trashed, mimeType, parents',
         supportsAllDrives: true,
       });
-      if (!existing.data.trashed) return args.existingFolderId;
-      // Trashed: treat as gone and recreate below.
+      if (
+        !existing.data.trashed &&
+        existing.data.mimeType === FOLDER_MIME_TYPE &&
+        existing.data.parents?.includes(args.parentFolderId)
+      ) {
+        return args.existingFolderId;
+      }
+      // Trashed: treat as gone and recreate below. Not a folder directly
+      // under the parent (a folder imported from the old Apps Script app, or
+      // an id that names something else): leave it untouched and give the
+      // observation a fresh folder, so nothing is shared or uploaded there.
+      if (!existing.data.trashed) {
+        logger.error('ensureObservationFolder: existing folder is not under the parent folder', {
+          observationId: args.observationId,
+          folderId: args.existingFolderId,
+          parents: existing.data.parents,
+        });
+      }
     } catch (err) {
       // Only a folder that is really gone gets replaced. Any other error (a
       // 429 or 5xx during a burst of end-of-period uploads, an expired token)
@@ -132,7 +263,7 @@ export async function ensureObservationFolder(args: {
   const created = await drive.files.create({
     requestBody: {
       name: `${args.observedName} — ${args.observationId}`,
-      mimeType: 'application/vnd.google-apps.folder',
+      mimeType: FOLDER_MIME_TYPE,
       parents: [args.parentFolderId],
     },
     fields: 'id',
@@ -489,6 +620,44 @@ export async function removeReaderFromFile(args: { fileId: string; email: string
     permissionId: match.id,
     supportsAllDrives: true,
   });
+}
+
+/**
+ * Take back the observed staff member's Reader on a reopened observation's
+ * folder. Finalize shares the whole folder with them, and files added while
+ * it is a Draft again would inherit that grant, so recordings and evidence
+ * the app keeps from them until re-finalize would open in Drive. The PDF they
+ * were emailed gets its own Reader grant first so that link keeps working.
+ * Re-finalizing shares the folder again.
+ *
+ * `folderId` must already be checked as the observation's folder; the PDF is
+ * only shared when it sits in that folder. Throws on Drive errors so a caller
+ * about to upload can stop rather than add a file the teacher could open.
+ */
+export async function withdrawObservedFolderAccess(args: {
+  folderId: string;
+  parentFolderId: string;
+  observedEmail: string;
+  pdfDriveFileId: string | null | undefined;
+}): Promise<void> {
+  const { folderId, parentFolderId, observedEmail, pdfDriveFileId } = args;
+  if (!observedEmail) return;
+  if (pdfDriveFileId) {
+    const [pdf] = await filesInObservationFolder({
+      fileIds: [pdfDriveFileId],
+      folderId,
+      parentFolderId,
+    });
+    if (pdf) {
+      await shareWithUser({
+        fileId: pdf,
+        email: observedEmail,
+        role: 'reader',
+        sendNotificationEmail: false,
+      });
+    }
+  }
+  await removeReaderFromFile({ fileId: folderId, email: observedEmail });
 }
 
 /**

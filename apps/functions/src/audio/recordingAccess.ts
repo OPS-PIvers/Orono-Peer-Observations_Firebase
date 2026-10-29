@@ -17,6 +17,7 @@ export interface RecordingObservation {
   coObserverEmails?: string[];
   status: string;
   audioDriveFileIds?: string[];
+  driveFolderId?: string | null;
   audioRecordings?: Record<string, AudioRecordingMeta>;
 }
 

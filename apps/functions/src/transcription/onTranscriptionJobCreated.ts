@@ -1,11 +1,13 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
+import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, DEFAULT_AI_MODEL, type AiModel } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  assertFilesInObservationFolder,
   downloadFile,
   getDriveClient,
 } from '../lib/drive.js';
@@ -20,6 +22,8 @@ import {
 } from './transcriptTurns.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * The model transcription is routed to on the AI Models admin page, read at
@@ -75,6 +79,13 @@ export const onTranscriptionJobCreated = onDocumentCreated(
     let audioUri: string | null = null;
 
     try {
+      // Only a recording in the observation's own folder is sent to the model.
+      const obsSnap = await obsRef.get();
+      await assertFilesInObservationFolder({
+        fileIds: [job.audioDriveFileId],
+        folderId: obsSnap.get('driveFolderId') as string | null | undefined,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+      });
       const drive = await getDriveClient();
       const meta = await drive.files.get({
         fileId: job.audioDriveFileId,

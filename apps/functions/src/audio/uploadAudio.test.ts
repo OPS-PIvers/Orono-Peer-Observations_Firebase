@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
     startResumableUpload: vi.fn(),
     putResumableChunk: vi.fn(),
     getFileParents: vi.fn(),
+    withdrawObservedFolderAccess: vi.fn(),
   },
   checkRateLimit: vi.fn(),
 }));
@@ -57,6 +58,7 @@ vi.mock('../lib/drive.js', async (importOriginal) => ({
   startResumableUpload: h.drive.startResumableUpload,
   putResumableChunk: h.drive.putResumableChunk,
   getFileParents: h.drive.getFileParents,
+  withdrawObservedFolderAccess: h.drive.withdrawObservedFolderAccess,
 }));
 vi.mock('../lib/rateLimit.js', () => ({
   RATE_LIMIT_KEYS: { audioUpload: 'audioUpload' },
@@ -207,5 +209,40 @@ describe('uploadAudio in pieces', () => {
     expect(h.drive.uploadFileToFolder).toHaveBeenCalledWith(
       expect.objectContaining({ folderId: 'folder1' }),
     );
+  });
+});
+
+describe('uploadAudio on a reopened observation', () => {
+  beforeEach(() => {
+    h.observation = { ...h.observation, driveFolderId: 'folder1', pdfDriveFileId: 'pdf1' };
+    h.drive.uploadFileToFolder.mockResolvedValue({ fileId: 'f3', fileName: 'c.webm' });
+  });
+
+  it("takes back the teacher's folder grant before uploading", async () => {
+    h.drive.withdrawObservedFolderAccess.mockResolvedValue(undefined);
+    const res = await call({}, Buffer.alloc(10));
+    expect(res.body).toMatchObject({ audioFileId: 'f3' });
+    expect(h.drive.withdrawObservedFolderAccess).toHaveBeenCalledWith({
+      folderId: 'folder1',
+      parentFolderId: 'parent-folder',
+      observedEmail: 't@x.org',
+      pdfDriveFileId: 'pdf1',
+    });
+    const withdrawOrder = h.drive.withdrawObservedFolderAccess.mock.invocationCallOrder[0] ?? 0;
+    const uploadOrder = h.drive.uploadFileToFolder.mock.invocationCallOrder[0] ?? 0;
+    expect(withdrawOrder).toBeLessThan(uploadOrder);
+  });
+
+  it('uploads nothing when the grant cannot be taken back', async () => {
+    h.drive.withdrawObservedFolderAccess.mockRejectedValue(new Error('drive down'));
+    const res = await call({}, Buffer.alloc(10));
+    expect(res.status).toBe(500);
+    expect(h.drive.uploadFileToFolder).not.toHaveBeenCalled();
+  });
+
+  it('leaves a never-finalized Draft alone', async () => {
+    h.observation = { ...h.observation, pdfDriveFileId: null };
+    await call({}, Buffer.alloc(10));
+    expect(h.drive.withdrawObservedFolderAccess).not.toHaveBeenCalled();
   });
 });
