@@ -22,10 +22,6 @@ permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: deploy-dev
-  cancel-in-progress: true
-
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.30.2'
@@ -37,6 +33,12 @@ jobs:
     name: Hosting preview channel (dev-paul)
     runs-on: ubuntu-latest
     environment: dev
+    # Job-level, not workflow-level: a workflow-level group is joined before
+    # the `if` runs, so a pull_request CI run on dev-paul would cancel the
+    # real push deploy and then skip. Skipped jobs never join a job group.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: true
     if: >-
       ${{ github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
