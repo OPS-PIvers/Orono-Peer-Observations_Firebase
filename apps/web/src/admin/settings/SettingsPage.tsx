@@ -273,6 +273,7 @@ export function SettingsPage() {
                       transcriptionRequestsPerDay: 50,
                       pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
                     }),
                     observationSavesPerMinute: Number(e.target.value),
                   },
@@ -295,6 +296,7 @@ export function SettingsPage() {
                       transcriptionRequestsPerDay: 50,
                       pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
                     }),
                     audioUploadsPerHour: Number(e.target.value),
                   },
@@ -317,6 +319,7 @@ export function SettingsPage() {
                       transcriptionRequestsPerDay: 50,
                       pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
                     }),
                     transcriptionRequestsPerDay: Number(e.target.value),
                   },
@@ -339,6 +342,7 @@ export function SettingsPage() {
                       transcriptionRequestsPerDay: 50,
                       pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
                     }),
                     pdfRegenerationsPerHour: Number(e.target.value),
                   },
@@ -364,8 +368,35 @@ export function SettingsPage() {
                       transcriptionRequestsPerDay: 50,
                       pdfRegenerationsPerHour: 10,
                       manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
                     }),
                     manualEmailBroadcastsPerHour: Number(e.target.value),
+                  },
+                }))
+              }
+            />
+          </Field>
+          <Field
+            label="Manual emails per hour (per user)"
+            help="Caps how many single emails any one Peer Evaluator or admin can send from a staff member's page or the Email Templates test send."
+          >
+            <Input
+              type="number"
+              min={1}
+              value={form.rateLimits?.manualEmailsPerHour ?? 30}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  rateLimits: {
+                    ...(f.rateLimits ?? {
+                      observationSavesPerMinute: 60,
+                      audioUploadsPerHour: 20,
+                      transcriptionRequestsPerDay: 50,
+                      pdfRegenerationsPerHour: 10,
+                      manualEmailBroadcastsPerHour: 5,
+                      manualEmailsPerHour: 30,
+                    }),
+                    manualEmailsPerHour: Number(e.target.value),
                   },
                 }))
               }
