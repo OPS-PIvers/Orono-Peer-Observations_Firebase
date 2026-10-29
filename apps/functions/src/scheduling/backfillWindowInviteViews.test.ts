@@ -121,4 +121,14 @@ describe('runWindowInviteViewBackfill', () => {
     expect(state.synced.sort()).toEqual(['closed-1', 'deleted-1', 'open-1']);
     expect(result.windows).toBe(3);
   });
+
+  it('keeps re-syncing the other windows when one fails', async () => {
+    state.failOn = 'open-03';
+    const ids = Array.from({ length: 25 }, (_, i) => `open-${String(i).padStart(2, '0')}`);
+    const { db } = fakeDb(ids, true);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced).toHaveLength(24);
+    expect(state.synced).not.toContain('open-03');
+    expect(result).toEqual({ windows: 25, viewsWritten: 48, viewsDeleted: 0 });
+  });
 });

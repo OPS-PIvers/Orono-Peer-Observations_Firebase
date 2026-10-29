@@ -51,16 +51,18 @@ export const backfillWindowInviteViews = onSchedule(
   },
 );
 
-/** Syncs every window id in `ids`, CONCURRENCY at a time, into `result`. */
+/**
+ * Syncs every window id in `ids`, CONCURRENCY at a time, into `result`.
+ * `sync` decides what a failure does (the backfill rethrows, the hourly
+ * re-sync logs and moves on).
+ */
 async function syncAll(
-  db: Firestore,
   ids: string[],
   result: WindowInviteViewBackfillResult,
+  sync: (id: string) => Promise<{ written: number; deleted: number }>,
 ): Promise<void> {
   for (let i = 0; i < ids.length; i += CONCURRENCY) {
-    const synced = await Promise.all(
-      ids.slice(i, i + CONCURRENCY).map((id) => syncWindowInviteViews(db, id)),
-    );
+    const synced = await Promise.all(ids.slice(i, i + CONCURRENCY).map(sync));
     for (const { written, deleted } of synced) {
       result.viewsWritten += written;
       result.viewsDeleted += deleted;
@@ -88,7 +90,7 @@ export async function runWindowInviteViewBackfill(
     if (snap.empty) break;
 
     const ids = snap.docs.map((d) => d.id);
-    await syncAll(db, ids, result);
+    await syncAll(ids, result, (id) => syncWindowInviteViews(db, id));
     lastId = ids[ids.length - 1] ?? null;
     if (snap.size < PAGE_SIZE) break;
   }
@@ -124,9 +126,17 @@ export async function resyncOpenWindows(db: Firestore): Promise<WindowInviteView
     const windowId: unknown = d.get('windowId');
     if (typeof windowId === 'string') ids.add(windowId);
   }
-  await syncAll(db, [...ids], result);
-  if (result.viewsWritten > 0 || result.viewsDeleted > 0) {
-    logger.warn('backfillWindowInviteViews: repaired stale views', { ...result });
+  // One window that keeps failing must not stop the rest being repaired.
+  const failed: string[] = [];
+  await syncAll([...ids], result, (id) =>
+    syncWindowInviteViews(db, id).catch((err: unknown) => {
+      failed.push(id);
+      logger.error('backfillWindowInviteViews: re-sync failed', { windowId: id, err });
+      return { written: 0, deleted: 0 };
+    }),
+  );
+  if (result.viewsWritten > 0 || result.viewsDeleted > 0 || failed.length > 0) {
+    logger.warn('backfillWindowInviteViews: repaired stale views', { ...result, failed });
   }
   return result;
 }
