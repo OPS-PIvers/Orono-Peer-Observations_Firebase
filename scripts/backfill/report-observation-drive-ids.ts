@@ -10,16 +10,17 @@
  *
  * Writes nothing to Firestore or Drive.
  *
- * Auth (same as backfill-observer-folder-access):
+ * Auth:
  *   - Firestore: application-default credentials
- *   - Drive: `gcloud auth print-access-token`, a user that can see the folders
- *     (logged in with `gcloud auth login --enable-gdrive-access`).
+ *   - Drive: the observations@ uploader's refresh token from Secret Manager
+ *     (`gcloud secrets versions access`, as drive:migrate does), so the
+ *     report sees what the Functions see.
  *
  * Usage:
  *   pnpm report:drive-ids:prod
  */
 
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config as loadDotenv } from 'dotenv';
@@ -31,35 +32,53 @@ loadDotenv();
 
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
-function parentFolderId(): string {
-  const line = readFileSync(resolve('apps/functions/.env.peer-evaluator-rubric'), 'utf8')
+const PROJECT = 'peer-evaluator-rubric';
+
+function envValue(key: string): string {
+  const line = readFileSync(resolve(`apps/functions/.env.${PROJECT}`), 'utf8')
     .split(/\r?\n/)
-    .find((l) => l.startsWith('DRIVE_PARENT_FOLDER_ID='));
-  const value = line?.slice('DRIVE_PARENT_FOLDER_ID='.length).trim();
-  if (!value) throw new Error('DRIVE_PARENT_FOLDER_ID is not set');
+    .find((l) => l.startsWith(`${key}=`));
+  const value = line?.slice(key.length + 1).trim();
+  if (!value) throw new Error(`${key} is not set in apps/functions/.env.${PROJECT}`);
   return value;
 }
 
+function secret(name: string): string {
+  const r = spawnSync(
+    'gcloud',
+    ['secrets', 'versions', 'access', 'latest', `--secret=${name}`, `--project=${PROJECT}`],
+    { encoding: 'utf8', shell: process.platform === 'win32' },
+  );
+  if (r.status !== 0) throw new Error(`gcloud secrets access ${name} failed: ${r.stderr}`);
+  return r.stdout.trim();
+}
+
+/** Drive as the observations@ uploader, the account the Functions use, so
+ *  the report sees exactly what they see. Reads only. */
 function driveClient(): drive_v3.Drive {
-  const token = execSync('gcloud auth print-access-token', { encoding: 'utf-8' }).trim();
-  const auth = new google.auth.OAuth2();
-  auth.setCredentials({ access_token: token });
+  const auth = new google.auth.OAuth2(
+    envValue('GOOGLE_OAUTH_CLIENT_ID'),
+    secret('GOOGLE_OAUTH_CLIENT_SECRET'),
+  );
+  auth.setCredentials({ refresh_token: secret('DRIVE_OAUTH_REFRESH_TOKEN') });
   return google.drive({ version: 'v3', auth });
 }
 
-type Meta = { parents: string[]; mimeType: string; trashed: boolean } | 'missing' | 'error';
+type Meta =
+  { parents: string[]; mimeType: string; trashed: boolean; name: string } | 'missing' | 'error';
 
 async function meta(drive: drive_v3.Drive, fileId: string): Promise<Meta> {
   try {
     const r = await drive.files.get({
       fileId,
-      fields: 'parents, mimeType, trashed',
+      fields: 'parents, mimeType, trashed, name',
       supportsAllDrives: true,
     });
     return {
       parents: r.data.parents ?? [],
       mimeType: r.data.mimeType ?? '',
       trashed: r.data.trashed ?? false,
+      name: r.data.name ?? '',
     };
   } catch (err) {
     const code = Number((err as { code?: unknown }).code);
@@ -79,7 +98,7 @@ function evidenceIds(raw: unknown): string[] {
 }
 
 async function main(): Promise<void> {
-  const parent = parentFolderId();
+  const parent = envValue('DRIVE_PARENT_FOLDER_ID');
   const db = initFirestore('prod');
   const drive = driveClient();
   const snap = await db.collection(COLLECTIONS.observations).get();
@@ -125,7 +144,12 @@ async function main(): Promise<void> {
         m.mimeType !== FOLDER_MIME
           ? `(not a folder: ${m.mimeType})`
           : m.parents.join(',') || '(no parents)';
-      byLegacyParent.set(key, [...(byLegacyParent.get(key) ?? []), summary]);
+      // The Functions still accept a folder named for this observation.
+      const named = m.mimeType === FOLDER_MIME && m.name.endsWith(` — ${doc.id}`);
+      byLegacyParent.set(key, [
+        ...(byLegacyParent.get(key) ?? []),
+        `${summary} name-ok:${named ? 'y' : 'N (would get a fresh folder)'}`,
+      ]);
       continue;
     }
     counts.ok++;
