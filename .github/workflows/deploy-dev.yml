@@ -19,7 +19,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-dev
+  # Runs from untrusted CI runs are skipped below; keep them out of the
+  # shared group so they cannot cancel or replace a real deploy.
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)) && 'deploy-dev' || format('deploy-dev-skip-{0}', github.run_id) }}
   cancel-in-progress: true
 
 env:
