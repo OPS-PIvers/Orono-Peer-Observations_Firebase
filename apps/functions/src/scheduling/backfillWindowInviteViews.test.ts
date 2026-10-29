@@ -22,7 +22,7 @@ vi.mock('./onObservationWindowInviteViews.js', () => ({
   },
 }));
 
-const { runWindowInviteViewBackfill, WINDOW_INVITE_VIEWS_BACKFILL_MARKER } =
+const { resyncOpenWindows, runWindowInviteViewBackfill, WINDOW_INVITE_VIEWS_BACKFILL_MARKER } =
   await import('./backfillWindowInviteViews.js');
 
 /** In-memory Firestore with just the calls the backfill makes. */
@@ -52,6 +52,18 @@ function fakeDb(windowIds: string[], markerExists = false) {
     },
     collection: () => ({
       orderBy: () => ({ select: () => ({ limit: (n: number) => page(null, n) }) }),
+      // Open windows: ids starting "open-".
+      where: (field: string, op: string, statuses: string[]) => {
+        expect([field, op, statuses]).toEqual(['status', 'in', ['open', 'partially-booked']]);
+        return {
+          select: () => ({
+            get: () =>
+              Promise.resolve({
+                docs: ids.filter((id) => id.startsWith('open-')).map((id) => ({ id })),
+              }),
+          }),
+        };
+      },
     }),
   };
   return { db: db as never, marker: () => marker };
@@ -86,5 +98,12 @@ describe('runWindowInviteViewBackfill', () => {
     const { db, marker } = fakeDb(['w1', 'w2', 'w3']);
     await expect(runWindowInviteViewBackfill(db)).rejects.toThrow('boom');
     expect(marker()).toBeNull();
+  });
+
+  it('after the marker, re-syncs only open windows', async () => {
+    const { db } = fakeDb(['open-1', 'open-2', 'closed-1'], true);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced.sort()).toEqual(['open-1', 'open-2']);
+    expect(result).toEqual({ windows: 2, viewsWritten: 4, viewsDeleted: 0 });
   });
 });
