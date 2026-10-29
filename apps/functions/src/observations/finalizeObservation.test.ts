@@ -239,6 +239,7 @@ function happyConfig(obsOver: Record<string, unknown> = {}): DbConfig {
         domains: [{ id: 'd1', components: [{ id: 'c1' }] }],
       },
       [`${COLLECTIONS.appSettings}/app`]: {},
+      [`${COLLECTIONS.staff}/${OBSERVED}`]: { email: OBSERVED, isActive: true },
     },
   };
 }
@@ -298,6 +299,19 @@ describe('finalizeObservation — input & auth guards', () => {
     const { db } = buildDb({ ...happyConfig(), observation: null });
     h.db = db;
     await expect(run(observerRequest())).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it.each([
+    ['an outside address', 'someone@gmail.com'],
+    ['a case variant of a staff address', 'Observed@orono.k12.mn.us'],
+    ['a district address with no staff doc', 'ghost@orono.k12.mn.us'],
+  ])('refuses %s as observedEmail before any Drive share or email', async (_label, email) => {
+    const { db, rec } = buildDb(happyConfig({ observedEmail: email }));
+    h.db = db;
+    await expect(run(observerRequest())).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect(rec.txUpdates).toHaveLength(0);
+    expect(h.drive.shareWithUser).not.toHaveBeenCalled();
+    expect(h.sendTemplatedEmail).not.toHaveBeenCalled();
   });
 
   it('denies a non-observer, non-admin caller', async () => {

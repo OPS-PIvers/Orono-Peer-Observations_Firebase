@@ -20,6 +20,7 @@ import {
   shareObservationFolderWithObservers,
 } from '../lib/drive.js';
 import { APP_URL, formatDate, observerNameOf, sendTemplatedEmail } from '../lib/emailUtils.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -111,47 +112,7 @@ export const onObservationWritten = onDocumentWritten(
     // Detect creation: before didn't exist, after does
     const isNewObservation = !beforeData && !!afterData;
     if (isNewObservation && afterData['observedEmail']) {
-      const obsType = afterData['type'] as string | undefined;
-      const triggerType: EmailTriggerType =
-        obsType === OBSERVATION_TYPES.workProduct
-          ? 'observation.created.workProduct'
-          : obsType === OBSERVATION_TYPES.instructionalRound
-            ? 'observation.created.instructionalRound'
-            : 'observation.created.standard';
-
-      try {
-        const db = getFirestore();
-        const observedEmail = afterData['observedEmail'] as string;
-        const observedName = afterData['observedName'] as string;
-        const observerEmail = (afterData['observerEmail'] as string | undefined) ?? '';
-        const observedRole = afterData['observedRole'] as string;
-        const observedYear = String(
-          (afterData['observedYear'] as number | string | undefined) ?? '',
-        );
-        const obsDate = formatDate(afterData['observationDate']);
-        const obsName = (afterData['observationName'] as string | undefined) ?? '';
-
-        await sendTemplatedEmail({
-          db,
-          triggerType,
-          to: observedEmail,
-          vars: {
-            observerName: observerNameOf(afterData),
-            observerEmail,
-            observedName,
-            observedEmail,
-            observedRole,
-            observedYear,
-            observationDate: obsDate,
-            observationName: obsName,
-            observationType: obsType ?? '',
-          },
-          mailDocId: `created-${event.params.observationId}`,
-          auditDetails: { observationId: event.params.observationId, triggerType },
-        });
-      } catch (emailErr) {
-        logger.error('onObservationWritten: creation email failed (non-fatal)', emailErr);
-      }
+      await sendCreatedEmail(event.params.observationId, afterData);
     }
 
     // Acknowledged: tell the observer the staff member confirmed receipt.
@@ -265,6 +226,58 @@ async function syncCoObserverFolderAccess(
  *  re-finalized observation can be acknowledged — and notified — again. */
 export function isNewlyAcknowledged(before: ObsLike, after: ObsLike): boolean {
   return before['acknowledgedAt'] == null && after['acknowledgedAt'] != null;
+}
+
+/** The observation.created.* email to the observed staff member. */
+async function sendCreatedEmail(observationId: string, data: ObsLike): Promise<void> {
+  const obsType = data['type'] as string | undefined;
+  const triggerType: EmailTriggerType =
+    obsType === OBSERVATION_TYPES.workProduct
+      ? 'observation.created.workProduct'
+      : obsType === OBSERVATION_TYPES.instructionalRound
+        ? 'observation.created.instructionalRound'
+        : 'observation.created.standard';
+
+  try {
+    const db = getFirestore();
+    const observedEmail = data['observedEmail'] as string;
+    // The create rule requires a staff-backed observedEmail; re-check before
+    // mailing so no other write path can relay to an outside inbox.
+    if (!(await isStaffBackedEmail(db, observedEmail))) {
+      logger.warn('onObservationWritten: observedEmail has no staff record, no creation email', {
+        observationId,
+        observedEmail,
+      });
+      return;
+    }
+    const observedName = data['observedName'] as string;
+    const observerEmail = (data['observerEmail'] as string | undefined) ?? '';
+    const observedRole = data['observedRole'] as string;
+    const observedYear = String((data['observedYear'] as number | string | undefined) ?? '');
+    const obsDate = formatDate(data['observationDate']);
+    const obsName = (data['observationName'] as string | undefined) ?? '';
+
+    await sendTemplatedEmail({
+      db,
+      triggerType,
+      to: observedEmail,
+      vars: {
+        observerName: observerNameOf(data),
+        observerEmail,
+        observedName,
+        observedEmail,
+        observedRole,
+        observedYear,
+        observationDate: obsDate,
+        observationName: obsName,
+        observationType: obsType ?? '',
+      },
+      mailDocId: `created-${observationId}`,
+      auditDetails: { observationId, triggerType },
+    });
+  } catch (emailErr) {
+    logger.error('onObservationWritten: creation email failed (non-fatal)', emailErr);
+  }
 }
 
 async function sendAcknowledgedEmail(observationId: string, data: ObsLike): Promise<void> {
