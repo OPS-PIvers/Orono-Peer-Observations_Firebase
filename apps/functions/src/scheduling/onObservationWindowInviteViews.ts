@@ -19,7 +19,7 @@ export const onObservationWindowInviteViews = onDocumentWritten(
     memory: '256MiB',
     // No `retry`: it makes non-interactive deploys demand --force. A dropped
     // event is repaired within the hour by backfillWindowInviteViews, which
-    // re-syncs every window that is open or whose views still say it is
+    // re-syncs every live window and every window whose views still say it is
     // (so a missed cancel, fill or delete is caught too).
   },
   (event) => handleWindowInviteViews(event),

@@ -58,7 +58,11 @@ function fakeDb(
       orderBy: () => ({ select: () => ({ limit: (n: number) => page(null, n) }) }),
       // Open windows: ids starting "open-". Open views: `openViews`.
       where: (field: string, op: string, statuses: string[]) => {
-        expect([field, op, statuses]).toEqual(['status', 'in', ['open', 'partially-booked']]);
+        expect([field, op, statuses]).toEqual([
+          'status',
+          'in',
+          ['open', 'partially-booked', 'fully-booked'],
+        ]);
         const docs =
           name === 'windowInviteViews'
             ? openViews.map((v) => ({
@@ -103,14 +107,14 @@ describe('runWindowInviteViewBackfill', () => {
     expect(marker()).toBeNull();
   });
 
-  it('after the marker, re-syncs only open windows', async () => {
+  it('after the marker, re-syncs only live windows', async () => {
     const { db } = fakeDb(['open-1', 'open-2', 'closed-1'], true);
     const result = await resyncOpenWindows(db);
     expect(state.synced.sort()).toEqual(['open-1', 'open-2']);
     expect(result).toEqual({ windows: 2, viewsWritten: 4, viewsDeleted: 0 });
   });
 
-  it('also re-syncs closed or deleted windows whose views still say open', async () => {
+  it('also re-syncs closed or deleted windows whose views still say live', async () => {
     const { db } = fakeDb(['open-1', 'closed-1', 'closed-2'], true, [
       { windowId: 'open-1' },
       { windowId: 'closed-1' },

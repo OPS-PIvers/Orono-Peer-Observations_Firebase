@@ -28,7 +28,7 @@ export interface WindowInviteViewBackfillResult {
  *
  * First run after deploy: syncs every window (those that predate the
  * onObservationWindowInviteViews trigger) and writes the marker. Every later
- * run re-syncs open windows and windows whose views still say they are open
+ * run re-syncs live windows and windows whose views still say they are live
  * (see resyncOpenWindows). That repairs a view the trigger missed (it runs
  * without retries, which would need a forced deploy), and costs nothing when
  * the views are current, because each sync only writes what differs.
@@ -101,23 +101,30 @@ export async function runWindowInviteViewBackfill(
 }
 
 /**
- * Re-syncs every window that is open or partially booked, plus every window
- * whose views still say it is. The second set catches a dropped event that
- * closed, filled or deleted a window: the window no longer matches the first
- * query, but its stale views do.
+ * Re-syncs every window that is still live (open, partially or fully booked;
+ * a booking or invite change can still alter it), plus every window whose
+ * views still say it is live. The second set catches a dropped event that
+ * cancelled, expired or deleted a window: the window no longer matches the
+ * first query, but its stale views do. Views that already say cancelled or
+ * expired need no checks: a cancelled window can't change, and re-opening an
+ * expired one makes it live, so the first query finds it.
  */
 export async function resyncOpenWindows(db: Firestore): Promise<WindowInviteViewBackfillResult> {
   const result: WindowInviteViewBackfillResult = { windows: 0, viewsWritten: 0, viewsDeleted: 0 };
-  const openStatuses = [OBSERVATION_WINDOW_STATUS.open, OBSERVATION_WINDOW_STATUS.partiallyBooked];
+  const liveStatuses = [
+    OBSERVATION_WINDOW_STATUS.open,
+    OBSERVATION_WINDOW_STATUS.partiallyBooked,
+    OBSERVATION_WINDOW_STATUS.fullyBooked,
+  ];
   const [windowsSnap, viewsSnap] = await Promise.all([
     db
       .collection(COLLECTIONS.observationWindows)
-      .where('status', 'in', openStatuses)
+      .where('status', 'in', liveStatuses)
       .select()
       .get(),
     db
       .collection(COLLECTIONS.windowInviteViews)
-      .where('status', 'in', openStatuses)
+      .where('status', 'in', liveStatuses)
       .select('windowId')
       .get(),
   ]);
