@@ -583,14 +583,28 @@ describe('finalizeObservation — deleteAudio', () => {
   });
 
   it('trashes only recordings that sit in the observation folder', async () => {
-    h.drive.filesInObservationFolder = vi.fn().mockResolvedValue(['aud-2']);
+    h.drive.filesInObservationFolder = vi.fn((args: unknown) =>
+      Promise.resolve((args as { fileIds: string[] }).fileIds.filter((id) => id === 'aud-2')),
+    );
     const { db } = buildDb(happyConfig(withAudio));
     h.db = db;
     await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } }));
 
     expect(h.drive.filesInObservationFolder).toHaveBeenCalledWith(
-      expect.objectContaining({ fileIds: ['aud-1', 'aud-2'], folderId: 'folder-1' }),
+      expect.objectContaining({ fileIds: ['aud-1'], folderId: 'folder-1' }),
     );
+    expect(h.drive.trashDriveFile).toHaveBeenCalledOnce();
+    expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-2');
+  });
+
+  it('still trashes the other recordings when one folder check fails', async () => {
+    h.drive.filesInObservationFolder = vi.fn((args: unknown) => {
+      const ids = (args as { fileIds: string[] }).fileIds;
+      return ids.includes('aud-1') ? Promise.reject(new Error('rate limit')) : Promise.resolve(ids);
+    });
+    const { db } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } }));
     expect(h.drive.trashDriveFile).toHaveBeenCalledOnce();
     expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-2');
   });

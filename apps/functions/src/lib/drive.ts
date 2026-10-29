@@ -372,8 +372,7 @@ export async function startResumableUpload(args: {
 }
 
 export type ResumableUploadStatus =
-  | { done: false; received: number }
-  | { done: true; fileId: string; fileName: string };
+  { done: false; received: number } | { done: true; fileId: string; fileName: string };
 
 /**
  * Send one piece of a resumable upload, starting at byte `offset`. An empty
@@ -627,8 +626,8 @@ export async function removeReaderFromFile(args: { fileId: string; email: string
  * folder. Finalize shares the whole folder with them, and files added while
  * it is a Draft again would inherit that grant, so recordings and evidence
  * the app keeps from them until re-finalize would open in Drive. The PDF they
- * were emailed gets its own Reader grant first so that link keeps working.
- * Re-finalizing shares the folder again.
+ * were emailed gets its own direct Reader grant first so that link keeps
+ * working. Re-finalizing shares the folder again.
  *
  * `folderId` must already be checked as the observation's folder; the PDF is
  * only shared when it sits in that folder. Throws on Drive errors so a caller
@@ -649,11 +648,16 @@ export async function withdrawObservedFolderAccess(args: {
       parentFolderId,
     });
     if (pdf) {
-      await shareWithUser({
+      // Not shareWithUser: its "already has Reader" check would see the grant
+      // the PDF inherits from the folder and skip, and that one goes with
+      // the folder grant below. A create for someone who already has a
+      // direct grant leaves them with one.
+      const drive = await getDriveClient();
+      await drive.permissions.create({
         fileId: pdf,
-        email: observedEmail,
-        role: 'reader',
         sendNotificationEmail: false,
+        requestBody: { type: 'user', role: 'reader', emailAddress: observedEmail },
+        supportsAllDrives: true,
       });
     }
   }

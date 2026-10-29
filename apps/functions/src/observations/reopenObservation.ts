@@ -33,12 +33,12 @@ const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
  *      concurrent reopen/finalize can't double-fire), clearing finalizedAt
  *      and the observed staff member's acknowledgement (the content is about
  *      to change, so any prior ack no longer applies).
- *   3. Take back the observed staff member's Reader on the Drive folder
+ *   3. Write an /auditLog entry recording who reopened it and why.
+ *   4. Take back the observed staff member's Reader on the Drive folder
  *      (they keep Reader on the PDF itself), so recordings and evidence
  *      added while it is a Draft again don't open for them in Drive.
  *      Best-effort here; uploadAudio and uploadEvidenceFile repeat it, and
  *      refuse to upload, before adding a file to a reopened observation.
- *   4. Write an /auditLog entry recording who reopened it and why.
  *
  * `pdfDriveFileId` / `driveFolderId` are intentionally KEPT: re-finalizing
  * replaces the existing PDF's content in place (see finalizeObservation +
@@ -119,6 +119,21 @@ export const reopenObservation = onCall(
       return data;
     });
 
+    await db.collection(COLLECTIONS.auditLog).add({
+      timestamp: FieldValue.serverTimestamp(),
+      userEmail,
+      action: AUDIT_ACTIONS.observationReopened,
+      target: `${COLLECTIONS.observations}/${observationId}`,
+      details: {
+        reason,
+        observedEmail: obs.observedEmail,
+        observedName: obs.observedName,
+        observerEmail: obs.observerEmail,
+        pdfDriveFileId: obs.pdfDriveFileId,
+        driveFolderId: obs.driveFolderId,
+      },
+    });
+
     if (obs.driveFolderId) {
       try {
         const parentFolderId = PARENT_FOLDER_ID.value();
@@ -137,21 +152,6 @@ export const reopenObservation = onCall(
         });
       }
     }
-
-    await db.collection(COLLECTIONS.auditLog).add({
-      timestamp: FieldValue.serverTimestamp(),
-      userEmail,
-      action: AUDIT_ACTIONS.observationReopened,
-      target: `${COLLECTIONS.observations}/${observationId}`,
-      details: {
-        reason,
-        observedEmail: obs.observedEmail,
-        observedName: obs.observedName,
-        observerEmail: obs.observerEmail,
-        pdfDriveFileId: obs.pdfDriveFileId,
-        driveFolderId: obs.driveFolderId,
-      },
-    });
 
     return { ok: true };
   },

@@ -94,9 +94,9 @@ describe('parseResumableResponse', () => {
   });
 
   it('throws on other errors', async () => {
-    await expect(
-      parseResumableResponse(new Response('quota', { status: 403 })),
-    ).rejects.toThrow(/403/);
+    await expect(parseResumableResponse(new Response('quota', { status: 403 }))).rejects.toThrow(
+      /403/,
+    );
   });
 });
 
@@ -354,14 +354,22 @@ describe('filesInObservationFolder', () => {
       }),
     ).toEqual([]);
     expect(
-      await filesInObservationFolder({ fileIds: ['audio1'], folderId: null, parentFolderId: PARENT }),
+      await filesInObservationFolder({
+        fileIds: ['audio1'],
+        folderId: null,
+        parentFolderId: PARENT,
+      }),
     ).toEqual([]);
   });
 
   it('propagates other Drive errors', async () => {
     h.files.get.mockRejectedValue(Object.assign(new Error('forbidden'), { code: 403 }));
     await expect(
-      filesInObservationFolder({ fileIds: ['audio1'], folderId: 'obsFolder', parentFolderId: PARENT }),
+      filesInObservationFolder({
+        fileIds: ['audio1'],
+        folderId: 'obsFolder',
+        parentFolderId: PARENT,
+      }),
     ).rejects.toThrow('forbidden');
   });
 });
@@ -381,7 +389,8 @@ describe('withdrawObservedFolderAccess', () => {
                   { id: 'perm-teacher', emailAddress: 'Teacher@orono.k12.mn.us', role: 'reader' },
                   { id: 'perm-owner', emailAddress: 'observations@orono.k12.mn.us', role: 'owner' },
                 ]
-              : [],
+              : // Files list the Reader they inherit from the folder.
+                [{ id: 'perm-teacher', emailAddress: 'Teacher@orono.k12.mn.us', role: 'reader' }],
         },
       }),
     );
@@ -389,7 +398,7 @@ describe('withdrawObservedFolderAccess', () => {
     h.permissions.delete.mockResolvedValue({});
   });
 
-  it('shares the PDF with the teacher, then removes their folder Reader', async () => {
+  it('gives the PDF a direct grant even though it lists the inherited one, then removes the folder Reader', async () => {
     await withdrawObservedFolderAccess({
       folderId: 'obsFolder',
       parentFolderId: PARENT,

@@ -348,26 +348,23 @@ export const finalizeObservation = onCall(
 
       // Best-effort, after the status flip: a file left behind only needs
       // cleanup in Drive, and the observation no longer points at it. Only
-      // recordings in this observation's own folder are trashed.
-      let trashIds: string[] = [];
-      try {
-        trashIds = await filesInObservationFolder({
-          fileIds: removedAudioIds,
-          folderId,
-          parentFolderId,
-        });
-      } catch (err) {
-        logger.warn('finalizeObservation: recording folder check failed, nothing trashed', {
-          observationId,
-          err,
-        });
-      }
-      const trashResults = await Promise.allSettled(trashIds.map((id) => trashDriveFile(id)));
+      // recordings in this observation's own folder are trashed, each on its
+      // own so one Drive error leaves only that file behind.
+      const trashResults = await Promise.allSettled(
+        removedAudioIds.map(async (id) => {
+          const [inFolder] = await filesInObservationFolder({
+            fileIds: [id],
+            folderId,
+            parentFolderId,
+          });
+          if (inFolder) await trashDriveFile(inFolder);
+        }),
+      );
       trashResults.forEach((r, i) => {
         if (r.status === 'rejected') {
           logger.warn('finalizeObservation: Drive trash failed, recording still removed', {
             observationId,
-            audioFileId: trashIds[i],
+            audioFileId: removedAudioIds[i],
             err: r.reason as unknown,
           });
         }

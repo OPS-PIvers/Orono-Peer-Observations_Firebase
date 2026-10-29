@@ -9,6 +9,8 @@ const SESSION = 'https://www.googleapis.com/upload/drive/v3/files?upload_id=s1';
 
 const h = vi.hoisted(() => ({
   observation: null as Record<string, unknown> | null,
+  // driveFolderId another upload claimed meanwhile, as the transaction sees it.
+  claimedFolderId: null as string | null,
   obsUpdates: [] as unknown[][],
   drive: {
     ensureObservationFolder: vi.fn(),
@@ -18,6 +20,7 @@ const h = vi.hoisted(() => ({
     putResumableChunk: vi.fn(),
     getFileParents: vi.fn(),
     withdrawObservedFolderAccess: vi.fn(),
+    deleteObservationFolder: vi.fn(),
   },
   checkRateLimit: vi.fn(),
 }));
@@ -28,6 +31,13 @@ vi.mock('firebase-admin/auth', () => ({
 }));
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
+    runTransaction: (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        get: () => Promise.resolve({ get: (k: string) => h.claimedFolderId ?? h.observation?.[k] }),
+        update: (_ref: unknown, data: unknown) => {
+          h.obsUpdates.push(['tx', data]);
+        },
+      }),
     doc: () => ({
       get: () =>
         Promise.resolve({ exists: h.observation !== null, data: () => h.observation ?? undefined }),
@@ -59,6 +69,7 @@ vi.mock('../lib/drive.js', async (importOriginal) => ({
   putResumableChunk: h.drive.putResumableChunk,
   getFileParents: h.drive.getFileParents,
   withdrawObservedFolderAccess: h.drive.withdrawObservedFolderAccess,
+  deleteObservationFolder: h.drive.deleteObservationFolder,
 }));
 vi.mock('../lib/rateLimit.js', () => ({
   RATE_LIMIT_KEYS: { audioUpload: 'audioUpload' },
@@ -129,6 +140,7 @@ beforeEach(() => {
     driveFolderId: null,
   };
   h.obsUpdates = [];
+  h.claimedFolderId = null;
   for (const fn of Object.values(h.drive)) fn.mockReset();
   h.drive.ensureObservationFolder.mockResolvedValue('folder1');
   h.drive.startResumableUpload.mockResolvedValue(SESSION);
@@ -151,7 +163,7 @@ describe('uploadAudio in pieces', () => {
     );
     expect(h.checkRateLimit).toHaveBeenCalledTimes(1);
     // The folder is recorded up front so later pieces can check against it.
-    expect(h.obsUpdates).toEqual([['driveFolderId', 'folder1']]);
+    expect(h.obsUpdates).toEqual([['tx', { driveFolderId: 'folder1' }]]);
   });
 
   it('links the file to the observation when the last piece lands in its folder', async () => {
@@ -244,5 +256,28 @@ describe('uploadAudio on a reopened observation', () => {
     h.observation = { ...h.observation, pdfDriveFileId: null };
     await call({}, Buffer.alloc(10));
     expect(h.drive.withdrawObservedFolderAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe('uploadAudio folder claim', () => {
+  it('claims a new folder for the observation', async () => {
+    h.drive.uploadFileToFolder.mockResolvedValue({ fileId: 'f4', fileName: 'd.webm' });
+    await call({}, Buffer.alloc(10));
+    expect(h.obsUpdates[0]).toEqual(['tx', { driveFolderId: 'folder1' }]);
+    expect(h.drive.deleteObservationFolder).not.toHaveBeenCalled();
+  });
+
+  it('uploads into the folder another upload claimed first, and drops its own', async () => {
+    h.claimedFolderId = 'folder-other';
+    h.drive.uploadFileToFolder.mockResolvedValue({ fileId: 'f5', fileName: 'e.webm' });
+    const res = await call({}, Buffer.alloc(10));
+    expect(res.body).toMatchObject({ audioFileId: 'f5', driveFolderId: 'folder-other' });
+    expect(h.drive.uploadFileToFolder).toHaveBeenCalledWith(
+      expect.objectContaining({ folderId: 'folder-other' }),
+    );
+    expect(h.drive.deleteObservationFolder).toHaveBeenCalledWith({
+      folderId: 'folder1',
+      parentFolderId: 'parent-folder',
+    });
   });
 });
