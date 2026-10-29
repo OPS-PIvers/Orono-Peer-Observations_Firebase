@@ -49,6 +49,9 @@ export const COLLECTIONS = {
   buildingSchedules: 'buildingSchedules',
   signupFields: 'signupFields',
   observationWindows: 'observationWindows',
+  /** Server-written, per-invitee projection of each window; see
+   *  schema/windowInviteView.ts. */
+  windowInviteViews: 'windowInviteViews',
   userCalendarTokens: 'userCalendarTokens',
 } as const;
 

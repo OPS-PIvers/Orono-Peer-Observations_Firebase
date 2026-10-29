@@ -656,6 +656,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- /windowInviteViews/{windowId}_{email} -----------------------------
+    // One invitee's slice of an observation window
+    // (onObservationWindowInviteViews): the window settings booking needs
+    // plus that invitee's own entries, never anyone else's. Readable by the
+    // invitee and by whoever may read the window itself; written only by
+    // Functions.
+    match /windowInviteViews/{viewId} {
+      allow get, list: if hasSpecialAccess()
+        || canReadAll()
+        || isCurrentUserEmail(resource.data.email);
+      allow write: if false;
+    }
+
     // --- /userCalendarTokens/{email} ----------------------------------------
     // Per-user Google Calendar OAuth credentials. Server-only — refresh
     // tokens never leave the backend. Cloud Functions use the Admin SDK

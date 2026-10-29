@@ -4,7 +4,16 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -361,5 +370,63 @@ describe('observationWindows rules', () => {
         { merge: true },
       ),
     );
+  });
+});
+
+describe('windowInviteViews rules', () => {
+  beforeEach(async () => {
+    await seed(`windowInviteViews/w1_${INVITED_EMAIL}`, {
+      windowId: 'w1',
+      email: INVITED_EMAIL,
+      status: 'open',
+      entries: [{ buildingId: 'high-school', inviteToken: 'tok', bookedSlotId: null }],
+    });
+    await seed(`windowInviteViews/w1_${OTHER_EMAIL}`, {
+      windowId: 'w1',
+      email: OTHER_EMAIL,
+      status: 'open',
+      entries: [{ buildingId: 'high-school', inviteToken: 'tok-other', bookedSlotId: 's1' }],
+    });
+  });
+
+  it('an invitee can read their own view', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w1_${INVITED_EMAIL}`)));
+  });
+
+  it('an invitee cannot read a co-invitee’s view', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w1_${OTHER_EMAIL}`)));
+  });
+
+  it('the dashboard query for your own email succeeds; an unfiltered list fails', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'windowInviteViews'),
+          where('email', '==', INVITED_EMAIL),
+          where('status', 'in', ['open', 'partially-booked', 'fully-booked', 'expired']),
+        ),
+      ),
+    );
+    await assertFails(getDocs(collection(db, 'windowInviteViews')));
+    await assertFails(
+      getDocs(query(collection(db, 'windowInviteViews'), where('email', '==', OTHER_EMAIL))),
+    );
+  });
+
+  it('special access can read any view (evaluator checklist)', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w1_${OTHER_EMAIL}`)));
+  });
+
+  it('nobody writes a view from the client', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, `windowInviteViews/w1_${INVITED_EMAIL}`), { email: INVITED_EMAIL }),
+    );
+    const pe = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(setDoc(doc(pe, `windowInviteViews/w2_${PE_EMAIL}`), { email: PE_EMAIL }));
   });
 });
