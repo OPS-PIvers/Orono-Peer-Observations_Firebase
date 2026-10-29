@@ -1,7 +1,12 @@
 name: Deploy — production
 
-# Deploys automatically after the CI workflow succeeds on main (pushes and
-# merged PRs), so a commit that fails CI never ships. The workflow_dispatch
+# Deploys automatically after the CI workflow succeeds on a push to main
+# (direct pushes and merged PRs), so a commit that fails CI never ships.
+# Only CI runs from a push in this repository count: a pull_request run (above
+# all one from a fork whose branch happens to be named main) also completes CI
+# with head_branch 'main', and deploying its head_sha would ship untrusted code
+# with the prod secrets. Each job's `if` checks event, head repository and
+# head branch to enforce it. The workflow_dispatch
 # path remains as a manual fallback: GitHub → Actions → "Deploy — production"
 # → Run workflow, typing DEPLOY to confirm.
 on:
@@ -25,10 +30,6 @@ permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: deploy-prod
-  cancel-in-progress: false
-
 env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.30.2'
@@ -40,7 +41,13 @@ jobs:
     name: Hosting + Functions + Firestore + Storage (prod)
     runs-on: ubuntu-latest
     environment: prod
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event.inputs.confirm == 'DEPLOY' }}
+    # Concurrency sits on the jobs, not the workflow: a workflow-level group
+    # is joined before the job `if` runs, so a run that fails the gate would
+    # still replace a queued real deploy. Skipped jobs never join a job group.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') || github.event.inputs.confirm == 'DEPLOY' }}
     steps:
       - name: Refuse if confirmation token is wrong
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.confirm != 'DEPLOY' }}
@@ -110,7 +117,10 @@ jobs:
     name: pdf-renderer (Cloud Run)
     runs-on: ubuntu-latest
     environment: prod
-    if: ${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event.inputs.confirm == 'DEPLOY') && github.event.inputs.skip_renderer != 'true' }}
+    concurrency:
+      group: deploy-prod-renderer
+      cancel-in-progress: false
+    if: ${{ ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') || github.event.inputs.confirm == 'DEPLOY') && github.event.inputs.skip_renderer != 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
