@@ -359,7 +359,9 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
   }
 }
 
-function buildRow(observationId: string, data: ObsLike): string[] {
+/** The Master Log row for an observation. Every cell goes through
+ *  `sheetText` because the rows are written USER_ENTERED. */
+export function buildRow(observationId: string, data: ObsLike): string[] {
   return [
     observationId,
     asString(data['observerEmail']),
@@ -375,7 +377,42 @@ function buildRow(observationId: string, data: ObsLike): string[] {
     formatTimestamp(data['observationDate']),
     driveFolderUrl(data['driveFolderId']),
     pdfUrl(data['pdfDriveFileId']),
-  ];
+  ].map(sheetText);
+}
+
+/** The row left behind for a deleted observation: the id and who was
+ *  involved, everything else cleared, status stamped [DELETED]. */
+export function buildDeletedRow(
+  observationId: string,
+  beforeData: ObsLike | null | undefined,
+): string[] {
+  return [
+    observationId,
+    asString(beforeData?.['observerEmail']),
+    asString(beforeData?.['observedEmail']),
+    asString(beforeData?.['observedName']),
+    '',
+    '',
+    asString(beforeData?.['type']),
+    '[DELETED]',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ].map(sheetText);
+}
+
+/** Keeps a cell from being read as a formula. The rows are written
+ *  USER_ENTERED so the Drive links stay clickable, which means Sheets parses
+ *  each cell as if someone typed it. Names, types, roles and the document id
+ *  are all client-chosen strings, so one starting with `=`, `+`, `-`, `@`
+ *  (or a tab or line break before one) could plant a live formula in the
+ *  district log. A leading apostrophe makes Sheets store the rest as plain
+ *  text and is not shown in the cell. */
+export function sheetText(value: string): string {
+  return /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
 }
 
 function asString(value: unknown): string {
@@ -464,26 +501,7 @@ async function handleDeletion(
       spreadsheetId: sheetId,
       range: `A${String(rowNumber)}:N${String(rowNumber)}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [
-          [
-            observationId,
-            asString(beforeData?.['observerEmail']),
-            asString(beforeData?.['observedEmail']),
-            asString(beforeData?.['observedName']),
-            '',
-            '',
-            asString(beforeData?.['type']),
-            '[DELETED]',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-        ],
-      },
+      requestBody: { values: [buildDeletedRow(observationId, beforeData)] },
     });
   } catch (err) {
     logger.error('onObservationWritten: Sheet row cleanup failed', err);
