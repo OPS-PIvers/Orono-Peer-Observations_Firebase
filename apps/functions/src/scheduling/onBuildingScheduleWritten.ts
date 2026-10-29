@@ -23,6 +23,7 @@ import {
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 import { generateSlotsForWindow, type SlotInput } from './engine/slotGeneration.js';
 import { formatChicagoDate, formatChicagoTime } from './engine/schedulingEmail.js';
+import { isProcessableWindow } from './windowShape.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -47,8 +48,8 @@ function chicagoToday(now: Date): string {
  *   - never modify `booked` slots — instead, if a booked slot's period
  *     vanished or its time changed, write an auditLog warning.
  *
- * Best-effort: each window is wrapped in its own try/catch so one failure
- * doesn't abort the rest.
+ * Best-effort: each window is wrapped in its own try/catch, and malformed
+ * window docs are skipped, so one bad window doesn't abort the rest.
  */
 export const onBuildingScheduleWritten = onDocumentWritten(
   {
@@ -79,13 +80,20 @@ export const onBuildingScheduleWritten = onDocumentWritten(
       .get();
 
     for (const windowDoc of snap.docs) {
-      const window = windowDoc.data() as ObservationWindow;
-      // Only windows that invite someone in this building and aren't fully past.
-      const involvesBuilding = window.invitees.some((inv) => inv.buildingId === buildingId);
-      if (!involvesBuilding) continue;
-      if (window.endDate < today) continue;
-
       try {
+        const window: unknown = windowDoc.data();
+        if (!isProcessableWindow(window)) {
+          logger.error('onBuildingScheduleWritten: skipping malformed window', {
+            buildingId,
+            windowId: windowDoc.id,
+          });
+          continue;
+        }
+        // Only windows that invite someone in this building and aren't fully past.
+        const involvesBuilding = window.invitees.some((inv) => inv.buildingId === buildingId);
+        if (!involvesBuilding) continue;
+        if (window.endDate < today) continue;
+
         await reconcileWindow(db, windowDoc.ref, window, buildingId, schedule, today);
       } catch (err) {
         logger.error('onBuildingScheduleWritten: window reconcile failed', {
