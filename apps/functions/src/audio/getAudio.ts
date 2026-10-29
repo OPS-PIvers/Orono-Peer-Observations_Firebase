@@ -114,6 +114,7 @@ export const getAudio = onRequest(
         fileIds: [audioFileId],
         folderId: obs.driveFolderId,
         parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
       });
       const drive = await getDriveClient();
       const meta = await drive.files.get({

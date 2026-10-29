@@ -177,6 +177,7 @@ export const uploadEvidenceFile = onCall(
         parentFolderId: PARENT_FOLDER_ID.value(),
         observedEmail: obs.observedEmail,
         pdfDriveFileId: obs.pdfDriveFileId,
+        observationId,
       });
     }
 

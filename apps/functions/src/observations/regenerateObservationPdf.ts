@@ -218,6 +218,7 @@ export const regenerateObservationPdf = onCall(
               fileIds: [previousPdfFileId],
               folderId,
               parentFolderId,
+              observationId,
             })
           ).includes(previousPdfFileId)
         : false;

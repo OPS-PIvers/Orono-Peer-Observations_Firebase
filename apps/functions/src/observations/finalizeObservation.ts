@@ -284,6 +284,7 @@ export const finalizeObservation = onCall(
                 fileIds: [obs.pdfDriveFileId],
                 folderId,
                 parentFolderId,
+                observationId,
               })
             ).includes(obs.pdfDriveFileId)
           : false;
@@ -356,6 +357,7 @@ export const finalizeObservation = onCall(
             fileIds: [id],
             folderId,
             parentFolderId,
+            observationId,
           });
           if (inFolder) await trashDriveFile(inFolder);
         }),

@@ -72,6 +72,7 @@ export const removeRecording = onCall(
         fileIds: [audioFileId],
         folderId: obs.driveFolderId,
         parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
       });
       if (inFolder.includes(audioFileId)) await trashDriveFile(audioFileId);
     } catch (err) {

@@ -257,7 +257,7 @@ describe('ensureObservationFolder', () => {
 });
 
 /** files.get answers by id: `{ id: { mimeType, parents } }`. */
-function driveTree(tree: Record<string, { mimeType?: string; parents?: string[] }>) {
+function driveTree(tree: Record<string, { mimeType?: string; parents?: string[]; name?: string }>) {
   h.files.get.mockImplementation(({ fileId }: { fileId: string }) => {
     const item = tree[fileId];
     if (!item) return Promise.reject(Object.assign(new Error('not found'), { code: 404 }));
@@ -274,6 +274,48 @@ const TREE = {
   siblingFile: { mimeType: 'application/pdf', parents: ['siblingObsFolder'] },
 };
 
+describe('folders the app made for an observation outside the parent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    driveTree({
+      ...TREE,
+      movedSkipped: { mimeType: FOLDER, parents: ['old-parent'], name: 'Jane Doe — obs1' },
+      otherObsFolder: { mimeType: FOLDER, parents: ['old-parent'], name: 'Jane Doe — obs2' },
+      oldAudio: { mimeType: 'audio/webm', parents: ['movedSkipped'] },
+    });
+  });
+
+  it('keeps working for the observation the folder is named after', async () => {
+    await expect(
+      assertFilesInObservationFolder({
+        fileIds: ['oldAudio'],
+        folderId: 'movedSkipped',
+        parentFolderId: PARENT,
+        observationId: 'obs1',
+      }),
+    ).resolves.toBeUndefined();
+    expect(
+      await ensureObservationFolder({
+        observationId: 'obs1',
+        observedName: 'Jane Doe',
+        parentFolderId: PARENT,
+        existingFolderId: 'movedSkipped',
+      }),
+    ).toBe('movedSkipped');
+    expect(h.files.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses another observation's folder", async () => {
+    await expect(
+      assertObservationFolder({
+        folderId: 'otherObsFolder',
+        parentFolderId: PARENT,
+        observationId: 'obs1',
+      }),
+    ).rejects.toBeInstanceOf(ForeignDriveObjectError);
+  });
+});
+
 describe('assertObservationFolder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -282,7 +324,11 @@ describe('assertObservationFolder', () => {
 
   it('accepts a folder directly under the parent', async () => {
     await expect(
-      assertObservationFolder({ folderId: 'obsFolder', parentFolderId: PARENT }),
+      assertObservationFolder({
+        folderId: 'obsFolder',
+        parentFolderId: PARENT,
+        observationId: 'obs1',
+      }),
     ).resolves.toBeUndefined();
   });
 
@@ -293,9 +339,9 @@ describe('assertObservationFolder', () => {
       ['otherFolder', PARENT],
       ['audio1', PARENT],
     ] as const) {
-      await expect(assertObservationFolder({ folderId, parentFolderId })).rejects.toBeInstanceOf(
-        ForeignDriveObjectError,
-      );
+      await expect(
+        assertObservationFolder({ folderId, parentFolderId, observationId: 'obs1' }),
+      ).rejects.toBeInstanceOf(ForeignDriveObjectError);
     }
   });
 });
@@ -312,6 +358,7 @@ describe('assertFilesInObservationFolder', () => {
         fileIds: ['audio1', 'pdf1'],
         folderId: 'obsFolder',
         parentFolderId: PARENT,
+        observationId: 'obs1',
       }),
     ).resolves.toBeUndefined();
   });
@@ -324,7 +371,12 @@ describe('assertFilesInObservationFolder', () => {
     ['a file on an observation with no folder', ['audio1'], null],
   ])('refuses %s', async (_label, fileIds, folderId) => {
     await expect(
-      assertFilesInObservationFolder({ fileIds, folderId, parentFolderId: PARENT }),
+      assertFilesInObservationFolder({
+        fileIds,
+        folderId,
+        parentFolderId: PARENT,
+        observationId: 'obs1',
+      }),
     ).rejects.toBeInstanceOf(ForeignDriveObjectError);
   });
 });
@@ -341,6 +393,7 @@ describe('filesInObservationFolder', () => {
         fileIds: ['audio1', 'foreignFile', 'gone', 'pdf1'],
         folderId: 'obsFolder',
         parentFolderId: PARENT,
+        observationId: 'obs1',
       }),
     ).toEqual(['audio1', 'pdf1']);
   });
@@ -351,6 +404,7 @@ describe('filesInObservationFolder', () => {
         fileIds: ['foreignFile'],
         folderId: 'otherFolder',
         parentFolderId: PARENT,
+        observationId: 'obs1',
       }),
     ).toEqual([]);
     expect(
@@ -358,6 +412,7 @@ describe('filesInObservationFolder', () => {
         fileIds: ['audio1'],
         folderId: null,
         parentFolderId: PARENT,
+        observationId: 'obs1',
       }),
     ).toEqual([]);
   });
@@ -369,6 +424,7 @@ describe('filesInObservationFolder', () => {
         fileIds: ['audio1'],
         folderId: 'obsFolder',
         parentFolderId: PARENT,
+        observationId: 'obs1',
       }),
     ).rejects.toThrow('forbidden');
   });
@@ -404,6 +460,7 @@ describe('withdrawObservedFolderAccess', () => {
       parentFolderId: PARENT,
       observedEmail: TEACHER,
       pdfDriveFileId: 'pdf1',
+      observationId: 'obs1',
     });
     expect(h.permissions.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -425,6 +482,7 @@ describe('withdrawObservedFolderAccess', () => {
       parentFolderId: PARENT,
       observedEmail: TEACHER,
       pdfDriveFileId: 'foreignFile',
+      observationId: 'obs1',
     });
     expect(h.permissions.create).not.toHaveBeenCalled();
     expect(h.permissions.delete).toHaveBeenCalledOnce();
@@ -437,6 +495,7 @@ describe('withdrawObservedFolderAccess', () => {
       parentFolderId: PARENT,
       observedEmail: TEACHER,
       pdfDriveFileId: 'pdf1',
+      observationId: 'obs1',
     });
     expect(h.permissions.create).not.toHaveBeenCalled();
     expect(h.permissions.delete).not.toHaveBeenCalled();
@@ -449,6 +508,7 @@ describe('withdrawObservedFolderAccess', () => {
       parentFolderId: PARENT,
       observedEmail: TEACHER,
       pdfDriveFileId: 'pdf1',
+      observationId: 'obs1',
     });
     expect(h.permissions.delete).toHaveBeenCalledWith(
       expect.objectContaining({ fileId: 'obsFolder', permissionId: 'perm-teacher' }),
@@ -463,6 +523,7 @@ describe('withdrawObservedFolderAccess', () => {
         parentFolderId: PARENT,
         observedEmail: TEACHER,
         pdfDriveFileId: null,
+        observationId: 'obs1',
       }),
     ).rejects.toThrow('backend');
   });

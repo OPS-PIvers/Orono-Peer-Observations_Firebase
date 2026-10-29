@@ -235,6 +235,7 @@ describe('uploadAudio on a reopened observation', () => {
     const res = await call({}, Buffer.alloc(10));
     expect(res.body).toMatchObject({ audioFileId: 'f3' });
     expect(h.drive.withdrawObservedFolderAccess).toHaveBeenCalledWith({
+      observationId: 'obs1',
       folderId: 'folder1',
       parentFolderId: 'parent-folder',
       observedEmail: 't@x.org',

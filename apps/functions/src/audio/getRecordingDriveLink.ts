@@ -59,6 +59,7 @@ export const getRecordingDriveLink = onCall(
         fileIds: [audioFileId],
         folderId: obs.driveFolderId,
         parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
       });
       await shareWithUser({
         fileId: audioFileId,

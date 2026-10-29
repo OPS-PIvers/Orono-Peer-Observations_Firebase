@@ -85,6 +85,7 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         fileIds: [job.audioDriveFileId],
         folderId: obsSnap.get('driveFolderId') as string | null | undefined,
         parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId: job.observationId,
       });
       const drive = await getDriveClient();
       const meta = await drive.files.get({

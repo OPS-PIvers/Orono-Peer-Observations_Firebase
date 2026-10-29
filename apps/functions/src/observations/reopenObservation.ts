@@ -137,12 +137,17 @@ export const reopenObservation = onCall(
     if (obs.driveFolderId) {
       try {
         const parentFolderId = PARENT_FOLDER_ID.value();
-        await assertObservationFolder({ folderId: obs.driveFolderId, parentFolderId });
+        await assertObservationFolder({
+          folderId: obs.driveFolderId,
+          parentFolderId,
+          observationId,
+        });
         await withdrawObservedFolderAccess({
           folderId: obs.driveFolderId,
           parentFolderId,
           observedEmail: obs.observedEmail,
           pdfDriveFileId: obs.pdfDriveFileId,
+          observationId,
         });
       } catch (err) {
         logger.error('reopenObservation: could not take back the folder grant', {

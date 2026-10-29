@@ -111,6 +111,7 @@ export const removeEvidenceFile = onCall(
         fileIds: [driveFileId],
         folderId: obs.driveFolderId,
         parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
       });
       if (inFolder.includes(driveFileId)) await trashDriveFile(driveFileId);
     } catch (err) {
