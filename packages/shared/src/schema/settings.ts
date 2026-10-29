@@ -61,6 +61,11 @@ export const rateLimits = z.object({
    * district sender.
    */
   manualEmailsPerHour: z.number().int().positive().default(30),
+  /**
+   * Per-caller cap on paid script auto-tag model calls. First runs and reruns
+   * on every observation count; reopening a saved result does not.
+   */
+  scriptAutoTagRunsPerHour: z.number().int().positive().default(20),
 });
 export type RateLimits = z.infer<typeof rateLimits>;
 
@@ -291,6 +296,7 @@ export const appSettings = z.object({
     pdfRegenerationsPerHour: 10,
     manualEmailBroadcastsPerHour: 5,
     manualEmailsPerHour: 30,
+    scriptAutoTagRunsPerHour: 20,
   }),
   branding: branding.default({
     appName: 'Orono Peer Observations',
