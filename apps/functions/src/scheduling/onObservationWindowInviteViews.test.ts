@@ -31,18 +31,23 @@ vi.mock('firebase-admin/firestore', () => {
               }),
             }
           : { doc: () => ({ get: () => Promise.resolve({ data: () => state.window }) }) },
-      batch: () => {
+      runTransaction: async (
+        fn: (tx: {
+          get: (r: { get: () => Promise<unknown> }) => Promise<unknown>;
+          set: (ref: { id: string }, data: Record<string, unknown>) => void;
+          delete: (ref: { id: string }) => void;
+        }) => Promise<unknown>,
+      ) => {
+        // Writes apply only when the callback succeeds, like a commit.
         const ops: (() => void)[] = [];
-        return {
-          set: (ref: { id: string }, data: Record<string, unknown>) =>
-            ops.push(() => state.views.set(ref.id, data)),
-          delete: (ref: { id: string }) => ops.push(() => state.views.delete(ref.id)),
-          commit: () => {
-            ops.forEach((op) => op());
-            state.commits += 1;
-            return Promise.resolve();
-          },
-        };
+        const result = await fn({
+          get: (r) => r.get(),
+          set: (ref, data) => ops.push(() => state.views.set(ref.id, data)),
+          delete: (ref) => ops.push(() => state.views.delete(ref.id)),
+        });
+        ops.forEach((op) => op());
+        if (ops.length > 0) state.commits += 1;
+        return result;
       },
     }),
   };
@@ -163,11 +168,11 @@ describe('onObservationWindowInviteViews', () => {
     expect([...state.views.keys()]).toEqual([`w1_${JANE}`]);
   });
 
-  it('dry run counts without writing', async () => {
-    state.window = win();
-    const res = await syncWindowInviteViews(getFirestore(), 'w1', { dryRun: true });
-    expect(res).toEqual({ written: 2, deleted: 0 });
-    expect(state.views.size).toBe(0);
+  it('returns what it wrote and deleted', async () => {
+    await write(null, win());
+    state.window = win({ invitedEmails: [JANE], invitees: [inv(JANE, { bookedSlotId: 's1' })] });
+    const res = await syncWindowInviteViews(getFirestore(), 'w1');
+    expect(res).toEqual({ written: 1, deleted: 1 });
   });
 
   it('ignores a malformed window without throwing', async () => {

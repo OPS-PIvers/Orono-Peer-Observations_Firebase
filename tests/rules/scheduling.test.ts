@@ -416,6 +416,29 @@ describe('windowInviteViews rules', () => {
     );
   });
 
+  it('an invitee can get their own view id before it exists (not-found, not denied)', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w2_${INVITED_EMAIL}`)));
+  });
+
+  it('nobody can probe someone else’s missing view id', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w2_${OTHER_EMAIL}`)));
+    // A suffix match alone is not enough: the id must end in "_" + the caller's email.
+    await assertFails(getDoc(doc(db, `windowInviteViews/w2x${INVITED_EMAIL}`)));
+  });
+
+  it('a stored view whose email is not the caller’s is denied even under a matching id', async () => {
+    await seed(`windowInviteViews/w3_${INVITED_EMAIL}`, {
+      windowId: 'w3',
+      email: OTHER_EMAIL,
+      status: 'open',
+      entries: [],
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w3_${INVITED_EMAIL}`)));
+  });
+
   it('special access can read any view (evaluator checklist)', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertSucceeds(getDoc(doc(db, `windowInviteViews/w1_${OTHER_EMAIL}`)));

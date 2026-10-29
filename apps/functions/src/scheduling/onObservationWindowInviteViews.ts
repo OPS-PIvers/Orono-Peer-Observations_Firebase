@@ -7,15 +7,21 @@ import { COLLECTIONS, windowInviteViewsOf } from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
-const MAX_BATCH_WRITES = 450;
-
 /**
  * Keeps `/windowInviteViews/{windowId}_{email}` in step with its window: one
  * view per invitee holding only that invitee's entries (see
  * packages/shared/src/schema/windowInviteView.ts for why it exists).
  */
 export const onObservationWindowInviteViews = onDocumentWritten(
-  { document: 'observationWindows/{windowId}', region: 'us-central1', memory: '256MiB' },
+  {
+    document: 'observationWindows/{windowId}',
+    region: 'us-central1',
+    memory: '256MiB',
+    // A dropped event could leave an invitee with no view (and no way to
+    // book) until the window changes again; the sync is idempotent, so
+    // retrying is safe.
+    retry: true,
+  },
   (event) => handleWindowInviteViews(event),
 );
 
@@ -43,59 +49,50 @@ function stableStringify(value: unknown): string {
  * Brings every view of one window in line with the window as it is now:
  * writes views whose content changed, deletes views of people no longer
  * invited (or of a deleted window). Shared by the trigger and the backfill.
+ *
+ * Runs in a transaction: two syncs of the same window can overlap (two
+ * bookings a moment apart), and without one the sync that read the older
+ * window could commit last and leave a view stale for good. In a
+ * transaction the stale one is retried against the current window.
  * Returns the number of views written and deleted.
  */
 export async function syncWindowInviteViews(
   db: Firestore,
   windowId: string,
-  opts: { dryRun?: boolean } = {},
 ): Promise<{ written: number; deleted: number }> {
   const viewsCol = db.collection(COLLECTIONS.windowInviteViews);
-  const [windowSnap, existingSnap] = await Promise.all([
-    db.collection(COLLECTIONS.observationWindows).doc(windowId).get(),
-    viewsCol.where('windowId', '==', windowId).get(),
-  ]);
-  const data = windowSnap.data();
-  const desired = data
-    ? windowInviteViewsOf(data, windowId)
-    : new Map<string, Record<string, unknown>>();
+  const windowRef = db.collection(COLLECTIONS.observationWindows).doc(windowId);
 
-  type Op =
-    { kind: 'set'; id: string; view: Record<string, unknown> } | { kind: 'delete'; id: string };
-  const ops: Op[] = [];
-  const existingById = new Map<string, Record<string, unknown>>();
-  for (const d of existingSnap.docs) {
-    const view = d.data();
-    delete view['updatedAt'];
-    existingById.set(d.id, view);
-  }
-  for (const [id, view] of desired) {
-    const existing = existingById.get(id);
-    if (existing && stableStringify(existing) === stableStringify(view)) continue;
-    ops.push({ kind: 'set', id, view });
-  }
-  for (const id of existingById.keys()) {
-    if (!desired.has(id)) ops.push({ kind: 'delete', id });
-  }
+  return db.runTransaction(async (tx) => {
+    const windowSnap = await tx.get(windowRef);
+    const existingSnap = await tx.get(viewsCol.where('windowId', '==', windowId));
+    const data = windowSnap.data();
+    const desired = data
+      ? windowInviteViewsOf(data, windowId)
+      : new Map<string, Record<string, unknown>>();
 
-  if (!opts.dryRun) {
-    for (let i = 0; i < ops.length; i += MAX_BATCH_WRITES) {
-      const batch = db.batch();
-      for (const op of ops.slice(i, i + MAX_BATCH_WRITES)) {
-        const ref = viewsCol.doc(op.id);
-        if (op.kind === 'set') {
-          batch.set(ref, { ...op.view, updatedAt: FieldValue.serverTimestamp() });
-        } else {
-          batch.delete(ref);
-        }
-      }
-      await batch.commit();
+    const existingById = new Map<string, Record<string, unknown>>();
+    for (const d of existingSnap.docs) {
+      const view = d.data();
+      delete view['updatedAt'];
+      existingById.set(d.id, view);
     }
-  }
-  return {
-    written: ops.filter((o) => o.kind === 'set').length,
-    deleted: ops.filter((o) => o.kind === 'delete').length,
-  };
+
+    let written = 0;
+    let deleted = 0;
+    for (const [id, view] of desired) {
+      const existing = existingById.get(id);
+      if (existing && stableStringify(existing) === stableStringify(view)) continue;
+      tx.set(viewsCol.doc(id), { ...view, updatedAt: FieldValue.serverTimestamp() });
+      written += 1;
+    }
+    for (const id of existingById.keys()) {
+      if (desired.has(id)) continue;
+      tx.delete(viewsCol.doc(id));
+      deleted += 1;
+    }
+    return { written, deleted };
+  });
 }
 
 /**

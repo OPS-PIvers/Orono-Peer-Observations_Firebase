@@ -132,14 +132,28 @@ export function BookingPage() {
 
   const { data: signupFields } = useFirestoreCollection<SignupField>(COLLECTIONS.signupFields);
 
+  // The booked slot after a cancel or reschedule this page just made. The
+  // view is rewritten by a trigger a few seconds after the callable commits,
+  // so until it catches up this stands in for its bookedSlotId.
+  const [bookedOverride, setBookedOverride] = useState<{ slotId: string | null } | null>(null);
+
   // Find the invitee this link belongs to: email must match the signed-in
   // user AND the per-invitee token must match the one in the URL.
-  const invitee: (WindowInviteEntry & { email: string }) | null = useMemo(() => {
+  const viewEntry: WindowInviteEntry | null = useMemo(() => {
     if (!windowDoc || !token || !myEmail) return null;
     if (windowDoc.email.toLowerCase() !== myEmail) return null;
-    const entry = windowDoc.entries.find((e) => e.inviteToken === token);
-    return entry ? { ...entry, email: windowDoc.email } : null;
+    return windowDoc.entries.find((e) => e.inviteToken === token) ?? null;
   }, [windowDoc, token, myEmail]);
+  const invitee: (WindowInviteEntry & { email: string }) | null = useMemo(() => {
+    if (!windowDoc || !viewEntry) return null;
+    const bookedSlotId = bookedOverride ? bookedOverride.slotId : viewEntry.bookedSlotId;
+    return { ...viewEntry, bookedSlotId, email: windowDoc.email };
+  }, [windowDoc, viewEntry, bookedOverride]);
+  // Drop the override once the view shows the same booking.
+  const viewBookedSlotId = viewEntry?.bookedSlotId ?? null;
+  useEffect(() => {
+    if (bookedOverride?.slotId === viewBookedSlotId) setBookedOverride(null);
+  }, [bookedOverride, viewBookedSlotId]);
 
   // Existing day-preference submission for this invitee (doc id = email).
   const prefPath =
@@ -631,6 +645,7 @@ export function BookingPage() {
         inviteToken: token,
         detailAnswers: buildDetailAnswers(fields, 'direct', answers),
       });
+      setBookedOverride({ slotId });
       setBookedConfirmation(slot ? formatLocalDateTime(slot.startUTC) : 'Your slot is reserved.');
       setConflictNote(res.data.calendarConflictWarning ? CONFLICT_WARNING_TEXT : null);
       setSelectedSlotId(null);
@@ -653,6 +668,7 @@ export function BookingPage() {
       assertWritable();
       const slot = (slots ?? []).find((s) => s.slotId === newSlotId);
       const res = await rescheduleBookingFn({ windowId, newSlotId, inviteToken: token });
+      setBookedOverride({ slotId: newSlotId });
       setRescheduledNote(
         slot
           ? `Your booking was moved to ${formatLocalDateTime(slot.startUTC)}.`
@@ -679,6 +695,7 @@ export function BookingPage() {
     try {
       assertWritable();
       await cancelBookingFn({ windowId, slotId, reason: reason.trim() });
+      setBookedOverride({ slotId: null });
       setBookedConfirmation(null);
       setSelectedSlotId(null);
       setRescheduledNote(null);
