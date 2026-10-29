@@ -54,15 +54,25 @@ export async function isArchivedStaff(db: Firestore, email: string): Promise<boo
   return snap.exists && (snap.data() as { isActive?: unknown } | undefined)?.isActive === false;
 }
 
-/** Refuse an archived caller, whatever their token claims. For the
- *  onRequest endpoints, which the onCall wrapper doesn't cover. */
+/** Whether the caller is archived. In a demo-edit session the driver
+ *  (demoEditBy) counts too, or archiving them wouldn't end the session. */
+export async function isArchivedCaller(
+  db: Firestore,
+  auth: { token: Record<string, unknown> } | null | undefined,
+): Promise<boolean> {
+  const emails = [auth?.token['email'], auth?.token[DEMO_EDIT_CLAIM]].filter(
+    (e): e is string => typeof e === 'string' && e !== '',
+  );
+  const archived = await Promise.all(emails.map((e) => isArchivedStaff(db, e)));
+  return archived.includes(true);
+}
+
+/** Refuse an archived caller, whatever their token claims. */
 export async function assertNotArchived(
   db: Firestore,
   auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<void> {
-  const email = auth?.token['email'];
-  if (typeof email !== 'string' || !email) return;
-  if (await isArchivedStaff(db, email)) {
+  if (await isArchivedCaller(db, auth)) {
     throw new HttpsError('permission-denied', 'Your staff account is archived.');
   }
 }

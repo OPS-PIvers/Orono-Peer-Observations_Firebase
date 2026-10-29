@@ -8,6 +8,7 @@ import {
   collection,
   doc,
   getDoc,
+  deleteDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -175,5 +176,81 @@ describe('other archived elevated callers', () => {
     const db = testEnv.authenticatedContext('principal', claims.admin(PRINCIPAL)).firestore();
     await assertFails(getDocs(collection(db, 'staff')));
     await assertFails(updateDoc(doc(db, `staff/${TEACHER}`), { name: 'Renamed' }));
+  });
+});
+
+describe('archived observers lose their own observations', () => {
+  beforeEach(async () => {
+    await staff(PE, 'peer-evaluator', false);
+    await seed('observations/mine', {
+      observerEmail: PE,
+      observedEmail: TEACHER,
+      coObserverEmails: [],
+      observedName: 'Test Teacher',
+      status: 'Draft',
+      type: 'Standard',
+      observationName: 'Mine',
+      createdAt: new Date(),
+      lastModifiedAt: new Date(),
+    });
+    await seed('observations/shared', {
+      observerEmail: 'other-pe@orono.k12.mn.us',
+      observedEmail: TEACHER,
+      coObserverEmails: [PE],
+      status: 'Draft',
+      type: 'Standard',
+    });
+    await seed('observationWindows/w1', {
+      observerEmail: PE,
+      invitedEmails: [],
+      defaultObservationName: 'Window',
+    });
+  });
+
+  const peDb = () => testEnv.authenticatedContext('pe', claims.peerEval(PE)).firestore();
+
+  it("can't read or edit observations they own or co-observe", async () => {
+    const db = peDb();
+    await assertFails(getDoc(doc(db, 'observations/mine')));
+    await assertFails(updateDoc(doc(db, 'observations/mine'), { observationName: 'x' }));
+    await assertFails(getDoc(doc(db, 'observations/shared')));
+  });
+
+  it("can't edit or delete their own windows", async () => {
+    const db = peDb();
+    await assertFails(updateDoc(doc(db, 'observationWindows/w1'), { defaultObservationName: 'x' }));
+    await assertFails(deleteDoc(doc(db, 'observationWindows/w1')));
+  });
+
+  it('the observed teacher still reads the observation', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(TEACHER)).firestore();
+    await assertSucceeds(getDoc(doc(db, 'observations/mine')));
+  });
+
+  it('an active owner still reads and edits it', async () => {
+    await staff(PE, 'peer-evaluator', true);
+    const db = peDb();
+    await assertSucceeds(getDoc(doc(db, 'observations/mine')));
+    await assertSucceeds(updateDoc(doc(db, 'observations/mine'), { observationName: 'x' }));
+  });
+});
+
+describe('demo-edit session whose driver was archived', () => {
+  const DRIVER = 'viewer@orono.k12.mn.us';
+  const session = () =>
+    testEnv.authenticatedContext('pe', { ...claims.peerEval(PE), demoEditBy: DRIVER }).firestore();
+
+  beforeEach(async () => {
+    await staff(PE, 'peer-evaluator', true);
+  });
+
+  it("loses the driven account's roster reads", async () => {
+    await staff(DRIVER, 'teacher', false, { canViewAsEdit: true });
+    await assertFails(getDocs(collection(session(), 'staff')));
+  });
+
+  it('keeps them while the driver is active', async () => {
+    await staff(DRIVER, 'teacher', true, { canViewAsEdit: true });
+    await assertSucceeds(getDocs(collection(session(), 'staff')));
   });
 });

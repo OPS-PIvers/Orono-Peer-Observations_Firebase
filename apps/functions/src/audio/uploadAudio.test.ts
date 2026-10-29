@@ -67,7 +67,7 @@ vi.mock('../lib/rateLimit.js', () => ({
 vi.mock('../lib/callable.js', () => ({
   isDemoEditSession: () => false,
   isDemoStaff: () => Promise.resolve(false),
-  isArchivedStaff: () => Promise.resolve(h.archived),
+  isArchivedCaller: () => Promise.resolve(h.archived),
 }));
 
 const { uploadAudio } = await import('./uploadAudio.js');

@@ -74,6 +74,13 @@ describe('onCall wrapper', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('refuses a demo-edit session whose driver was archived', async () => {
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isActive: true };
+    live.staff['viewer@orono.k12.mn.us'] = { isActive: false };
+    const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
+    await expect(fn({ auth: demoAuth })).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
   it('lets active, legacy (no isActive) and roster-less callers through', async () => {
     live.staff['active@orono.k12.mn.us'] = { role: 'teacher', isActive: true };
     live.staff['legacy@orono.k12.mn.us'] = { role: 'teacher' };
