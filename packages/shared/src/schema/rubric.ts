@@ -48,7 +48,14 @@ export const rubricLookFor = z.object({
 });
 export type RubricLookFor = z.infer<typeof rubricLookFor>;
 
-const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a #RRGGBB hex string');
+/** Strict `#RRGGBB`. Also the only colour shape a componentTag mark may put in an inline style. */
+export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+export function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && HEX_COLOR_PATTERN.test(value);
+}
+
+const hexColor = z.string().regex(HEX_COLOR_PATTERN, 'Color must be a #RRGGBB hex string');
 
 export const componentColor = z.object({
   bg: hexColor,

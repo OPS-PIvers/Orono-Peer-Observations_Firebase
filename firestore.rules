@@ -499,9 +499,11 @@ service cloud.firestore {
       //   co-observer — listed in coObserverEmails by the owner (e.g. a
       //                 principal and associate principal observing
       //                 together): read, and edit the Draft's content.
-      //   oversight   — Full Access only (hasObservationOversight): everything,
-      //                 including finalized docs — except observations of
-      //                 themselves, where they are just the observed staff.
+      //   oversight   — Full Access only (hasObservationOversight): read
+      //                 and delete anything, and edit content on any status
+      //                 (server-owned fields stay with the Functions) —
+      //                 except observations of themselves, where they are
+      //                 just the observed staff.
       // Peer Evaluators, building Administrators and other Admin Console
       // users see nothing they don't own or co-observe.
       function oversees() {
@@ -625,8 +627,14 @@ service cloud.firestore {
           && request.resource.data.acknowledgedBy == request.auth.token.email
           && changedKeys().hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         )
-        // Oversight can correct anything except who was observed.
-        || (oversees() && unchanged('observedEmail')))
+        // Oversight edits the same content as the owner, on any status.
+        // Everything else is server-owned: the Functions act on the Drive
+        // ids, co-observer list and status with the full-scope Drive
+        // credential, so a client-chosen driveFolderId, pdfDriveFileId,
+        // audioDriveFileIds or evidenceLinks would aim them at any Drive
+        // file the app can reach.
+        || (oversees()
+          && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility']))))
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
       // A reopened observation is a Draft again but keeps the PDF the

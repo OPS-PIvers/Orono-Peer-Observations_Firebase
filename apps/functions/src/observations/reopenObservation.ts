@@ -1,5 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
+import { defineString } from 'firebase-functions/params';
+import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
@@ -11,8 +13,16 @@ import {
 } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  assertObservationFolder,
+  withdrawObservedFolderAccess,
+} from '../lib/drive.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * Reopen a Finalized observation (oversight only):
@@ -28,16 +38,27 @@ if (getApps().length === 0) initializeApp();
  *      and the observed staff member's acknowledgement (the content is about
  *      to change, so any prior ack no longer applies).
  *   3. Write an /auditLog entry recording who reopened it and why.
+ *   4. Take back the observed staff member's Reader on the Drive folder
+ *      (they keep Reader on the PDF itself), so recordings and evidence
+ *      added while it is a Draft again don't open for them in Drive.
+ *      Best-effort here; uploadAudio and uploadEvidenceFile repeat it, and
+ *      refuse to upload, before adding a file to a reopened observation.
  *
- * `pdfDriveFileId` / `driveFolderId` are intentionally KEPT: the Drive
- * folder stays shared with the observed staff member, and re-finalizing
+ * `pdfDriveFileId` / `driveFolderId` are intentionally KEPT: re-finalizing
  * replaces the existing PDF's content in place (see finalizeObservation +
  * drive.replaceFileContent) so previously shared links stay valid instead
- * of duplicate PDFs accumulating. Re-finalizing also re-sends the
- * observation.finalized email with the refreshed record.
+ * of duplicate PDFs accumulating, and shares the folder with the observed
+ * staff member again. Re-finalizing also re-sends the observation.finalized
+ * email with the refreshed record.
  */
 export const reopenObservation = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 60 },
+  {
+    region: 'us-central1',
+    serviceAccount: DRIVE_SERVICE_ACCOUNT,
+    secrets: DRIVE_SECRETS,
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
   async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const userEmail = request.auth.token.email?.toLowerCase();
@@ -129,6 +150,30 @@ export const reopenObservation = onCall(
         driveFolderId: obs.driveFolderId,
       },
     });
+
+    if (obs.driveFolderId) {
+      try {
+        const parentFolderId = PARENT_FOLDER_ID.value();
+        await assertObservationFolder({
+          folderId: obs.driveFolderId,
+          parentFolderId,
+          observationId,
+        });
+        await withdrawObservedFolderAccess({
+          folderId: obs.driveFolderId,
+          parentFolderId,
+          observedEmail: obs.observedEmail,
+          pdfDriveFileId: obs.pdfDriveFileId,
+          observationId,
+        });
+      } catch (err) {
+        logger.error('reopenObservation: could not take back the folder grant', {
+          observationId,
+          folderId: obs.driveFolderId,
+          err,
+        });
+      }
+    }
 
     return { ok: true };
   },
