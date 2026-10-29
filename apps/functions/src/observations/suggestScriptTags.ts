@@ -11,6 +11,7 @@ import {
   rateLimitCounterRef,
 } from '../lib/rateLimit.js';
 import {
+  DEMO_EDIT_CLAIM,
   autoTagUsesFullRubric,
   clampScriptAutoTagOptions,
   parseAutoTagConfidence,
@@ -213,9 +214,13 @@ export const suggestScriptTags = onCall(
     // across tabs or observations can't overrun the quota. A refused claim
     // costs no quota; a claimed run that later fails still does, because the
     // model may already have been billed.
+    // In a View As + Edit session the token's email is the impersonated staff
+    // member's; count the run against the person really making the call so
+    // they don't get a fresh quota per identity or use up the target's.
+    const demoEditBy: unknown = request.auth.token[DEMO_EDIT_CLAIM];
     const limits = await loadRateLimits(db);
     const limitOpts = {
-      userEmail,
+      userEmail: typeof demoEditBy === 'string' ? demoEditBy.toLowerCase() : userEmail,
       key: RATE_LIMIT_KEYS.scriptAutoTag,
       max: limits.scriptAutoTagRunsPerHour,
       windowMs: HOUR_MS,

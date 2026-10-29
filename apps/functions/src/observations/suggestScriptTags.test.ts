@@ -3,6 +3,7 @@ import type { CallableRequest } from 'firebase-functions/v2/https';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
+  DEMO_EDIT_CLAIM,
   OBSERVATION_STATUS,
   OBSERVATION_SUBCOLLECTIONS,
   roleYearMappingDocId,
@@ -563,6 +564,19 @@ describe('suggestScriptTags — per-user hourly limit', () => {
       code: 'resource-exhausted',
     });
     expect(h.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a View As + Edit run against the real caller, not the impersonated one', async () => {
+    const req = callerRequest({ observationId: OBS_ID }) as {
+      auth: { token: Record<string, unknown> };
+    };
+    req.auth.token[DEMO_EDIT_CLAIM] = 'Admin@orono.k12.mn.us';
+    // Demo-edit sessions may only touch demo staff's observations.
+    docs.set(OBS_PATH, observation({ observedEmail: 'demo.teacher@orono.k12.mn.us' }));
+    docs.set(`${COLLECTIONS.staff}/demo.teacher@orono.k12.mn.us`, { isDemo: true });
+    await run(req as Partial<CallableRequest>);
+    expect(docs.has(LIMIT_PATH)).toBe(false);
+    expect(docs.get('rateLimitCounters/admin@orono.k12.mn.us__scriptAutoTag')?.['count']).toBe(1);
   });
 
   it('does not charge the quota for reopening a saved run', async () => {
