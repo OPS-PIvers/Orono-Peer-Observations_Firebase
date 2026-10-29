@@ -109,6 +109,8 @@ interface DbConfig {
   questions?: Record<string, unknown>[];
   /** The appSettings/app doc (undefined → missing). */
   appSettings?: Record<string, unknown>;
+  /** Staff emails with a /staff doc. */
+  staff?: string[];
 }
 
 interface Recorder {
@@ -154,6 +156,10 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
             data: () => config.appSettings,
           }),
       };
+    }
+    if (path.startsWith(`${COLLECTIONS.staff}/`)) {
+      const exists = (config.staff ?? []).includes(path.slice(COLLECTIONS.staff.length + 1));
+      return { get: () => Promise.resolve({ exists, data: () => (exists ? {} : undefined) }) };
     }
     if (path.startsWith(`${COLLECTIONS.roleYearMappings}/`)) {
       return {
@@ -232,6 +238,7 @@ function happyConfig(obsOver: Record<string, unknown> = {}): DbConfig {
     role: { id: 'teacher', roleId: 'teacher', displayName: 'Teacher', rubricId: 'rubric-1' },
     rubric: { rubricId: 'rubric-1', displayName: 'Teaching Rubric', domains: [] },
     mapping: null,
+    staff: [OBSERVED],
   };
 }
 
@@ -360,6 +367,22 @@ describe('regenerateObservationPdf — report contents and file handling', () =>
     expect(h.drive.deleteDriveFile).not.toHaveBeenCalled();
     expect(result).toMatchObject({ pdfDriveFileId: 'pdf-old' });
     expect(rec.obsUpdates[0]?.['pdfDriveFileId']).toBe('pdf-old');
+  });
+
+  it('shares the folder with a staff-backed observee', async () => {
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    await run(observerRequest());
+    expect(h.drive.shareWithUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: OBSERVED, role: 'reader' }),
+    );
+  });
+
+  it('still regenerates but shares nothing with an observedEmail that has no staff record', async () => {
+    const { db } = buildDb(happyConfig({ observedEmail: 'someone@gmail.com' }));
+    h.db = db;
+    await expect(run(observerRequest())).resolves.toMatchObject({ pdfDriveFileId: 'pdf-new' });
+    expect(h.drive.shareWithUser).not.toHaveBeenCalled();
   });
 
   it('uploads a fresh PDF and drops the old reference when the old file is gone', async () => {

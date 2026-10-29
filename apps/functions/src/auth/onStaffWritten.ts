@@ -4,7 +4,13 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
+import {
+  COLLECTIONS,
+  isAdminRole,
+  isCanonicalStaffEmail,
+  isSpecialRole,
+  type Role,
+} from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
 
 if (getApps().length === 0) initializeApp();
@@ -41,6 +47,14 @@ export async function handleStaffWritten(
   event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { email: string }>,
 ): Promise<void> {
   const email = event.params.email;
+  // Only the canonical (lowercase, district) doc speaks for a person.
+  // getUserByEmail ignores case, so acting on a case-variant doc would
+  // overwrite the real user's claims from a record that isn't theirs, and
+  // an off-domain id would get a district invite.
+  if (!isCanonicalStaffEmail(email)) {
+    logger.warn('onStaffWritten: ignoring non-canonical staff doc id', { email });
+    return;
+  }
   const after = event.data?.after.data() as
     | {
         role?: string;
