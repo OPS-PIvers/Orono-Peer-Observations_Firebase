@@ -4,15 +4,16 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 
-const DEV_AUTH_SERVER_URL =
-  (import.meta.env['VITE_DEV_AUTH_SERVER'] as string | undefined) ?? 'http://127.0.0.1:8787';
+// Same-origin route served by the Vite dev server (apps/web/vite-dev-auth-proxy.ts),
+// which forwards to the dev-auth-server with its per-run secret.
+const DEV_AUTH_MINT_PATH = '/__dev-auth/mint';
 
 const QUICK_USERS = [{ email: 'paul.ivers@orono.k12.mn.us', label: 'Paul Ivers (admin)' }];
 
 /**
- * Local-dev sign-in helper. Signs in via a custom token minted by the
- * sibling `scripts/dev-auth-server.mjs` (which uses Application Default
- * Credentials — Paul's gcloud auth — to call the Admin SDK).
+ * Local-dev sign-in helper. Signs in via a custom token minted by
+ * `scripts/dev-auth-server.mjs` (the Auth emulator, or the live project with
+ * `pnpm dev:auth-server:live`, which only mints for allowlisted emails).
  *
  * Lives behind an `import.meta.env.MODE === 'development'` check in
  * App.tsx, so it tree-shakes out of `pnpm build` and never reaches the
@@ -34,7 +35,7 @@ export function DevSignIn() {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch(`${DEV_AUTH_SERVER_URL}/mint`, {
+      const response = await fetch(DEV_AUTH_MINT_PATH, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: targetEmail }),
