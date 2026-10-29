@@ -41,6 +41,7 @@ import {
   reportFileName,
 } from '../lib/acknowledgeEmail.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
@@ -147,6 +148,15 @@ export const finalizeObservation = onCall(
       throw new HttpsError(
         'permission-denied',
         'Only the observer who created this observation can finalize it.',
+      );
+    }
+    // Finalize shares the Drive folder with observedEmail and mails it the
+    // PDF, so it must name a real staff record (the create rule requires the
+    // same; this covers docs written any other way).
+    if (!(await isStaffBackedEmail(db, obs.observedEmail))) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The observed person isn’t on the staff roster, so this observation can’t be finalized.',
       );
     }
 

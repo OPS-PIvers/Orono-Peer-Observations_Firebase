@@ -102,6 +102,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
     }
 
+    // A canonical staff address: lowercase and on the district domain.
+    // Staff docs are keyed by this form and ids are case-sensitive, so a
+    // case variant would name a second doc for the same person. Mirrors
+    // isCanonicalStaffEmail in @ops/shared.
+    function isCanonicalStaffEmail(email) {
+      return email is string
+        && email == email.lower()
+        && email.matches('[^@\\s]+@orono[.]k12[.]mn[.]us');
+    }
+
     function isBuildingAdmin() {
       return isAdmin() && role() == 'administrator';
     }
@@ -152,6 +162,7 @@ service cloud.firestore {
 
     function buildingAdminCanCreateStaff(email) {
       return isBuildingAdmin()
+        && isCanonicalStaffEmail(email)
         && request.resource.data.get('email', '') == email
         && buildingAdminCanWriteStaffData(request.resource.data)
         && request.resource.data.get('hasAdminAccess', false) == false
@@ -557,6 +568,11 @@ service cloud.firestore {
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.
         && (role() != 'administrator' || request.resource.data.type == 'Standard')
+        // Every observer: the observee is a real staff record, named by its
+        // canonical id. The email and Drive paths send to this address, and
+        // a case variant would make adminCanObserve read some other doc.
+        && isCanonicalStaffEmail(request.resource.data.observedEmail)
+        && exists(/databases/$(database)/documents/staff/$(request.resource.data.observedEmail))
         // ...and only of staff they can observe (see adminCanObserve).
         && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail)))
         && (notDemoEdit() || isDemoStaff(request.resource.data.observedEmail));
