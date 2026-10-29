@@ -28,9 +28,10 @@ export interface WindowInviteViewBackfillResult {
  *
  * First run after deploy: syncs every window (those that predate the
  * onObservationWindowInviteViews trigger) and writes the marker. Every later
- * run re-syncs only open windows. That repairs a view the trigger missed (it
- * runs without retries, which would need a forced deploy), and costs nothing
- * when the views are current, because each sync only writes what differs.
+ * run re-syncs open windows and windows whose views still say they are open
+ * (see resyncOpenWindows). That repairs a view the trigger missed (it runs
+ * without retries, which would need a forced deploy), and costs nothing when
+ * the views are current, because each sync only writes what differs.
  *
  * Runs on a schedule rather than by hand so nobody has to run a script
  * against production.
@@ -97,22 +98,33 @@ export async function runWindowInviteViewBackfill(
   return result;
 }
 
-/** Re-syncs the views of every open or partially booked window. */
+/**
+ * Re-syncs every window that is open or partially booked, plus every window
+ * whose views still say it is. The second set catches a dropped event that
+ * closed, filled or deleted a window: the window no longer matches the first
+ * query, but its stale views do.
+ */
 export async function resyncOpenWindows(db: Firestore): Promise<WindowInviteViewBackfillResult> {
   const result: WindowInviteViewBackfillResult = { windows: 0, viewsWritten: 0, viewsDeleted: 0 };
-  const snap = await db
-    .collection(COLLECTIONS.observationWindows)
-    .where('status', 'in', [
-      OBSERVATION_WINDOW_STATUS.open,
-      OBSERVATION_WINDOW_STATUS.partiallyBooked,
-    ])
-    .select()
-    .get();
-  await syncAll(
-    db,
-    snap.docs.map((d) => d.id),
-    result,
-  );
+  const openStatuses = [OBSERVATION_WINDOW_STATUS.open, OBSERVATION_WINDOW_STATUS.partiallyBooked];
+  const [windowsSnap, viewsSnap] = await Promise.all([
+    db
+      .collection(COLLECTIONS.observationWindows)
+      .where('status', 'in', openStatuses)
+      .select()
+      .get(),
+    db
+      .collection(COLLECTIONS.windowInviteViews)
+      .where('status', 'in', openStatuses)
+      .select('windowId')
+      .get(),
+  ]);
+  const ids = new Set(windowsSnap.docs.map((d) => d.id));
+  for (const d of viewsSnap.docs) {
+    const windowId: unknown = d.get('windowId');
+    if (typeof windowId === 'string') ids.add(windowId);
+  }
+  await syncAll(db, [...ids], result);
   if (result.viewsWritten > 0 || result.viewsDeleted > 0) {
     logger.warn('backfillWindowInviteViews: repaired stale views', { ...result });
   }

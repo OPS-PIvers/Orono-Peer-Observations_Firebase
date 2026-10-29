@@ -26,7 +26,11 @@ const { resyncOpenWindows, runWindowInviteViewBackfill, WINDOW_INVITE_VIEWS_BACK
   await import('./backfillWindowInviteViews.js');
 
 /** In-memory Firestore with just the calls the backfill makes. */
-function fakeDb(windowIds: string[], markerExists = false) {
+function fakeDb(
+  windowIds: string[],
+  markerExists = false,
+  openViews: { windowId?: unknown }[] = [],
+) {
   let marker: Record<string, unknown> | null = markerExists ? { done: true } : null;
   const ids = [...windowIds].sort();
   const page = (after: string | null, size: number) => ({
@@ -50,19 +54,18 @@ function fakeDb(windowIds: string[], markerExists = false) {
         },
       };
     },
-    collection: () => ({
+    collection: (name: string) => ({
       orderBy: () => ({ select: () => ({ limit: (n: number) => page(null, n) }) }),
-      // Open windows: ids starting "open-".
+      // Open windows: ids starting "open-". Open views: `openViews`.
       where: (field: string, op: string, statuses: string[]) => {
         expect([field, op, statuses]).toEqual(['status', 'in', ['open', 'partially-booked']]);
-        return {
-          select: () => ({
-            get: () =>
-              Promise.resolve({
-                docs: ids.filter((id) => id.startsWith('open-')).map((id) => ({ id })),
-              }),
-          }),
-        };
+        const docs =
+          name === 'windowInviteViews'
+            ? openViews.map((v) => ({
+                get: (f: string) => (f === 'windowId' ? v.windowId : undefined),
+              }))
+            : ids.filter((id) => id.startsWith('open-')).map((id) => ({ id }));
+        return { select: () => ({ get: () => Promise.resolve({ docs }) }) };
       },
     }),
   };
@@ -105,5 +108,17 @@ describe('runWindowInviteViewBackfill', () => {
     const result = await resyncOpenWindows(db);
     expect(state.synced.sort()).toEqual(['open-1', 'open-2']);
     expect(result).toEqual({ windows: 2, viewsWritten: 4, viewsDeleted: 0 });
+  });
+
+  it('also re-syncs closed or deleted windows whose views still say open', async () => {
+    const { db } = fakeDb(['open-1', 'closed-1', 'closed-2'], true, [
+      { windowId: 'open-1' },
+      { windowId: 'closed-1' },
+      { windowId: 'deleted-1' },
+      { windowId: 42 },
+    ]);
+    const result = await resyncOpenWindows(db);
+    expect(state.synced.sort()).toEqual(['closed-1', 'deleted-1', 'open-1']);
+    expect(result.windows).toBe(3);
   });
 });
