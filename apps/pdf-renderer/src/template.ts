@@ -13,6 +13,7 @@ import {
   type WorkProductAnswer,
   type WorkProductQuestion,
   displayYear,
+  isHexColor,
 } from '@ops/shared';
 import { ComponentTagMark } from './component-tag-mark.js';
 import { colorFor } from './component-colors.js';
@@ -67,7 +68,6 @@ export interface RenderPayload {
 
 const DEFAULT_APP_NAME = 'Orono Peer Observations';
 const DEFAULT_PRIMARY_COLOR = '#2d3f89';
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /** Resolve branding against OPS defaults — never trust caller-provided
  *  fields blindly (a malformed/empty string must not break page rendering). */
@@ -78,10 +78,8 @@ function resolveBranding(branding: RenderBranding | undefined): {
 } {
   const appName = (branding?.appName?.trim() ?? '') || DEFAULT_APP_NAME;
   const logoUrl = (branding?.logoUrl?.trim() ?? '') || null;
-  const primaryColor =
-    branding?.primaryColor && HEX_COLOR_RE.test(branding.primaryColor)
-      ? branding.primaryColor
-      : DEFAULT_PRIMARY_COLOR;
+  const requestedColor = branding?.primaryColor;
+  const primaryColor = isHexColor(requestedColor) ? requestedColor : DEFAULT_PRIMARY_COLOR;
   return { appName, logoUrl, primaryColor };
 }
 
@@ -168,8 +166,10 @@ export function renderObservationHtml(payload: RenderPayload): string {
                       <ul>
                         ${scriptSpans
                           .map((span) => {
-                            const bg = span.bg ?? fallbackColor.bg;
-                            const fg = span.fg ?? fallbackColor.fg;
+                            // Stored mark attrs are user-written: only a strict
+                            // #RRGGBB may reach the style attribute.
+                            const bg = isHexColor(span.bg) ? span.bg : fallbackColor.bg;
+                            const fg = isHexColor(span.fg) ? span.fg : fallbackColor.fg;
                             const sourceLabel =
                               span.source === 'script'
                                 ? ''

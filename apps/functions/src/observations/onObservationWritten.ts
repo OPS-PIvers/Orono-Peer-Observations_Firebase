@@ -14,6 +14,7 @@ import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  assertObservationFolder,
   deleteObservationFolder,
   removeReaderFromFile,
   shareObservationFolderWithObservers,
@@ -221,11 +222,30 @@ async function syncCoObserverFolderAccess(
   if (typeof folderId !== 'string' || !folderId) return;
   const { added, removed } = coObserverChanges(before, after);
   if (added.length > 0) {
-    await shareObservationFolderWithObservers({
-      folderId,
-      observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
-      coObserverEmails: added,
-    });
+    // Share only the observation's own folder, never whatever driveFolderId
+    // happens to name. Revoking (below) is safe on any folder.
+    let shareable = true;
+    try {
+      await assertObservationFolder({
+        folderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
+    } catch (err) {
+      shareable = false;
+      logger.error('onObservationWritten: co-observer folder share refused', {
+        observationId,
+        folderId,
+        err,
+      });
+    }
+    if (shareable) {
+      await shareObservationFolderWithObservers({
+        folderId,
+        observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
+        coObserverEmails: added,
+      });
+    }
   }
   for (const email of removed) {
     try {
@@ -345,7 +365,9 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
   }
 }
 
-function buildRow(observationId: string, data: ObsLike): string[] {
+/** The Master Log row for an observation. Every cell goes through
+ *  `sheetText` because the rows are written USER_ENTERED. */
+export function buildRow(observationId: string, data: ObsLike): string[] {
   return [
     observationId,
     asString(data['observerEmail']),
@@ -361,7 +383,42 @@ function buildRow(observationId: string, data: ObsLike): string[] {
     formatTimestamp(data['observationDate']),
     driveFolderUrl(data['driveFolderId']),
     pdfUrl(data['pdfDriveFileId']),
-  ];
+  ].map(sheetText);
+}
+
+/** The row left behind for a deleted observation: the id and who was
+ *  involved, everything else cleared, status stamped [DELETED]. */
+export function buildDeletedRow(
+  observationId: string,
+  beforeData: ObsLike | null | undefined,
+): string[] {
+  return [
+    observationId,
+    asString(beforeData?.['observerEmail']),
+    asString(beforeData?.['observedEmail']),
+    asString(beforeData?.['observedName']),
+    '',
+    '',
+    asString(beforeData?.['type']),
+    '[DELETED]',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ].map(sheetText);
+}
+
+/** Keeps a cell from being read as a formula. The rows are written
+ *  USER_ENTERED so the Drive links stay clickable, which means Sheets parses
+ *  each cell as if someone typed it. Names, types, roles and the document id
+ *  are all client-chosen strings, so one starting with `=`, `+`, `-`, `@`
+ *  (or a tab or line break before one) could plant a live formula in the
+ *  district log. A leading apostrophe makes Sheets store the rest as plain
+ *  text and is not shown in the cell. */
+export function sheetText(value: string): string {
+  return /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
 }
 
 function asString(value: unknown): string {
@@ -450,26 +507,7 @@ async function handleDeletion(
       spreadsheetId: sheetId,
       range: `A${String(rowNumber)}:N${String(rowNumber)}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [
-          [
-            observationId,
-            asString(beforeData?.['observerEmail']),
-            asString(beforeData?.['observedEmail']),
-            asString(beforeData?.['observedName']),
-            '',
-            '',
-            asString(beforeData?.['type']),
-            '[DELETED]',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-        ],
-      },
+      requestBody: { values: [buildDeletedRow(observationId, beforeData)] },
     });
   } catch (err) {
     logger.error('onObservationWritten: Sheet row cleanup failed', err);

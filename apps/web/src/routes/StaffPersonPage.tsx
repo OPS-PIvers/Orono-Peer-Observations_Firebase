@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '@/auth/AuthProvider';
 import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { assertWritable } from '@/dev/viewAsGuard';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -51,10 +50,12 @@ type ObsTab = 'all' | ObservationStatus;
 // one staff member.
 const OBS_PAGE_SIZE = 20;
 
-const sendManualEmailFn = httpsCallable<
-  { templateId: string; toEmail: string; vars: Record<string, string> },
-  { sent: boolean }
->(functions, 'sendManualEmail');
+// The server builds every template variable from /staff and /appSettings
+// (apps/functions/src/email/manualEmailVars.ts), so no vars are sent.
+const sendManualEmailFn = httpsCallable<{ templateId: string; toEmail: string }, { sent: boolean }>(
+  functions,
+  'sendManualEmail',
+);
 
 const OBS_ORDER = orderBy('lastModifiedAt', 'desc');
 const MANUAL_TEMPLATE_CONSTRAINTS = [
@@ -100,7 +101,6 @@ export function StaffPersonPage() {
   // special chars are safe, but Firestore doc IDs are stored lowercase.
   const email = decodeURIComponent(rawEmail ?? '').toLowerCase() || undefined;
   const navigate = useNavigate();
-  const { user } = useAuth();
   const currentEmail = useEffectiveEmail();
 
   const staffDocRef = useMemo(() => (email ? doc(db, COLLECTIONS.staff, email) : null), [email]);
@@ -199,22 +199,7 @@ export function StaffPersonPage() {
     setSendError(null);
     try {
       assertWritable();
-      const roleLabel = roleDisplayName(roles, staffMember.role);
-      await sendManualEmailFn({
-        templateId: selectedTemplate.id,
-        toEmail: email,
-        vars: {
-          observedName: staffMember.name,
-          observedEmail: email,
-          observedRole: roleLabel,
-          observedYear: String(staffMember.year),
-          staffName: staffMember.name,
-          staffEmail: email,
-          staffRole: roleLabel,
-          observerName: (user?.email ?? '').split('@')[0] ?? '',
-          observerEmail: user?.email ?? '',
-        },
-      });
+      await sendManualEmailFn({ templateId: selectedTemplate.id, toEmail: email });
       setSendSuccess(true);
       sendSuccessTimerRef.current = setTimeout(() => {
         setSendDialogOpen(false);

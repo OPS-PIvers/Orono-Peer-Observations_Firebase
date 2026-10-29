@@ -2,21 +2,39 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
+import { COLLECTIONS, type EmailTemplate } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
-import { APP_URL, sendEmail, substituteVariables } from '../lib/emailUtils.js';
+import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
+import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
+import {
+  allowedClientVars,
+  buildManualEmailVars,
+  loadRoleLabels,
+  loadServerAppVars,
+  loadStaffPerson,
+} from './manualEmailVars.js';
 
 if (getApps().length === 0) initializeApp();
+
+/** One hour, in milliseconds — the manualEmailsPerHour window. */
+const HOUR_MS = 60 * 60 * 1000;
 
 interface SendManualEmailRequest {
   templateId?: string;
   toEmail?: string;
+  /** Honored only for console admins (test sends); see allowedClientVars. */
   vars?: Record<string, string>;
 }
 
 /**
  * Callable function for PEs to send manual-trigger templates to a
- * specific staff member from the StaffPersonPage.
+ * specific staff member from the StaffPersonPage, and for console admins to
+ * send a test of any manual template from the Email Templates page.
+ *
+ * Safeguards: below the console tier `toEmail` must be an active staff
+ * member; every caller is held to rateLimits.manualEmailsPerHour; and the
+ * template variables are built on the server (manualEmailVars.ts), so a
+ * caller can't swap the signup link, app name or names in the email.
  *
  * Auth check: "PE or admin" is resolved via the shared `callerMeetsAccessLevel`
  * helper (../lib/callerAccess.ts, level: 'special'), which also backs
@@ -45,11 +63,17 @@ export const sendManualEmail = onCall(
       throw new HttpsError('permission-denied', 'Only PEs and admins can send manual emails');
     }
 
-    const { templateId, toEmail, vars } = (request.data ?? {}) as SendManualEmailRequest;
-    if (!templateId || !toEmail) {
+    const {
+      templateId,
+      toEmail: rawToEmail,
+      vars,
+    } = (request.data ?? {}) as SendManualEmailRequest;
+    if (!templateId || typeof rawToEmail !== 'string' || !rawToEmail) {
       throw new HttpsError('invalid-argument', 'templateId and toEmail are required');
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    const toEmail = rawToEmail.trim().toLowerCase();
+    // No '/': staff doc ids are the email, and a '/' is a path separator.
+    if (!/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(toEmail)) {
       throw new HttpsError('invalid-argument', 'toEmail is not a valid email address');
     }
 
@@ -62,18 +86,51 @@ export const sendManualEmail = onCall(
       throw new HttpsError('invalid-argument', 'Only manual templates can be sent this way');
     }
 
-    const appSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
-    const appData = appSnap.data() as
-      { branding?: { appName?: string }; signupLink?: string } | undefined;
-    const appName = appData?.branding?.appName ?? 'Orono Peer Observations';
-    const signupLink = appData?.signupLink ?? '';
+    // Recipient allow-list. Below the console tier a manual send can only
+    // reach an active staff member — the StaffPersonPage use case. Only a
+    // console admin (the Email Templates page's "Send Test…") may send to an
+    // address outside the roster.
+    const isConsoleCaller = await callerMeetsAccessLevel(db, {
+      email: callerEmail,
+      tokenRole: callerRole,
+      level: 'console',
+    });
+    const recipient = await loadStaffPerson(db, toEmail);
+    if (!isConsoleCaller && !recipient?.isActive) {
+      throw new HttpsError(
+        'permission-denied',
+        'Manual emails can only be sent to active staff members.',
+      );
+    }
 
-    const fullVars: Record<string, string> = {
-      appName,
-      signupLink,
-      signInLink: APP_URL,
-      ...vars,
-    };
+    // Charged only once the request is otherwise valid, as in
+    // sendBulkManualEmail, so a rejected call doesn't burn a slot.
+    const limits = await loadRateLimits(db);
+    const decision = await checkRateLimit(db, {
+      userEmail: callerEmail,
+      key: RATE_LIMIT_KEYS.manualEmail,
+      max: limits.manualEmailsPerHour,
+      windowMs: HOUR_MS,
+    });
+    if (!decision.allowed) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `Manual email limit reached (${String(limits.manualEmailsPerHour)}/hour). Try again later.`,
+      );
+    }
+
+    const [app, caller] = await Promise.all([
+      loadServerAppVars(db),
+      loadStaffPerson(db, callerEmail),
+    ]);
+    const roleLabels = await loadRoleLabels(db, [recipient?.role]);
+    const fullVars = buildManualEmailVars({
+      app,
+      caller: caller ?? { email: callerEmail },
+      recipient,
+      roleLabels,
+      clientVars: allowedClientVars(vars, isConsoleCaller),
+    });
 
     const mailDocId = `manual-${templateId}-${toEmail.split('@')[0]}-${String(Date.now())}`;
     const result = await sendEmail({
@@ -86,7 +143,7 @@ export const sendManualEmail = onCall(
       auditDetails: {
         templateId,
         toEmail,
-        callerEmail: request.auth.token.email,
+        callerEmail,
         triggerType: 'manual',
       },
     });
