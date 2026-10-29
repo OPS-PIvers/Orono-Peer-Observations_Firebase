@@ -1,12 +1,15 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
+import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { recordingRefInput } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  ForeignDriveObjectError,
+  assertFilesInObservationFolder,
   getDriveLinks,
   shareWithUser,
 } from '../lib/drive.js';
@@ -19,6 +22,8 @@ import {
 import { assertDemoEditTarget } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * "View in Drive" for one recording: grants the caller Reader access on that
@@ -50,6 +55,12 @@ export const getRecordingDriveLink = onCall(
     await requireRecordingReader(db, request, obs, email);
 
     try {
+      await assertFilesInObservationFolder({
+        fileIds: [audioFileId],
+        folderId: obs.driveFolderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
       await shareWithUser({
         fileId: audioFileId,
         email,
@@ -59,6 +70,9 @@ export const getRecordingDriveLink = onCall(
       const { webViewLink } = await getDriveLinks(audioFileId);
       return { webViewLink };
     } catch (err) {
+      if (err instanceof ForeignDriveObjectError) {
+        throw new HttpsError('not-found', 'Recording not found on this observation');
+      }
       logger.error('getRecordingDriveLink: failed', { observationId, audioFileId, err });
       throw new HttpsError('internal', 'Could not open this recording in Drive');
     }

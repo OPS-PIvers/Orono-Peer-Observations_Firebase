@@ -9,6 +9,7 @@ import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   ResumableUploadGoneError,
+  deleteObservationFolder,
   ensureObservationFolder,
   getFileParents,
   isResumableSessionUrl,
@@ -16,6 +17,7 @@ import {
   shareObservationFolderWithObservers,
   startResumableUpload,
   uploadFileToFolder,
+  withdrawObservedFolderAccess,
 } from '../lib/drive.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
@@ -148,6 +150,7 @@ export const uploadAudio = onRequest(
       observedName: string;
       status: string;
       driveFolderId: string | null;
+      pdfDriveFileId?: string | null;
     };
     // The observers record: owner or co-observer.
     // A demo-edit session (View As + Edit) only records on demo staff.
@@ -197,12 +200,36 @@ export const uploadAudio = onRequest(
     try {
       let folderId = obs.driveFolderId;
       if (startsUpload) {
-        const ensured = await ensureObservationFolder({
+        const created = await ensureObservationFolder({
           observationId,
           observedName: obs.observedName,
           parentFolderId: PARENT_FOLDER_ID.value(),
           existingFolderId: obs.driveFolderId,
         });
+        // A new folder (none yet, or the old one was trashed or outside the
+        // parent): claim it in a transaction so two first uploads at once
+        // end up in one folder, the one driveFolderId names. Playback only
+        // serves recordings that sit in that folder.
+        const ensured =
+          created === obs.driveFolderId
+            ? created
+            : await db.runTransaction(async (tx) => {
+                const snap = await tx.get(obsRef);
+                const current = (snap.get('driveFolderId') as string | null | undefined) ?? null;
+                if (current && current !== obs.driveFolderId) return current;
+                tx.update(obsRef, { driveFolderId: created });
+                return created;
+              });
+        if (ensured !== created) {
+          try {
+            await deleteObservationFolder({
+              folderId: created,
+              parentFolderId: PARENT_FOLDER_ID.value(),
+            });
+          } catch (err) {
+            logger.warn('uploadAudio: duplicate folder cleanup failed', { folderId: created, err });
+          }
+        }
         // Best-effort Reader grant so the observer can play back recordings
         // from Drive (co-observers too); never fails the upload.
         await shareObservationFolderWithObservers({
@@ -210,6 +237,18 @@ export const uploadAudio = onRequest(
           observerEmail: obs.observerEmail,
           coObserverEmails: obs.coObserverEmails,
         });
+        // A reopened observation: take back the observed staff member's
+        // finalize-time folder grant before adding a Draft recording it
+        // would cover. Throws (no upload) if Drive can't confirm that.
+        if (obs.pdfDriveFileId) {
+          await withdrawObservedFolderAccess({
+            folderId: ensured,
+            parentFolderId: PARENT_FOLDER_ID.value(),
+            observedEmail: obs.observedEmail,
+            pdfDriveFileId: obs.pdfDriveFileId,
+            observationId,
+          });
+        }
         folderId = ensured;
       }
       if (!folderId) {
@@ -224,20 +263,16 @@ export const uploadAudio = onRequest(
       if (upload.kind === 'whole') {
         uploaded = await uploadFileToFolder({ folderId, filename, mimeType, body });
       } else {
-        let sessionUrl = upload.session;
-        if (sessionUrl === null) {
-          // Record the folder now: later pieces check the finished file
-          // landed in it, and read it from the observation.
-          if (folderId !== obs.driveFolderId) {
-            await obsRef.update('driveFolderId', folderId);
-          }
-          sessionUrl = await startResumableUpload({
+        // The claim above already recorded the folder: later pieces check
+        // the finished file landed in it, and read it from the observation.
+        const sessionUrl =
+          upload.session ??
+          (await startResumableUpload({
             folderId,
             filename,
             mimeType,
             totalBytes: upload.totalBytes,
-          });
-        }
+          }));
         const status = await putResumableChunk({
           sessionUrl,
           chunk: body,
