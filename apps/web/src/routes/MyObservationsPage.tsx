@@ -8,9 +8,8 @@
  *     app had no page listing a teacher's active drafts at all.
  *   - Finalized: status 'Finalized', ordered by finalizedAt desc (index
  *     observedEmail/status/finalizedAt).
- * Drafts come from `/teacherViews` (Draft privacy: the observed teacher can't
- * read a Draft observation itself, only what the observer has shared). A
- * View As session reads `/observations` under the viewer's own access.
+ * Security rules allow staff to list their own observations regardless of
+ * status (firestore.rules).
  *
  * Each row links to /observations/:id (the read-only editor — ObservationEditorPage
  * handles non-observer access with canEdit gating) and shows the acknowledge
@@ -45,7 +44,6 @@ import { toJsDate } from '@/utils/staffFormatting';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
-import { useReadsTeacherViews } from '@/hooks/useTeacherView';
 import { db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
@@ -105,11 +103,8 @@ export function MyObservationsPage() {
         : [],
     [emailLower],
   );
-  const draftsCollection = useReadsTeacherViews(emailLower)
-    ? COLLECTIONS.teacherViews
-    : COLLECTIONS.observations;
   const { data: drafts } = useFirestoreCollection<Observation>(
-    emailLower ? draftsCollection : '',
+    emailLower ? COLLECTIONS.observations : '',
     draftConstraints,
     // Same constraint shape as the finalized query — disambiguate the cache key.
     [emailLower, 'drafts'],

@@ -249,9 +249,6 @@ const COLLECTION_SCHEMAS: Record<string, AnyObjectSchema> = {
   [COLLECTIONS.roleYearMappings]: roleYearMapping,
   [COLLECTIONS.observations]: observation,
   [`${COLLECTIONS.observations}/${OBSERVATION_SUBCOLLECTIONS.stepChecks}`]: stepCheck,
-  // A teacher view is a subset of its observation (teacherViewOf), so the
-  // observation's defaults fill in the fields it withholds as empty.
-  [COLLECTIONS.teacherViews]: observation,
   [COLLECTIONS.workProductQuestions]: workProductQuestion,
   [COLLECTIONS.emailTemplates]: emailTemplate,
   [COLLECTIONS.auditLog]: auditLog,

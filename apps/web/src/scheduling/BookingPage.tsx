@@ -22,7 +22,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
-import { useReadsTeacherViews } from '@/hooks/useTeacherView';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { PromptDialog } from '@/components/PromptDialog';
@@ -171,12 +170,7 @@ export function BookingPage() {
   // effect below — day-preference mode never renders SlotGrid.
   // Capped via STAFF_CONFLICT_QUERY_LIMIT (see staffConflicts.ts) — same
   // convention as every other Observation-collection query in this repo.
-  // Drafts of the signed-in teacher come from their teacher views (Draft
-  // privacy); View As reads the observations under the viewer's access.
-  const draftCollection = useReadsTeacherViews(myEmail)
-    ? COLLECTIONS.teacherViews
-    : COLLECTIONS.observations;
-  const staffObservationsPath = myEmail && mode === 'direct' ? draftCollection : '';
+  const staffObservationsPath = myEmail && mode === 'direct' ? COLLECTIONS.observations : '';
   const staffObservationConstraints = useMemo(
     () => buildStaffObservationConstraints(myEmail),
     [myEmail],

@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Observation } from '@ops/shared';
 import { useFirestoreCollection } from './useFirestoreCollection';
-import { useReadsTeacherViews } from './useTeacherView';
 
 /**
  * Returns the first Draft Work Product observation where the current
@@ -26,17 +25,12 @@ export function useActiveWorkProductObservation(
     [observedEmail, observerEmail],
   );
 
-  // The teacher's own dashboard reads Drafts through their teacher views
-  // (Draft privacy); an observer or admin looking at someone reads the
-  // observations their access covers.
-  const ownDrafts = useReadsTeacherViews(observedEmail) && !observerEmail;
   const { data, loading, error } = useFirestoreCollection<Observation>(
-    observedEmail ? (ownDrafts ? COLLECTIONS.teacherViews : COLLECTIONS.observations) : '',
+    observedEmail ? COLLECTIONS.observations : '',
     constraints,
-    // Disambiguate by email and type: the hook keys on constraint types only,
-    // so the three active-observation hooks would otherwise share one cache
-    // entry and hand each other's drafts back.
-    [observedEmail, observerEmail ?? '', OBSERVATION_TYPES.workProduct],
+    // Disambiguate by email: the hook keys on constraint types only, so a
+    // different observedEmail would otherwise collide on the same cache key.
+    [observedEmail, observerEmail ?? ''],
   );
 
   return { observation: data?.[0] ?? null, loading, error };

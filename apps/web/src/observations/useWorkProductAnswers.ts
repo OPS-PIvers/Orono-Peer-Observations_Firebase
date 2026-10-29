@@ -12,7 +12,6 @@ import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
-import { rememberSavedAnswers, withSavedAnswers } from '@/observations/pendingTeacherWrites';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -60,12 +59,11 @@ export function useWorkProductAnswers(
   useEffect(() => {
     questionsRef.current = questions;
   }, [questions]);
-  // The teacher reads a server-written copy on a Draft, which trails their
-  // own saves by a moment; lay those saves over it (see pendingTeacherWrites).
-  const stored = useMemo(
-    () => (observation ? answersOf(observation) : new Map<string, WorkProductAnswer>()),
-    [observation],
-  );
+  const stored = useMemo(() => {
+    const map = new Map<string, WorkProductAnswer>();
+    for (const a of observation?.workProductAnswers ?? []) map.set(a.questionId, a);
+    return map;
+  }, [observation?.workProductAnswers]);
 
   const liveDocs = useMemo(() => {
     const out: Record<string, TiptapDoc> = {};
@@ -92,7 +90,7 @@ export function useWorkProductAnswers(
   const hydratedRef = useRef(false);
   useHydratedDraft(observation?.id ?? null, observation, (src) => {
     const next: Record<string, TiptapDoc> = {};
-    for (const [id, a] of answersOf(src)) next[id] = answerToTiptapDoc(a.answer);
+    for (const a of src.workProductAnswers ?? []) next[a.questionId] = answerToTiptapDoc(a.answer);
     localRef.current = next;
     hydratedRef.current = true;
     setLocalDocs(next);
@@ -159,7 +157,6 @@ export function useWorkProductAnswers(
       { merge: true },
     )
       .then(() => {
-        rememberSavedAnswers(observationId, next);
         if (!mountedRef.current) return;
         // Another edit is queued, or an earlier failed write's answers are
         // still unsaved: "Saved" would be wrong.
@@ -232,12 +229,4 @@ export function useWorkProductAnswers(
     () => ({ docs, stored, setAnswer, saveState, saveError, retry }),
     [docs, stored, setAnswer, saveState, saveError, retry],
   );
-}
-
-/** An observation's answers by question, with the teacher's own recent
- *  saves laid over a copy that hasn't caught up with them. */
-function answersOf(observation: Observation & { id: string }): Map<string, WorkProductAnswer> {
-  const map = new Map<string, WorkProductAnswer>();
-  for (const a of observation.workProductAnswers ?? []) map.set(a.questionId, a);
-  return withSavedAnswers(observation.id, map);
 }
