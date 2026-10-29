@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   Check,
@@ -79,6 +79,16 @@ export function SendToScript({
   const [focus, setFocus] = useState('');
   const [busy, setBusy] = useState<TranscriptSummaryMode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // The panel opens inside the scrollable audio popover; bring all of it into
+  // view so the options and the Add button aren't left below the fold.
+  // (jsdom has no scrollIntoView, hence the typeof check.)
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!open || !panel || typeof panel.scrollIntoView !== 'function') return;
+    panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [open]);
 
   const addedList =
     added.length > 0 ? (
@@ -173,7 +183,10 @@ export function SendToScript({
       </Button>
 
       {open ? (
-        <div className="border-border rounded-md border bg-white p-3 shadow-[var(--shadow-popover)]">
+        <div
+          ref={panelRef}
+          className="border-border scroll-mb-1 rounded-md border bg-white p-3 shadow-[var(--shadow-popover)]"
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="font-heading text-ops-blue-dark text-sm font-semibold">Send to script</p>
             <span className="text-muted-foreground text-[11px]">

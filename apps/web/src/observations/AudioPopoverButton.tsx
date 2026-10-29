@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Mic } from 'lucide-react';
 import type { Observation, TranscriptSummary } from '@ops/shared';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,11 @@ export interface AudioPopoverButtonProps {
  * absolutely below the trigger button and uses a high z-index so it
  * stacks above sibling sticky chrome.
  *
+ * The popover's height is capped to the space between the trigger and the
+ * bottom of the viewport and scrolls internally, so tall content (the
+ * "Send to script" options) stays reachable on short screens. The trigger
+ * sits in sticky chrome, so without the cap the overflow was unreachable.
+ *
  * The recorder is always mounted (visibility toggled via `hidden`) — that
  * keeps an in-flight `MediaRecorder` alive across open/close cycles, so
  * closing the popover mid-record doesn't drop the audio.
@@ -51,6 +56,26 @@ export function AudioPopoverButton({
   const [phase, setPhase] = useState<Phase>('idle');
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+
+  // Re-measure on open and whenever the viewport changes size or scrolls.
+  useLayoutEffect(() => {
+    if (!open) return;
+    function measure() {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const { bottom } = trigger.getBoundingClientRect();
+      // 8px for the popover's mt-2, 16px of breathing room at the bottom.
+      setMaxHeight(Math.max(MIN_POPOVER_HEIGHT, window.innerHeight - bottom - 24));
+    }
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [open]);
 
   // Click-outside / Escape close. While recording, uploading or importing
   // from Drive, the popover stays open so the user can hit Stop (or see the
@@ -109,7 +134,8 @@ export function AudioPopoverButton({
         id="audio-popover"
         ref={popoverRef}
         hidden={!open}
-        className="border-border bg-popover text-popover-foreground absolute top-full right-0 z-50 mt-2 w-[min(28rem,calc(100vw-2rem))] rounded-lg border p-3 shadow-lg"
+        style={{ maxHeight }}
+        className="border-border bg-popover text-popover-foreground absolute top-full right-0 z-50 mt-2 w-[min(28rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-lg border p-3 shadow-lg"
       >
         <AudioRecorder
           observationId={observationId}
@@ -128,6 +154,10 @@ export function AudioPopoverButton({
     </div>
   );
 }
+
+/** Floor for the measured cap, so a trigger near the bottom of a tiny
+ *  window still leaves a usable (scrollable) popover. */
+const MIN_POPOVER_HEIGHT = 160;
 
 function keepOpen(phase: Phase): boolean {
   return phase === 'recording' || phase === 'uploading' || phase === 'importing';
