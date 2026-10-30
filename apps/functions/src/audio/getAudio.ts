@@ -15,7 +15,6 @@ import {
   getDriveClient,
 } from '../lib/drive.js';
 import { canReadRecording } from './recordingAccess.js';
-import { isArchivedCaller } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -82,11 +81,9 @@ export const getAudio = onRequest(
     }
 
     const db = getFirestore();
-    // onRequest, so the onCall wrapper's archived-staff refusal doesn't run.
-    if (await isArchivedCaller(db, callerAuth)) {
-      res.status(403).send('Your staff account is archived');
-      return;
-    }
+    // onRequest, so the onCall wrapper's archived-staff refusal doesn't run:
+    // canReadRecording refuses archived observers and keeps an archived
+    // teacher's own finalized recordings playable.
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
     const obsSnap = await obsRef.get();
     if (!obsSnap.exists) {

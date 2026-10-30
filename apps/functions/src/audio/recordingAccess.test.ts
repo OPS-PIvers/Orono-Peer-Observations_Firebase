@@ -130,3 +130,22 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
     ).resolves.toBe(true);
   });
 });
+
+describe('canReadRecording for archived staff', () => {
+  const archived = dbWithStaff({ role: 'teacher', isActive: false });
+  const auth = (email: string) => ({ token: { email, role: 'teacher' } });
+
+  it('refuses an archived observer or co-observer', async () => {
+    const co = 'co@orono.k12.mn.us';
+    const shared = obs({ coObserverEmails: [co], status: 'Finalized' });
+    await expect(canReadRecording(archived, shared, OBSERVER, auth(OBSERVER))).resolves.toBe(false);
+    await expect(canReadRecording(archived, shared, co, auth(co))).resolves.toBe(false);
+  });
+
+  it('lets an archived teacher play their own finalized recording, not a Draft one', async () => {
+    await expect(
+      canReadRecording(archived, obs({ status: 'Finalized' }), OBSERVED, auth(OBSERVED)),
+    ).resolves.toBe(true);
+    await expect(canReadRecording(archived, obs(), OBSERVED, auth(OBSERVED))).resolves.toBe(false);
+  });
+});
