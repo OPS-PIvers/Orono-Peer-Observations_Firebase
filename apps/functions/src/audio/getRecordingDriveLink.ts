@@ -20,6 +20,7 @@ import {
   requireRecordingReader,
 } from './recordingAccess.js';
 import { assertDemoEditTarget } from '../lib/callable.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -37,7 +38,7 @@ export const getRecordingDriveLink = onCall(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request) => {

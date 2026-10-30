@@ -18,6 +18,7 @@ import {
 } from '../calendar/lib/googleCalendar.js';
 import { loadSchedulingSettings } from './bookObservationSlot.js';
 import { toDate } from './engine/schedulingEmail.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -37,7 +38,7 @@ export const checkSlotConflicts = onCall(
     // Demo-edit sessions allowed; confined to demo staff below.
     allowDemoEdit: true,
     region: 'us-central1',
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 30,
     secrets: [GOOGLE_OAUTH_CLIENT_SECRET],
   },
