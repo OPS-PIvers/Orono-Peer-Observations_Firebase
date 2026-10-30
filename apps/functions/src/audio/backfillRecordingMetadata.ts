@@ -29,6 +29,9 @@ export const backfillRecordingMetadata = onCall(
   {
     // Demo-edit sessions allowed; confined to demo staff below.
     allowDemoEdit: true,
+    // requireRecordingReader does the archived check: archived observers
+    // are refused, an archived teacher keeps their own finalized recordings.
+    allowArchived: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,

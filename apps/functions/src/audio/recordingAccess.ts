@@ -6,6 +6,7 @@ import {
   observationAccessFor,
   type AudioRecordingMeta,
 } from '@ops/shared';
+import { isArchivedCaller, isDemoEditSession } from '../lib/callable.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
 import { getDriveClient } from '../lib/drive.js';
 
@@ -62,8 +63,10 @@ export function requireObserverOnDraft(obs: RecordingObservation, email: string)
 }
 
 /** Same audience as getAudio playback: the observers (owner or
- *  co-observer), oversight, or the observed staff member once the
- *  observation is finalized. Other PEs and building Administrators can't. */
+ *  co-observer, unless archived), oversight, or the observed staff member
+ *  once the observation is finalized, archived or not. Other PEs and
+ *  building Administrators can't. Callables that use it set allowArchived,
+ *  since this does the archived check itself. */
 export async function requireRecordingReader(
   db: Firestore,
   request: CallableRequest,
@@ -83,8 +86,14 @@ export async function canReadRecording(
   auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<boolean> {
   const tokenRole = typeof auth?.token['role'] === 'string' ? auth.token['role'] : undefined;
+  // Archiving the driver of a View As + Edit session ends it everywhere.
+  if (isDemoEditSession(auth) && (await isArchivedCaller(db, auth))) return false;
   const access = await callerObservationAccess(db, obs, { email, tokenRole, auth });
-  if (access === 'owner' || access === 'coObserver' || access === 'oversight') return true;
+  // Oversight already refuses archived callers (callerMeetsAccessLevel).
+  if (access === 'oversight') return true;
+  // Archived observers lose their observations' recordings. The observed
+  // staff member keeps their own finalized one, as in firestore.rules.
+  if (access === 'owner' || access === 'coObserver') return !(await isArchivedCaller(db, auth));
   return access === 'observed' && obs.status === OBSERVATION_STATUS.finalized;
 }
 
