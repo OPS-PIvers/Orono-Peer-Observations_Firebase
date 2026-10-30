@@ -262,3 +262,67 @@ describe('demo-edit session whose driver was archived', () => {
     await assertSucceeds(getDocs(collection(session(), 'staff')));
   });
 });
+
+describe('archived observers lose step checks, window preferences and question sets', () => {
+  // Teacher-role observers have no claim tier, so only the observer-side
+  // branches (each gated by isActiveStaff) can let them in.
+  const OBSERVER = 'observer@orono.k12.mn.us';
+  const CO_OBSERVER = 'coobserver@orono.k12.mn.us';
+  const PREF = `observationWindows/w1/preferences/${TEACHER}`;
+  const db = (email: string) =>
+    testEnv.authenticatedContext(email, claims.teacher(email)).firestore();
+
+  beforeEach(async () => {
+    await seed('observations/obs2', {
+      observerEmail: OBSERVER,
+      observedEmail: TEACHER,
+      coObserverEmails: [CO_OBSERVER],
+      status: 'Draft',
+      type: 'Standard',
+    });
+    await seed('observations/obs2/stepChecks/s1', { checked: true });
+    await seed('observationWindows/w1', { observerEmail: OBSERVER, invitedEmails: [TEACHER] });
+    await seed(PREF, { email: TEACHER, preferredDateYMD: '2026-05-20' });
+  });
+
+  it('step checks: archived owner and co-observer are denied, active ones allowed', async () => {
+    await staff(OBSERVER, 'teacher', false);
+    await staff(CO_OBSERVER, 'teacher', false);
+    await assertFails(getDoc(doc(db(OBSERVER), 'observations/obs2/stepChecks/s1')));
+    await assertFails(getDoc(doc(db(CO_OBSERVER), 'observations/obs2/stepChecks/s1')));
+    await staff(OBSERVER, 'teacher', true);
+    await staff(CO_OBSERVER, 'teacher', true);
+    await assertSucceeds(getDoc(doc(db(OBSERVER), 'observations/obs2/stepChecks/s1')));
+    await assertSucceeds(getDoc(doc(db(CO_OBSERVER), 'observations/obs2/stepChecks/s1')));
+  });
+
+  it('step checks: the observed teacher still reads them', async () => {
+    await assertSucceeds(getDoc(doc(db(TEACHER), 'observations/obs2/stepChecks/s1')));
+  });
+
+  it("preferences: an archived window observer can't read an invitee's preference", async () => {
+    await staff(OBSERVER, 'teacher', false);
+    await assertFails(getDoc(doc(db(OBSERVER), PREF)));
+    await staff(OBSERVER, 'teacher', true);
+    await assertSucceeds(getDoc(doc(db(OBSERVER), PREF)));
+  });
+
+  it("question sets: an archived building Administrator can't write their building's set", async () => {
+    await seed('buildings/oms', { buildingId: 'oms', displayName: 'OMS' });
+    await staff(PRINCIPAL, 'administrator', false);
+    const adminDb = testEnv.authenticatedContext('p', claims.admin(PRINCIPAL)).firestore();
+    const question = {
+      questionId: 'q-oms',
+      text: 'What are you hoping to see?',
+      type: 'standard',
+      phase: 'pre',
+      order: 0,
+      isActive: true,
+      setId: 'building-oms',
+      buildingId: 'oms',
+    };
+    await assertFails(setDoc(doc(adminDb, 'workProductQuestions/new'), question));
+    await staff(PRINCIPAL, 'administrator', true);
+    await assertSucceeds(setDoc(doc(adminDb, 'workProductQuestions/new'), question));
+  });
+});
