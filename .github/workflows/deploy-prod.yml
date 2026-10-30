@@ -110,7 +110,10 @@ jobs:
   # The pdf-renderer Cloud Run service shares a payload contract with the
   # finalizeObservation function, so it must ship with the functions by
   # default. Skip only via the skip_renderer input when a deploy touches
-  # nothing renderer-related. Requires the FIREBASE_SERVICE_ACCOUNT to hold
+  # nothing renderer-related. Automatic runs also skip the build when none of
+  # the image's inputs changed since the commit Cloud Run is serving now: each
+  # build is a ~1 GB Chromium image on Cloud Build plus another copy in
+  # Artifact Registry. Requires the FIREBASE_SERVICE_ACCOUNT to hold
   # roles/cloudbuild.builds.editor, roles/run.admin, and
   # roles/iam.serviceAccountUser on the project.
   deploy-pdf-renderer:
@@ -125,6 +128,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Full history, to diff against the commit the live image was built from.
+          fetch-depth: 0
 
       - name: Auth to Google Cloud
         uses: google-github-actions/auth@v3
@@ -136,7 +141,31 @@ jobs:
         with:
           project_id: ${{ env.FIREBASE_PROJECT }}
 
+      - name: Check whether the image needs rebuilding
+        id: changed
+        # Builds unless it can prove nothing changed: a manual run, a live
+        # image not tagged with a known commit, or any failure here all build.
+        # The paths are everything the Dockerfile copies in, plus this file
+        # (it holds the Cloud Run flags).
+        run: |
+          if [ "${{ github.event_name }}" != "workflow_run" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          live=$(gcloud run services describe pdf-renderer --region us-central1 \
+            --format='value(spec.template.spec.containers[0].image)' || true)
+          live_sha=${live##*:}
+          if [[ "$live_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$live_sha^{commit}" 2>/dev/null \
+            && git diff --quiet "$live_sha" HEAD -- apps/pdf-renderer packages/shared \
+              pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json \
+              .github/workflows/deploy-prod.yml; then
+            echo "Renderer inputs unchanged since $live_sha; keeping the live image."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push image (Cloud Build)
+        if: ${{ steps.changed.outputs.build == 'true' }}
         run: |
           gcloud builds submit \
             --config apps/pdf-renderer/cloudbuild.yaml \
@@ -144,6 +173,7 @@ jobs:
             .
 
       - name: Deploy to Cloud Run
+        if: ${{ steps.changed.outputs.build == 'true' }}
         run: |
           gcloud run deploy pdf-renderer \
             --image us-central1-docker.pkg.dev/${{ env.FIREBASE_PROJECT }}/cloud-run-source-deploy/pdf-renderer:${{ github.event.workflow_run.head_sha || github.sha }} \
