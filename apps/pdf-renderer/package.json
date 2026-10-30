@@ -21,11 +21,11 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "@ops/shared": "workspace:*",
-    "@tiptap/core": "^3.32.0",
-    "@tiptap/extension-link": "^3.32.0",
-    "@tiptap/html": "^3.32.0",
-    "@tiptap/starter-kit": "^3.32.0",
-    "hono": "^4.13.13",
+    "@tiptap/core": "^3.32.1",
+    "@tiptap/extension-link": "^3.32.1",
+    "@tiptap/html": "^3.32.1",
+    "@tiptap/starter-kit": "^3.32.1",
+    "hono": "^4.13.14",
     "puppeteer": "^25.14.0"
   },
   "devDependencies": {

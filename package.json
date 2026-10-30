@@ -72,7 +72,7 @@
     "eslint-plugin-react-refresh": "^0.5.7",
     "firebase": "^13.1.0",
     "firebase-admin": "^14.5.0",
-    "firebase-tools": "^15.34.0",
+    "firebase-tools": "^15.34.2",
     "globals": "^17.13.0",
     "google-auth-library": "^10.9.1",
     "googleapis": "^185.0.0",
@@ -82,7 +82,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "~8.71.2",
+    "typescript-eslint": "~8.72.1",
     "vitest": "^5.0.5"
   },
   "lint-staged": {
@@ -102,7 +102,7 @@
       "@tootallnate/once": "^3.0.1",
       "protobufjs": "^7.6.5",
       "@protobufjs/utf8": "^1.1.1",
-      "hono": "^4.12.34",
+      "hono": "^4.13.14",
       "ws@7": "^7.5.11",
       "ws@8": "^8.21.0",
       "fast-uri": "^3.1.9",
