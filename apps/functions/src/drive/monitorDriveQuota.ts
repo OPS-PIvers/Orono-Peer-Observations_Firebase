@@ -4,6 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, getDriveClient } from '../lib/drive.js';
 import { loadSecurityAdminEmail, sendEmail } from '../lib/emailUtils.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -65,7 +66,7 @@ export const monitorDriveQuota = onSchedule(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async () => {

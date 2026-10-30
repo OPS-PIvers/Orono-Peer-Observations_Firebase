@@ -14,6 +14,7 @@ import {
   GOOGLE_OAUTH_CLIENT_SECRET,
   exchangeCodeForTokens,
 } from '../lib/googleCalendar.js';
+import { GOOGLEAPIS_MEMORY } from '../../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -33,7 +34,7 @@ export const connectGoogleCalendar = onCall(
   {
     region: 'us-central1',
     secrets: [GOOGLE_OAUTH_CLIENT_SECRET],
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request): Promise<CalendarConnectionStatusResult> => {

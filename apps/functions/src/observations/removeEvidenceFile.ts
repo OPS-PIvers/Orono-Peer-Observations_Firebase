@@ -19,6 +19,7 @@ import {
   trashDriveFile,
 } from '../lib/drive.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -53,7 +54,7 @@ export const removeEvidenceFile = onCall(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request) => {

@@ -21,6 +21,7 @@ import {
 } from '../lib/drive.js';
 import { APP_URL, formatDate, observerNameOf, sendTemplatedEmail } from '../lib/emailUtils.js';
 import { isStaffBackedEmail } from '../lib/observee.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -83,7 +84,7 @@ export const onObservationWritten = onDocumentWritten(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     // Serialize: each invocation does 2 Sheet reads + 1 write, and the
     // free Sheets API quota is 60 read + 60 write per minute. Allowing
     // 20 parallel instances during a bulk import (or any burst) trips
