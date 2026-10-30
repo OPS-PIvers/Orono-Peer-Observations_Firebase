@@ -22,7 +22,7 @@ import {
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
 import { observationAccessFor } from '@ops/shared';
-import { isDemoEditSession, isDemoStaff } from '../lib/callable.js';
+import { isArchivedCaller, isDemoEditSession, isDemoStaff } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -89,10 +89,12 @@ export const uploadAudio = onRequest(
     }
     let userEmail: string | null = null;
     let demoEdit = false;
+    let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
       userEmail = decoded.email?.toLowerCase() ?? null;
-      demoEdit = isDemoEditSession({ token: decoded });
+      callerAuth = { token: decoded };
+      demoEdit = isDemoEditSession(callerAuth);
     } catch (err) {
       logger.warn('uploadAudio: invalid token', err);
       res.status(401).send('Invalid token');
@@ -137,6 +139,11 @@ export const uploadAudio = onRequest(
     }
 
     const db = getFirestore();
+    // onRequest, so the onCall wrapper's archived-staff refusal doesn't run.
+    if (await isArchivedCaller(db, callerAuth)) {
+      res.status(403).send('Your staff account is archived');
+      return;
+    }
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
     const obsSnap = await obsRef.get();
     if (!obsSnap.exists) {

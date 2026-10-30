@@ -47,12 +47,32 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
+    // Archived staff (isActive: false on their live staff doc) keep their
+    // old role/isAdmin claims until the token refreshes, so every claim-based
+    // tier below, and every observer-side branch matched on email, also
+    // requires this. In the claim tiers it's read only once a claim already
+    // passes, so ordinary callers pay nothing. A missing doc or field counts
+    // as active (the schema default), like callerMeetsAccessLevel. A
+    // demo-edit session also needs its driver (demoEditBy) to be active, or
+    // archiving the driver wouldn't end the session they're running.
+    function isActiveStaff() {
+      let driver = request.auth.token.get('demoEditBy', null);
+      return isActiveEmail(request.auth.token.email)
+        && (driver == null || isActiveEmail(driver));
+    }
+    function isActiveEmail(email) {
+      let path = /databases/$(database)/documents/staff/$(email);
+      return !exists(path) || get(path).data.get('isActive', true) == true;
+    }
+
     function hasSpecialAccess() {
-      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true;
+      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true
+        && isActiveStaff();
     }
 
     function isAdmin() {
-      return isFromOronoDomain() && request.auth.token.isAdmin == true;
+      return isFromOronoDomain() && request.auth.token.isAdmin == true
+        && isActiveStaff();
     }
 
     // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
@@ -79,7 +99,7 @@ service cloud.firestore {
     // Admin Console, not other people's observations. Mirrors
     // hasObservationOversight in @ops/shared.
     function hasObservationOversight() {
-      return isFromOronoDomain() && role() == 'full-access';
+      return isFromOronoDomain() && role() == 'full-access' && isActiveStaff();
     }
 
     // canReadAll() for observation data: oversight, or a View As grant.
@@ -315,7 +335,7 @@ service cloud.firestore {
     // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
       function hasAdministratorRole() {
-        return isFromOronoDomain() && role() == 'administrator';
+        return isFromOronoDomain() && role() == 'administrator' && isActiveStaff();
       }
       function inOwnBuildingSet(data) {
         return data.get('type', '') == 'standard'
@@ -365,7 +385,8 @@ service cloud.firestore {
       allow create: if false;
       // Delete: oversight or the observer.
       allow delete: if (hasObservationOversight()
-        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email))
+        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email
+            && isActiveStaff()))
         && notDemoEdit();
       // Update: oversight may change anything. The observer may only touch a small
       // set of cosmetic/booking-default fields on their own window. The
@@ -378,6 +399,7 @@ service cloud.firestore {
         || (
           isFromOronoDomain()
           && resource.data.observerEmail == request.auth.token.email
+          && isActiveStaff()
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly([
                 'defaultObservationName',
@@ -406,7 +428,8 @@ service cloud.firestore {
           || isCurrentUserEmail(prefEmail)
           || (isFromOronoDomain()
               && request.auth.token.email ==
-                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail);
+                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail
+              && isActiveStaff());
         allow write: if false;
       }
     }
@@ -493,12 +516,15 @@ service cloud.firestore {
       function oversees() {
         return hasObservationOversight() && !isObservedObs();
       }
+      // Owner and co-observer also require isActiveStaff(): an archived
+      // observer loses their observations (the observed side is unchanged).
       function ownsObs() {
-        return isCurrentUserEmail(resource.data.observerEmail);
+        return isCurrentUserEmail(resource.data.observerEmail) && isActiveStaff();
       }
       function coObservesObs() {
         return isFromOronoDomain()
-          && request.auth.token.email in resource.data.get('coObserverEmails', []);
+          && request.auth.token.email in resource.data.get('coObserverEmails', [])
+          && isActiveStaff();
       }
       function isObservedObs() {
         return isCurrentUserEmail(resource.data.observedEmail);
@@ -640,10 +666,11 @@ service cloud.firestore {
         allow read: if canReadAllObservations()
           || isCurrentUserEmail(
                get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail)
-          || isCurrentUserEmail(
-               get(/databases/$(database)/documents/observations/$(observationId)).data.observerEmail)
-          || (isFromOronoDomain() && request.auth.token.email in
-               get(/databases/$(database)/documents/observations/$(observationId)).data.get('coObserverEmails', []));
+          || ((isCurrentUserEmail(
+                 get(/databases/$(database)/documents/observations/$(observationId)).data.observerEmail)
+               || (isFromOronoDomain() && request.auth.token.email in
+                 get(/databases/$(database)/documents/observations/$(observationId)).data.get('coObserverEmails', [])))
+              && isActiveStaff());
         allow write: if false;
       }
     }
@@ -710,13 +737,13 @@ service cloud.firestore {
     }
 
     // --- /transcriptionJobs --------------------------------------------------
-    // Read: the requester and observation oversight / View As. Writes are
-    // server-only.
+    // Read: the requester (while active) and observation oversight / View
+    // As. Writes are server-only.
     match /transcriptionJobs/{id} {
       allow get: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow list: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow write: if false;
     }
 
