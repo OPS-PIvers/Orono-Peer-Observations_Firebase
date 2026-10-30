@@ -6,7 +6,7 @@ import {
   observationAccessFor,
   type AudioRecordingMeta,
 } from '@ops/shared';
-import { isArchivedCaller } from '../lib/callable.js';
+import { isArchivedCaller, isDemoEditSession } from '../lib/callable.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
 import { getDriveClient } from '../lib/drive.js';
 
@@ -86,6 +86,8 @@ export async function canReadRecording(
   auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<boolean> {
   const tokenRole = typeof auth?.token['role'] === 'string' ? auth.token['role'] : undefined;
+  // Archiving the driver of a View As + Edit session ends it everywhere.
+  if (isDemoEditSession(auth) && (await isArchivedCaller(db, auth))) return false;
   const access = await callerObservationAccess(db, obs, { email, tokenRole, auth });
   // Oversight already refuses archived callers (callerMeetsAccessLevel).
   if (access === 'oversight') return true;
