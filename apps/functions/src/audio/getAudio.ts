@@ -1,6 +1,7 @@
 import { pipeline } from 'node:stream/promises';
 import { onRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
+import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -8,12 +9,16 @@ import { COLLECTIONS } from '@ops/shared';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  ForeignDriveObjectError,
+  assertFilesInObservationFolder,
   downloadFileStream,
   getDriveClient,
 } from '../lib/drive.js';
 import { canReadRecording } from './recordingAccess.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * Streams an audio file from Drive back to the client. The client uses
@@ -76,6 +81,9 @@ export const getAudio = onRequest(
     }
 
     const db = getFirestore();
+    // onRequest, so the onCall wrapper's archived-staff refusal doesn't run:
+    // canReadRecording refuses archived observers and keeps an archived
+    // teacher's own finalized recordings playable.
     const obsRef = db.doc(`${COLLECTIONS.observations}/${observationId}`);
     const obsSnap = await obsRef.get();
     if (!obsSnap.exists) {
@@ -88,6 +96,7 @@ export const getAudio = onRequest(
       coObserverEmails?: string[];
       status: string;
       audioDriveFileIds: string[];
+      driveFolderId?: string | null;
     };
     if (!obs.audioDriveFileIds.includes(audioFileId)) {
       res.status(404).send('Audio file is not part of this observation');
@@ -102,6 +111,14 @@ export const getAudio = onRequest(
     }
 
     try {
+      // The id must name a file in this observation's own folder: the Drive
+      // token can read far more than the observations tree.
+      await assertFilesInObservationFolder({
+        fileIds: [audioFileId],
+        folderId: obs.driveFolderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
       const drive = await getDriveClient();
       const meta = await drive.files.get({
         fileId: audioFileId,
@@ -118,6 +135,10 @@ export const getAudio = onRequest(
       // class-period recording is.
       await pipeline(audio, res);
     } catch (err) {
+      if (err instanceof ForeignDriveObjectError) {
+        res.status(404).send('Audio file is not part of this observation');
+        return;
+      }
       logger.error('getAudio: failed', err);
       if (res.headersSent) res.destroy();
       else res.status(500).send('Failed to fetch audio');

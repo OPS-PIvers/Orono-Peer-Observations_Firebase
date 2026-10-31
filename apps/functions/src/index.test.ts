@@ -19,6 +19,9 @@ describe('functions index', () => {
     expect(typeof mod.setCoObservers).not.toBe('undefined');
     expect(typeof mod.onObservationWritten).not.toBe('undefined');
     expect(typeof mod.onObservationTeacherView).not.toBe('undefined');
+    expect(typeof mod.backfillTeacherViews).not.toBe('undefined');
+    expect(typeof mod.onObservationWindowInviteViews).not.toBe('undefined');
+    expect(typeof mod.backfillWindowInviteViews).not.toBe('undefined');
     expect(typeof mod.suggestScriptTags).not.toBe('undefined');
     expect(typeof mod.applyScriptTags).not.toBe('undefined');
     expect(typeof mod.pruneAuditLog).not.toBe('undefined');

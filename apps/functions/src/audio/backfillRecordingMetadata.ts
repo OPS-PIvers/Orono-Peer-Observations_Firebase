@@ -13,6 +13,7 @@ import {
   requireRecordingReader,
 } from './recordingAccess.js';
 import { assertDemoEditTarget } from '../lib/callable.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -28,10 +29,13 @@ export const backfillRecordingMetadata = onCall(
   {
     // Demo-edit sessions allowed; confined to demo staff below.
     allowDemoEdit: true,
+    // requireRecordingReader does the archived check: archived observers
+    // are refused, an archived teacher keeps their own finalized recordings.
+    allowArchived: true,
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request) => {

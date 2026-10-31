@@ -1,6 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
+import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
@@ -11,10 +12,18 @@ import {
   type DriveFileRef,
   type Observation,
 } from '@ops/shared';
-import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  filesInObservationFolder,
+  trashDriveFile,
+} from '../lib/drive.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * Remove a single evidence file from a rubric component (companion to
@@ -45,7 +54,7 @@ export const removeEvidenceFile = onCall(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request) => {
@@ -95,9 +104,17 @@ export const removeEvidenceFile = onCall(
 
     // Best-effort: trash the Drive file so it doesn't linger in the
     // observation folder. A failure here doesn't undo the Firestore
-    // removal — the file just needs manual cleanup in Drive.
+    // removal — the file just needs manual cleanup in Drive. Only a file
+    // in this observation's own folder is trashed; anything else is left
+    // alone (and logged).
     try {
-      await trashDriveFile(driveFileId);
+      const inFolder = await filesInObservationFolder({
+        fileIds: [driveFileId],
+        folderId: obs.driveFolderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
+      if (inFolder.includes(driveFileId)) await trashDriveFile(driveFileId);
     } catch (err) {
       logger.warn('removeEvidenceFile: Drive trash failed, evidenceLinks entry still removed', {
         observationId,

@@ -47,12 +47,32 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
+    // Archived staff (isActive: false on their live staff doc) keep their
+    // old role/isAdmin claims until the token refreshes, so every claim-based
+    // tier below, and every observer-side branch matched on email, also
+    // requires this. In the claim tiers it's read only once a claim already
+    // passes, so ordinary callers pay nothing. A missing doc or field counts
+    // as active (the schema default), like callerMeetsAccessLevel. A
+    // demo-edit session also needs its driver (demoEditBy) to be active, or
+    // archiving the driver wouldn't end the session they're running.
+    function isActiveStaff() {
+      let driver = request.auth.token.get('demoEditBy', null);
+      return isActiveEmail(request.auth.token.email)
+        && (driver == null || isActiveEmail(driver));
+    }
+    function isActiveEmail(email) {
+      let path = /databases/$(database)/documents/staff/$(email);
+      return !exists(path) || get(path).data.get('isActive', true) == true;
+    }
+
     function hasSpecialAccess() {
-      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true;
+      return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true
+        && isActiveStaff();
     }
 
     function isAdmin() {
-      return isFromOronoDomain() && request.auth.token.isAdmin == true;
+      return isFromOronoDomain() && request.auth.token.isAdmin == true
+        && isActiveStaff();
     }
 
     // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
@@ -79,7 +99,7 @@ service cloud.firestore {
     // Admin Console, not other people's observations. Mirrors
     // hasObservationOversight in @ops/shared.
     function hasObservationOversight() {
-      return isFromOronoDomain() && role() == 'full-access';
+      return isFromOronoDomain() && role() == 'full-access' && isActiveStaff();
     }
 
     // canReadAll() for observation data: oversight, or a View As grant.
@@ -100,6 +120,16 @@ service cloud.firestore {
     }
     function isDemoStaff(email) {
       return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
+    }
+
+    // A canonical staff address: lowercase and on the district domain.
+    // Staff docs are keyed by this form and ids are case-sensitive, so a
+    // case variant would name a second doc for the same person. Mirrors
+    // isCanonicalStaffEmail in @ops/shared.
+    function isCanonicalStaffEmail(email) {
+      return email is string
+        && email == email.lower()
+        && email.matches('[^@\\s/]+@orono[.]k12[.]mn[.]us');
     }
 
     function isBuildingAdmin() {
@@ -152,6 +182,7 @@ service cloud.firestore {
 
     function buildingAdminCanCreateStaff(email) {
       return isBuildingAdmin()
+        && isCanonicalStaffEmail(email)
         && request.resource.data.get('email', '') == email
         && buildingAdminCanWriteStaffData(request.resource.data)
         && request.resource.data.get('hasAdminAccess', false) == false
@@ -304,7 +335,7 @@ service cloud.firestore {
     // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
       function hasAdministratorRole() {
-        return isFromOronoDomain() && role() == 'administrator';
+        return isFromOronoDomain() && role() == 'administrator' && isActiveStaff();
       }
       function inOwnBuildingSet(data) {
         return data.get('type', '') == 'standard'
@@ -339,9 +370,8 @@ service cloud.firestore {
 
     // --- /observationWindows/{windowId} -------------------------------------
     // A scheduling window. Read: special-access (PE/admin) or an invited
-    // staff member (their email is in invitedEmails). Create: special-access,
-    // and the observer must be the caller. Update/delete: oversight (Full
-    // Access) or the observer. Staff never write the window (or its peBusyIntervals /
+    // staff member (their email is in invitedEmails). Create: callable only.
+    // Update/delete: oversight (Full Access) or the observer. Staff never write the window (or its peBusyIntervals /
     // dayCounts) directly — booking + day-preference flow through callable
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
@@ -349,16 +379,14 @@ service cloud.firestore {
       allow get, list: if hasSpecialAccess()
         || canReadAll()
         || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
-      allow create: if (hasSpecialAccess()
-        && role() in ['administrator', 'peer-evaluator', 'full-access']
-        && request.resource.data.observerEmail == request.auth.token.email
-        // Building Administrators' windows book Standard observations only.
-        && (role() != 'administrator'
-            || request.resource.data.defaultObservationType == 'Standard'))
-        && notDemoEdit();
+      // Create: only the createObservationWindow callable (Admin SDK). It
+      // checks the observer's role and scope and writes the full shape the
+      // scheduling jobs rely on; a client-written window could be any shape.
+      allow create: if false;
       // Delete: oversight or the observer.
       allow delete: if (hasObservationOversight()
-        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email))
+        || (isFromOronoDomain() && resource.data.observerEmail == request.auth.token.email
+            && isActiveStaff()))
         && notDemoEdit();
       // Update: oversight may change anything. The observer may only touch a small
       // set of cosmetic/booking-default fields on their own window. The
@@ -371,6 +399,7 @@ service cloud.firestore {
         || (
           isFromOronoDomain()
           && resource.data.observerEmail == request.auth.token.email
+          && isActiveStaff()
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly([
                 'defaultObservationName',
@@ -399,7 +428,8 @@ service cloud.firestore {
           || isCurrentUserEmail(prefEmail)
           || (isFromOronoDomain()
               && request.auth.token.email ==
-                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail);
+                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.observerEmail
+              && isActiveStaff());
         allow write: if false;
       }
     }
@@ -476,20 +506,25 @@ service cloud.firestore {
       //   co-observer — listed in coObserverEmails by the owner (e.g. a
       //                 principal and associate principal observing
       //                 together): read, and edit the Draft's content.
-      //   oversight   — Full Access only (hasObservationOversight): everything,
-      //                 including finalized docs — except observations of
-      //                 themselves, where they are just the observed staff.
+      //   oversight   — Full Access only (hasObservationOversight): read
+      //                 and delete anything, and edit content on any status
+      //                 (server-owned fields stay with the Functions) —
+      //                 except observations of themselves, where they are
+      //                 just the observed staff.
       // Peer Evaluators, building Administrators and other Admin Console
       // users see nothing they don't own or co-observe.
       function oversees() {
         return hasObservationOversight() && !isObservedObs();
       }
+      // Owner and co-observer also require isActiveStaff(): an archived
+      // observer loses their observations (the observed side is unchanged).
       function ownsObs() {
-        return isCurrentUserEmail(resource.data.observerEmail);
+        return isCurrentUserEmail(resource.data.observerEmail) && isActiveStaff();
       }
       function coObservesObs() {
         return isFromOronoDomain()
-          && request.auth.token.email in resource.data.get('coObserverEmails', []);
+          && request.auth.token.email in resource.data.get('coObserverEmails', [])
+          && isActiveStaff();
       }
       function isObservedObs() {
         return isCurrentUserEmail(resource.data.observedEmail);
@@ -557,6 +592,11 @@ service cloud.firestore {
         // Building Administrators run Standard observations only. Mirrors
         // creatableObservationTypes() in @ops/shared.
         && (role() != 'administrator' || request.resource.data.type == 'Standard')
+        // Every observer: the observee is a real staff record, named by its
+        // canonical id. The email and Drive paths send to this address, and
+        // a case variant would make adminCanObserve read some other doc.
+        && isCanonicalStaffEmail(request.resource.data.observedEmail)
+        && exists(/databases/$(database)/documents/staff/$(request.resource.data.observedEmail))
         // ...and only of staff they can observe (see adminCanObserve).
         && (role() != 'administrator' || adminCanObserve(request.resource.data.observedEmail)))
         && (notDemoEdit() || isDemoStaff(request.resource.data.observedEmail));
@@ -599,8 +639,14 @@ service cloud.firestore {
           && request.resource.data.acknowledgedBy == request.auth.token.email
           && changedKeys().hasOnly(['acknowledgedAt', 'acknowledgedBy', 'lastModifiedAt'])
         )
-        // Oversight can correct anything except who was observed.
-        || (oversees() && unchanged('observedEmail')))
+        // Oversight edits the same content as the owner, on any status.
+        // Everything else is server-owned: the Functions act on the Drive
+        // ids, co-observer list and status with the full-scope Drive
+        // credential, so a client-chosen driveFolderId, pdfDriveFileId,
+        // audioDriveFileIds or evidenceLinks would aim them at any Drive
+        // file the app can reach.
+        || (oversees()
+          && changedKeys().hasOnly(draftContentKeys().concat(['draftVisibility']))))
         && (notDemoEdit() || isDemoStaff(resource.data.observedEmail));
 
       // A reopened observation is a Draft again but keeps the PDF the
@@ -620,10 +666,11 @@ service cloud.firestore {
         allow read: if canReadAllObservations()
           || isCurrentUserEmail(
                get(/databases/$(database)/documents/observations/$(observationId)).data.observedEmail)
-          || isCurrentUserEmail(
-               get(/databases/$(database)/documents/observations/$(observationId)).data.observerEmail)
-          || (isFromOronoDomain() && request.auth.token.email in
-               get(/databases/$(database)/documents/observations/$(observationId)).data.get('coObserverEmails', []));
+          || ((isCurrentUserEmail(
+                 get(/databases/$(database)/documents/observations/$(observationId)).data.observerEmail)
+               || (isFromOronoDomain() && request.auth.token.email in
+                 get(/databases/$(database)/documents/observations/$(observationId)).data.get('coObserverEmails', [])))
+              && isActiveStaff());
         allow write: if false;
       }
     }
@@ -634,6 +681,34 @@ service cloud.firestore {
     match /teacherViews/{observationId} {
       allow get, list: if isFromOronoDomain() && isCurrentUserEmail(resource.data.observedEmail);
       allow write: if false;
+    }
+
+    // --- /windowInviteViews/{windowId}_{email} -----------------------------
+    // One invitee's slice of an observation window
+    // (onObservationWindowInviteViews): the window settings booking needs
+    // plus that invitee's own entries, never anyone else's. Readable by the
+    // invitee and by whoever may read the window itself; written only by
+    // Functions.
+    match /windowInviteViews/{viewId} {
+      // get also succeeds (as not-found) on the reader's own id before the
+      // trigger has written it, so the booking page's listener stays open
+      // and picks the view up once it exists.
+      allow get: if hasSpecialAccess()
+        || canReadAll()
+        || (isFromOronoDomain()
+            && isOwnWindowInviteViewId(viewId)
+            && (resource == null || resource.data.email == request.auth.token.email));
+      allow list: if hasSpecialAccess()
+        || canReadAll()
+        || isCurrentUserEmail(resource.data.email);
+      allow write: if false;
+    }
+
+    // `{windowId}_{email}` where email is the caller's token email.
+    function isOwnWindowInviteViewId(viewId) {
+      let suffix = '_' + request.auth.token.email;
+      return viewId.size() > suffix.size()
+        && viewId[viewId.size() - suffix.size():viewId.size()] == suffix;
     }
 
     // --- /userCalendarTokens/{email} ----------------------------------------
@@ -662,13 +737,13 @@ service cloud.firestore {
     }
 
     // --- /transcriptionJobs --------------------------------------------------
-    // Read: the requester and observation oversight / View As. Writes are
-    // server-only.
+    // Read: the requester (while active) and observation oversight / View
+    // As. Writes are server-only.
     match /transcriptionJobs/{id} {
       allow get: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow list: if canReadAllObservations()
-        || isCurrentUserEmail(resource.data.requestedBy);
+        || (isCurrentUserEmail(resource.data.requestedBy) && isActiveStaff());
       allow write: if false;
     }
 

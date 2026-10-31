@@ -4,13 +4,8 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import {
-  ALLOWED_EMAIL_DOMAIN,
-  AUDIT_ACTIONS,
-  COLLECTIONS,
-  isAdminRole,
-  isSpecialRole,
-} from '@ops/shared';
+import { ALLOWED_EMAIL_DOMAIN, AUDIT_ACTIONS, COLLECTIONS } from '@ops/shared';
+import { claimsForStaff } from './staffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -64,6 +59,9 @@ export const syncMyClaims = onCall(
   {
     // Demo-edit sessions allowed; confined to demo staff below.
     allowDemoEdit: true,
+    // The one callable an archived member must reach: it's what downgrades
+    // their claims to the null/false triple.
+    allowArchived: true,
     region: 'us-central1',
     memory: '256MiB',
   },
@@ -83,10 +81,8 @@ export const syncMyClaims = onCall(
     const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
     const staffSnap = await staffRef.get();
     const staffData = staffSnap.exists ? staffSnap.data() : null;
-    const role = (staffData?.['role'] as string | undefined) ?? null;
-    const hasAdminAccess = (staffData?.['hasAdminAccess'] as boolean | undefined) ?? false;
-    const isAdmin = isAdminRole(role) || hasAdminAccess;
-    const hasSpecialAccess = isSpecialRole(role) || isAdmin;
+    // An archived member gets the null/false triple (see claimsForStaff).
+    const { role, hasSpecialAccess, isAdmin } = claimsForStaff(staffData);
 
     await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
     logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });

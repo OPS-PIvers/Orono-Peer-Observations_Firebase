@@ -1,10 +1,16 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
+import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldPath, FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { AUDIT_ACTIONS, COLLECTIONS, recordingRefInput } from '@ops/shared';
-import { DRIVE_SECRETS, DRIVE_SERVICE_ACCOUNT, trashDriveFile } from '../lib/drive.js';
+import {
+  DRIVE_SECRETS,
+  DRIVE_SERVICE_ACCOUNT,
+  filesInObservationFolder,
+  trashDriveFile,
+} from '../lib/drive.js';
 import {
   callerEmail,
   loadObservation,
@@ -12,8 +18,11 @@ import {
   requireRecording,
 } from './recordingAccess.js';
 import { assertDemoEditTarget } from '../lib/callable.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
+
+const PARENT_FOLDER_ID = defineString('DRIVE_PARENT_FOLDER_ID');
 
 /**
  * Delete one audio recording from a Draft observation (observer only).
@@ -30,7 +39,7 @@ export const removeRecording = onCall(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request) => {
@@ -59,7 +68,14 @@ export const removeRecording = onCall(
     );
 
     try {
-      await trashDriveFile(audioFileId);
+      // Only a file in this observation's own folder is trashed.
+      const inFolder = await filesInObservationFolder({
+        fileIds: [audioFileId],
+        folderId: obs.driveFolderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
+      if (inFolder.includes(audioFileId)) await trashDriveFile(audioFileId);
     } catch (err) {
       logger.warn('removeRecording: Drive trash failed, recording still removed', {
         observationId,

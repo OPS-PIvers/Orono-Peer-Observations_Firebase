@@ -215,6 +215,27 @@ describe('/staff — building Administrator', () => {
     );
   });
 
+  it('cannot create a case-variant or off-domain staff doc', async () => {
+    // hal is in another building; a mixed-case id would be a second doc for
+    // the same person, which the observe gate and claims sync would trust.
+    const db = principalDb();
+    await assertFails(
+      setDoc(doc(db, 'staff/Hal@orono.k12.mn.us'), teacher('Hal@orono.k12.mn.us', ['OMS'])),
+    );
+    await assertFails(
+      setDoc(doc(db, 'staff/NEW@orono.k12.mn.us'), teacher('NEW@orono.k12.mn.us', ['OMS'])),
+    );
+    await assertFails(
+      setDoc(doc(db, 'staff/someone@gmail.com'), teacher('someone@gmail.com', ['OMS'])),
+    );
+    await assertFails(
+      setDoc(
+        doc(db, 'staff/x@orono.k12.mn.us.evil.com'),
+        teacher('x@orono.k12.mn.us.evil.com', ['OMS']),
+      ),
+    );
+  });
+
   it('cannot delete staff', async () => {
     await assertFails(deleteDoc(doc(principalDb(), 'staff/ann@orono.k12.mn.us')));
   });

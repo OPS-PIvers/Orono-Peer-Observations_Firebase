@@ -156,4 +156,22 @@ describe('StaffDialog with buildingScope', () => {
     expect(setDocMock).not.toHaveBeenCalled();
     expect(screen.getByText(/Add OMS so this person shows up/)).toBeTruthy();
   });
+
+  it('refuses an address outside the district', async () => {
+    render(
+      <StaffDialog
+        open
+        onOpenChange={vi.fn()}
+        mode="create"
+        existing={null}
+        buildingScope={['OMS']}
+      />,
+    );
+    await userEvent.type(screen.getByLabelText('Email'), 'someone@gmail.com');
+    await userEvent.type(screen.getByLabelText('Name'), 'Outsider');
+    await userEvent.selectOptions(screen.getByLabelText('Role'), 'teacher');
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(setDocMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/Use their @orono\.k12\.mn\.us address/)).toBeTruthy();
+  });
 });

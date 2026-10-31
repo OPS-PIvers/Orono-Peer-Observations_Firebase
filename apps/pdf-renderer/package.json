@@ -21,16 +21,16 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "@ops/shared": "workspace:*",
-    "@tiptap/core": "^3.32.0",
-    "@tiptap/extension-link": "^3.32.0",
-    "@tiptap/html": "^3.32.0",
-    "@tiptap/starter-kit": "^3.32.0",
-    "hono": "^4.13.13",
+    "@tiptap/core": "^3.32.2",
+    "@tiptap/extension-link": "^3.32.2",
+    "@tiptap/html": "^3.32.2",
+    "@tiptap/starter-kit": "^3.32.2",
+    "hono": "^4.13.14",
     "puppeteer": "^25.14.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

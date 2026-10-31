@@ -90,9 +90,146 @@ export async function getDriveClient(): Promise<drive_v3.Drive> {
   return driveClient;
 }
 
+const FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+
+/**
+ * Thrown when a Drive id stored on an observation does not name that
+ * observation's own folder (see isObservationFolder) or a
+ * file inside it. The Drive token has the full `drive` scope, so every id
+ * read from an observation is checked before the app shares, uploads into,
+ * downloads, overwrites or trashes what it names.
+ */
+export class ForeignDriveObjectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ForeignDriveObjectError';
+  }
+}
+
+/**
+ * Whether Drive metadata describes this observation's folder: a folder
+ * directly under the observations parent, or one the app created for this
+ * observation (named `<observed name> — <observationId>` by
+ * ensureObservationFolder) that sits elsewhere, e.g. one the Shared Drive
+ * move skipped. The second case keeps those observations' recordings and
+ * PDF working.
+ */
+function isObservationFolder(
+  meta: { mimeType?: string | null; parents?: string[] | null; name?: string | null },
+  parentFolderId: string,
+  observationId: string,
+): boolean {
+  if (meta.mimeType !== FOLDER_MIME_TYPE) return false;
+  if (meta.parents?.includes(parentFolderId)) return true;
+  return !!observationId && (meta.name ?? '').endsWith(` — ${observationId}`);
+}
+
+/**
+ * Confirm `folderId` is this observation's folder (isObservationFolder) and
+ * not the parent itself. Throws ForeignDriveObjectError otherwise; Drive
+ * errors (404 included) propagate.
+ */
+export async function assertObservationFolder(args: {
+  folderId: string;
+  parentFolderId: string;
+  observationId: string;
+}): Promise<void> {
+  const { folderId, parentFolderId, observationId } = args;
+  if (!parentFolderId || !folderId || folderId === parentFolderId) {
+    throw new ForeignDriveObjectError('Not an observation folder');
+  }
+  const drive = await getDriveClient();
+  const meta = await drive.files.get({
+    fileId: folderId,
+    fields: 'mimeType, parents, name',
+    supportsAllDrives: true,
+  });
+  if (!isObservationFolder(meta.data, parentFolderId, observationId)) {
+    logger.error("assertObservationFolder: not this observation's folder", {
+      folderId,
+      observationId,
+      parentFolderId,
+      parents: meta.data.parents,
+    });
+    throw new ForeignDriveObjectError('Not an observation folder');
+  }
+}
+
+/** Throws unless `fileId` is a file directly inside `folderId`. */
+async function assertFileInFolder(fileId: string, folderId: string): Promise<void> {
+  if (!fileId || fileId === folderId) {
+    throw new ForeignDriveObjectError('Not a file in the observation folder');
+  }
+  const parents = await getFileParents(fileId);
+  if (!parents.includes(folderId)) {
+    logger.error('assertFileInFolder: file is not in the observation folder', {
+      fileId,
+      folderId,
+      parents,
+    });
+    throw new ForeignDriveObjectError('Not a file in the observation folder');
+  }
+}
+
+/**
+ * Confirm every id in `fileIds` sits directly in the observation's folder,
+ * and that the folder is an observation folder (assertObservationFolder).
+ * An observation without a folder has no files the app may act on.
+ */
+export async function assertFilesInObservationFolder(args: {
+  fileIds: readonly string[];
+  folderId: string | null | undefined;
+  parentFolderId: string;
+  observationId: string;
+}): Promise<void> {
+  const { fileIds, folderId, parentFolderId, observationId } = args;
+  if (!folderId) throw new ForeignDriveObjectError('Observation has no Drive folder');
+  await assertObservationFolder({ folderId, parentFolderId, observationId });
+  for (const fileId of fileIds) await assertFileInFolder(fileId, folderId);
+}
+
+/**
+ * The subset of `fileIds` that sit in the observation's folder, for
+ * best-effort cleanup that should skip, not fail on, anything else. A
+ * refused or missing folder keeps nothing. Logs what it drops.
+ */
+export async function filesInObservationFolder(args: {
+  fileIds: readonly string[];
+  folderId: string | null | undefined;
+  parentFolderId: string;
+  observationId: string;
+}): Promise<string[]> {
+  const { fileIds, folderId, parentFolderId, observationId } = args;
+  if (fileIds.length === 0) return [];
+  try {
+    if (!folderId) throw new ForeignDriveObjectError('Observation has no Drive folder');
+    await assertObservationFolder({ folderId, parentFolderId, observationId });
+  } catch (err) {
+    if (!(err instanceof ForeignDriveObjectError) && !isDriveNotFound(err)) throw err;
+    logger.error('filesInObservationFolder: folder refused; skipping every file', {
+      folderId,
+      fileIds,
+    });
+    return [];
+  }
+  const kept: string[] = [];
+  for (const fileId of fileIds) {
+    try {
+      await assertFileInFolder(fileId, folderId);
+      kept.push(fileId);
+    } catch (err) {
+      if (!(err instanceof ForeignDriveObjectError) && !isDriveNotFound(err)) throw err;
+    }
+  }
+  return kept;
+}
+
 /**
  * Get or create the Drive folder for this observation. Returns the folder
- * ID. If `existingFolderId` is supplied and still exists, reuses it.
+ * ID. If `existingFolderId` is supplied and still exists, reuses it — but
+ * only when it is this observation's folder (isObservationFolder). Anything else is
+ * never adopted: a new folder is created and returned instead, and callers
+ * repoint `driveFolderId` at it.
  */
 export async function ensureObservationFolder(args: {
   observationId: string;
@@ -108,18 +245,33 @@ export async function ensureObservationFolder(args: {
       observationId: args.observationId,
       folderId: args.existingFolderId,
     });
-    throw new Error('Observation folder id is the Drive parent folder');
+    throw new ForeignDriveObjectError('Observation folder id is the Drive parent folder');
   }
   const drive = await getDriveClient();
   if (args.existingFolderId) {
     try {
       const existing = await drive.files.get({
         fileId: args.existingFolderId,
-        fields: 'id, trashed',
+        fields: 'id, trashed, mimeType, parents, name',
         supportsAllDrives: true,
       });
-      if (!existing.data.trashed) return args.existingFolderId;
-      // Trashed: treat as gone and recreate below.
+      if (
+        !existing.data.trashed &&
+        isObservationFolder(existing.data, args.parentFolderId, args.observationId)
+      ) {
+        return args.existingFolderId;
+      }
+      // Trashed: treat as gone and recreate below. Not this observation's
+      // folder (an id that names something else): leave it untouched and
+      // give the observation a fresh folder, so nothing is shared or
+      // uploaded there.
+      if (!existing.data.trashed) {
+        logger.error('ensureObservationFolder: existing folder is not under the parent folder', {
+          observationId: args.observationId,
+          folderId: args.existingFolderId,
+          parents: existing.data.parents,
+        });
+      }
     } catch (err) {
       // Only a folder that is really gone gets replaced. Any other error (a
       // 429 or 5xx during a burst of end-of-period uploads, an expired token)
@@ -132,7 +284,7 @@ export async function ensureObservationFolder(args: {
   const created = await drive.files.create({
     requestBody: {
       name: `${args.observedName} — ${args.observationId}`,
-      mimeType: 'application/vnd.google-apps.folder',
+      mimeType: FOLDER_MIME_TYPE,
       parents: [args.parentFolderId],
     },
     fields: 'id',
@@ -241,8 +393,7 @@ export async function startResumableUpload(args: {
 }
 
 export type ResumableUploadStatus =
-  | { done: false; received: number }
-  | { done: true; fileId: string; fileName: string };
+  { done: false; received: number } | { done: true; fileId: string; fileName: string };
 
 /**
  * Send one piece of a resumable upload, starting at byte `offset`. An empty
@@ -487,6 +638,75 @@ export async function removeReaderFromFile(args: { fileId: string; email: string
   await drive.permissions.delete({
     fileId: args.fileId,
     permissionId: match.id,
+    supportsAllDrives: true,
+  });
+}
+
+/**
+ * Take back the observed staff member's Reader on a reopened observation's
+ * folder. Finalize shares the whole folder with them, and files added while
+ * it is a Draft again would inherit that grant, so recordings and evidence
+ * the app keeps from them until re-finalize would open in Drive. The PDF they
+ * were emailed gets its own direct Reader grant first so that link keeps
+ * working. Re-finalizing shares the folder again.
+ *
+ * `folderId` must already be checked as the observation's folder; the PDF is
+ * only shared when it sits in that folder. Throws on Drive errors so a caller
+ * about to upload can stop rather than add a file the teacher could open.
+ */
+export async function withdrawObservedFolderAccess(args: {
+  observationId: string;
+  folderId: string;
+  parentFolderId: string;
+  observedEmail: string;
+  pdfDriveFileId: string | null | undefined;
+}): Promise<void> {
+  const { observationId, folderId, parentFolderId, observedEmail, pdfDriveFileId } = args;
+  if (!observedEmail) return;
+  const drive = await getDriveClient();
+  // Nothing to take back (never shared, or an earlier reopen or upload
+  // already did): no further Drive calls, so this never blocks an upload.
+  const existing = await drive.permissions.list({
+    fileId: folderId,
+    fields: 'permissions(id,emailAddress,role)',
+    supportsAllDrives: true,
+  });
+  const lower = observedEmail.toLowerCase();
+  const folderGrant = existing.data.permissions?.find(
+    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader',
+  );
+  if (!folderGrant?.id) return;
+  if (pdfDriveFileId) {
+    const [pdf] = await filesInObservationFolder({
+      fileIds: [pdfDriveFileId],
+      folderId,
+      parentFolderId,
+      observationId,
+    });
+    if (pdf) {
+      // Not shareWithUser: its "already has Reader" check would see the grant
+      // the PDF inherits from the folder and skip, and that one goes with
+      // the folder grant below. A create for someone who already has a
+      // direct grant leaves them with one. Best-effort: only the revoke
+      // below may stop an upload.
+      try {
+        await drive.permissions.create({
+          fileId: pdf,
+          sendNotificationEmail: false,
+          requestBody: { type: 'user', role: 'reader', emailAddress: observedEmail },
+          supportsAllDrives: true,
+        });
+      } catch (err) {
+        logger.warn('withdrawObservedFolderAccess: PDF grant failed (non-fatal)', {
+          fileId: pdf,
+          err,
+        });
+      }
+    }
+  }
+  await drive.permissions.delete({
+    fileId: folderId,
+    permissionId: folderGrant.id,
     supportsAllDrives: true,
   });
 }

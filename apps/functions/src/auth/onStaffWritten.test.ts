@@ -140,6 +140,36 @@ describe('onStaffWritten — claim sync', () => {
     });
   });
 
+  it('drops all access when a full-access member is archived (role stays on the doc)', async () => {
+    await invoke(
+      makeEvent({
+        email: 'boss@orono.k12.mn.us',
+        before: { role: 'full-access', hasAdminAccess: true, isActive: true },
+        after: { role: 'full-access', hasAdminAccess: true, isActive: false },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('restores claims when an archived member is reactivated', async () => {
+    await invoke(
+      makeEvent({
+        email: 'pe@orono.k12.mn.us',
+        before: { role: 'peer-evaluator', isActive: false },
+        after: { role: 'peer-evaluator', isActive: true },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: 'peer-evaluator',
+      hasSpecialAccess: true,
+      isAdmin: false,
+    });
+  });
+
   it('clears claims (null role) when the staff doc is deleted', async () => {
     await invoke(
       makeEvent({ email: 'gone@orono.k12.mn.us', before: { role: 'teacher' }, after: null }),
@@ -219,5 +249,39 @@ describe('onStaffWritten — new-staff invite', () => {
       ),
     ).resolves.not.toThrow();
     expect(state.setClaims).toHaveBeenCalled();
+  });
+});
+
+describe('onStaffWritten — non-canonical doc ids', () => {
+  it('leaves the real user’s claims alone and sends no invite for a mixed-case doc', async () => {
+    await invoke(
+      makeEvent({
+        email: 'Victim@orono.k12.mn.us',
+        before: null,
+        after: { role: 'teacher', isActive: true, name: 'Shadow' },
+      }),
+    );
+    expect(state.getUserByEmail).not.toHaveBeenCalled();
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not clear claims when a mixed-case doc is deleted', async () => {
+    await invoke(
+      makeEvent({ email: 'Victim@orono.k12.mn.us', before: { role: 'teacher' }, after: null }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
+  it('sends no invite to an off-domain doc id', async () => {
+    await invoke(
+      makeEvent({
+        email: 'someone@gmail.com',
+        before: null,
+        after: { role: 'teacher', isActive: true, name: 'Outsider' },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.sendTemplatedEmail).not.toHaveBeenCalled();
   });
 });
