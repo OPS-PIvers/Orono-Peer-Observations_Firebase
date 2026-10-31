@@ -376,9 +376,10 @@ service cloud.firestore {
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
     match /observationWindows/{windowId} {
-      allow get, list: if hasSpecialAccess()
-        || canReadAll()
-        || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
+      // Read: special access and View As only. The doc lists every invitee
+      // with their building, booking and invite token, so invitees read
+      // their own /windowInviteViews doc instead.
+      allow get, list: if hasSpecialAccess() || canReadAll();
       // Create: only the createObservationWindow callable (Admin SDK). It
       // checks the observer's role and scope and writes the full shape the
       // scheduling jobs rely on; a client-written window could be any shape.
@@ -411,13 +412,24 @@ service cloud.firestore {
         ))
         && notDemoEdit();
 
-      // Slots: readable by anyone who can read the parent window; never
-      // client-writable (mutated only inside the booking transaction).
+      // Slots: never client-writable (mutated only inside the booking
+      // transaction). Invitees see open and blocked slots, plus their own
+      // booked slot by id; who booked the others is not theirs to read.
       match /slots/{slotId} {
-        allow read: if hasSpecialAccess() || canReadAll()
-          || (isFromOronoDomain()
-              && request.auth.token.email in
-                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.invitedEmails);
+        function isWindowInvitee() {
+          return isFromOronoDomain()
+            && request.auth.token.email in
+               get(/databases/$(database)/documents/observationWindows/$(windowId)).data.invitedEmails;
+        }
+        function isUnbookedSlot() {
+          return resource.data.status in ['available', 'blocked'];
+        }
+        allow get: if hasSpecialAccess() || canReadAll()
+          || (isWindowInvitee()
+              && (isUnbookedSlot()
+                  || resource.data.get('bookedBy', null) == request.auth.token.email));
+        allow list: if hasSpecialAccess() || canReadAll()
+          || (isWindowInvitee() && isUnbookedSlot());
         allow write: if false;
       }
 
