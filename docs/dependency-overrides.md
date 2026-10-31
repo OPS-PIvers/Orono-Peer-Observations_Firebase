@@ -6,6 +6,11 @@ gaxios, google-auth-library, and various dev/build tooling) had not yet picked u
 patched versions of these packages when a Dependabot advisory was opened against
 them. JSON does not support comments, so provenance is tracked here instead.
 
+The deployed Cloud Functions are installed with `npm ci` from
+`apps/functions/lib/package-lock.json`, which the functions build derives from
+`pnpm-lock.yaml` (see `apps/functions/tsup.config.ts`), so these overrides apply
+to the shipped functions exactly as locked.
+
 When bumping an override, verify whether the parent package now ships a version
 that includes the fix; if so, remove the override entirely rather than bumping it.
 
