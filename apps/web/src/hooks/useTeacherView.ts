@@ -25,7 +25,19 @@ export function useReadsTeacherViews(observedEmail: string): boolean {
  * date-driven UI such as the dashboard's "Review the draft" card still has
  * a date without revealing hidden activity.
  */
+const viewedCache = new WeakMap<object, unknown>();
+
 export function asViewedObservation<T extends Observation>(view: T): T {
+  // One result per snapshot object, so callers that depend on identity
+  // (effects, memos) see a change only when a new snapshot arrives.
+  const cached = viewedCache.get(view);
+  if (cached) return cached as T;
+  const result = viewedOf(view);
+  viewedCache.set(view, result);
+  return result;
+}
+
+function viewedOf<T extends Observation>(view: T): T {
   // Typed as required, but absent on a view read from Firestore.
   const stored: unknown = Reflect.get(view, 'lastModifiedAt');
   if (stored !== undefined) return view;

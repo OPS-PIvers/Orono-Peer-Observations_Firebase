@@ -143,6 +143,11 @@ describe('asViewedObservation', () => {
     expect(asViewedObservation(view).lastModifiedAt).toBe(updatedAt);
   });
 
+  it('returns the same object for the same snapshot', () => {
+    const view = { id: 'obs-1', updatedAt: new Date(5000) } as unknown as Observation;
+    expect(asViewedObservation(view)).toBe(asViewedObservation(view));
+  });
+
   it('leaves a doc that already has lastModifiedAt alone', () => {
     const doc = { id: 'obs-1', lastModifiedAt: new Date(1) } as unknown as Observation;
     expect(asViewedObservation(doc)).toBe(doc);

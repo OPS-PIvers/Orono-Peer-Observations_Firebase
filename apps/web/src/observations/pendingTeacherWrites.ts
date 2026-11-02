@@ -32,7 +32,9 @@ function canonical(value: unknown): string {
 
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 
-/** Record answers the teacher just saved to the observation. */
+/** Record answers the teacher is saving to the observation. Called when the
+ *  write is issued, like Firestore's own local echo, so a save issued before
+ *  this one is acknowledged already starts from it. */
 export function rememberSavedAnswers(
   observationId: string,
   saved: readonly WorkProductAnswer[],
@@ -40,6 +42,17 @@ export function rememberSavedAnswers(
   const mine = answers.get(observationId) ?? new Map<string, WorkProductAnswer>();
   for (const a of saved) mine.set(a.questionId, a);
   answers.set(observationId, mine);
+}
+
+/** Forget answers whose write failed, unless a later save replaced them. */
+export function forgetSavedAnswers(
+  observationId: string,
+  failed: readonly WorkProductAnswer[],
+): void {
+  const mine = answers.get(observationId);
+  if (!mine) return;
+  for (const a of failed) if (mine.get(a.questionId) === a) mine.delete(a.questionId);
+  if (mine.size === 0) answers.delete(observationId);
 }
 
 /**

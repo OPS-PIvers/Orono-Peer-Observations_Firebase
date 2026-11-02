@@ -12,7 +12,11 @@ import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
-import { rememberSavedAnswers, withSavedAnswers } from '@/observations/pendingTeacherWrites';
+import {
+  forgetSavedAnswers,
+  rememberSavedAnswers,
+  withSavedAnswers,
+} from '@/observations/pendingTeacherWrites';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -163,6 +167,11 @@ export function useWorkProductAnswers(
       // Never stored and never edited (an empty editor that only ever
       // mounted): nothing to persist.
     }
+    // Only what this save changed: untouched answers came from the stored
+    // copy and must not mask a newer one written elsewhere. Recorded now,
+    // not on the ack, so a flush issued before this one lands builds on it.
+    const edited = next.filter((a) => dirty.has(a.questionId));
+    rememberSavedAnswers(observationId, edited);
     setSaveState('saving');
     return setDoc(
       doc(db, COLLECTIONS.observations, observationId),
@@ -170,12 +179,6 @@ export function useWorkProductAnswers(
       { merge: true },
     )
       .then(() => {
-        // Only what this save changed: untouched answers came from the
-        // stored copy and must not mask a newer one written elsewhere.
-        rememberSavedAnswers(
-          observationId,
-          next.filter((a) => dirty.has(a.questionId)),
-        );
         if (!mountedRef.current) return;
         // Another edit is queued, or an earlier failed write's answers are
         // still unsaved: "Saved" would be wrong.
@@ -185,6 +188,7 @@ export function useWorkProductAnswers(
       })
       .catch((err: unknown) => {
         console.error('useWorkProductAnswers: autosave failed', err);
+        forgetSavedAnswers(observationId, edited);
         for (const questionId of dirty) dirtyRef.current.add(questionId);
         if (!mountedRef.current) return;
         setSaveState('error');

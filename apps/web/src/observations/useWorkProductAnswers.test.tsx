@@ -111,6 +111,31 @@ describe('useWorkProductAnswers', () => {
       expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
     });
 
+    it('a second save keeps the first answer while the first is still in flight', async () => {
+      vi.useFakeTimers();
+      // The first write is never acknowledged (slow or dropped connection).
+      mockSetDoc
+        .mockImplementationOnce(() => new Promise<never>(() => undefined))
+        .mockResolvedValue(undefined);
+      const { result } = renderHook(() => useWorkProductAnswers(observation, true));
+
+      act(() => {
+        result.current.setAnswer('q1', textDoc('new'));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      act(() => {
+        result.current.setAnswer('q2', textDoc('second'));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+
+      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
+    });
+
     it('drops its own save once the copy matches it, whatever the key order', async () => {
       vi.useFakeTimers();
       mockSetDoc.mockResolvedValue(undefined);
