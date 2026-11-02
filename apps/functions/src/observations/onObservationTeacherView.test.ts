@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   del: undefined as AnyMock | undefined,
   /** The observation as a fresh read returns it; undefined = deleted. */
   current: undefined as Record<string, unknown> | undefined,
+  transactions: 0,
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -30,8 +31,24 @@ vi.mock('firebase-admin/firestore', () => ({
             }
           : { get: () => Promise.resolve({ data: () => state.current }) },
     }),
+    // The handler reads the observation and writes the view in one
+    // transaction; pass each call through to the refs above.
+    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      state.transactions += 1;
+      return fn({
+        get: (ref: Ref) => ref.get(),
+        set: (ref: Ref, data: unknown) => void ref.set(data),
+        delete: (ref: Ref) => void ref.delete(),
+      });
+    },
   }),
 }));
+
+interface Ref {
+  get: () => unknown;
+  set: (d: unknown) => unknown;
+  delete: () => unknown;
+}
 
 const { handleTeacherView } = await import('./onObservationTeacherView.js');
 
@@ -139,6 +156,13 @@ describe('handleTeacherView', () => {
       ),
     );
     expect(written()).not.toHaveProperty('observationData');
+  });
+
+  it('reads the observation and writes the view in one transaction', async () => {
+    state.transactions = 0;
+    await write(base, { ...base, draftVisibility: { ...HIDDEN, notes: true } });
+    expect(state.transactions).toBe(1);
+    expect(state.set).toHaveBeenCalledTimes(1);
   });
 
   it('deletes the view when the observation is deleted', async () => {

@@ -44,6 +44,7 @@ import { useGoBack } from '@/hooks/useGoBack';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { useFirestoreDoc } from '@/hooks/useFirestoreDoc';
+import { useViewerObservation } from '@/hooks/useTeacherView';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { db, functions } from '@/lib/firebase';
@@ -206,15 +207,11 @@ export function ObservationEditorPage() {
   const sidebarWidth = useSidebarWidth();
   const reflectionUnlock = useReflectionUnlock();
 
-  const {
-    data: observation,
-    loading,
-    error,
-    // Never from the cache: the draft below is hydrated once and written back
-    // whole, so a stale cached copy would overwrite newer edits.
-  } = useFirestoreDoc<Observation>(`${COLLECTIONS.observations}/${observationId ?? ''}`, {
-    cached: false,
-  });
+  // The observed teacher reads a Draft through its teacher view (Draft
+  // privacy); everyone else reads the observation. Never from the cache: the
+  // draft below is hydrated once and written back whole, so a stale cached
+  // copy would overwrite newer edits.
+  const { data: observation, loading, error } = useViewerObservation(observationId);
   const { data: roles } = useFirestoreCollection<Role>(COLLECTIONS.roles);
   const { data: rubrics } = useFirestoreCollection<Rubric>(COLLECTIONS.rubrics);
 
@@ -393,7 +390,7 @@ export function ObservationEditorPage() {
   // param, so a route change to a new observation can't briefly hydrate
   // with the previous observation's data while useFirestoreDoc is still
   // resubscribing. See issue #3.
-  useHydratedDraft(observation?.id ?? null, observation, (src) => {
+  const hydrateFrom = useCallback((src: Observation & { id: string }) => {
     const next: EditorDraft = {
       observationData: src.observationData,
       componentNotes: src.componentNotes,
@@ -412,7 +409,8 @@ export function ObservationEditorPage() {
     };
     setDraft(next);
     draftRef.current = next;
-  });
+  }, []);
+  useHydratedDraft(observation?.id ?? null, observation, hydrateFrom);
 
   // The draft is hydrated once, but the server can move the date afterwards
   // (rescheduleBooking). Follow it unless the evaluator has an edit of their
@@ -707,6 +705,18 @@ export function ObservationEditorPage() {
     ...observation?.draftVisibility,
   };
   const withholding = !!observation && !isReadOnly && !canEdit && isObservedStaff;
+
+  // The observed teacher can't edit any field of the draft, so their copy
+  // follows every snapshot instead of keeping the first: on a Draft they
+  // read the teacher view, which changes as the observer shares or
+  // withdraws content, and at finalize they switch to the full observation.
+  // Without this, newly shared content needed a reload, and content
+  // withdrawn while their page was open stayed on it.
+  const followsServer = !!observation && !canEdit && isObservedStaff;
+  useEffect(() => {
+    if (followsServer) hydrateFrom(observation);
+  }, [followsServer, observation, hydrateFrom]);
+
   const show = {
     ratings: !withholding || draftVisibility.ratings,
     notes: !withholding || draftVisibility.notes,
