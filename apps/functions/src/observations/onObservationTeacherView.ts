@@ -70,19 +70,24 @@ export async function handleTeacherView(
 
   // Trigger events can arrive out of order. Project the observation as it
   // is now, not as this event saw it, so a late event can't restore content
-  // a later sharing change hid.
-  const current = await getFirestore()
-    .collection(COLLECTIONS.observations)
-    .doc(observationId)
-    .get();
-  const data = current.data();
-  if (!data) {
-    await viewRef.delete();
-    return;
-  }
-  await viewRef.set({
-    ...teacherViewOf(data, observationId),
-    updatedAt: FieldValue.serverTimestamp(),
+  // a later sharing change hid. The read and the write share a transaction:
+  // setDraftVisibility writes the observation and the view together, and
+  // without one this could read just before that commit and write the old
+  // projection back just after it.
+  const db = getFirestore();
+  const obsRef = db.collection(COLLECTIONS.observations).doc(observationId);
+  const written = await db.runTransaction(async (tx) => {
+    const current = await tx.get(obsRef);
+    const data = current.data();
+    if (!data) {
+      tx.delete(viewRef);
+      return false;
+    }
+    tx.set(viewRef, {
+      ...teacherViewOf(data, observationId),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
   });
-  logger.info('onObservationTeacherView: view written', { observationId });
+  if (written) logger.info('onObservationTeacherView: view written', { observationId });
 }

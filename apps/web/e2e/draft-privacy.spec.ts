@@ -6,9 +6,9 @@ import { type Page, expect, test } from '@playwright/test';
  *
  * A Peer Evaluator creates and names a Draft; the onObservationTeacherView
  * trigger (Functions emulator) writes the teacher's copy; the teacher then
- * finds it under My Observations and opens it. The rules deny the teacher a
- * read of the Draft observation itself, so this passes only if every page on
- * that path reads /teacherViews.
+ * finds it under My Observations and opens it. Once the rules lock lands,
+ * the teacher can't read the Draft observation itself, so this then passes
+ * only if every page on that path reads /teacherViews.
  */
 
 const SEED_PE_EMAIL = 'pe.alpha@orono.k12.mn.us';
@@ -75,6 +75,22 @@ test('the observed teacher opens their Draft from My Observations', async ({ bro
   );
   await pe.getByLabel('Observation name').fill(name);
   await expect(pe.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15_000 });
+
+  // Sharing switches save through the setDraftVisibility callable, which
+  // writes the switch and the teacher's copy together. Turn one on and back
+  // off, and check each change is stored.
+  const notesSwitch = () => pe.getByRole('switch', { name: /Component notes/ });
+  await pe.getByRole('button', { name: /^Sharing:/ }).click();
+  await notesSwitch().click();
+  await expect(notesSwitch()).toBeChecked();
+  await expect(notesSwitch()).toBeEnabled({ timeout: 15_000 });
+  await pe.reload();
+  await pe.getByRole('button', { name: /^Sharing: 1 of 5/ }).click();
+  await expect(notesSwitch()).toBeChecked();
+  await notesSwitch().click();
+  await expect(notesSwitch()).not.toBeChecked();
+  await expect(notesSwitch()).toBeEnabled({ timeout: 15_000 });
+  await expect(pe.getByText('Could not update sharing', { exact: false })).toHaveCount(0);
   await peContext.close();
 
   const teacherContext = await browser.newContext();
