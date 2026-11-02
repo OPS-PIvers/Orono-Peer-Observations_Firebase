@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { COLLECTIONS, OBSERVATION_STATUS } from '@ops/shared';
+import type { Observation } from '@ops/shared';
 
 interface DocState {
   data: Record<string, unknown> | null;
@@ -23,7 +24,7 @@ vi.mock('./useFirestoreDoc', () => ({
   },
 }));
 
-import { useReadsTeacherViews, useViewerObservation } from './useTeacherView';
+import { asViewedObservation, useReadsTeacherViews, useViewerObservation } from './useTeacherView';
 
 const VIEW = `${COLLECTIONS.teacherViews}/obs1`;
 const OBS = `${COLLECTIONS.observations}/obs1`;
@@ -132,5 +133,18 @@ describe('useReadsTeacherViews', () => {
     expect(renderHook(() => useReadsTeacherViews('teacher@orono.k12.mn.us')).result.current).toBe(
       false,
     );
+  });
+});
+
+describe('asViewedObservation', () => {
+  it('dates a teacher view by its updatedAt, which stands in for lastModifiedAt', () => {
+    const updatedAt = new Date(5000);
+    const view = { id: 'obs-1', updatedAt } as unknown as Observation;
+    expect(asViewedObservation(view).lastModifiedAt).toBe(updatedAt);
+  });
+
+  it('leaves a doc that already has lastModifiedAt alone', () => {
+    const doc = { id: 'obs-1', lastModifiedAt: new Date(1) } as unknown as Observation;
+    expect(asViewedObservation(doc)).toBe(doc);
   });
 });

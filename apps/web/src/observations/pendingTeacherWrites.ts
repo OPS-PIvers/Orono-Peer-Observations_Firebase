@@ -19,7 +19,18 @@ import type { TiptapDoc, WorkProductAnswer } from '@ops/shared';
 const answers = new Map<string, Map<string, WorkProductAnswer>>();
 const goals = new Map<string, TiptapDoc | null>();
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** JSON with object keys sorted. Firestore returns map keys in sorted order
+ *  while TipTap's getJSON() emits them in its own order, so a plain
+ *  stringify would never see a saved doc match its stored copy. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value ?? null, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 
 /** Record answers the teacher just saved to the observation. */
 export function rememberSavedAnswers(

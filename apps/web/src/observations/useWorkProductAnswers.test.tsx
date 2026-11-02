@@ -87,6 +87,62 @@ describe('useWorkProductAnswers', () => {
       expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
     });
 
+    it('a second save keeps the first answer when no new snapshot has arrived', async () => {
+      vi.useFakeTimers();
+      mockSetDoc.mockResolvedValue(undefined);
+      // The same object throughout: production sees no snapshot until the
+      // trigger rewrites the view.
+      const { result } = renderHook(() => useWorkProductAnswers(observation, true));
+
+      act(() => {
+        result.current.setAnswer('q1', textDoc('new'));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      act(() => {
+        result.current.setAnswer('q2', textDoc('second'));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+
+      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
+    });
+
+    it('drops its own save once the copy matches it, whatever the key order', async () => {
+      vi.useFakeTimers();
+      mockSetDoc.mockResolvedValue(undefined);
+      const first = renderHook(() => useWorkProductAnswers(observation, true));
+      act(() => {
+        first.result.current.setAnswer('q1', textDoc('new'));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      first.unmount();
+
+      // Firestore hands maps back with their keys sorted.
+      const sorted = {
+        content: [{ content: [{ text: 'new', type: 'text' }], type: 'paragraph' }],
+        type: 'doc',
+      };
+      const caughtUp = {
+        ...observation,
+        workProductAnswers: [{ questionId: 'q1', answer: sorted, updatedAt: new Date(1) }],
+      } as unknown as Observation & { id: string };
+      renderHook(() => useWorkProductAnswers(caughtUp, true)).unmount();
+      const later = {
+        ...observation,
+        workProductAnswers: [
+          { questionId: 'q1', answer: textDoc('later'), updatedAt: new Date(2) },
+        ],
+      } as unknown as Observation & { id: string };
+      const reopened = renderHook(() => useWorkProductAnswers(later, true));
+      expect(reopened.result.current.docs['q1']).toEqual(textDoc('later'));
+    });
+
     it('reopening the observation shows the saved answer, not the stale copy', async () => {
       vi.useFakeTimers();
       mockSetDoc.mockResolvedValue(undefined);

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Observation } from '@ops/shared';
 import { useFirestoreCollection } from './useFirestoreCollection';
-import { useReadsTeacherViews } from './useTeacherView';
+import { asViewedObservation, useReadsTeacherViews } from './useTeacherView';
 
 /**
  * Returns the most recent Draft Standard observation where the current
@@ -43,5 +43,10 @@ export function useActiveStandardObservation(
     [observedEmail, observerEmail ?? '', OBSERVATION_TYPES.standard],
   );
 
-  return { observation: data?.[0] ?? null, loading, error };
+  const first = data?.[0] ?? null;
+  return {
+    observation: first && ownDrafts ? asViewedObservation(first) : first,
+    loading,
+    error,
+  };
 }

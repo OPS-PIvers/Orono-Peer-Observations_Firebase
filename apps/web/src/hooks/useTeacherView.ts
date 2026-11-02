@@ -18,6 +18,21 @@ export function useReadsTeacherViews(observedEmail: string): boolean {
   return viewAsEmail === null && !!observedEmail && observedEmail.toLowerCase() === effectiveEmail;
 }
 
+/**
+ * A teacher view read as an observation. The view never carries
+ * `lastModifiedAt`, which moves on every hidden autosave; its own
+ * `updatedAt` (stamped each time the shared content changes) stands in, so
+ * date-driven UI such as the dashboard's "Review the draft" card still has
+ * a date without revealing hidden activity.
+ */
+export function asViewedObservation<T extends Observation>(view: T): T {
+  // Typed as required, but absent on a view read from Firestore.
+  const stored: unknown = Reflect.get(view, 'lastModifiedAt');
+  if (stored !== undefined) return view;
+  const updatedAt: unknown = Reflect.get(view, 'updatedAt');
+  return updatedAt === undefined ? view : { ...view, lastModifiedAt: updatedAt };
+}
+
 export interface ViewerObservationResult {
   data: (Observation & { id: string }) | null;
   loading: boolean;
@@ -57,7 +72,14 @@ export function useViewerObservation(observationId: string | undefined): ViewerO
   const obs = useFirestoreDoc<Observation>(obsPath, { cached: false });
   const obsData = obs.data?.id === id ? obs.data : null;
 
-  if (viewIsDraft) return { data: viewData, loading: false, error: null, source: 'teacherView' };
+  if (viewIsDraft) {
+    return {
+      data: asViewedObservation(viewData),
+      loading: false,
+      error: null,
+      source: 'teacherView',
+    };
+  }
   if (!obsPath || obs.loading || (obs.data !== null && obsData === null)) {
     return { data: null, loading: true, error: null, source: null };
   }
