@@ -19,6 +19,8 @@ import {
   COLLECTIONS,
   DASHBOARD_CONFIG_DOC_ID,
   OBSERVATION_TYPES,
+  resolveSteps,
+  type DashboardConfig,
 } from '@ops/shared';
 import { initFirestore, type ImportTarget } from '../import/firebase.js';
 
@@ -105,10 +107,14 @@ async function main() {
     console.log(`  ${d.id}  ${pick(d.data(), ['type', 'status', 'createdAt'])}`);
   }
 
-  console.log('\n=== Dashboard config steps ===');
-  const steps = (dashConfig.get('steps') as DocumentData[] | undefined) ?? [];
-  if (steps.length === 0) console.log('  (none stored — DEFAULT_STEPS apply)');
-  for (const s of [...steps].sort((a, b) => Number(a.order) - Number(b.order))) {
+  // The steps the dashboard actually runs: stored `steps`, or the defaults
+  // with any legacy `checkpoints` overrides applied.
+  const stored = (dashConfig.get('steps') as unknown[] | undefined) ?? [];
+  const steps = resolveSteps(dashConfig.data() as DashboardConfig | undefined);
+  console.log(
+    `\n=== Dashboard steps (${stored.length > 0 ? 'stored' : 'defaults + legacy overrides'}) ===`,
+  );
+  for (const s of [...steps].sort((a, b) => a.order - b.order)) {
     console.log(
       '  ' +
         pick(s, [
