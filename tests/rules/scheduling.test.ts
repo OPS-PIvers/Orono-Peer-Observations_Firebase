@@ -14,7 +14,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedFullAccessStaff, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
 
@@ -26,6 +26,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedFullAccessStaff(testEnv);
 });
 
 async function seed(path: string, data: Record<string, unknown>) {
