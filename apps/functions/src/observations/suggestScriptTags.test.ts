@@ -574,6 +574,9 @@ describe('suggestScriptTags — per-user hourly limit', () => {
     // Demo-edit sessions may only touch demo staff's observations.
     docs.set(OBS_PATH, observation({ observedEmail: 'demo.teacher@orono.k12.mn.us' }));
     docs.set(`${COLLECTIONS.staff}/demo.teacher@orono.k12.mn.us`, { isDemo: true });
+    // Only a demo account can be driven, by someone still holding the grant.
+    docs.set(`${COLLECTIONS.staff}/${OBSERVER}`, { isDemo: true });
+    docs.set(`${COLLECTIONS.staff}/admin@orono.k12.mn.us`, { canViewAsEdit: true });
     await run(req as Partial<CallableRequest>);
     expect(docs.has(LIMIT_PATH)).toBe(false);
     expect(docs.get('rateLimitCounters/admin@orono.k12.mn.us__scriptAutoTag')?.['count']).toBe(1);

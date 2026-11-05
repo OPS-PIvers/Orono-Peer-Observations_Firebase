@@ -4,7 +4,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -16,9 +16,12 @@ afterAll(async () => {
   await testEnv.cleanup();
 });
 
-const ADMIN = 'principal@orono.k12.mn.us';
+/** A demo Administrator: the only kind of account View As + Edit drives. */
+const ADMIN = 'demo.principal@orono.k12.mn.us';
 const DEMO = 'spartan.teacher@orono.k12.mn.us';
 const REAL = 'real.teacher@orono.k12.mn.us';
+const REAL_ADMIN = 'principal@orono.k12.mn.us';
+const VIEWER = 'viewer@orono.k12.mn.us';
 
 const staff = (email: string, extra: Record<string, unknown> = {}) => ({
   email,
@@ -35,7 +38,9 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
-    await setDoc(doc(db, 'staff', ADMIN), staff(ADMIN, { role: 'administrator' }));
+    await setDoc(doc(db, 'staff', ADMIN), staff(ADMIN, { role: 'administrator', isDemo: true }));
+    await setDoc(doc(db, 'staff', REAL_ADMIN), staff(REAL_ADMIN, { role: 'administrator' }));
+    await setDoc(doc(db, 'staff', VIEWER), staff(VIEWER, { canViewAs: true, canViewAsEdit: true }));
     await setDoc(doc(db, 'staff', DEMO), staff(DEMO, { isDemo: true }));
     await setDoc(doc(db, 'staff', REAL), staff(REAL));
     for (const [id, observed] of [
@@ -49,15 +54,18 @@ beforeEach(async () => {
         type: 'Standard',
       });
     }
+    await setDoc(doc(db, 'observations', 'realAdminObs'), {
+      observerEmail: REAL_ADMIN,
+      observedEmail: REAL,
+      status: 'Draft',
+      type: 'Standard',
+    });
   });
 });
 
-/** The admin's account, driven by someone else's View As + Edit grant. */
+/** The demo admin's account, driven by someone else's View As + Edit grant. */
 const demoSession = () =>
-  testEnv
-    .authenticatedContext('admin', { ...claims.admin(ADMIN), demoEditBy: 'viewer@orono.k12.mn.us' })
-    .firestore();
-const realSession = () => testEnv.authenticatedContext('admin', claims.admin(ADMIN)).firestore();
+  testEnv.authenticatedContext('admin', { ...claims.admin(ADMIN), demoEditBy: VIEWER }).firestore();
 
 const newObs = (observedEmail: string) => ({
   observerEmail: ADMIN,
@@ -81,6 +89,51 @@ describe('demo-edit sessions (View As + Edit)', () => {
     await assertFails(deleteDoc(doc(db, 'observations', 'realObs')));
   });
 
+  it("can't change a demo person's access fields, its own account's included", async () => {
+    // Console access, so the building-Administrator path's field list isn't
+    // what refuses these (and so the admin may edit its own doc at all).
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'staff', ADMIN), { hasAdminAccess: true });
+    });
+    const db = demoSession();
+    await assertSucceeds(updateDoc(doc(db, 'staff', ADMIN), { year: 3 }));
+    const flips = (hasAdminAccess: boolean) => [
+      { isDemo: false },
+      { role: 'full-access' },
+      { hasAdminAccess },
+      { canViewAs: true },
+      { canViewAsEdit: true },
+    ];
+    for (const change of flips(false)) {
+      await assertFails(updateDoc(doc(db, 'staff', ADMIN), change));
+    }
+    for (const change of flips(true)) {
+      await assertFails(updateDoc(doc(db, 'staff', DEMO), change));
+    }
+  });
+
+  it('can re-save a demo person with their access fields as they were', async () => {
+    // The Admin Console's staff form writes every flag, absent ones as false.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'staff', ADMIN), { hasAdminAccess: true });
+    });
+    const db = demoSession();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'staff', DEMO),
+        {
+          year: 3,
+          role: 'teacher',
+          hasAdminAccess: false,
+          canViewAs: false,
+          canViewAsEdit: false,
+          isDemo: true,
+        },
+        { merge: true },
+      ),
+    );
+  });
+
   it('can edit the demo staff record but no one else, and nothing else', async () => {
     const db = demoSession();
     await assertSucceeds(updateDoc(doc(db, 'staff', DEMO), { year: 3 }));
@@ -99,8 +152,35 @@ describe('demo-edit sessions (View As + Edit)', () => {
     );
   });
 
-  it('leaves the same account unrestricted outside a demo session', async () => {
-    const db = realSession();
-    await assertSucceeds(updateDoc(doc(db, 'observations', 'realObs'), { observationName: 'x' }));
+  it("ends once the driver's View As + Edit grant is removed", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'staff', VIEWER), { canViewAsEdit: false });
+    });
+    const db = demoSession();
+    await assertFails(updateDoc(doc(db, 'observations', 'demoObs'), { observationName: 'x' }));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it('gives a demo account signed in without View As + Edit nothing', async () => {
+    // e.g. a Google identity linked to the demo account's Auth user.
+    const db = testEnv.authenticatedContext('admin', claims.admin(ADMIN)).firestore();
+    await assertFails(updateDoc(doc(db, 'observations', 'demoObs'), { observationName: 'x' }));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it('gives a demo-edit session on a real account nothing', async () => {
+    const db = testEnv
+      .authenticatedContext('real', { ...claims.admin(REAL_ADMIN), demoEditBy: VIEWER })
+      .firestore();
+    await assertFails(updateDoc(doc(db, 'observations', 'realAdminObs'), { observationName: 'x' }));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it("leaves a real Administrator's own session unrestricted", async () => {
+    const db = testEnv.authenticatedContext('real', claims.admin(REAL_ADMIN)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations', 'realAdminObs'), { observationName: 'x' }),
+    );
+    await assertSucceeds(getDocs(collection(db, 'staff')));
   });
 });

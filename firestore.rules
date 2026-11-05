@@ -53,12 +53,25 @@ service cloud.firestore {
     // requires this. In the claim tiers it's read only once a claim already
     // passes, so ordinary callers pay nothing. A missing doc or field counts
     // as active (the schema default), like callerMeetsAccessLevel. A
-    // demo-edit session also needs its driver (demoEditBy) to be active, or
-    // archiving the driver wouldn't end the session they're running.
+    // demo-edit session also needs its driver (demoEditBy) to be active and
+    // still hold canViewAsEdit, or archiving the driver or removing the grant
+    // wouldn't end the session they're running. A demo account (isDemo) is
+    // only usable through View As + Edit: without the claim (e.g. signed in
+    // via a Google identity linked to it) it counts as inactive, and so does
+    // a demo-edit session on a non-demo account. Mirrors isArchivedCaller in
+    // the functions.
     function isActiveStaff() {
       let driver = request.auth.token.get('demoEditBy', null);
-      return isActiveEmail(request.auth.token.email)
-        && (driver == null || isActiveEmail(driver));
+      let email = request.auth.token.email;
+      return isActiveEmail(email)
+        && ((driver == null && !isDemoStaff(email))
+            || (driver != null && isDemoStaff(email) && canDriveDemoEdit(driver)));
+    }
+    function canDriveDemoEdit(email) {
+      let path = /databases/$(database)/documents/staff/$(email);
+      return exists(path)
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('canViewAsEdit', false) == true;
     }
     function isActiveEmail(email) {
       let path = /databases/$(database)/documents/staff/$(email);
@@ -122,7 +135,8 @@ service cloud.firestore {
       return request.auth == null || request.auth.token.get('demoEditBy', null) == null;
     }
     function isDemoStaff(email) {
-      return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
+      let path = /databases/$(database)/documents/staff/$(email);
+      return exists(path) && get(path).data.get('isDemo', false) == true;
     }
 
     // A canonical staff address: lowercase and on the district domain.
@@ -225,6 +239,21 @@ service cloud.firestore {
       return resource.data.get(field, null) == request.resource.data.get(field, null);
     }
 
+    // unchanged() for a boolean flag that defaults to false when absent.
+    function unchangedFlag(field) {
+      return resource.data.get(field, false) == request.resource.data.get(field, false);
+    }
+
+    // A staff update leaves every field that decides access (claims, console,
+    // View As, demo confinement) as it was.
+    function keepsStaffAccess() {
+      return unchanged('role')
+        && unchangedFlag('isDemo')
+        && unchangedFlag('hasAdminAccess')
+        && unchangedFlag('canViewAs')
+        && unchangedFlag('canViewAsEdit');
+    }
+
     // --- Default deny --------------------------------------------------------
     // Anything not explicitly granted below is denied. Always.
     match /{document=**} {
@@ -247,8 +276,13 @@ service cloud.firestore {
       allow list: if hasSpecialAccess() || canReadAll();
       allow create: if (isConsoleAdmin() || buildingAdminCanCreateStaff(email))
         && notDemoEdit();
+      // A demo-edit session may edit demo people, but not their access
+      // fields: clearing isDemo would let a linked sign-in to that account
+      // escape confinement. Compared by value with the schema defaults, so
+      // an admin form re-saving an absent flag as false still goes through.
       allow update: if (isConsoleAdmin() || buildingAdminCanUpdateStaff())
-        && (notDemoEdit() || isDemoStaff(email));
+        && (notDemoEdit()
+            || (resource.data.get('isDemo', false) == true && keepsStaffAccess()));
       allow delete: if (isConsoleAdmin())
         && notDemoEdit();
 
