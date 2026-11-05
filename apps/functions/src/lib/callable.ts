@@ -5,7 +5,7 @@ import {
   type CallableRequest,
 } from 'firebase-functions/v2/https';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, DEMO_EDIT_CLAIM } from '@ops/shared';
+import { COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
 
 /** A demo-edit session: someone driving this account via View As + Edit. */
 export function isDemoEditSession(
@@ -47,24 +47,30 @@ export function onCall<T = unknown>(
   });
 }
 
-/** Whether `email`'s live /staff doc is archived. A missing doc or one
- *  without the field counts as active (the schema default). */
-export async function isArchivedStaff(db: Firestore, email: string): Promise<boolean> {
-  const snap = await db.doc(`${COLLECTIONS.staff}/${email.toLowerCase()}`).get();
-  return snap.exists && (snap.data() as { isActive?: unknown } | undefined)?.isActive === false;
-}
-
-/** Whether the caller is archived. In a demo-edit session the driver
- *  (demoEditBy) counts too, or archiving them wouldn't end the session. */
+/** Whether the caller is archived, or otherwise must be refused like one.
+ *  A missing doc or field counts as active (the schema default). In a
+ *  demo-edit session the driver (demoEditBy) counts too: archiving them or
+ *  removing their canViewAsEdit grant ends the session. A demo account
+ *  (isDemo) is only usable through View As + Edit, so it's refused without
+ *  the claim (e.g. via a Google identity linked to it), and a demo-edit
+ *  session on a non-demo account is refused. Mirrors isActiveStaff in
+ *  firestore.rules. */
 export async function isArchivedCaller(
   db: Firestore,
   auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<boolean> {
-  const emails = [auth?.token['email'], auth?.token[DEMO_EDIT_CLAIM]].filter(
-    (e): e is string => typeof e === 'string' && e !== '',
+  const [self, driver] = await Promise.all(
+    [auth?.token['email'], auth?.token[DEMO_EDIT_CLAIM]].map(
+      async (e): Promise<Partial<Staff> | undefined> => {
+        if (typeof e !== 'string' || e === '') return undefined;
+        const snap = await db.doc(`${COLLECTIONS.staff}/${e.toLowerCase()}`).get();
+        return snap.exists ? snap.data() : undefined;
+      },
+    ),
   );
-  const archived = await Promise.all(emails.map((e) => isArchivedStaff(db, e)));
-  return archived.includes(true);
+  if (self?.isActive === false) return true;
+  if (!isDemoEditSession(auth)) return self?.isDemo === true;
+  return self?.isDemo !== true || driver?.isActive === false || driver?.canViewAsEdit !== true;
 }
 
 /** Refuse an archived caller, whatever their token claims. */
@@ -73,7 +79,10 @@ export async function assertNotArchived(
   auth: { token: Record<string, unknown> } | null | undefined,
 ): Promise<void> {
   if (await isArchivedCaller(db, auth)) {
-    throw new HttpsError('permission-denied', 'Your staff account is archived.');
+    throw new HttpsError(
+      'permission-denied',
+      'Your staff account is archived, or this View As + Edit session is no longer allowed.',
+    );
   }
 }
 

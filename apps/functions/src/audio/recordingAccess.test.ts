@@ -126,7 +126,12 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
 
   it("can play a demo person's recording", async () => {
     await expect(
-      canReadRecording(dbWithStaff({ isDemo: true }), obs(), OBSERVER, demoAuth),
+      canReadRecording(
+        dbWithStaff({ isDemo: true, canViewAsEdit: true }),
+        obs(),
+        OBSERVER,
+        demoAuth,
+      ),
     ).resolves.toBe(true);
   });
 });
@@ -154,7 +159,7 @@ describe('canReadRecording in a demo-edit session whose driver was archived', ()
   it("can't play a demo person's finalized recording, even as the observed", async () => {
     const DRIVER = 'viewer@orono.k12.mn.us';
     // The driver's doc is archived; the demo person's (same stub) is demo staff.
-    const db = dbWithStaff({ isDemo: true, isActive: false });
+    const db = dbWithStaff({ isDemo: true, isActive: false, canViewAsEdit: true });
     const demoAuth = (email: string) => ({ token: { email, role: 'teacher', demoEditBy: DRIVER } });
     const finalized = obs({ status: 'Finalized' });
     await expect(canReadRecording(db, finalized, OBSERVED, demoAuth(OBSERVED))).resolves.toBe(
