@@ -14,9 +14,9 @@ import { isDemoEditSession, onCall } from '../lib/callable.js';
 if (getApps().length === 0) initializeApp();
 
 /** Roles a demo-edit session may sign in as: the observers whose workflows
- *  the walkthrough videos show. Never Full Access. An Administrator or PE
- *  with Admin Console access is fine: rules and functions still refuse every
- *  change outside demo staff, console pages included. */
+ *  the walkthrough videos show. Never Full Access. The account must also be
+ *  a demo person (isDemo): the token is a real sign-in to that Auth user, so
+ *  minting one for a real person would hand over their account. */
 const EDITABLE_ROLES: readonly string[] = [
   SPECIAL_ROLES.administrator,
   SPECIAL_ROLES.peerEvaluator,
@@ -24,7 +24,7 @@ const EDITABLE_ROLES: readonly string[] = [
 
 /**
  * View As + Edit: returns a custom token that signs the caller's browser in
- * as `email` (an Administrator or Peer Evaluator) for a demo walkthrough.
+ * as `email` (a demo Administrator or Peer Evaluator) for a demo walkthrough.
  * The token carries DEMO_EDIT_CLAIM = the caller, which firestore.rules and
  * the callable wrapper use to confine every write to demo staff (isDemo).
  * Only staff granted canViewAsEdit (active) may start one; each start is
@@ -62,10 +62,10 @@ export async function handleStartViewAsEdit(
   if (!target || target.isActive === false) {
     throw new HttpsError('not-found', 'That staff member is not active.');
   }
-  if (!EDITABLE_ROLES.includes(target.role ?? '')) {
+  if (target.isDemo !== true || !EDITABLE_ROLES.includes(target.role ?? '')) {
     throw new HttpsError(
       'failed-precondition',
-      'Edits are only available while viewing as an Administrator or Peer Evaluator.',
+      'Edits are only available while viewing as a demo Administrator or Peer Evaluator.',
     );
   }
 
