@@ -292,7 +292,7 @@ export function StaffDialog({
       const message = confirmChange({
         ...existing,
         name: form.name.trim(),
-        role: form.role.trim(),
+        role: form.role,
         year: form.year,
         buildings: form.buildings,
         ...cycleStatusFields(form.cycleStatus),
@@ -340,7 +340,10 @@ export function StaffDialog({
         {
           email,
           name: form.name.trim(),
-          role: form.role.trim(),
+          // Untrimmed: the select only yields role ids or the stored value,
+          // and rewriting a padded legacy value counts as a role change,
+          // which the building-Administrator rule checks against /roles.
+          role: form.role,
           year: form.year,
           buildings: form.buildings,
           ...cycleStatusFields(form.cycleStatus),
