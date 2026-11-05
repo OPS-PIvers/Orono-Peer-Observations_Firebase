@@ -150,8 +150,10 @@ async function callGemini(
       data = await send({ ...generationConfig, thinkingConfig: { thinkingLevel } });
     } catch (err) {
       // A model added to the registry may not accept this level; the
-      // feature matters more than the saving, so ask again without it.
-      if (!(err instanceof HttpsError && err.code === 'internal')) throw err;
+      // feature matters more than the saving, so ask again without it. Only
+      // a 400 (Vertex rejected the request) retries: a 5xx or timeout would
+      // just send the whole recording a second time.
+      if (!isRejectedRequest(err)) throw err;
       logger.warn(`${ctx.logContext}: retrying without thinkingLevel`, { model: model.id });
       data = await send(generationConfig);
     }
@@ -171,6 +173,17 @@ async function callGemini(
     // Thinking tokens bill at the output rate.
     outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
   };
+}
+
+function isRejectedRequest(err: unknown): boolean {
+  if (!(err instanceof HttpsError) || err.code !== 'internal') return false;
+  const details: unknown = err.details;
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'status' in details &&
+    details.status === 400
+  );
 }
 
 /**

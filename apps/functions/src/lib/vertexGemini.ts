@@ -90,5 +90,7 @@ export function geminiHttpsError(status: number, bodyText: string): HttpsError {
       'AI features are not set up correctly. Please contact your administrator.',
     );
   }
-  return new HttpsError('internal', 'The AI service returned an error. Please try again.');
+  return new HttpsError('internal', 'The AI service returned an error. Please try again.', {
+    status,
+  });
 }

@@ -9,6 +9,7 @@ vi.mock('firebase-functions/v2/https', () => ({
     constructor(
       readonly code: string,
       message: string,
+      readonly details?: unknown,
     ) {
       super(message);
     }
@@ -81,11 +82,21 @@ describe('minimalThinking', () => {
   it('retries without it when the model rejects the request', async () => {
     h.vertexGenerateContent
       .mockReset()
-      .mockRejectedValueOnce(new HttpsError('internal', 'bad request'))
+      .mockRejectedValueOnce(new HttpsError('internal', 'bad request', { status: 400 }))
       .mockResolvedValue(OK);
     const result = await generateTextResult(gemini, { prompt: 'p', minimalThinking: true }, CTX);
     expect(result.text).toBe('ok');
     expect(sentConfig(1)).toBeUndefined();
+  });
+
+  it('does not retry server errors', async () => {
+    h.vertexGenerateContent
+      .mockReset()
+      .mockRejectedValue(new HttpsError('internal', 'unavailable', { status: 503 }));
+    await expect(
+      generateTextResult(gemini, { prompt: 'p', minimalThinking: true }, CTX),
+    ).rejects.toThrow('unavailable');
+    expect(h.vertexGenerateContent).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry quota errors', async () => {

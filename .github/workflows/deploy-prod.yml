@@ -153,10 +153,14 @@ jobs:
           if [ "${{ github.event_name }}" != "workflow_run" ]; then
             echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          live=$(gcloud run services describe pdf-renderer --region us-central1 \
-            --format='value(spec.template.spec.containers[0].image)' || true)
+          # The template image is what Cloud Run was last asked to run. Trust it
+          # only when that revision actually became ready, so a failed rollout
+          # is retried by the next deploy instead of skipped.
+          read -r live ready created < <(gcloud run services describe pdf-renderer --region us-central1 \
+            --format='value(spec.template.spec.containers[0].image,status.latestReadyRevisionName,status.latestCreatedRevisionName)' || true) || true
           live_sha=${live##*:}
-          if [[ "$live_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$live_sha^{commit}" 2>/dev/null \
+          if [ -n "$ready" ] && [ "$ready" = "$created" ] \
+            && [[ "$live_sha" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$live_sha^{commit}" 2>/dev/null \
             && git diff --quiet "$live_sha" HEAD -- apps/pdf-renderer packages/shared \
               pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json \
               .github/workflows/deploy-prod.yml; then
