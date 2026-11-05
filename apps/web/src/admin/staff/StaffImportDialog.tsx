@@ -33,8 +33,10 @@ interface StaffImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Full, unfiltered roster — needed to diff against every possible row,
-   *  not just the currently filtered/visible table. */
-  staff: (Staff & { id: string })[];
+   *  not just the currently filtered/visible table. `null` while it loads:
+   *  parsing against an empty roster would treat every row as a create and
+   *  skip the checks that compare a row with the stored record. */
+  staff: (Staff & { id: string })[] | null;
   onApplied: () => void;
 }
 
@@ -80,11 +82,11 @@ export function StaffImportDialog({
   );
   const roles = useMemo(() => rolesRaw ?? [], [rolesRaw]);
   const modules = useMemo(() => modulesRaw ?? [], [modulesRaw]);
-  const refDataLoading = rolesLoading || modulesLoading;
+  const refDataLoading = rolesLoading || modulesLoading || staff === null;
 
   const existingByEmail = useMemo(() => {
     const map = new Map<string, Staff>();
-    for (const s of staff) map.set(s.email.toLowerCase(), s);
+    for (const s of staff ?? []) map.set(s.email.toLowerCase(), s);
     return map;
   }, [staff]);
 
@@ -174,7 +176,7 @@ export function StaffImportDialog({
               disabled={refDataLoading || submitting}
             >
               <FileUp />
-              {refDataLoading ? 'Loading roles/modules…' : 'Choose CSV file…'}
+              {refDataLoading ? 'Loading roster, roles and modules…' : 'Choose CSV file…'}
             </Button>
             {fileName ? (
               <span className="text-muted-foreground flex items-center gap-1 text-sm">

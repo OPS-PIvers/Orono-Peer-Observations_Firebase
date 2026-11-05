@@ -158,6 +158,31 @@ describe('serializeStaffCsv + parseStaffCsv round-trip', () => {
     expect(must(must(result.rows[0]).errors[0])).toMatch(/Unknown role/);
   });
 
+  it('never promotes an unmapped stored role into a special role', () => {
+    const fullAccess: Role = {
+      ...must(roles[0]),
+      roleId: 'full-access',
+      displayName: 'Full Access',
+    };
+    const withSpecial = [...roles, fullAccess];
+    const planted = makeStaff({ email: 'planted@orono.k12.mn.us', role: 'Full Access' });
+    const genuine = makeStaff({ email: 'genuine@orono.k12.mn.us', role: 'full-access' });
+    const plain = makeStaff({ email: 'plain@orono.k12.mn.us' });
+    // An admin explicitly changing a known role to a special one still works.
+    const promoted = { ...plain, role: 'full-access' };
+    const csv = serializeStaffCsv([planted, genuine, promoted], withSpecial, modules);
+
+    const result = parseStaffCsv(csv, {
+      roles: withSpecial,
+      modules,
+      existingByEmail: new Map([planted, genuine, plain].map((s) => [s.email, s])),
+    });
+
+    expect(result.rows.map((r) => r.action)).toEqual(['error', 'unchanged', 'update']);
+    expect(must(must(result.rows[0]).errors[0])).toMatch(/isn't a known role/);
+    expect(must(result.rows[2]).input?.role).toBe('full-access');
+  });
+
   it('rejects an email outside the allowed domain', () => {
     const csv = [
       'email,name,role,year,summativeYear,buildings,modules,isActive,hasAdminAccess',

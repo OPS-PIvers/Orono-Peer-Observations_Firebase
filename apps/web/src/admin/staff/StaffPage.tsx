@@ -431,7 +431,7 @@ export function StaffPage() {
       <StaffImportDialog
         open={showImport}
         onOpenChange={setShowImport}
-        staff={staff ?? []}
+        staff={staff}
         onApplied={() => setSelected(new Set())}
       />
 

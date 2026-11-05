@@ -197,11 +197,22 @@ service cloud.firestore {
         && !(data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access']);
     }
 
+    // The role a building Administrator writes must be an existing /roles id
+    // that isn't special. A denylist alone let display-name forms such as
+    // 'Full Access' through, which the console's role-slug tools resolve to
+    // the special slug.
+    function buildingAdminCanAssignRole(r) {
+      return r is string
+        && !(r in ['administrator', 'peer-evaluator', 'full-access'])
+        && exists(/databases/$(database)/documents/roles/$(r));
+    }
+
     function buildingAdminCanCreateStaff(email) {
       return isBuildingAdmin()
         && isCanonicalStaffEmail(email)
         && request.resource.data.get('email', '') == email
         && buildingAdminCanWriteStaffData(request.resource.data)
+        && buildingAdminCanAssignRole(request.resource.data.get('role', ''))
         && request.resource.data.get('hasAdminAccess', false) == false
         && request.resource.data.get('canViewAs', false) == false
         && request.resource.data.get('canViewAsEdit', false) == false
@@ -209,10 +220,15 @@ service cloud.firestore {
         && request.resource.data.get('modules', []).size() == 0;
     }
 
+    // Only a changed role is checked against /roles: a stored legacy or
+    // since-deleted role must not lock the person's other fields (the
+    // unchanged value still passes buildingAdminCanWriteStaffData's
+    // special-role check).
     function buildingAdminCanUpdateStaff() {
       return isBuildingAdmin()
         && buildingAdminCanWriteStaffData(resource.data)
-        && !(request.resource.data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+            || buildingAdminCanAssignRole(request.resource.data.get('role', '')))
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'year', 'buildings', 'cycleStatus', 'summativeYear',
                       'isActive', 'updatedAt']);
