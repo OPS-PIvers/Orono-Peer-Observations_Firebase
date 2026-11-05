@@ -4,7 +4,16 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { deleteDoc, doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -175,9 +184,19 @@ describe('observationWindows rules', () => {
     await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
   });
 
-  it('invited staff can read the window', async () => {
+  // The window doc lists every co-invitee; invitees read their own
+  // /windowInviteViews doc instead.
+  it('invited staff cannot read the window doc', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
-    await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
+    await assertFails(getDoc(doc(db, 'observationWindows/w1')));
+    await assertFails(
+      getDocs(
+        query(
+          collection(db, 'observationWindows'),
+          where('invitedEmails', 'array-contains', INVITED_EMAIL),
+        ),
+      ),
+    );
   });
 
   it('non-invited staff cannot read the window', async () => {
@@ -185,9 +204,11 @@ describe('observationWindows rules', () => {
     await assertFails(getDoc(doc(db, 'observationWindows/w1')));
   });
 
-  it('PE can create a window they observe', async () => {
+  // Windows are created only by the createObservationWindow callable (Admin
+  // SDK), which writes the shape the scheduling jobs depend on.
+  it('PE cannot create a window from the client, even one they observe', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, 'observationWindows/w2'), {
         windowId: 'w2',
         observerEmail: PE_EMAIL,
@@ -198,40 +219,37 @@ describe('observationWindows rules', () => {
     );
   });
 
-  it('building Administrator can create a Standard window but not a Work Product one', async () => {
-    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
-    const db = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
-    const base = {
-      observerEmail: ADMIN_EMAIL,
-      bookingMode: 'direct',
-      invitedEmails: [],
-      status: 'open',
-    };
-    await assertSucceeds(
-      setDoc(doc(db, 'observationWindows/adm-std'), {
-        ...base,
-        windowId: 'adm-std',
-        defaultObservationType: 'Standard',
-      }),
-    );
+  it('PE cannot plant a malformed window doc', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertFails(
-      setDoc(doc(db, 'observationWindows/adm-wp'), {
-        ...base,
-        windowId: 'adm-wp',
-        defaultObservationType: 'Work Product',
+      setDoc(doc(db, 'observationWindows/!poison'), {
+        observerEmail: PE_EMAIL,
+        status: 'open',
+        endDate: '2099-12-31',
+        invitees: 1,
       }),
     );
   });
 
-  it('PE cannot create a window for a different observer', async () => {
-    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+  it('building Administrator and Full Access cannot create a window from the client', async () => {
+    const ADMIN_EMAIL = 'admin@orono.k12.mn.us';
+    const FULL_EMAIL = 'full@orono.k12.mn.us';
+    const base = { bookingMode: 'direct', invitedEmails: [], status: 'open' };
+    const adminDb = testEnv.authenticatedContext('adm', claims.admin(ADMIN_EMAIL)).firestore();
     await assertFails(
-      setDoc(doc(db, 'observationWindows/w3'), {
-        windowId: 'w3',
-        observerEmail: OTHER_EMAIL,
-        bookingMode: 'direct',
-        invitedEmails: [],
-        status: 'open',
+      setDoc(doc(adminDb, 'observationWindows/adm-std'), {
+        ...base,
+        windowId: 'adm-std',
+        observerEmail: ADMIN_EMAIL,
+        defaultObservationType: 'Standard',
+      }),
+    );
+    const fullDb = testEnv.authenticatedContext('full', claims.fullAccess(FULL_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(fullDb, 'observationWindows/full-1'), {
+        ...base,
+        windowId: 'full-1',
+        observerEmail: FULL_EMAIL,
       }),
     );
   });
@@ -318,6 +336,46 @@ describe('observationWindows rules', () => {
     await assertSucceeds(getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')));
   });
 
+  describe('booked slots', () => {
+    beforeEach(async () => {
+      await seed('observationWindows/w1/slots/mine', {
+        slotId: 'mine',
+        windowId: 'w1',
+        status: 'booked',
+        bookedBy: INVITED_EMAIL,
+      });
+      await seed('observationWindows/w1/slots/theirs', {
+        slotId: 'theirs',
+        windowId: 'w1',
+        status: 'booked',
+        bookedBy: 'coinvitee@orono.k12.mn.us',
+      });
+    });
+
+    it('invited staff can get their own booked slot', async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      await assertSucceeds(getDoc(doc(db, 'observationWindows/w1/slots/mine')));
+    });
+
+    it("invited staff cannot get a co-invitee's booked slot", async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      await assertFails(getDoc(doc(db, 'observationWindows/w1/slots/theirs')));
+    });
+
+    it('invited staff can list only open and blocked slots', async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      const slots = collection(db, 'observationWindows/w1/slots');
+      await assertSucceeds(getDocs(query(slots, where('status', 'in', ['available', 'blocked']))));
+      await assertFails(getDocs(slots));
+      await assertFails(getDocs(query(slots, where('bookedBy', '==', INVITED_EMAIL))));
+    });
+
+    it('special access can list every slot', async () => {
+      const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+      await assertSucceeds(getDocs(collection(db, 'observationWindows/w1/slots')));
+    });
+  });
+
   it('non-invited staff cannot read a slot', async () => {
     const db = testEnv.authenticatedContext('o', claims.teacher(OTHER_EMAIL)).firestore();
     await assertFails(getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')));
@@ -362,5 +420,86 @@ describe('observationWindows rules', () => {
         { merge: true },
       ),
     );
+  });
+});
+
+describe('windowInviteViews rules', () => {
+  beforeEach(async () => {
+    await seed(`windowInviteViews/w1_${INVITED_EMAIL}`, {
+      windowId: 'w1',
+      email: INVITED_EMAIL,
+      status: 'open',
+      entries: [{ buildingId: 'high-school', inviteToken: 'tok', bookedSlotId: null }],
+    });
+    await seed(`windowInviteViews/w1_${OTHER_EMAIL}`, {
+      windowId: 'w1',
+      email: OTHER_EMAIL,
+      status: 'open',
+      entries: [{ buildingId: 'high-school', inviteToken: 'tok-other', bookedSlotId: 's1' }],
+    });
+  });
+
+  it('an invitee can read their own view', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w1_${INVITED_EMAIL}`)));
+  });
+
+  it('an invitee cannot read a co-invitee’s view', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w1_${OTHER_EMAIL}`)));
+  });
+
+  it('the dashboard query for your own email succeeds; an unfiltered list fails', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'windowInviteViews'),
+          where('email', '==', INVITED_EMAIL),
+          where('status', 'in', ['open', 'partially-booked', 'fully-booked', 'expired']),
+        ),
+      ),
+    );
+    await assertFails(getDocs(collection(db, 'windowInviteViews')));
+    await assertFails(
+      getDocs(query(collection(db, 'windowInviteViews'), where('email', '==', OTHER_EMAIL))),
+    );
+  });
+
+  it('an invitee can get their own view id before it exists (not-found, not denied)', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w2_${INVITED_EMAIL}`)));
+  });
+
+  it('nobody can probe someone else’s missing view id', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w2_${OTHER_EMAIL}`)));
+    // A suffix match alone is not enough: the id must end in "_" + the caller's email.
+    await assertFails(getDoc(doc(db, `windowInviteViews/w2x${INVITED_EMAIL}`)));
+  });
+
+  it('a stored view whose email is not the caller’s is denied even under a matching id', async () => {
+    await seed(`windowInviteViews/w3_${INVITED_EMAIL}`, {
+      windowId: 'w3',
+      email: OTHER_EMAIL,
+      status: 'open',
+      entries: [],
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(getDoc(doc(db, `windowInviteViews/w3_${INVITED_EMAIL}`)));
+  });
+
+  it('special access can read any view (evaluator checklist)', async () => {
+    const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertSucceeds(getDoc(doc(db, `windowInviteViews/w1_${OTHER_EMAIL}`)));
+  });
+
+  it('nobody writes a view from the client', async () => {
+    const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+    await assertFails(
+      setDoc(doc(db, `windowInviteViews/w1_${INVITED_EMAIL}`), { email: INVITED_EMAIL }),
+    );
+    const pe = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    await assertFails(setDoc(doc(pe, `windowInviteViews/w2_${PE_EMAIL}`), { email: PE_EMAIL }));
   });
 });

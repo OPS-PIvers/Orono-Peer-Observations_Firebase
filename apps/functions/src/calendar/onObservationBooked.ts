@@ -12,6 +12,7 @@ import {
   toDate,
   updateObservationEvent,
 } from './lib/googleCalendar.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -157,7 +158,7 @@ export const onObservationBooked = onDocumentWritten(
     document: 'observations/{observationId}',
     region: 'us-central1',
     secrets: [GOOGLE_OAUTH_CLIENT_SECRET],
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
   },
   async (event) => {
     const after = event.data?.after.exists

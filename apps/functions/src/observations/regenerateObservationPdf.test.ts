@@ -20,6 +20,7 @@ interface HState {
     uploadFileToFolder: Fn;
     deleteDriveFile: Fn;
     replaceFileContent: Fn;
+    filesInObservationFolder: Fn;
   };
   renderObservationPdf: Fn;
   loadRateLimits: Fn;
@@ -43,6 +44,7 @@ const h = vi.hoisted((): HState => ({
     uploadFileToFolder: undefined,
     deleteDriveFile: undefined,
     replaceFileContent: undefined,
+    filesInObservationFolder: undefined,
   },
   renderObservationPdf: undefined,
   loadRateLimits: undefined,
@@ -74,6 +76,7 @@ vi.mock('../lib/drive.js', () => ({
   uploadFileToFolder: (...a: unknown[]) => h.drive.uploadFileToFolder?.(...a),
   deleteDriveFile: (...a: unknown[]) => h.drive.deleteDriveFile?.(...a),
   replaceFileContent: (...a: unknown[]) => h.drive.replaceFileContent?.(...a),
+  filesInObservationFolder: (...a: unknown[]) => h.drive.filesInObservationFolder?.(...a),
 }));
 
 vi.mock('../lib/pdfRenderer.js', () => ({
@@ -106,6 +109,8 @@ interface DbConfig {
   questions?: Record<string, unknown>[];
   /** The appSettings/app doc (undefined → missing). */
   appSettings?: Record<string, unknown>;
+  /** Staff emails with a /staff doc. */
+  staff?: string[];
 }
 
 interface Recorder {
@@ -151,6 +156,10 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
             data: () => config.appSettings,
           }),
       };
+    }
+    if (path.startsWith(`${COLLECTIONS.staff}/`)) {
+      const exists = (config.staff ?? []).includes(path.slice(COLLECTIONS.staff.length + 1));
+      return { get: () => Promise.resolve({ exists, data: () => (exists ? {} : undefined) }) };
     }
     if (path.startsWith(`${COLLECTIONS.roleYearMappings}/`)) {
       return {
@@ -229,6 +238,7 @@ function happyConfig(obsOver: Record<string, unknown> = {}): DbConfig {
     role: { id: 'teacher', roleId: 'teacher', displayName: 'Teacher', rubricId: 'rubric-1' },
     rubric: { rubricId: 'rubric-1', displayName: 'Teaching Rubric', domains: [] },
     mapping: null,
+    staff: [OBSERVED],
   };
 }
 
@@ -241,6 +251,10 @@ function installHappyDrive() {
   h.drive.deleteDriveFile = vi.fn().mockResolvedValue(undefined);
   // Old PDF gone by default, so the fresh-upload path runs.
   h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
+  // Every id is in the observation's folder unless a test says otherwise.
+  h.drive.filesInObservationFolder = vi.fn((args: unknown) =>
+    Promise.resolve((args as { fileIds: string[] }).fileIds),
+  );
   h.renderObservationPdf = vi.fn().mockResolvedValue(Buffer.from('pdf'));
 }
 
@@ -355,6 +369,22 @@ describe('regenerateObservationPdf — report contents and file handling', () =>
     expect(rec.obsUpdates[0]?.['pdfDriveFileId']).toBe('pdf-old');
   });
 
+  it('shares the folder with a staff-backed observee', async () => {
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    await run(observerRequest());
+    expect(h.drive.shareWithUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: OBSERVED, role: 'reader' }),
+    );
+  });
+
+  it('still regenerates but shares nothing with an observedEmail that has no staff record', async () => {
+    const { db } = buildDb(happyConfig({ observedEmail: 'someone@gmail.com' }));
+    h.db = db;
+    await expect(run(observerRequest())).resolves.toMatchObject({ pdfDriveFileId: 'pdf-new' });
+    expect(h.drive.shareWithUser).not.toHaveBeenCalled();
+  });
+
   it('uploads a fresh PDF and drops the old reference when the old file is gone', async () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
@@ -362,6 +392,19 @@ describe('regenerateObservationPdf — report contents and file handling', () =>
 
     expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
     expect(h.drive.deleteDriveFile).toHaveBeenCalledWith('pdf-old');
+    expect(result).toMatchObject({ pdfDriveFileId: 'pdf-new' });
+  });
+
+  it('neither overwrites nor deletes an old PDF outside the observation folder', async () => {
+    h.drive.filesInObservationFolder = vi.fn().mockResolvedValue([]);
+    h.drive.replaceFileContent = vi.fn().mockResolvedValue('pdf-old');
+    const { db } = buildDb(happyConfig());
+    h.db = db;
+    const result = await run(observerRequest());
+
+    expect(h.drive.replaceFileContent).not.toHaveBeenCalled();
+    expect(h.drive.deleteDriveFile).not.toHaveBeenCalled();
+    expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ pdfDriveFileId: 'pdf-new' });
   });
 

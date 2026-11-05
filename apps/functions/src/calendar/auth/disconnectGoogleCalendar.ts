@@ -4,6 +4,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { Timestamp, getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, type CalendarConnectionStatusResult } from '@ops/shared';
 import { GOOGLE_OAUTH_CLIENT_SECRET, revokeRefreshToken } from '../lib/googleCalendar.js';
+import { GOOGLEAPIS_MEMORY } from '../../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -15,7 +16,7 @@ export const disconnectGoogleCalendar = onCall(
   {
     region: 'us-central1',
     secrets: [GOOGLE_OAUTH_CLIENT_SECRET],
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     timeoutSeconds: 60,
   },
   async (request): Promise<CalendarConnectionStatusResult> => {

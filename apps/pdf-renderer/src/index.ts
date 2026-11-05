@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import puppeteer, { type Browser } from 'puppeteer';
+import { inlineLogo, renderPdf } from './render-pdf.js';
 import { renderObservationHtml, type RenderPayload } from './template.js';
 
 /**
@@ -28,42 +29,27 @@ app.get('/healthz', (c) => c.json({ status: 'ok', service: 'pdf-renderer' }));
 
 app.post('/render-observation', async (c) => {
   const payload = await c.req.json<RenderPayload>();
-  const html = renderObservationHtml(payload);
-  const browser = await getBrowser();
-  const page = await browser.newPage();
-  try {
-    // Wait for 'load', not 'domcontentloaded'. Fonts are embedded as base64,
-    // but the district branding logo (<img class="brand-logo">) is still a
-    // remote image, and 'domcontentloaded' fires before images finish —
-    // producing a PDF with a missing/blank logo. 'load' fires only once every
-    // subresource, images included, has settled.
-    //
-    // This was 'networkidle0' until Puppeteer 25 removed the networkidle*
-    // lifecycle values. Nothing is lost here: the template is static HTML with
-    // no post-load fetches, so the two waited for the same thing.
-    await page.setContent(html, { waitUntil: 'load' });
-    const pdf = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: { top: '0.6in', bottom: '0.6in', left: '0.6in', right: '0.6in' },
-    });
-    return new Response(new Uint8Array(pdf), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="observation-${encodeURIComponent(payload.observation.observationId)}.pdf"`,
-      },
-    });
-  } finally {
-    await page.close();
-  }
+  // Inline the logo first: the print page itself may not fetch anything.
+  const logoDataUrl = await inlineLogo(payload.branding?.logoUrl);
+  const html = renderObservationHtml({
+    ...payload,
+    branding: { ...payload.branding, logoUrl: logoDataUrl },
+  });
+  const pdf = await renderPdf(await getBrowser(), html);
+  return new Response(new Uint8Array(pdf), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="observation-${encodeURIComponent(payload.observation.observationId)}.pdf"`,
+    },
+  });
 });
 
 let browserPromise: Promise<Browser> | null = null;
 
 async function getBrowser(): Promise<Browser> {
   // The first three flags below are required to run inside a non-root
-  // container without /dev/shm. The fourth keeps Chromium from auto-fetching
-  // unrelated network resources we don't need for static templates.
+  // container without /dev/shm. Per-page lockdown (no JS, no outside
+  // requests) lives in renderPdf.
   //
   // If launch fails, or the browser later crashes/disconnects, reset the
   // cached promise so the *next* request gets a fresh launch instead of a

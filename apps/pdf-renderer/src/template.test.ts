@@ -208,3 +208,65 @@ describe('renderObservationHtml — script tag provenance', () => {
     expect(html.slice(Math.max(0, bare - 120), bare)).not.toContain('span-source');
   });
 });
+
+describe('renderObservationHtml — component tag colours', () => {
+  const POISON = '#fff;position:absolute;inset:0;background-image:url(http://attacker.example/b)';
+
+  function render(attrs: Record<string, unknown>): string {
+    return renderObservationHtml({
+      observation: makeObservation({
+        scriptDoc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Tagged text.',
+                  marks: [{ type: 'componentTag', attrs: { componentId: '1a', ...attrs } }],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+      rubric: makeRubric(),
+      activeComponentIds: [],
+    });
+  }
+
+  /** Every inline style on a <mark>, from both the script body and the
+   *  "From script" list. */
+  function markStyles(html: string): string[] {
+    return [...html.matchAll(/<mark[^>]*style="([^"]*)"/g)].map((m) =>
+      (m[1] ?? '').replace(/\s+/g, '').replace(/;$/, ''),
+    );
+  }
+
+  it('keeps strict #RRGGBB colours', () => {
+    const styles = markStyles(render({ bg: '#dbeafe', fg: '#1e3a8a' }));
+    expect(styles.length).toBeGreaterThanOrEqual(2);
+    for (const style of styles) expect(style).toBe('background-color:#dbeafe;color:#1e3a8a');
+  });
+
+  it('drops bg/fg that carry extra CSS', () => {
+    const html = render({ bg: POISON, fg: `#000;${POISON}` });
+    expect(html).not.toContain('attacker.example');
+    expect(html).not.toContain('position:absolute');
+    const styles = markStyles(html);
+    expect(styles.length).toBeGreaterThanOrEqual(1);
+    for (const style of styles) {
+      expect(style).toMatch(/^background-color:#[0-9a-fA-F]{6};color:#[0-9a-fA-F]{6}$/);
+    }
+  });
+
+  it('drops non-string and non-hex colour values', () => {
+    for (const bad of [{ r: 1 }, 123, 'red', '#fff', 'rgb(0,0,0)', '#dbeafe ']) {
+      const html = render({ bg: bad, fg: bad });
+      for (const style of markStyles(html)) {
+        expect(style).toMatch(/^background-color:#[0-9a-fA-F]{6};color:#[0-9a-fA-F]{6}$/);
+      }
+    }
+  });
+});

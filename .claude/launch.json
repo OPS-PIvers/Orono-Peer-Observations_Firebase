@@ -10,7 +10,7 @@
     {
       "name": "Dev Auth Server",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:auth-server"],
+      "runtimeArgs": ["dev:auth-server:live"],
       "port": 8787
     },
     {

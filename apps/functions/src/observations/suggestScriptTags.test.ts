@@ -3,6 +3,7 @@ import type { CallableRequest } from 'firebase-functions/v2/https';
 import {
   APP_SETTINGS_DOC_ID,
   COLLECTIONS,
+  DEMO_EDIT_CLAIM,
   OBSERVATION_STATUS,
   OBSERVATION_SUBCOLLECTIONS,
   roleYearMappingDocId,
@@ -23,10 +24,22 @@ const h = vi.hoisted((): HState => ({ db: undefined, generateText: vi.fn<Generat
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
 
-vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => h.db,
-  FieldValue: { serverTimestamp: () => '__server_ts__' },
-}));
+vi.mock('firebase-admin/firestore', () => {
+  class Timestamp {
+    constructor(private readonly ms: number) {}
+    static fromMillis(ms: number) {
+      return new Timestamp(ms);
+    }
+    toMillis() {
+      return this.ms;
+    }
+  }
+  return {
+    getFirestore: () => h.db,
+    FieldValue: { serverTimestamp: () => '__server_ts__' },
+    Timestamp,
+  };
+});
 
 vi.mock('../lib/aiClient.js', () => ({
   ANTHROPIC_API_KEY: { name: 'ANTHROPIC_API_KEY' },
@@ -47,6 +60,8 @@ const OBSERVER = 'observer@orono.k12.mn.us';
 const OBS_ID = 'obs-1';
 const OBS_PATH = `${COLLECTIONS.observations}/${OBS_ID}`;
 const RUN_PATH = `${OBS_PATH}/${OBSERVATION_SUBCOLLECTIONS.scriptAutoTagRuns}/latest`;
+const SETTINGS_PATH = `${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`;
+const LIMIT_PATH = `rateLimitCounters/${OBSERVER}__scriptAutoTag`;
 
 function scriptDoc(...paragraphs: string[]): TiptapDoc {
   return {
@@ -154,6 +169,9 @@ function buildDb(
       },
       limit() {
         return q;
+      },
+      doc(id: string) {
+        return doc(`${name}/${id}`);
       },
       get() {
         let rows: Record<string, unknown>[] =
@@ -504,5 +522,88 @@ describe('suggestScriptTags — admin controls', () => {
     expect(promptOf()).not.toContain('"confidence"');
     expect(schemaOf()).not.toContain('confidence');
     expect(res.suggestions.every((s) => s.confidence === null)).toBe(true);
+  });
+});
+
+describe('suggestScriptTags — per-user hourly limit', () => {
+  const REASON = 'Added the exit-ticket discussion.';
+
+  function setLimit(max: number) {
+    docs.set(SETTINGS_PATH, {
+      ...(docs.get(SETTINGS_PATH) ?? {}),
+      rateLimits: { scriptAutoTagRunsPerHour: max },
+    });
+  }
+
+  it('counts first runs and reruns, and refuses once the hour is used up', async () => {
+    install(observation(), savedRun());
+    setLimit(2);
+
+    await run(callerRequest({ observationId: OBS_ID, reason: REASON }));
+    await run(callerRequest({ observationId: OBS_ID, reason: 'Second pass after more notes.' }));
+    expect(h.generateText).toHaveBeenCalledTimes(2);
+    expect(docs.get(LIMIT_PATH)?.['count']).toBe(2);
+
+    await expect(
+      run(callerRequest({ observationId: OBS_ID, reason: 'A third try with any reason at all.' })),
+    ).rejects.toMatchObject({ code: 'resource-exhausted' });
+    expect(h.generateText).toHaveBeenCalledTimes(2);
+    expect(docs.get(LIMIT_PATH)?.['count']).toBe(2);
+    // The refused call made no claim, so the observation isn't left locked.
+    expect(docs.get(RUN_PATH)?.['inFlight']).toBeNull();
+  });
+
+  it('shares one quota across observations', async () => {
+    setLimit(1);
+    await run(callerRequest({ observationId: OBS_ID }));
+    expect(h.generateText).toHaveBeenCalledTimes(1);
+
+    // A different draft the same observer owns.
+    docs.set(`${COLLECTIONS.observations}/obs-2`, observation());
+    await expect(run(callerRequest({ observationId: 'obs-2' }))).rejects.toMatchObject({
+      code: 'resource-exhausted',
+    });
+    expect(h.generateText).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a View As + Edit run against the real caller, not the impersonated one', async () => {
+    const req = callerRequest({ observationId: OBS_ID }) as {
+      auth: { token: Record<string, unknown> };
+    };
+    req.auth.token[DEMO_EDIT_CLAIM] = 'Admin@orono.k12.mn.us';
+    // Demo-edit sessions may only touch demo staff's observations.
+    docs.set(OBS_PATH, observation({ observedEmail: 'demo.teacher@orono.k12.mn.us' }));
+    docs.set(`${COLLECTIONS.staff}/demo.teacher@orono.k12.mn.us`, { isDemo: true });
+    await run(req as Partial<CallableRequest>);
+    expect(docs.has(LIMIT_PATH)).toBe(false);
+    expect(docs.get('rateLimitCounters/admin@orono.k12.mn.us__scriptAutoTag')?.['count']).toBe(1);
+  });
+
+  it('does not charge the quota for reopening a saved run', async () => {
+    install(observation(), savedRun());
+    setLimit(1);
+    await run(callerRequest({ observationId: OBS_ID }));
+    await run(callerRequest({ observationId: OBS_ID }));
+    expect(docs.has(LIMIT_PATH)).toBe(false);
+  });
+
+  it('does not charge the quota when the claim is refused', async () => {
+    install(observation(), savedRun({ inFlight: { by: OBSERVER, startedAtMs: Date.now() } }));
+    await expect(run(callerRequest({ observationId: OBS_ID, reason: REASON }))).rejects.toThrow(
+      /already running/,
+    );
+    expect(docs.has(LIMIT_PATH)).toBe(false);
+  });
+
+  it('starts a fresh window once the hour has passed', async () => {
+    setLimit(1);
+    const { Timestamp } = await import('firebase-admin/firestore');
+    docs.set(LIMIT_PATH, {
+      count: 1,
+      windowStart: Timestamp.fromMillis(Date.now() - 61 * 60_000),
+    });
+    await run(callerRequest({ observationId: OBS_ID }));
+    expect(h.generateText).toHaveBeenCalledTimes(1);
+    expect(docs.get(LIMIT_PATH)?.['count']).toBe(1);
   });
 });

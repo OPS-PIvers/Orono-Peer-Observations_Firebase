@@ -4,8 +4,9 @@ import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, isAdminRole, isSpecialRole, type Role } from '@ops/shared';
+import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
+import { claimsForStaff } from './staffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -14,8 +15,9 @@ if (getApps().length === 0) initializeApp();
  * changes. Covers:
  *   - admin promotes someone (Teacher → Peer Evaluator) — claims updated
  *     so the next token refresh picks up new permissions
- *   - admin deactivates a staff member — role goes to null, hasSpecialAccess
- *     to false (they can still sign in, but rules block sensitive ops)
+ *   - admin archives a staff member (isActive: false) — role goes to null,
+ *     hasSpecialAccess and isAdmin to false even though the doc keeps its
+ *     role (they can still sign in, but rules block sensitive ops)
  *   - staff doc deleted entirely — claims cleared
  *
  * If the matching auth user doesn't exist yet (admin pre-provisioned a
@@ -41,6 +43,14 @@ export async function handleStaffWritten(
   event: FirestoreEvent<Change<DocumentSnapshot> | undefined, { email: string }>,
 ): Promise<void> {
   const email = event.params.email;
+  // Only the canonical (lowercase, district) doc speaks for a person.
+  // getUserByEmail ignores case, so acting on a case-variant doc would
+  // overwrite the real user's claims from a record that isn't theirs, and
+  // an off-domain id would get a district invite.
+  if (!isCanonicalStaffEmail(email)) {
+    logger.warn('onStaffWritten: ignoring non-canonical staff doc id', { email });
+    return;
+  }
   const after = event.data?.after.data() as
     | {
         role?: string;
@@ -50,10 +60,7 @@ export async function handleStaffWritten(
         year?: number;
       }
     | undefined;
-  const role = after?.role ?? null;
-  const hasAdminAccess = after?.hasAdminAccess ?? false;
-  const isAdmin = isAdminRole(role) || hasAdminAccess;
-  const hasSpecialAccess = isSpecialRole(role) || isAdmin;
+  const { role, hasSpecialAccess, isAdmin } = claimsForStaff(after);
 
   let user: UserRecord | null;
   try {

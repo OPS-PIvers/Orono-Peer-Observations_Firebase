@@ -21,7 +21,15 @@ if (getApps().length === 0) initializeApp();
  * preferences from the Profile page.
  */
 export const updateEmailPreferences = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
+  {
+    // Archived staff still get their own observation's mail (lib/observee.ts),
+    // so they keep the one way to opt out. It only touches the caller's own
+    // emailPreferences, never a role or access field.
+    allowArchived: true,
+    region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
   async (request): Promise<EmailPreferences> => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const callerEmail = request.auth.token.email?.toLowerCase();

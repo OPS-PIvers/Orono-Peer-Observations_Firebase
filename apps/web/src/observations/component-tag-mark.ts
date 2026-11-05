@@ -1,4 +1,5 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
+import { isHexColor } from '@ops/shared';
 
 /**
  * Tiptap mark that links a span of script text to a rubric component.
@@ -40,8 +41,8 @@ export const ComponentTagMark = Mark.create({
         default: null as string | null,
         parseHTML: (element) => element.getAttribute('data-bg'),
         renderHTML: (attributes) => {
-          const bg = attributes['bg'] as string | null;
-          if (!bg) return {};
+          const bg: unknown = attributes['bg'];
+          if (!isHexColor(bg)) return {};
           return { 'data-bg': bg };
         },
       },
@@ -49,8 +50,8 @@ export const ComponentTagMark = Mark.create({
         default: null as string | null,
         parseHTML: (element) => element.getAttribute('data-fg'),
         renderHTML: (attributes) => {
-          const fg = attributes['fg'] as string | null;
-          if (!fg) return {};
+          const fg: unknown = attributes['fg'];
+          if (!isHexColor(fg)) return {};
           return { 'data-fg': fg };
         },
       },
@@ -73,11 +74,13 @@ export const ComponentTagMark = Mark.create({
   },
 
   renderHTML({ HTMLAttributes, mark }) {
-    const bg = (mark.attrs as { bg?: string | null }).bg;
-    const fg = (mark.attrs as { fg?: string | null }).fg;
+    // bg/fg come from stored doc JSON that other users can write, so only a
+    // strict #RRGGBB reaches the inline style. Anything else falls back to
+    // the `[data-component-tag]` CSS default.
+    const { bg, fg } = mark.attrs as { bg?: unknown; fg?: unknown };
     const styleParts: string[] = [];
-    if (bg) styleParts.push(`background-color:${bg}`);
-    if (fg) styleParts.push(`color:${fg}`);
+    if (isHexColor(bg)) styleParts.push(`background-color:${bg}`);
+    if (isHexColor(fg)) styleParts.push(`color:${fg}`);
     const extra: Record<string, string> = { 'data-component-tag': '' };
     if (styleParts.length > 0) extra['style'] = styleParts.join(';');
     return ['mark', mergeAttributes(HTMLAttributes, extra), 0];

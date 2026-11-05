@@ -24,7 +24,7 @@ function fakeDb(docs: Record<string, Record<string, unknown> | undefined>): Fire
 }
 
 describe('callerMeetsAccessLevel — admin level', () => {
-  it('allows a caller whose token role is an admin role, without reading the staff doc', async () => {
+  it('allows a caller whose token role is an admin role, even with no staff doc', async () => {
     const db = fakeDb({});
     await expect(
       callerMeetsAccessLevel(db, {
@@ -131,6 +131,23 @@ describe('callerMeetsAccessLevel — admin level', () => {
         level: 'admin',
       }),
     ).resolves.toBe(false);
+  });
+
+  // The token fast path must not outlive archiving: the stale token still
+  // carries role: 'full-access', but the live doc says isActive: false.
+  it('rejects an archived caller whose token still carries a full-access role, at every level', async () => {
+    const db = fakeDb({
+      'staff/archived-fa@orono.k12.mn.us': { role: 'full-access', isActive: false },
+    });
+    for (const level of ['oversight', 'console', 'admin', 'special'] as const) {
+      await expect(
+        callerMeetsAccessLevel(db, {
+          email: 'archived-fa@orono.k12.mn.us',
+          tokenRole: 'full-access',
+          level,
+        }),
+      ).resolves.toBe(false);
+    }
   });
 
   it('allows a hasAdminAccess-only caller whose live doc omits isActive (Zod default is true)', async () => {

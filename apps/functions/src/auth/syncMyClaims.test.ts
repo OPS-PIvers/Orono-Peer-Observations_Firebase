@@ -103,6 +103,17 @@ describe('syncMyClaims', () => {
     expect(result).toEqual({ role: 'teacher', hasSpecialAccess: false, isAdmin: false });
   });
 
+  it('issues null/false claims to an archived full-access member', async () => {
+    state.staffData = { role: 'full-access', hasAdminAccess: true, isActive: false };
+    const result = await run(authedRequest('gone@orono.k12.mn.us'));
+    expect(result).toEqual({ role: null, hasSpecialAccess: false, isAdmin: false });
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
   it('lower-cases the token email before the domain check', async () => {
     state.staffData = { role: 'teacher' };
     await expect(run(authedRequest('Mixed.Case@ORONO.K12.MN.US'))).resolves.toBeTruthy();

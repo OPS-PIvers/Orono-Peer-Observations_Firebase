@@ -14,11 +14,14 @@ import { getSheetsClient } from '../lib/sheets.js';
 import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
+  assertObservationFolder,
   deleteObservationFolder,
   removeReaderFromFile,
   shareObservationFolderWithObservers,
 } from '../lib/drive.js';
 import { APP_URL, formatDate, observerNameOf, sendTemplatedEmail } from '../lib/emailUtils.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
+import { GOOGLEAPIS_MEMORY } from '../lib/memory.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -81,7 +84,7 @@ export const onObservationWritten = onDocumentWritten(
     region: 'us-central1',
     serviceAccount: DRIVE_SERVICE_ACCOUNT,
     secrets: DRIVE_SECRETS,
-    memory: '256MiB',
+    memory: GOOGLEAPIS_MEMORY,
     // Serialize: each invocation does 2 Sheet reads + 1 write, and the
     // free Sheets API quota is 60 read + 60 write per minute. Allowing
     // 20 parallel instances during a bulk import (or any burst) trips
@@ -110,47 +113,7 @@ export const onObservationWritten = onDocumentWritten(
     // Detect creation: before didn't exist, after does
     const isNewObservation = !beforeData && !!afterData;
     if (isNewObservation && afterData['observedEmail']) {
-      const obsType = afterData['type'] as string | undefined;
-      const triggerType: EmailTriggerType =
-        obsType === OBSERVATION_TYPES.workProduct
-          ? 'observation.created.workProduct'
-          : obsType === OBSERVATION_TYPES.instructionalRound
-            ? 'observation.created.instructionalRound'
-            : 'observation.created.standard';
-
-      try {
-        const db = getFirestore();
-        const observedEmail = afterData['observedEmail'] as string;
-        const observedName = afterData['observedName'] as string;
-        const observerEmail = (afterData['observerEmail'] as string | undefined) ?? '';
-        const observedRole = afterData['observedRole'] as string;
-        const observedYear = String(
-          (afterData['observedYear'] as number | string | undefined) ?? '',
-        );
-        const obsDate = formatDate(afterData['observationDate']);
-        const obsName = (afterData['observationName'] as string | undefined) ?? '';
-
-        await sendTemplatedEmail({
-          db,
-          triggerType,
-          to: observedEmail,
-          vars: {
-            observerName: observerNameOf(afterData),
-            observerEmail,
-            observedName,
-            observedEmail,
-            observedRole,
-            observedYear,
-            observationDate: obsDate,
-            observationName: obsName,
-            observationType: obsType ?? '',
-          },
-          mailDocId: `created-${event.params.observationId}`,
-          auditDetails: { observationId: event.params.observationId, triggerType },
-        });
-      } catch (emailErr) {
-        logger.error('onObservationWritten: creation email failed (non-fatal)', emailErr);
-      }
+      await sendCreatedEmail(event.params.observationId, afterData);
     }
 
     // Acknowledged: tell the observer the staff member confirmed receipt.
@@ -221,11 +184,30 @@ async function syncCoObserverFolderAccess(
   if (typeof folderId !== 'string' || !folderId) return;
   const { added, removed } = coObserverChanges(before, after);
   if (added.length > 0) {
-    await shareObservationFolderWithObservers({
-      folderId,
-      observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
-      coObserverEmails: added,
-    });
+    // Share only the observation's own folder, never whatever driveFolderId
+    // happens to name. Revoking (below) is safe on any folder.
+    let shareable = true;
+    try {
+      await assertObservationFolder({
+        folderId,
+        parentFolderId: PARENT_FOLDER_ID.value(),
+        observationId,
+      });
+    } catch (err) {
+      shareable = false;
+      logger.error('onObservationWritten: co-observer folder share refused', {
+        observationId,
+        folderId,
+        err,
+      });
+    }
+    if (shareable) {
+      await shareObservationFolderWithObservers({
+        folderId,
+        observerEmail: typeof after['observerEmail'] === 'string' ? after['observerEmail'] : '',
+        coObserverEmails: added,
+      });
+    }
   }
   for (const email of removed) {
     try {
@@ -245,6 +227,58 @@ async function syncCoObserverFolderAccess(
  *  re-finalized observation can be acknowledged — and notified — again. */
 export function isNewlyAcknowledged(before: ObsLike, after: ObsLike): boolean {
   return before['acknowledgedAt'] == null && after['acknowledgedAt'] != null;
+}
+
+/** The observation.created.* email to the observed staff member. */
+async function sendCreatedEmail(observationId: string, data: ObsLike): Promise<void> {
+  const obsType = data['type'] as string | undefined;
+  const triggerType: EmailTriggerType =
+    obsType === OBSERVATION_TYPES.workProduct
+      ? 'observation.created.workProduct'
+      : obsType === OBSERVATION_TYPES.instructionalRound
+        ? 'observation.created.instructionalRound'
+        : 'observation.created.standard';
+
+  try {
+    const db = getFirestore();
+    const observedEmail = data['observedEmail'] as string;
+    // The create rule requires a staff-backed observedEmail; re-check before
+    // mailing so no other write path can relay to an outside inbox.
+    if (!(await isStaffBackedEmail(db, observedEmail))) {
+      logger.warn('onObservationWritten: observedEmail has no staff record, no creation email', {
+        observationId,
+        observedEmail,
+      });
+      return;
+    }
+    const observedName = data['observedName'] as string;
+    const observerEmail = (data['observerEmail'] as string | undefined) ?? '';
+    const observedRole = data['observedRole'] as string;
+    const observedYear = String((data['observedYear'] as number | string | undefined) ?? '');
+    const obsDate = formatDate(data['observationDate']);
+    const obsName = (data['observationName'] as string | undefined) ?? '';
+
+    await sendTemplatedEmail({
+      db,
+      triggerType,
+      to: observedEmail,
+      vars: {
+        observerName: observerNameOf(data),
+        observerEmail,
+        observedName,
+        observedEmail,
+        observedRole,
+        observedYear,
+        observationDate: obsDate,
+        observationName: obsName,
+        observationType: obsType ?? '',
+      },
+      mailDocId: `created-${observationId}`,
+      auditDetails: { observationId, triggerType },
+    });
+  } catch (emailErr) {
+    logger.error('onObservationWritten: creation email failed (non-fatal)', emailErr);
+  }
 }
 
 async function sendAcknowledgedEmail(observationId: string, data: ObsLike): Promise<void> {
@@ -345,7 +379,9 @@ async function syncRow(sheetId: string, observationId: string, data: ObsLike): P
   }
 }
 
-function buildRow(observationId: string, data: ObsLike): string[] {
+/** The Master Log row for an observation. Every cell goes through
+ *  `sheetText` because the rows are written USER_ENTERED. */
+export function buildRow(observationId: string, data: ObsLike): string[] {
   return [
     observationId,
     asString(data['observerEmail']),
@@ -361,7 +397,42 @@ function buildRow(observationId: string, data: ObsLike): string[] {
     formatTimestamp(data['observationDate']),
     driveFolderUrl(data['driveFolderId']),
     pdfUrl(data['pdfDriveFileId']),
-  ];
+  ].map(sheetText);
+}
+
+/** The row left behind for a deleted observation: the id and who was
+ *  involved, everything else cleared, status stamped [DELETED]. */
+export function buildDeletedRow(
+  observationId: string,
+  beforeData: ObsLike | null | undefined,
+): string[] {
+  return [
+    observationId,
+    asString(beforeData?.['observerEmail']),
+    asString(beforeData?.['observedEmail']),
+    asString(beforeData?.['observedName']),
+    '',
+    '',
+    asString(beforeData?.['type']),
+    '[DELETED]',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ].map(sheetText);
+}
+
+/** Keeps a cell from being read as a formula. The rows are written
+ *  USER_ENTERED so the Drive links stay clickable, which means Sheets parses
+ *  each cell as if someone typed it. Names, types, roles and the document id
+ *  are all client-chosen strings, so one starting with `=`, `+`, `-`, `@`
+ *  (or a tab or line break before one) could plant a live formula in the
+ *  district log. A leading apostrophe makes Sheets store the rest as plain
+ *  text and is not shown in the cell. */
+export function sheetText(value: string): string {
+  return /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
 }
 
 function asString(value: unknown): string {
@@ -450,26 +521,7 @@ async function handleDeletion(
       spreadsheetId: sheetId,
       range: `A${String(rowNumber)}:N${String(rowNumber)}`,
       valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [
-          [
-            observationId,
-            asString(beforeData?.['observerEmail']),
-            asString(beforeData?.['observedEmail']),
-            asString(beforeData?.['observedName']),
-            '',
-            '',
-            asString(beforeData?.['type']),
-            '[DELETED]',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-          ],
-        ],
-      },
+      requestBody: { values: [buildDeletedRow(observationId, beforeData)] },
     });
   } catch (err) {
     logger.error('onObservationWritten: Sheet row cleanup failed', err);

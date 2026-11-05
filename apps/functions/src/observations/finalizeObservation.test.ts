@@ -14,6 +14,7 @@ interface HState {
     ensureObservationFolder: Fn;
     getDriveLinks: Fn;
     replaceFileContent: Fn;
+    filesInObservationFolder: Fn;
     shareObservationFolderWithObservers: Fn;
     shareWithUser: Fn;
     trashDriveFile: Fn;
@@ -36,6 +37,7 @@ const h = vi.hoisted((): HState => ({
     ensureObservationFolder: undefined,
     getDriveLinks: undefined,
     replaceFileContent: undefined,
+    filesInObservationFolder: undefined,
     shareObservationFolderWithObservers: undefined,
     shareWithUser: undefined,
     trashDriveFile: undefined,
@@ -69,6 +71,7 @@ vi.mock('../lib/drive.js', () => ({
   ensureObservationFolder: (...a: unknown[]) => h.drive.ensureObservationFolder?.(...a),
   getDriveLinks: (...a: unknown[]) => h.drive.getDriveLinks?.(...a),
   replaceFileContent: (...a: unknown[]) => h.drive.replaceFileContent?.(...a),
+  filesInObservationFolder: (...a: unknown[]) => h.drive.filesInObservationFolder?.(...a),
   shareObservationFolderWithObservers: (...a: unknown[]) =>
     h.drive.shareObservationFolderWithObservers?.(...a),
   shareWithUser: (...a: unknown[]) => h.drive.shareWithUser?.(...a),
@@ -236,6 +239,7 @@ function happyConfig(obsOver: Record<string, unknown> = {}): DbConfig {
         domains: [{ id: 'd1', components: [{ id: 'c1' }] }],
       },
       [`${COLLECTIONS.appSettings}/app`]: {},
+      [`${COLLECTIONS.staff}/${OBSERVED}`]: { email: OBSERVED, isActive: true },
     },
   };
 }
@@ -244,6 +248,10 @@ function installHappyDrive() {
   h.drive.ensureObservationFolder = vi.fn().mockResolvedValue('folder-1');
   h.drive.uploadFileToFolder = vi.fn().mockResolvedValue({ fileId: 'pdf-1' });
   h.drive.replaceFileContent = vi.fn().mockResolvedValue(null);
+  // Every id is in the observation's folder unless a test says otherwise.
+  h.drive.filesInObservationFolder = vi.fn((args: unknown) =>
+    Promise.resolve((args as { fileIds: string[] }).fileIds),
+  );
   h.drive.shareObservationFolderWithObservers = vi.fn().mockResolvedValue(undefined);
   h.drive.shareWithUser = vi.fn().mockResolvedValue(undefined);
   h.drive.trashDriveFile = vi.fn().mockResolvedValue(undefined);
@@ -291,6 +299,19 @@ describe('finalizeObservation — input & auth guards', () => {
     const { db } = buildDb({ ...happyConfig(), observation: null });
     h.db = db;
     await expect(run(observerRequest())).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it.each([
+    ['an outside address', 'someone@gmail.com'],
+    ['a case variant of a staff address', 'Observed@orono.k12.mn.us'],
+    ['a district address with no staff doc', 'ghost@orono.k12.mn.us'],
+  ])('refuses %s as observedEmail before any Drive share or email', async (_label, email) => {
+    const { db, rec } = buildDb(happyConfig({ observedEmail: email }));
+    h.db = db;
+    await expect(run(observerRequest())).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect(rec.txUpdates).toHaveLength(0);
+    expect(h.drive.shareWithUser).not.toHaveBeenCalled();
+    expect(h.sendTemplatedEmail).not.toHaveBeenCalled();
   });
 
   it('denies a non-observer, non-admin caller', async () => {
@@ -382,6 +403,17 @@ describe('finalizeObservation — finalize flow', () => {
     expect(emailArgs.attachments?.[0]?.content).toBe(Buffer.from('pdf').toString('base64'));
     expect(emailArgs.requiredBlock?.unlessUses).toBe('acknowledgeLink');
     expect(emailArgs.requiredBlock?.html).toContain('Acknowledge receipt');
+  });
+
+  it('uploads a fresh PDF rather than overwrite one outside the observation folder', async () => {
+    h.drive.filesInObservationFolder = vi.fn().mockResolvedValue([]);
+    h.drive.replaceFileContent = vi.fn().mockResolvedValue('pdf-foreign');
+    const { db } = buildDb(happyConfig({ pdfDriveFileId: 'pdf-foreign' }));
+    h.db = db;
+    const result = await run(observerRequest());
+    expect(h.drive.replaceFileContent).not.toHaveBeenCalled();
+    expect(h.drive.uploadFileToFolder).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ pdfDriveFileId: 'pdf-1' });
   });
 
   it('replaces the existing PDF in place on re-finalize (stable fileId)', async () => {
@@ -562,6 +594,33 @@ describe('finalizeObservation — deleteAudio', () => {
     expect(rec.auditAdds[0]?.['details']).toMatchObject({
       deletedAudioFileIds: ['aud-1', 'aud-2'],
     });
+  });
+
+  it('trashes only recordings that sit in the observation folder', async () => {
+    h.drive.filesInObservationFolder = vi.fn((args: unknown) =>
+      Promise.resolve((args as { fileIds: string[] }).fileIds.filter((id) => id === 'aud-2')),
+    );
+    const { db } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } }));
+
+    expect(h.drive.filesInObservationFolder).toHaveBeenCalledWith(
+      expect.objectContaining({ fileIds: ['aud-1'], folderId: 'folder-1' }),
+    );
+    expect(h.drive.trashDriveFile).toHaveBeenCalledOnce();
+    expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-2');
+  });
+
+  it('still trashes the other recordings when one folder check fails', async () => {
+    h.drive.filesInObservationFolder = vi.fn((args: unknown) => {
+      const ids = (args as { fileIds: string[] }).fileIds;
+      return ids.includes('aud-1') ? Promise.reject(new Error('rate limit')) : Promise.resolve(ids);
+    });
+    const { db } = buildDb(happyConfig(withAudio));
+    h.db = db;
+    await run(observerRequest({ data: { observationId: 'obs-1', deleteAudio: true } }));
+    expect(h.drive.trashDriveFile).toHaveBeenCalledOnce();
+    expect(h.drive.trashDriveFile).toHaveBeenCalledWith('aud-2');
   });
 
   it('still finalizes when trashing a file fails', async () => {

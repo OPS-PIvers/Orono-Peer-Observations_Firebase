@@ -28,6 +28,7 @@ import {
   substituteVariables,
 } from '../lib/emailUtils.js';
 import { acknowledgeBlockHtml, acknowledgeLinkFor } from '../lib/acknowledgeEmail.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 
 /**
  * How far back past the reminder's N-day mark an unacknowledged observation
@@ -112,11 +113,19 @@ async function sendPhaseReminder(args: {
   activeQuestions: WorkProductQuestion[];
   rolesLookup: Map<string, string>;
   week: string;
+  staffCache: Map<string, boolean>;
 }): Promise<boolean> {
-  const { db, docSnap, phase, template, activeQuestions, rolesLookup, week } = args;
+  const { db, docSnap, phase, template, activeQuestions, rolesLookup, week, staffCache } = args;
   const obs = docSnap.data();
   const observedEmail = (obs['observedEmail'] as string | undefined) ?? '';
   if (!observedEmail) return false;
+  if (!(await isStaffBackedEmail(db, observedEmail, staffCache))) {
+    logger.warn('scheduledEmailReminders: observedEmail has no staff record, skipping', {
+      observationId: docSnap.id,
+      phase,
+    });
+    return false;
+  }
   const type = (obs['type'] as ObservationType | undefined) ?? '';
   const setId = typeof obs['questionSetId'] === 'string' ? obs['questionSetId'] : undefined;
   if (
@@ -252,6 +261,9 @@ export const scheduledEmailReminders = onSchedule(
     // function works whether the observation has been migrated yet.
     const rolesSnap = await db.collection(COLLECTIONS.roles).get();
     const rolesLookup = new Map<string, string>();
+    // observedEmail -> has a staff record (see isStaffBackedEmail). Every
+    // reminder to an observed staff member checks it before sending.
+    const staffCache = new Map<string, boolean>();
     for (const d of rolesSnap.docs) {
       const r = d.data() as Role;
       rolesLookup.set(r.roleId, r.displayName);
@@ -289,15 +301,17 @@ export const scheduledEmailReminders = onSchedule(
           observationType: (obs['type'] as string | undefined) ?? '',
         };
 
+        // The observed address only counts when it names a staff record.
+        const observedEmail = (await isStaffBackedEmail(db, obs['observedEmail'], staffCache))
+          ? (obs['observedEmail'] as string)
+          : '';
         let recipient: string | string[];
         if (preObsTemplate.recipient === 'observer') {
           recipient = (obs['observerEmail'] as string | undefined) ?? '';
         } else if (preObsTemplate.recipient === 'both') {
-          recipient = [obs['observedEmail'] as string, obs['observerEmail'] as string].filter(
-            Boolean,
-          );
+          recipient = [observedEmail, obs['observerEmail'] as string].filter(Boolean);
         } else {
-          recipient = (obs['observedEmail'] as string | undefined) ?? '';
+          recipient = observedEmail;
         }
 
         const recipientArr = Array.isArray(recipient) ? recipient : [recipient];
@@ -352,6 +366,7 @@ export const scheduledEmailReminders = onSchedule(
             activeQuestions,
             rolesLookup,
             week,
+            staffCache,
           })
         ) {
           sent += 1;
@@ -383,6 +398,7 @@ export const scheduledEmailReminders = onSchedule(
             activeQuestions,
             rolesLookup,
             week,
+            staffCache,
           })
         ) {
           sent += 1;
@@ -474,6 +490,15 @@ export const scheduledEmailReminders = onSchedule(
         const obs = docSnap.data();
         if (!needsAcknowledgeReminder(obs)) continue;
         const observedEmail = obs['observedEmail'] as string;
+        if (!(await isStaffBackedEmail(db, observedEmail, staffCache))) {
+          logger.warn(
+            'scheduledEmailReminders: observedEmail has no staff record, no ack reminder',
+            {
+              observationId: docSnap.id,
+            },
+          );
+          continue;
+        }
         const observerEmail = (obs['observerEmail'] as string | undefined) ?? '';
         const pdfFileId = obs['pdfDriveFileId'] as string | null | undefined;
         const pdfLink = pdfFileId ? `https://drive.google.com/file/d/${pdfFileId}/view` : null;

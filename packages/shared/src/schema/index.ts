@@ -26,6 +26,7 @@ export * from './workProductQuestion.js';
 export * from './buildingSchedule.js';
 export * from './signupField.js';
 export * from './observationWindow.js';
+export * from './windowInviteView.js';
 export * from './observationSlot.js';
 export * from './observationPreference.js';
 export * from './userCalendarTokens.js';

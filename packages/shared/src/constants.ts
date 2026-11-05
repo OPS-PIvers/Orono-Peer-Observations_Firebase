@@ -9,6 +9,22 @@
 /** The only email domain allowed to authenticate. */
 export const ALLOWED_EMAIL_DOMAIN = 'orono.k12.mn.us';
 
+/**
+ * True when `value` is a canonical staff address: lowercase, no surrounding
+ * whitespace or '/', on the district domain. Staff docs are keyed by this form, and
+ * Firestore ids are case-sensitive, so anything else names a different doc
+ * from the person it spells. Mirrors isCanonicalStaffEmail in firestore.rules.
+ */
+export function isCanonicalStaffEmail(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value === value.toLowerCase() &&
+    /^[^@\s/]+@/.test(value) &&
+    value.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`) &&
+    value.indexOf('@') === value.lastIndexOf('@')
+  );
+}
+
 /** Firestore collection paths — single source of truth. */
 export const COLLECTIONS = {
   staff: 'staff',
@@ -33,6 +49,9 @@ export const COLLECTIONS = {
   buildingSchedules: 'buildingSchedules',
   signupFields: 'signupFields',
   observationWindows: 'observationWindows',
+  /** Server-written, per-invitee projection of each window; see
+   *  schema/windowInviteView.ts. */
+  windowInviteViews: 'windowInviteViews',
   userCalendarTokens: 'userCalendarTokens',
 } as const;
 

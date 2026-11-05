@@ -128,7 +128,7 @@ backend specification. Timeout after 10000` while resolving the functions'
 the same suite on Ubuntu, where it works. Two things to check first if you pick
 this up:
 
-- `apps/functions/lib/node_modules` is written by `npm install` inside `lib`,
+- `apps/functions/lib/node_modules` is written by `npm ci` inside `lib`,
   separately from the pnpm workspace, and goes stale. Rebuild it with
   `pnpm build:functions:deploy`.
 - The emulator needs every `defineString()` param present in

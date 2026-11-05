@@ -2,10 +2,17 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { onCall } from '../lib/callable.js';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldPath, getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { APP_SETTINGS_DOC_ID, COLLECTIONS, type EmailTemplate } from '@ops/shared';
+import { COLLECTIONS, type EmailTemplate } from '@ops/shared';
 import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
-import { APP_URL, sendEmail, substituteVariables } from '../lib/emailUtils.js';
+import { sendEmail, substituteVariables } from '../lib/emailUtils.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
+import {
+  buildManualEmailVars,
+  loadRoleLabels,
+  loadServerAppVars,
+  loadStaffPerson,
+  type ManualEmailPerson,
+} from './manualEmailVars.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -33,10 +40,11 @@ export const STAFF_LOOKUP_CHUNK_SIZE = 30;
 /** How many rejected addresses the error message names before summarizing. */
 const MAX_REJECTED_IN_ERROR = 5;
 
+/** No `vars`: every template variable in a broadcast is built on the server
+ *  (manualEmailVars.ts), and anything a caller sends there is ignored. */
 interface SendBulkManualEmailRequest {
   templateId?: string;
   toEmails?: string[];
-  vars?: Record<string, string>;
 }
 
 export interface SendBulkManualEmailResult {
@@ -76,15 +84,21 @@ export function chunkList<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
+/** What the roster lookup reads from one /staff doc: whether it may receive a
+ *  broadcast, plus the fields its personalized template variables use. */
+export interface StaffRosterEntry extends Omit<ManualEmailPerson, 'email'> {
+  isActive: boolean;
+}
+
 /**
- * Resolves a batch of lowercased staff-doc ids to `id -> isActive`. Ids with no
- * staff doc are simply absent from the returned map.
+ * Resolves a batch of lowercased staff-doc ids to `id -> roster entry`. Ids
+ * with no staff doc are simply absent from the returned map.
  *
  * Kept as a narrow function type (mirroring RateLimitTx in lib/rateLimit.ts) so
  * {@link partitionRecipientsByRoster} can be unit-tested with a fake lookup
  * instead of a full Firebase Admin environment.
  */
-export type StaffRosterLookup = (ids: readonly string[]) => Promise<Map<string, boolean>>;
+export type StaffRosterLookup = (ids: readonly string[]) => Promise<Map<string, StaffRosterEntry>>;
 
 /**
  * Split a recipient list into addresses that belong to an *active* staff member
@@ -101,18 +115,18 @@ export async function partitionRecipientsByRoster(
   lookup: StaffRosterLookup,
   recipients: readonly string[],
   chunkSize: number = STAFF_LOOKUP_CHUNK_SIZE,
-): Promise<{ allowed: string[]; rejected: string[] }> {
+): Promise<{ allowed: string[]; rejected: string[]; roster: Map<string, StaffRosterEntry> }> {
   const maps = await Promise.all(chunkList(recipients, chunkSize).map((ids) => lookup(ids)));
-  const roster = new Map<string, boolean>();
+  const roster = new Map<string, StaffRosterEntry>();
   for (const map of maps) {
-    for (const [id, isActive] of map) roster.set(id, isActive);
+    for (const [id, entry] of map) roster.set(id, entry);
   }
   const allowed: string[] = [];
   const rejected: string[] = [];
   for (const recipient of recipients) {
-    (roster.get(recipient) === true ? allowed : rejected).push(recipient);
+    (roster.get(recipient)?.isActive === true ? allowed : rejected).push(recipient);
   }
-  return { allowed, rejected };
+  return { allowed, rejected, roster };
 }
 
 /**
@@ -123,18 +137,24 @@ export async function partitionRecipientsByRoster(
  */
 export function firestoreStaffRosterLookup(db: Firestore): StaffRosterLookup {
   return async (ids) => {
-    const out = new Map<string, boolean>();
+    const out = new Map<string, StaffRosterEntry>();
     if (ids.length === 0) return out;
     const snap = await db
       .collection(COLLECTIONS.staff)
       .where(FieldPath.documentId(), 'in', [...ids])
       .get();
     for (const doc of snap.docs) {
-      const data = doc.data() as { isActive?: boolean } | undefined;
+      const data = doc.data() as
+        { isActive?: boolean; name?: unknown; role?: unknown; year?: unknown } | undefined;
       // Raw Admin SDK reads bypass the Zod schema, so `isActive`'s default of
       // true is not applied here — fall back explicitly rather than letting a
       // legacy doc without the field read as archived.
-      out.set(doc.id.toLowerCase(), data?.isActive !== false);
+      out.set(doc.id.toLowerCase(), {
+        isActive: data?.isActive !== false,
+        name: typeof data?.name === 'string' ? data.name : undefined,
+        role: typeof data?.role === 'string' ? data.role : undefined,
+        year: typeof data?.year === 'number' ? data.year : undefined,
+      });
     }
     return out;
   };
@@ -231,7 +251,7 @@ export async function authorizeBroadcast(args: {
   templateId: string;
   recipients: readonly string[];
   guards: BroadcastGuards;
-}): Promise<EmailTemplate> {
+}): Promise<{ template: EmailTemplate; roster: Map<string, StaffRosterEntry> }> {
   const { templateId, recipients, guards } = args;
 
   const template = await guards.loadTemplate(templateId);
@@ -244,7 +264,7 @@ export async function authorizeBroadcast(args: {
   // Recipient allow-list. The UI only ever passes staff addresses, but the
   // callable — not the UI — is the trust boundary, so re-derive the audience
   // from the roster instead of trusting the payload.
-  const { rejected } = await partitionRecipientsByRoster(guards.rosterLookup, recipients);
+  const { rejected, roster } = await partitionRecipientsByRoster(guards.rosterLookup, recipients);
   if (rejected.length > 0) {
     throw new HttpsError('permission-denied', rejectedRecipientsMessage(rejected));
   }
@@ -257,7 +277,7 @@ export async function authorizeBroadcast(args: {
     );
   }
 
-  return template;
+  return { template, roster };
 }
 
 /**
@@ -311,7 +331,7 @@ export const sendBulkManualEmail = onCall(
       throw new HttpsError('permission-denied', 'Only PEs and admins can send manual emails');
     }
 
-    const { templateId, toEmails, vars } = (request.data ?? {}) as SendBulkManualEmailRequest;
+    const { templateId, toEmails } = (request.data ?? {}) as SendBulkManualEmailRequest;
     if (!templateId || !Array.isArray(toEmails) || toEmails.length === 0) {
       throw new HttpsError(
         'invalid-argument',
@@ -330,7 +350,7 @@ export const sendBulkManualEmail = onCall(
       );
     }
 
-    const template = await authorizeBroadcast({
+    const { template, roster } = await authorizeBroadcast({
       templateId,
       recipients,
       guards: {
@@ -357,24 +377,31 @@ export const sendBulkManualEmail = onCall(
       },
     });
 
-    const appSnap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
-    const appData = appSnap.data() as
-      { branding?: { appName?: string }; signupLink?: string } | undefined;
-    const appName = appData?.branding?.appName ?? 'Orono Peer Observations';
-    const signupLink = appData?.signupLink ?? '';
-
-    const fullVars: Record<string, string> = {
-      appName,
-      signupLink,
-      signInLink: APP_URL,
-      ...vars,
+    // Each recipient gets their own variables (name, role, year) from their
+    // /staff doc; the sender's come from the caller's /staff doc and the app
+    // variables from /appSettings. Nothing in the request feeds the bag.
+    const [app, caller] = await Promise.all([
+      loadServerAppVars(db),
+      loadStaffPerson(db, callerEmail),
+    ]);
+    const roleLabels = await loadRoleLabels(
+      db,
+      recipients.map((r) => roster.get(r)?.role),
+    );
+    const render = (to: string) => {
+      const entry = roster.get(to);
+      const vars = buildManualEmailVars({
+        app,
+        caller: caller ?? { email: callerEmail },
+        recipient: { email: to, name: entry?.name, role: entry?.role, year: entry?.year },
+        roleLabels,
+        clientVars: {},
+      });
+      return {
+        subject: substituteVariables(template.subject, vars),
+        html: substituteVariables(template.bodyHtml, vars),
+      };
     };
-
-    // Subject/body are the same for every recipient in a broadcast (no
-    // per-recipient personalization), so substitute once rather than per
-    // iteration.
-    const subject = substituteVariables(template.subject, fullVars);
-    const html = substituteVariables(template.bodyHtml, fullVars);
 
     // Unique per invocation — an auto-id from the /mail collection, which costs
     // no round trip and never collides with another broadcast's ids.
@@ -388,8 +415,7 @@ export const sendBulkManualEmail = onCall(
         sendEmail({
           db,
           to,
-          subject,
-          html,
+          ...render(to),
           mailDocId,
           triggerType: 'manual',
           auditDetails: {

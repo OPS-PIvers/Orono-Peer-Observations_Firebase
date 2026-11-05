@@ -55,8 +55,8 @@ function meetsAccessLevel(
 
 /**
  * Resolves whether a caller currently satisfies an access `level`
- * ('admin' or 'special'/PE-or-admin), re-reading the live `/staff` doc as a
- * fallback rather than trusting only the token's `role` claim.
+ * ('admin' or 'special'/PE-or-admin), reading the live `/staff` doc rather
+ * than trusting only the token's `role` claim.
  *
  * Why the live-doc fallback: `hasAdminAccess` is a grant on the `/staff` doc
  * that's independent of professional role (packages/shared/src/schema/
@@ -77,18 +77,18 @@ function meetsAccessLevel(
  * did (see INTEG-AUTHZ).
  *
  * IMPORTANT — what's immediate and what isn't:
- *   - An `isActive: false` or `hasAdminAccess: false` change on the live
- *     `/staff` doc takes effect on this caller's very next call, because the
- *     fallback below re-reads that doc whenever the token role alone doesn't
- *     already satisfy `level`.
+ *   - An `isActive: false` change on the live `/staff` doc takes effect on
+ *     this caller's very next call: the doc is always read, and an archived
+ *     caller is refused even when the token's role claim alone would pass.
+ *     Archiving leaves `role` on the doc and the claim in the token until
+ *     it refreshes, so the token must never be enough on its own.
+ *   - A `hasAdminAccess: false` change is also immediate, because the token
+ *     role alone never grants it.
  *   - A *role demotion* (e.g. peer-evaluator -> teacher) is NOT caught this
  *     quickly: if the stale token still carries the old role claim, that
- *     claim alone satisfies `level` on the fast path above and the live-doc
- *     read never happens, so the demotion has no effect until the caller's
- *     ID token refreshes (next sign-in or an explicit "Refresh access").
- *     This mirrors resendStaffInvite's pre-existing behavior and is a
- *     deliberate tradeoff — always doing a live read would add a Firestore
- *     read to every authorized call. Don't assume both cases are immediate.
+ *     claim satisfies `level`, so the demotion has no effect until the
+ *     caller's ID token refreshes (next sign-in or an explicit "Refresh
+ *     access"). Don't assume both cases are immediate.
  */
 export async function callerMeetsAccessLevel(
   db: Firestore,
@@ -96,19 +96,18 @@ export async function callerMeetsAccessLevel(
 ): Promise<boolean> {
   const { email, tokenRole, level } = args;
 
-  if (meetsAccessLevel(level, tokenRole, false)) return true;
-
   const snap = await db.doc(`${COLLECTIONS.staff}/${email}`).get();
   const staff = snap.exists ? (snap.data() as StaffAccessFields | undefined) : undefined;
-  if (!staff) return false;
 
-  // A deactivated caller can't be granted access via the live-doc fallback,
-  // even if hasAdminAccess is still true on their doc — offboarding sets
-  // isActive: false but doesn't necessarily clear hasAdminAccess, and the
-  // caller's session may not be revoked yet. isActive's schema default is
-  // `true` (packages/shared/src/schema/staff.ts), so a legacy doc missing
-  // the field is still treated as active, matching that default.
-  if (staff.isActive === false) return false;
+  // An archived caller gets nothing, from the token or the live doc —
+  // offboarding sets isActive: false but leaves role and hasAdminAccess,
+  // and the caller's session may not be revoked yet. isActive's schema
+  // default is `true` (packages/shared/src/schema/staff.ts), so a legacy doc
+  // missing the field is still treated as active, matching that default.
+  if (staff?.isActive === false) return false;
+
+  if (meetsAccessLevel(level, tokenRole, false)) return true;
+  if (!staff) return false;
 
   // hasAdminAccess's schema default is `false`; fall back explicitly rather
   // than letting a legacy doc without the field parse as `undefined`.

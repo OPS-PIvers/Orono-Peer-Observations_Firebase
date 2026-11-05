@@ -20,6 +20,7 @@ import {
   DRIVE_SECRETS,
   DRIVE_SERVICE_ACCOUNT,
   ensureObservationFolder,
+  filesInObservationFolder,
   getDriveLinks,
   replaceFileContent,
   shareObservationFolderWithObservers,
@@ -41,6 +42,7 @@ import {
   reportFileName,
 } from '../lib/acknowledgeEmail.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
@@ -147,6 +149,15 @@ export const finalizeObservation = onCall(
       throw new HttpsError(
         'permission-denied',
         'Only the observer who created this observation can finalize it.',
+      );
+    }
+    // Finalize shares the Drive folder with observedEmail and mails it the
+    // PDF, so it must name a real staff record (the create rule requires the
+    // same; this covers docs written any other way).
+    if (!(await isStaffBackedEmail(db, obs.observedEmail))) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The observed person isn’t on the staff roster, so this observation can’t be finalized.',
       );
     }
 
@@ -275,8 +286,19 @@ export const finalizeObservation = onCall(
         // content in place so the fileId — and any link already emailed or
         // bookmarked — stays stable instead of a duplicate PDF piling up in
         // the folder. Falls back to a fresh upload if the old file is gone.
+        // Only a PDF in this observation's own folder is overwritten.
         let replacedFileId: string | null = null;
-        if (obs.pdfDriveFileId) {
+        const pdfInFolder = obs.pdfDriveFileId
+          ? (
+              await filesInObservationFolder({
+                fileIds: [obs.pdfDriveFileId],
+                folderId,
+                parentFolderId,
+                observationId,
+              })
+            ).includes(obs.pdfDriveFileId)
+          : false;
+        if (obs.pdfDriveFileId && pdfInFolder) {
           replacedFileId = await replaceFileContent({
             fileId: obs.pdfDriveFileId,
             filename,
@@ -336,9 +358,19 @@ export const finalizeObservation = onCall(
       });
 
       // Best-effort, after the status flip: a file left behind only needs
-      // cleanup in Drive, and the observation no longer points at it.
+      // cleanup in Drive, and the observation no longer points at it. Only
+      // recordings in this observation's own folder are trashed, each on its
+      // own so one Drive error leaves only that file behind.
       const trashResults = await Promise.allSettled(
-        removedAudioIds.map((id) => trashDriveFile(id)),
+        removedAudioIds.map(async (id) => {
+          const [inFolder] = await filesInObservationFolder({
+            fileIds: [id],
+            folderId,
+            parentFolderId,
+            observationId,
+          });
+          if (inFolder) await trashDriveFile(inFolder);
+        }),
       );
       trashResults.forEach((r, i) => {
         if (r.status === 'rejected') {

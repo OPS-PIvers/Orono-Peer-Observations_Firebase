@@ -21,6 +21,7 @@ import {
   DRIVE_SERVICE_ACCOUNT,
   deleteDriveFile,
   ensureObservationFolder,
+  filesInObservationFolder,
   getDriveLinks,
   replaceFileContent,
   shareObservationFolderWithObservers,
@@ -31,6 +32,7 @@ import { renderObservationPdf } from '../lib/pdfRenderer.js';
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { resolveRole } from './roleLookup.js';
 import { callerObservationAccess } from '../lib/observationAccess.js';
+import { isStaffBackedEmail } from '../lib/observee.js';
 import { loadPdfQuestionsAndBranding, toRendererObservation } from './renderInputs.js';
 
 /**
@@ -193,6 +195,9 @@ export const regenerateObservationPdf = onCall(
     }
 
     const previousPdfFileId = obs.pdfDriveFileId;
+    // Whether the previous PDF sits in the observation's own folder: only
+    // then is it overwritten or deleted. Anything else is left alone.
+    let previousPdfInFolder = false;
     let folderId: string;
     let pdfFileId: string;
     let webViewLink = '';
@@ -206,15 +211,27 @@ export const regenerateObservationPdf = onCall(
       const filename = `Peer Observation — ${obs.observedName} — ${formatDateIso(new Date())}.pdf`;
       // Replace the existing PDF's content in place so the fileId — and the
       // link already emailed to the observed staff member — keeps working.
-      // Falls back to a fresh upload if the old file is gone.
-      const replacedFileId = previousPdfFileId
-        ? await replaceFileContent({
-            fileId: previousPdfFileId,
-            filename,
-            mimeType: 'application/pdf',
-            body: pdfBuffer,
-          })
-        : null;
+      // Falls back to a fresh upload if the old file is gone, or is not in
+      // this observation's folder.
+      previousPdfInFolder = previousPdfFileId
+        ? (
+            await filesInObservationFolder({
+              fileIds: [previousPdfFileId],
+              folderId,
+              parentFolderId,
+              observationId,
+            })
+          ).includes(previousPdfFileId)
+        : false;
+      const replacedFileId =
+        previousPdfFileId && previousPdfInFolder
+          ? await replaceFileContent({
+              fileId: previousPdfFileId,
+              filename,
+              mimeType: 'application/pdf',
+              body: pdfBuffer,
+            })
+          : null;
       if (replacedFileId) {
         pdfFileId = replacedFileId;
       } else {
@@ -227,13 +244,20 @@ export const regenerateObservationPdf = onCall(
         pdfFileId = uploaded.fileId;
       }
       // Re-grant Reader (idempotent) so the observed staff + observer can open
-      // the fresh PDF even if the folder was recreated.
-      await shareWithUser({
-        fileId: folderId,
-        email: obs.observedEmail,
-        role: 'reader',
-        sendNotificationEmail: false,
-      });
+      // the fresh PDF even if the folder was recreated. Only to a staff-backed
+      // address (see isStaffBackedEmail); otherwise the PDF still regenerates.
+      if (await isStaffBackedEmail(db, obs.observedEmail)) {
+        await shareWithUser({
+          fileId: folderId,
+          email: obs.observedEmail,
+          role: 'reader',
+          sendNotificationEmail: false,
+        });
+      } else {
+        logger.warn('regenerateObservationPdf: observedEmail has no staff record, not sharing', {
+          observationId: obs.id,
+        });
+      }
       await shareObservationFolderWithObservers({
         folderId,
         observerEmail: obs.observerEmail,
@@ -266,7 +290,7 @@ export const regenerateObservationPdf = onCall(
 
     // Delete the superseded PDF (best-effort) — never roll back the
     // regeneration over a cleanup failure.
-    if (previousPdfFileId && previousPdfFileId !== pdfFileId) {
+    if (previousPdfFileId && previousPdfInFolder && previousPdfFileId !== pdfFileId) {
       try {
         await deleteDriveFile(previousPdfFileId);
       } catch (err) {

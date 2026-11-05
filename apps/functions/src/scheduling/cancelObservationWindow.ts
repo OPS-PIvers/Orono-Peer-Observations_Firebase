@@ -12,7 +12,7 @@ import {
   type ObservationSlot,
   type ObservationWindow,
 } from '@ops/shared';
-import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
+import { assertCanManageWindow } from './windowAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -44,17 +44,12 @@ export const cancelObservationWindow = onCall(
     if (!windowSnap.exists) throw new HttpsError('not-found', 'Window not found');
     const window = windowSnap.data() as ObservationWindow;
 
-    const callerRole = request.auth.token['role'] as string | undefined;
-    // District oversight only (Full Access; not hasAdminAccess). Building
-    // Administrators manage their own windows, like any observer.
-    const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
-      email: userEmail,
-      tokenRole: callerRole,
-      level: 'oversight',
+    await assertCanManageWindow(db, {
+      callerEmail: userEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      window,
+      message: 'Only the observer or an admin can cancel.',
     });
-    if (!isAdmin && window.observerEmail !== userEmail) {
-      throw new HttpsError('permission-denied', 'Only the observer or an admin can cancel.');
-    }
 
     const now = FieldValue.serverTimestamp();
 

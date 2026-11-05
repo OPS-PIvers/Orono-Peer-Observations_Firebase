@@ -160,6 +160,77 @@ describe('observations: read access', () => {
 });
 
 describe('observations: create', () => {
+  // Every create needs the observee's staff doc (see isCanonicalStaffEmail
+  // and the exists() check in the create rule).
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'staff', OBSERVED_EMAIL), {
+        email: OBSERVED_EMAIL,
+        role: 'teacher',
+        buildings: ['OMS'],
+        isActive: true,
+      });
+    });
+  });
+
+  describe('observedEmail must name a real staff record', () => {
+    function obsFor(observerEmail: string, observedEmail: string) {
+      return {
+        observerEmail,
+        observedEmail,
+        observedName: 'X',
+        observedRole: 'Teacher',
+        observedYear: 1,
+        status: 'Draft',
+        type: 'Work Product',
+        observationName: '',
+        createdAt: new Date(),
+        lastModifiedAt: new Date(),
+      };
+    }
+    const peDb = () => testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+    const faDb = () =>
+      testEnv
+        .authenticatedContext('fa', claims.fullAccess('fullaccess@orono.k12.mn.us'))
+        .firestore();
+
+    it('PE and Full Access CANNOT create for an outside address', async () => {
+      await assertFails(
+        setDoc(doc(peDb(), 'observations/ext1'), obsFor(PE_EMAIL, 'someone@gmail.com')),
+      );
+      await assertFails(
+        setDoc(
+          doc(faDb(), 'observations/ext2'),
+          obsFor('fullaccess@orono.k12.mn.us', 'someone@gmail.com'),
+        ),
+      );
+    });
+
+    it('PE CANNOT create for an address containing a path separator', async () => {
+      await assertFails(
+        setDoc(doc(peDb(), 'observations/slash'), obsFor(PE_EMAIL, 'x/y@orono.k12.mn.us')),
+      );
+    });
+
+    it('PE CANNOT create for a district address with no staff doc', async () => {
+      await assertFails(
+        setDoc(doc(peDb(), 'observations/ghost'), obsFor(PE_EMAIL, 'ghost@orono.k12.mn.us')),
+      );
+    });
+
+    it('PE CANNOT create for a case variant, even when a doc exists at that id', async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'staff', 'Teacher@orono.k12.mn.us'), {
+          email: 'Teacher@orono.k12.mn.us',
+          isActive: true,
+        });
+      });
+      await assertFails(
+        setDoc(doc(peDb(), 'observations/case'), obsFor(PE_EMAIL, 'Teacher@orono.k12.mn.us')),
+      );
+    });
+  });
+
   it('PE can create an observation where they are the observer', async () => {
     const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
     await assertSucceeds(
@@ -340,6 +411,13 @@ describe('observations: create', () => {
         await assertFails(
           setDoc(doc(adminDb(), 'observations/a7'), obsOf('nobody@orono.k12.mn.us')),
         );
+      });
+
+      it('denies a case variant of staff outside their building, even with a shadow doc', async () => {
+        await seedObserved('far@orono.k12.mn.us', { buildings: ['OHS'] });
+        // A mixed-case doc that would pass adminCanObserve on its own.
+        await seedObserved('Far@orono.k12.mn.us', {});
+        await assertFails(setDoc(doc(adminDb(), 'observations/a8'), obsOf('Far@orono.k12.mn.us')));
       });
 
       it('cannot retarget an existing observation at someone else', async () => {
@@ -551,6 +629,46 @@ describe('observations: update', () => {
     const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
     await assertSucceeds(
       updateDoc(doc(db, 'observations/finalObs'), { observationName: 'Admin override' }),
+    );
+  });
+
+  it.each([
+    ['driveFolderId', 'foreign-folder'],
+    ['pdfDriveFileId', 'foreign-file'],
+    ['audioDriveFileIds', ['foreign-file']],
+    ['evidenceLinks', { c1: [{ driveFileId: 'foreign-file', name: 'x' }] }],
+    ['transcripts', { 'foreign-file': 'text' }],
+    ['coObserverEmails', ['someone@orono.k12.mn.us']],
+    ['status', 'Archived'],
+    ['observerEmail', 'fullaccess@orono.k12.mn.us'],
+  ])('Full Access (oversight) CANNOT write the server-owned %s', async (field, value) => {
+    await seedDraftObs('finalObs', {
+      status: 'Finalized',
+      finalizedAt: new Date(),
+      driveFolderId: 'obs-folder',
+      pdfDriveFileId: 'obs-pdf',
+    });
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertFails(updateDoc(doc(db, 'observations/obs1'), { [field]: value }));
+    await assertFails(updateDoc(doc(db, 'observations/finalObs'), { [field]: value }));
+  });
+
+  it('Full Access (oversight) can still autosave content and set Draft sharing', async () => {
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        observationData: {},
+        componentNotes: {},
+        scriptDoc: null,
+        observationName: 'Oversight edit',
+        lastModifiedAt: new Date(),
+      }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/obs1'), {
+        draftVisibility: { ratings: true },
+        lastModifiedAt: new Date(),
+      }),
     );
   });
 

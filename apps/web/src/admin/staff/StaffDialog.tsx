@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Archive, X } from 'lucide-react';
 import { doc, getDoc, orderBy, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import {
+  ALLOWED_EMAIL_DOMAIN,
   COLLECTIONS,
+  isCanonicalStaffEmail,
   isSpecialRole,
   isStaffYear,
   type Building,
@@ -274,6 +276,15 @@ export function StaffDialog({
       !form.buildings.some((b) => buildingScope.includes(b))
     ) {
       setError(`Add ${buildingScope.join(' or ')} so this person shows up in your staff list.`);
+      return;
+    }
+    // Mirrors the building-Administrator create rule: district addresses only.
+    if (
+      buildingScope &&
+      mode === 'create' &&
+      !isCanonicalStaffEmail(form.email.trim().toLowerCase())
+    ) {
+      setError(`Use their @${ALLOWED_EMAIL_DOMAIN} address.`);
       return;
     }
 

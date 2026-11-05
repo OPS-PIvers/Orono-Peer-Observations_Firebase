@@ -23,7 +23,7 @@ import {
 } from './bookObservationSlot.js';
 import { toDate } from './engine/schedulingEmail.js';
 import { assertCanObserveAll, loadObserverScope } from './observeScope.js';
-import { callerMeetsAccessLevel } from '../lib/callerAccess.js';
+import { assertCanManageWindow } from './windowAccess.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -47,15 +47,6 @@ export const assignObservationFromPreference = onCall(
     if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
     const callerEmail = request.auth.token.email?.toLowerCase();
     if (!callerEmail) throw new HttpsError('unauthenticated', 'Token has no email');
-    const callerRole = request.auth.token['role'] as string | undefined;
-    // District oversight only (Full Access; not hasAdminAccess). Building
-    // Administrators manage their own windows, like any observer.
-    const isAdmin = await callerMeetsAccessLevel(getFirestore(), {
-      email: callerEmail,
-      tokenRole: callerRole,
-      level: 'oversight',
-    });
-
     const parsed = assignObservationFromPreferenceInput.safeParse(request.data);
     if (!parsed.success) {
       throw new HttpsError('invalid-argument', parsed.error.issues[0]?.message ?? 'Invalid input');
@@ -70,14 +61,23 @@ export const assignObservationFromPreference = onCall(
     const slotRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.slots).doc(input.slotId);
     const prefRef = windowRef.collection(WINDOW_SUBCOLLECTIONS.preferences).doc(staffEmail);
 
+    // Authorize the caller before reading anything about the assignee: the
+    // scope check below names the assignee and why they can't be observed,
+    // which only the window's observer or oversight may learn.
+    const scopeWindowSnap = await windowRef.get();
+    if (!scopeWindowSnap.exists) throw new HttpsError('not-found', 'Window not found');
+    const scopeWindow = scopeWindowSnap.data() as ObservationWindow;
+    const isAdmin = await assertCanManageWindow(db, {
+      callerEmail,
+      tokenRole: request.auth.token['role'] as string | undefined,
+      window: scopeWindow,
+      message: 'Only the window observer or an admin may assign',
+    });
+
     // A building Administrator's window only assigns staff they can still
     // observe (see bookObservationSlot).
-    const [scopeWindowSnap, assigneeSnap] = await Promise.all([
-      windowRef.get(),
-      db.collection(COLLECTIONS.staff).doc(staffEmail).get(),
-    ]);
-    if (scopeWindowSnap.exists && assigneeSnap.exists) {
-      const scopeWindow = scopeWindowSnap.data() as ObservationWindow;
+    const assigneeSnap = await db.collection(COLLECTIONS.staff).doc(staffEmail).get();
+    if (assigneeSnap.exists) {
       assertCanObserveAll(await loadObserverScope(db, scopeWindow.observerEmail), [
         assigneeSnap.data() as Staff,
       ]);
