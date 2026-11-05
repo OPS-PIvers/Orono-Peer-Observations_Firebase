@@ -74,9 +74,18 @@ export function withSavedAnswers(
   return out;
 }
 
-/** Record a Goals response the teacher just saved. */
+/** Record a Goals response the teacher is saving. Called when the write is
+ *  issued, like rememberSavedAnswers, so reopening the observation before
+ *  the write is acknowledged still shows it. */
 export function rememberSavedGoals(observationId: string, saved: TiptapDoc | null): void {
   goals.set(observationId, saved);
+}
+
+/** Forget a Goals response whose write failed, unless a later save replaced it. */
+export function forgetSavedGoals(observationId: string, failed: TiptapDoc | null): void {
+  if (goals.has(observationId) && goals.get(observationId) === failed) {
+    goals.delete(observationId);
+  }
 }
 
 /** The Goals response to show: the teacher's own save until the read copy
