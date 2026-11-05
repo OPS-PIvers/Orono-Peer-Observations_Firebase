@@ -677,10 +677,40 @@ describe('observations: update', () => {
     await assertFails(deleteDoc(doc(db, 'observations/obs1')));
   });
 
+  it('Full Access CANNOT read their own Draft directly (Draft privacy)', async () => {
+    await seedDraftObs('selfObs', { observedEmail: 'fullaccess@orono.k12.mn.us' });
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
+    await assertFails(getDoc(doc(db, 'observations/selfObs')));
+    // Finalized, it's theirs to read like any observed teacher's.
+    await seedDraftObs('selfFin', {
+      observedEmail: 'fullaccess@orono.k12.mn.us',
+      status: 'Finalized',
+      finalizedAt: new Date(),
+    });
+    await assertSucceeds(getDoc(doc(db, 'observations/selfFin')));
+    // Everyone else's Draft is still readable through oversight.
+    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('a View As grant CANNOT read their own Draft directly', async () => {
+    const email = 'viewer@orono.k12.mn.us';
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'staff', email), {
+        email,
+        role: 'teacher',
+        isActive: true,
+        canViewAs: true,
+      });
+    });
+    await seedDraftObs('viewerSelf', { observedEmail: email });
+    const db = testEnv.authenticatedContext('v', claims.teacher(email)).firestore();
+    await assertFails(getDoc(doc(db, 'observations/viewerSelf')));
+    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
+  });
+
   it('Full Access CANNOT edit or delete an observation of themselves', async () => {
     await seedDraftObs('selfObs', { observedEmail: 'fullaccess@orono.k12.mn.us' });
     const db = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
-    await assertSucceeds(getDoc(doc(db, 'observations/selfObs')));
     await assertFails(
       updateDoc(doc(db, 'observations/selfObs'), { observationDate: '2026-10-02' }),
     );
