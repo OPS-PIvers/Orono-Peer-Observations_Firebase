@@ -5,7 +5,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedFullAccessStaff, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
 
@@ -20,6 +20,7 @@ const ADMIN = 'principal@orono.k12.mn.us';
 
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedFullAccessStaff(testEnv);
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'staff', ADMIN), { role: 'administrator', buildings: ['High School'] });

@@ -75,12 +75,15 @@ service cloud.firestore {
         && isActiveStaff();
     }
 
-    // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
-    // Administrator with hasAdminAccess from one without, so only that case
-    // pays for a staff-doc read.
+    // Mirrors canOpenAdminConsole in @ops/shared, checked against the live
+    // staff doc rather than the claims: a token minted before hasAdminAccess
+    // was removed (or Full Access demoted) still says isAdmin until it
+    // refreshes, and console admins can write /staff — including their own
+    // doc — so trusting the claim would let them restore the grant. The doc
+    // is already fetched by isActiveStaff(), so this costs no extra read.
     function isConsoleAdmin() {
       return isAdmin()
-        && (role() != 'administrator'
+        && (staffDocData().get('role', null) == 'full-access'
             || staffDocData().get('hasAdminAccess', false) == true);
     }
 
