@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   /** The observation as a fresh read returns it; undefined = deleted. */
   current: undefined as Record<string, unknown> | undefined,
   transactions: 0,
+  /** Whether /teacherViews/obs1 exists for the skip check. */
+  viewExists: true,
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -28,6 +30,7 @@ vi.mock('firebase-admin/firestore', () => ({
           ? {
               set: (...args: unknown[]) => state.set?.(id, ...args),
               delete: () => state.del?.(id),
+              get: () => Promise.resolve({ exists: state.viewExists }),
             }
           : { get: () => Promise.resolve({ data: () => state.current }) },
     }),
@@ -95,6 +98,7 @@ const base = {
 const written = () => state.set?.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
 
 beforeEach(() => {
+  state.viewExists = true;
   state.set = vi.fn().mockResolvedValue(undefined);
   state.del = vi.fn().mockResolvedValue(undefined);
 });
@@ -125,6 +129,13 @@ describe('handleTeacherView', () => {
     );
     expect(state.set).not.toHaveBeenCalled();
     expect(state.del).not.toHaveBeenCalled();
+  });
+
+  it('writes a missing view even when the change is hidden', async () => {
+    state.viewExists = false;
+    await write(base, { ...base, observationData: { c1: { proficiency: 'proficient' } } });
+    expect(state.set).toHaveBeenCalledTimes(1);
+    expect(written()).not.toHaveProperty('observationData');
   });
 
   it('writes when the same change is made with ratings shared', async () => {

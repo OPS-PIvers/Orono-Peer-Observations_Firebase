@@ -59,11 +59,17 @@ export async function handleTeacherView(
     return;
   }
 
-  // Most autosaves change only content the teacher can't see; skip those.
+  // Most autosaves change only content the teacher can't see; skip those,
+  // unless the view is missing. The teacher can't read a Draft observation
+  // (firestore.rules), so a view lost to a failed earlier run would lock
+  // them out of it; any later write repairs it. (No `retry` on this
+  // trigger: a new failure policy makes the non-interactive deploy demand
+  // --force.)
   if (
     before &&
     stableStringify(teacherViewOf(before, observationId)) ===
-      stableStringify(teacherViewOf(after, observationId))
+      stableStringify(teacherViewOf(after, observationId)) &&
+    (await viewRef.get()).exists
   ) {
     return;
   }
