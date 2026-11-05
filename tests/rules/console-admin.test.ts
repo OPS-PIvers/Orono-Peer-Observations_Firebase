@@ -50,6 +50,9 @@ beforeEach(async () => {
     ...teacher('pe@orono.k12.mn.us', ['OMS']),
     role: 'peer-evaluator',
   });
+  await seed('roles/teacher', { roleId: 'teacher', displayName: 'Teacher' });
+  await seed('roles/counselor', { roleId: 'counselor', displayName: 'Counselor' });
+  await seed('roles/full-access', { roleId: 'full-access', displayName: 'Full Access' });
 });
 
 async function seed(path: string, data: Record<string, unknown>) {
@@ -173,6 +176,35 @@ describe('/staff — building Administrator', () => {
     await assertFails(updateDoc(doc(db, 'staff/ann@orono.k12.mn.us'), { role: 'full-access' }));
     await assertFails(updateDoc(doc(db, 'staff/ann@orono.k12.mn.us'), { role: 'administrator' }));
     await assertFails(updateDoc(doc(db, 'staff/pe@orono.k12.mn.us'), { role: 'teacher' }));
+  });
+
+  it('can only assign a known, non-special role id', async () => {
+    const db = principalDb();
+    const ann = doc(db, 'staff/ann@orono.k12.mn.us');
+    await assertSucceeds(updateDoc(ann, { role: 'counselor' }));
+    // Display-name and padded forms the console's role-slug tools would
+    // resolve to a special slug, plus ids with no /roles doc.
+    for (const role of ['Full Access', 'peer evaluator', ' administrator', 'bogus', '', 7]) {
+      await assertFails(updateDoc(ann, { role }));
+      await assertFails(
+        setDoc(doc(db, 'staff/new@orono.k12.mn.us'), {
+          ...teacher('new@orono.k12.mn.us', ['OMS']),
+          role,
+        }),
+      );
+    }
+  });
+
+  it('still edits someone whose stored role has no /roles doc', async () => {
+    await seed('staff/leg@orono.k12.mn.us', {
+      ...teacher('leg@orono.k12.mn.us', ['OMS']),
+      role: 'Legacy Para',
+    });
+    const db = principalDb();
+    const leg = doc(db, 'staff/leg@orono.k12.mn.us');
+    await assertSucceeds(updateDoc(leg, { year: 2, isActive: false }));
+    await assertFails(updateDoc(leg, { role: 'Full Access' }));
+    await assertSucceeds(updateDoc(leg, { role: 'teacher' }));
   });
 
   it('cannot promote themselves', async () => {
