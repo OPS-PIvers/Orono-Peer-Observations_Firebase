@@ -38,7 +38,8 @@ export function ownDraftGate(
   if (scope.observedEmail) {
     // Someone else's observations can't be the reader's own; the reader's
     // own are readable once Finalized.
-    return scope.observedEmail === readerEmail ? [where('status', '==', finalized)] : [];
+    const own = scope.observedEmail.toLowerCase() === readerEmail.toLowerCase();
+    return own ? [where('status', '==', finalized)] : [];
   }
   // Any other status filter is a non-Finalized one, so the reader's own
   // observations can't match it at all.
