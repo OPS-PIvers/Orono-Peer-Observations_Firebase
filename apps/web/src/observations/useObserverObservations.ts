@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { limit, where, type QueryConstraint } from 'firebase/firestore';
 import { COLLECTIONS, toDate, type Observation } from '@ops/shared';
+import { useAuth } from '@/auth/AuthProvider';
 import { useObservationOversight } from '@/auth/observationOversight';
-import { useEffectiveEmail } from '@/dev/DevModeContext';
+import { useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import { ownDraftGate, withGate } from './ownDraftGate';
 
 type Row = Observation & { id: string };
 
@@ -26,48 +28,66 @@ const lastModifiedMs = (o: Row) => toDate(o.lastModifiedAt)?.getTime() ?? 0;
  * shared with them as co-observer, merged newest first. Rules aren't
  * filters, so the observer scope has to be part of each query.
  *
- * `filters` are extra where() clauses (status, observedEmail); `orderBy`
- * must be on lastModifiedAt desc so the merge order matches.
+ * `status` and `observedEmail` narrow every query; `orderBy` must be on
+ * lastModifiedAt desc so the merge order matches.
+ *
+ * A reader who gets in through canReadAllObservations() (the oversight
+ * query, or any query while viewing as someone else) may not list their own
+ * Draft observations, so those queries also carry {@link ownDraftGate}.
  */
 export function useObserverObservations(args: {
   enabled: boolean;
-  filters: QueryConstraint[];
+  status?: string | null;
+  observedEmail?: string | null;
   orderBy: QueryConstraint;
   pageSize: number;
   keyParts: readonly (string | number | boolean)[];
 }): ObserverObservationsResult {
-  const { enabled, filters, orderBy, pageSize, keyParts } = args;
+  const { enabled, status = null, observedEmail = null, orderBy, pageSize, keyParts } = args;
   const me = useEffectiveEmail();
+  const { user } = useAuth();
+  const readerEmail = user?.email ?? null;
+  const viewingAs = useIsViewingAs();
   const { allowed: oversight, loading: accessLoading } = useObservationOversight();
   const ready = enabled && !accessLoading && !!me;
 
-  const allConstraints = useMemo(
-    () => [...filters, orderBy, limit(pageSize)],
-    [filters, orderBy, pageSize],
-  );
-  const ownConstraints = useMemo(
-    () => [where('observerEmail', '==', me), ...filters, orderBy, limit(pageSize)],
-    [me, filters, orderBy, pageSize],
-  );
-  const sharedConstraints = useMemo(
-    () => [where('coObserverEmails', 'array-contains', me), ...filters, orderBy, limit(pageSize)],
-    [me, filters, orderBy, pageSize],
-  );
+  const allConstraints = useMemo(() => {
+    const filters = scopeFilters(status, observedEmail);
+    const gate = ownDraftGate(readerEmail, { status, observedEmail });
+    return [...withGate(filters, gate), orderBy, limit(pageSize)];
+  }, [status, observedEmail, readerEmail, orderBy, pageSize]);
+  // Own and shared queries pass on the reader's own access, except while
+  // viewing as someone else, when they read through View As.
+  const ownConstraints = useMemo(() => {
+    const filters = [where('observerEmail', '==', me), ...scopeFilters(status, observedEmail)];
+    const gate = viewingAs ? ownDraftGate(readerEmail, { status, observedEmail }) : [];
+    return [...withGate(filters, gate), orderBy, limit(pageSize)];
+  }, [me, status, observedEmail, viewingAs, readerEmail, orderBy, pageSize]);
+  const sharedConstraints = useMemo(() => {
+    const filters = [
+      where('coObserverEmails', 'array-contains', me),
+      ...scopeFilters(status, observedEmail),
+    ];
+    const gate = viewingAs ? ownDraftGate(readerEmail, { status, observedEmail }) : [];
+    return [...withGate(filters, gate), orderBy, limit(pageSize)];
+  }, [me, status, observedEmail, viewingAs, readerEmail, orderBy, pageSize]);
+  const gateKey = viewingAs || oversight ? (readerEmail ?? '') : '';
+  const parts = [...keyParts, status ?? '', observedEmail ?? '', gateKey];
 
   const all = useFirestoreCollection<Observation>(
     ready && oversight ? COLLECTIONS.observations : '',
     allConstraints,
-    ['all', ...keyParts, pageSize],
+    ['all', ...parts, pageSize],
   );
   const own = useFirestoreCollection<Observation>(
     ready && !oversight ? COLLECTIONS.observations : '',
     ownConstraints,
-    ['own', me, ...keyParts, pageSize],
+    ['own', me, ...parts, pageSize],
   );
   const shared = useFirestoreCollection<Observation>(
     ready && !oversight ? COLLECTIONS.observations : '',
     sharedConstraints,
-    ['shared', me, ...keyParts, pageSize],
+    ['shared', me, ...parts, pageSize],
   );
 
   return useMemo<ObserverObservationsResult>(() => {
@@ -94,4 +114,11 @@ export function useObserverObservations(args: {
       oversight,
     };
   }, [oversight, all, own, shared, pageSize]);
+}
+
+function scopeFilters(status: string | null, observedEmail: string | null) {
+  return [
+    ...(status ? [where('status', '==', status)] : []),
+    ...(observedEmail ? [where('observedEmail', '==', observedEmail)] : []),
+  ];
 }

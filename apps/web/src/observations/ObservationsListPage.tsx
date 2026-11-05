@@ -1,15 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
-import {
-  type QueryConstraint,
-  collection,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  where,
-} from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, where } from 'firebase/firestore';
 import {
   COLLECTIONS,
   OBSERVATION_STATUS,
@@ -20,14 +12,20 @@ import {
   type Role,
   displayYear,
 } from '@ops/shared';
-import { useEffectiveClaims, useEffectiveEmail } from '@/dev/DevModeContext';
+import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
 import { db } from '@/lib/firebase';
 import { PageHeader } from '@/components/PageHeader';
 import { Skeleton } from '@/components/Skeleton';
-import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
+import {
+  buildQuery,
+  useFirestoreCollection,
+  type CollectionConstraint,
+} from '@/hooks/useFirestoreCollection';
 import { useNewObservationsDisabled } from '@/hooks/useNewObservationsDisabled';
 import { roleDisplayName } from '@/utils/roleLookup';
 import { showsObservationTypes } from './observationTypeLabels';
+import { ownDraftGate, withGate, type ObservationListScope } from './ownDraftGate';
 import { useObserverObservations } from './useObserverObservations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +65,8 @@ const LAST_MODIFIED_DESC = orderBy('lastModifiedAt', 'desc');
 export function ObservationsListPage() {
   const { role } = useEffectiveClaims();
   const myEmail = useEffectiveEmail();
+  const viewingAs = useIsViewingAs();
+  const readerEmail = useAuth().user?.email ?? null;
   const showTypes = showsObservationTypes(role);
   const newObservationsDisabled = useNewObservationsDisabled();
   // Building Administrators start observations from My Staff, not the
@@ -96,10 +96,6 @@ export function ObservationsListPage() {
     setPageSize(PAGE_SIZE);
   }, [statusFilter, myEmail]);
 
-  const statusFilters = useMemo<QueryConstraint[]>(
-    () => (statusFilter === 'all' ? [] : [where('status', '==', statusFilter)]),
-    [statusFilter],
-  );
   const {
     data: observations,
     loading,
@@ -108,7 +104,7 @@ export function ObservationsListPage() {
     oversight: isAdmin,
   } = useObserverObservations({
     enabled: true,
-    filters: statusFilters,
+    status: statusFilter === 'all' ? null : statusFilter,
     orderBy: LAST_MODIFIED_DESC,
     pageSize,
     keyParts: [statusFilter],
@@ -169,19 +165,31 @@ export function ObservationsListPage() {
           qLower.replace(/(^|\s)(\S)/g, (_m, ws: string, ch: string) => ws + ch.toUpperCase()),
         ]),
       );
-      const queryPlans: QueryConstraint[][] = [
+      // Admins (and anyone viewing as someone) read through the oversight
+      // rule, which leaves out the reader's own Drafts (ownDraftGate).
+      const gated = isAdmin || viewingAs;
+      const gateFor = (scopeOf: ObservationListScope) =>
+        gated ? ownDraftGate(readerEmail, scopeOf) : [];
+      const queryPlans: CollectionConstraint[][] = [
         [
-          ...(scope ? [scope] : []),
-          where('observedEmail', '==', qLower),
+          ...withGate(
+            [...(scope ? [scope] : []), where('observedEmail', '==', qLower)],
+            gateFor({ observedEmail: qLower }),
+          ),
           limit(EXTRA_SEARCH_LIMIT),
         ],
       ];
       for (const prefix of prefixVariants) {
         for (const field of ['observedName', 'observationName'] as const) {
           queryPlans.push([
-            ...(scope ? [scope] : []),
-            where(field, '>=', prefix),
-            where(field, '<=', prefix + '\uf8ff'),
+            ...withGate(
+              [
+                ...(scope ? [scope] : []),
+                where(field, '>=', prefix),
+                where(field, '<=', prefix + '\uf8ff'),
+              ],
+              gateFor({}),
+            ),
             orderBy(field),
             limit(EXTRA_SEARCH_LIMIT),
           ]);
@@ -190,10 +198,13 @@ export function ObservationsListPage() {
       // observerEmail exact-match is only a distinct query when the view
       // isn't already scoped to "mine" — otherwise it's redundant with scope.
       if (!scope) {
-        queryPlans.push([where('observerEmail', '==', qLower), limit(EXTRA_SEARCH_LIMIT)]);
+        queryPlans.push([
+          ...withGate([where('observerEmail', '==', qLower)], gateFor({})),
+          limit(EXTRA_SEARCH_LIMIT),
+        ]);
       }
 
-      const snaps = await Promise.all(queryPlans.map((cs) => getDocs(query(ref, ...cs))));
+      const snaps = await Promise.all(queryPlans.map((cs) => getDocs(buildQuery(ref, cs))));
       const loadedIds = new Set((observations ?? []).map((o) => o.id));
       const merged = new Map<string, ObservationRow>();
       for (const snap of snaps) {

@@ -13,9 +13,13 @@ const state = vi.hoisted(() => ({
   docs: new Map<string, DocState>(),
   subscribed: [] as string[],
   dev: { viewAsEmail: null as string | null, effectiveEmail: 'teacher@orono.k12.mn.us' },
+  readerEmail: 'teacher@orono.k12.mn.us',
 }));
 
 vi.mock('@/dev/DevModeContext', () => ({ useDevMode: () => state.dev }));
+vi.mock('@/auth/AuthProvider', () => ({
+  useAuth: () => ({ user: { email: state.readerEmail } }),
+}));
 vi.mock('./useFirestoreDoc', () => ({
   useFirestoreDoc: (path: string) => {
     if (!path) return { data: null, loading: true, error: null };
@@ -24,7 +28,12 @@ vi.mock('./useFirestoreDoc', () => ({
   },
 }));
 
-import { asViewedObservation, useReadsTeacherViews, useViewerObservation } from './useTeacherView';
+import {
+  asViewedObservation,
+  useHidesOwnDrafts,
+  useReadsTeacherViews,
+  useViewerObservation,
+} from './useTeacherView';
 
 const VIEW = `${COLLECTIONS.teacherViews}/obs1`;
 const OBS = `${COLLECTIONS.observations}/obs1`;
@@ -151,5 +160,20 @@ describe('asViewedObservation', () => {
   it('leaves a doc that already has lastModifiedAt alone', () => {
     const doc = { id: 'obs-1', lastModifiedAt: new Date(1) } as unknown as Observation;
     expect(asViewedObservation(doc)).toBe(doc);
+  });
+});
+
+describe('useHidesOwnDrafts', () => {
+  it("hides the reader's own Drafts only while viewing as someone else", () => {
+    state.readerEmail = 'Admin@orono.k12.mn.us';
+    state.dev = { viewAsEmail: 'pe@orono.k12.mn.us', effectiveEmail: 'pe@orono.k12.mn.us' };
+    expect(renderHook(() => useHidesOwnDrafts('admin@orono.k12.mn.us')).result.current).toBe(true);
+    expect(renderHook(() => useHidesOwnDrafts('teacher@orono.k12.mn.us')).result.current).toBe(
+      false,
+    );
+    state.dev = { viewAsEmail: null, effectiveEmail: 'admin@orono.k12.mn.us' };
+    expect(renderHook(() => useHidesOwnDrafts('admin@orono.k12.mn.us')).result.current).toBe(false);
+    state.readerEmail = 'teacher@orono.k12.mn.us';
+    state.dev = { viewAsEmail: null, effectiveEmail: 'teacher@orono.k12.mn.us' };
   });
 });

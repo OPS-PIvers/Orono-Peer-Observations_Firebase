@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { limit, orderBy, where } from 'firebase/firestore';
 import { COLLECTIONS, OBSERVATION_STATUS, OBSERVATION_TYPES, type Observation } from '@ops/shared';
 import { useFirestoreCollection } from './useFirestoreCollection';
-import { asViewedObservation, useReadsTeacherViews } from './useTeacherView';
+import { asViewedObservation, useHidesOwnDrafts, useReadsTeacherViews } from './useTeacherView';
 
 /**
  * Returns the most recent Draft Standard observation where the current
@@ -34,8 +34,14 @@ export function useActiveStandardObservation(
   // (Draft privacy); an observer or admin looking at someone reads the
   // observations their access covers.
   const ownDrafts = useReadsTeacherViews(observedEmail) && !observerEmail;
+  // Viewing as someone, the reader's own Drafts stay out of reach.
+  const hidden = useHidesOwnDrafts(observedEmail);
   const { data, loading, error } = useFirestoreCollection<Observation>(
-    observedEmail ? (ownDrafts ? COLLECTIONS.teacherViews : COLLECTIONS.observations) : '',
+    observedEmail && !hidden
+      ? ownDrafts
+        ? COLLECTIONS.teacherViews
+        : COLLECTIONS.observations
+      : '',
     constraints,
     // Disambiguate by email and type: the hook keys on constraint types only,
     // so the three active-observation hooks would otherwise share one cache
