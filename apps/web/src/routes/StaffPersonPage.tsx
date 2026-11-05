@@ -116,14 +116,13 @@ export function StaffPersonPage() {
 
   // Only observations the viewer created or co-observes (everything for
   // console admins) — see useObserverObservations and the /observations rules.
-  const obsFilters = useMemo(() => (email ? [where('observedEmail', '==', email)] : []), [email]);
   const {
     data: observations,
     hasMore: obsHasMore,
     error: obsError,
   } = useObserverObservations({
     enabled: !!email,
-    filters: obsFilters,
+    observedEmail: email ?? null,
     orderBy: OBS_ORDER,
     pageSize: obsPageSize,
     keyParts: [email ?? ''],
