@@ -46,10 +46,10 @@ const caller = (extra: Record<string, unknown> = {}) => ({ token: { email: VIEWE
 const granted = { [VIEWER]: { canViewAsEdit: true, isActive: true } };
 
 describe('handleStartViewAsEdit', () => {
-  it('mints a demo-edit token for an Administrator and audit-logs it', async () => {
+  it('mints a demo-edit token for a demo Administrator and audit-logs it', async () => {
     const { db, auth, added, createCustomToken } = setup({
       ...granted,
-      [ERIN]: { role: 'administrator', isActive: true },
+      [ERIN]: { role: 'administrator', isActive: true, isDemo: true },
     });
     await expect(handleStartViewAsEdit(db, auth, caller(), { email: ERIN })).resolves.toEqual({
       token: 'custom-token',
@@ -69,7 +69,10 @@ describe('handleStartViewAsEdit', () => {
   });
 
   it('only signs in as Administrators or Peer Evaluators', async () => {
-    for (const target of [{ role: 'full-access' }, { role: 'teacher' }]) {
+    for (const target of [
+      { role: 'full-access', isDemo: true },
+      { role: 'teacher', isDemo: true },
+    ]) {
       const { db, auth } = setup({ ...granted, [ERIN]: target });
       await expect(
         handleStartViewAsEdit(db, auth, caller(), { email: ERIN }),
@@ -77,18 +80,23 @@ describe('handleStartViewAsEdit', () => {
     }
   });
 
-  it('allows an Administrator who also has Admin Console access', async () => {
-    const { db, auth } = setup({
-      ...granted,
-      [ERIN]: { role: 'administrator', hasAdminAccess: true, isActive: true },
-    });
-    await expect(handleStartViewAsEdit(db, auth, caller(), { email: ERIN })).resolves.toEqual({
-      token: 'custom-token',
-    });
+  it('never signs in as a real (non-demo) Administrator or Peer Evaluator', async () => {
+    for (const target of [
+      { role: 'administrator', isActive: true },
+      { role: 'administrator', hasAdminAccess: true, isActive: true },
+      { role: 'peer-evaluator', isActive: true, isDemo: false },
+    ]) {
+      const { db, auth, added, createCustomToken } = setup({ ...granted, [ERIN]: target });
+      await expect(
+        handleStartViewAsEdit(db, auth, caller(), { email: ERIN }),
+      ).rejects.toMatchObject({ code: 'failed-precondition' });
+      expect(createCustomToken).not.toHaveBeenCalled();
+      expect(added).toEqual([]);
+    }
   });
 
   it('cannot be chained from inside a demo-edit session', async () => {
-    const { db, auth } = setup({ ...granted, [ERIN]: { role: 'administrator' } });
+    const { db, auth } = setup({ ...granted, [ERIN]: { role: 'administrator', isDemo: true } });
     await expect(
       handleStartViewAsEdit(db, auth, caller({ demoEditBy: 'x@orono.k12.mn.us' }), {
         email: ERIN,

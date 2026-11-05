@@ -278,3 +278,66 @@ describe('/staff — building Administrator', () => {
     await assertSucceeds(updateDoc(doc(db, 'staff/ann@orono.k12.mn.us'), { hasAdminAccess: true }));
   });
 });
+
+// A token minted before console access was revoked still carries isAdmin
+// (and the old role) until it refreshes. The live staff doc must win, or the
+// holder could write their own grant back and onStaffWritten would re-mint it.
+describe('revoked console access with a pre-revocation token', () => {
+  const ANN = 'ann@orono.k12.mn.us';
+  const FA = 'fa@orono.k12.mn.us';
+
+  it('a teacher whose hasAdminAccess was removed loses the console', async () => {
+    // Live doc: plain teacher (hasAdminAccess: false). Token: still isAdmin.
+    const db = testEnv
+      .authenticatedContext('ann', {
+        ...claims.teacher(ANN),
+        hasSpecialAccess: true,
+        isAdmin: true,
+      })
+      .firestore();
+    await assertFails(updateDoc(doc(db, `staff/${ANN}`), { hasAdminAccess: true }));
+    await assertFails(updateDoc(doc(db, `staff/${ANN}`), { role: 'full-access' }));
+    await assertFails(updateDoc(doc(db, 'staff/hal@orono.k12.mn.us'), { canViewAs: true }));
+    await assertFails(setDoc(doc(db, 'roles/new'), { displayName: 'New' }));
+    await assertFails(setDoc(doc(db, 'appSettings/global'), { x: 1 }, { merge: true }));
+    await seed('auditLog/l', { action: 'x' });
+    await assertFails(getDoc(doc(db, 'auditLog/l')));
+  });
+
+  it('a demoted Full Access user loses the console', async () => {
+    await seed(`staff/${FA}`, teacher(FA, ['OMS']));
+    const db = testEnv.authenticatedContext('fa', claims.fullAccess(FA)).firestore();
+    await assertFails(updateDoc(doc(db, `staff/${FA}`), { role: 'full-access' }));
+    await assertFails(updateDoc(doc(db, `staff/${FA}`), { hasAdminAccess: true }));
+    await assertFails(deleteDoc(doc(db, 'staff/hal@orono.k12.mn.us')));
+    await assertFails(setDoc(doc(db, 'rubrics/new'), { displayName: 'New' }));
+  });
+
+  it('an Administrator whose hasAdminAccess was removed loses the console', async () => {
+    await seed(`staff/${CONSOLE_PRINCIPAL}`, {
+      email: CONSOLE_PRINCIPAL,
+      role: 'administrator',
+      buildings: ['OMS'],
+      hasAdminAccess: false,
+      isActive: true,
+    });
+    const db = consolePrincipalDb();
+    await assertFails(updateDoc(doc(db, `staff/${CONSOLE_PRINCIPAL}`), { hasAdminAccess: true }));
+    await assertFails(setDoc(doc(db, 'roles/new'), { displayName: 'New' }));
+  });
+
+  it('a live Full Access or hasAdminAccess doc keeps the console', async () => {
+    await seed(`staff/${FA}`, { ...teacher(FA, ['OMS']), role: 'full-access' });
+    const faDb = testEnv.authenticatedContext('fa', claims.fullAccess(FA)).firestore();
+    await assertSucceeds(setDoc(doc(faDb, 'roles/new'), { displayName: 'New' }));
+    await seed(`staff/${ANN}`, { ...teacher(ANN, ['OMS']), hasAdminAccess: true });
+    const annDb = testEnv
+      .authenticatedContext('ann', {
+        ...claims.teacher(ANN),
+        hasSpecialAccess: true,
+        isAdmin: true,
+      })
+      .firestore();
+    await assertSucceeds(setDoc(doc(annDb, 'rubrics/new'), { displayName: 'New' }));
+  });
+});
