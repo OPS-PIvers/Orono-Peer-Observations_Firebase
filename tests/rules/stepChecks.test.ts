@@ -127,15 +127,23 @@ describe('dashboard window query (sign-up fix)', () => {
         endDate: '2026-03-10',
         invitees: [],
       });
+      await setDoc(doc(ctx.firestore(), `windowInviteViews/w1_${TEACHER_EMAIL}`), {
+        windowId: 'w1',
+        email: TEACHER_EMAIL,
+        status: 'fully-booked',
+        endDate: '2026-03-10',
+        entries: [],
+      });
     });
   });
 
   // Mirrors useStaffCheckpoints' query (DASHBOARD_WINDOW_STATUSES), run by
   // the teacher on their dashboard and by an evaluator on StaffPersonPage.
+  // It reads the invitee's views: the window docs list every co-invitee.
   const dashboardWindowQuery = (db: ReturnType<typeof asTeacher>) =>
     query(
-      collection(db, 'observationWindows'),
-      where('invitedEmails', 'array-contains', TEACHER_EMAIL),
+      collection(db, 'windowInviteViews'),
+      where('email', '==', TEACHER_EMAIL),
       where('status', 'in', ['open', 'partially-booked', 'fully-booked', 'expired']),
     );
 
@@ -149,5 +157,16 @@ describe('dashboard window query (sign-up fix)', () => {
 
   it('another teacher cannot', async () => {
     await assertFails(getDocs(dashboardWindowQuery(asTeacher(OTHER_TEACHER_EMAIL))));
+  });
+
+  it('an invited teacher cannot query the window docs themselves', async () => {
+    await assertFails(
+      getDocs(
+        query(
+          collection(asTeacher(), 'observationWindows'),
+          where('invitedEmails', 'array-contains', TEACHER_EMAIL),
+        ),
+      ),
+    );
   });
 });
