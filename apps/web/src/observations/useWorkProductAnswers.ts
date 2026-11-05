@@ -12,6 +12,11 @@ import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
+import {
+  forgetSavedAnswers,
+  rememberSavedAnswers,
+  withSavedAnswers,
+} from '@/observations/pendingTeacherWrites';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -59,11 +64,16 @@ export function useWorkProductAnswers(
   useEffect(() => {
     questionsRef.current = questions;
   }, [questions]);
-  const stored = useMemo(() => {
-    const map = new Map<string, WorkProductAnswer>();
-    for (const a of observation?.workProductAnswers ?? []) map.set(a.questionId, a);
-    return map;
-  }, [observation?.workProductAnswers]);
+  // The teacher reads a server-written copy on a Draft, which trails their
+  // own saves by a moment; lay those saves over it (see pendingTeacherWrites).
+  const raw = useMemo(
+    () => (observation ? answersOf(observation) : new Map<string, WorkProductAnswer>()),
+    [observation],
+  );
+  const stored = useMemo(
+    () => (observation ? withSavedAnswers(observation.id, raw) : raw),
+    [observation, raw],
+  );
 
   const liveDocs = useMemo(() => {
     const out: Record<string, TiptapDoc> = {};
@@ -90,7 +100,9 @@ export function useWorkProductAnswers(
   const hydratedRef = useRef(false);
   useHydratedDraft(observation?.id ?? null, observation, (src) => {
     const next: Record<string, TiptapDoc> = {};
-    for (const a of src.workProductAnswers ?? []) next[a.questionId] = answerToTiptapDoc(a.answer);
+    for (const [id, a] of withSavedAnswers(src.id, answersOf(src))) {
+      next[id] = answerToTiptapDoc(a.answer);
+    }
     localRef.current = next;
     hydratedRef.current = true;
     setLocalDocs(next);
@@ -102,10 +114,10 @@ export function useWorkProductAnswers(
   // `updatedAt` — the whole array is rewritten on every save, and stamping
   // untouched answers would make them look edited after finalize.
   const dirtyRef = useRef(new Set<string>());
-  const storedRef = useRef(stored);
+  const rawRef = useRef(raw);
   useEffect(() => {
-    storedRef.current = stored;
-  }, [stored]);
+    rawRef.current = raw;
+  }, [raw]);
 
   const flushNow = useCallback((): Promise<void> => {
     if (!observationId) return Promise.resolve();
@@ -116,9 +128,14 @@ export function useWorkProductAnswers(
     // writes the local text rather than the stored answer.
     const dirty = dirtyRef.current;
     dirtyRef.current = new Set();
+    // The base for untouched answers is the stored copy with this tab's own
+    // saves laid over it, taken now: the teacher's Draft copy may not have
+    // caught up with a save made a moment ago, and no snapshot has arrived
+    // to refresh `stored` since.
+    const base = withSavedAnswers(observationId, rawRef.current);
     const next: WorkProductAnswer[] = [];
     for (const [questionId, answer] of Object.entries(localRef.current)) {
-      const previous = storedRef.current.get(questionId);
+      const previous = base.get(questionId);
       const question = questionsRef.current.find((q) => q.questionId === questionId);
       // An answer keeps the wording it was written against: only an answer
       // edited now takes the live question's text; an untouched one keeps
@@ -150,6 +167,11 @@ export function useWorkProductAnswers(
       // Never stored and never edited (an empty editor that only ever
       // mounted): nothing to persist.
     }
+    // Only what this save changed: untouched answers came from the stored
+    // copy and must not mask a newer one written elsewhere. Recorded now,
+    // not on the ack, so a flush issued before this one lands builds on it.
+    const edited = next.filter((a) => dirty.has(a.questionId));
+    rememberSavedAnswers(observationId, edited);
     setSaveState('saving');
     return setDoc(
       doc(db, COLLECTIONS.observations, observationId),
@@ -166,6 +188,7 @@ export function useWorkProductAnswers(
       })
       .catch((err: unknown) => {
         console.error('useWorkProductAnswers: autosave failed', err);
+        forgetSavedAnswers(observationId, edited);
         for (const questionId of dirty) dirtyRef.current.add(questionId);
         if (!mountedRef.current) return;
         setSaveState('error');
@@ -229,4 +252,12 @@ export function useWorkProductAnswers(
     () => ({ docs, stored, setAnswer, saveState, saveError, retry }),
     [docs, stored, setAnswer, saveState, saveError, retry],
   );
+}
+
+/** An observation's answers by question, as stored. Callers lay the
+ *  teacher's own recent saves over it with withSavedAnswers. */
+function answersOf(observation: Observation & { id: string }): Map<string, WorkProductAnswer> {
+  const map = new Map<string, WorkProductAnswer>();
+  for (const a of observation.workProductAnswers ?? []) map.set(a.questionId, a);
+  return map;
 }
