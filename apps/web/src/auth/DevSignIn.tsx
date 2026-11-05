@@ -24,6 +24,11 @@ const QUICK_USERS = [{ email: 'paul.ivers@orono.k12.mn.us', label: 'Paul Ivers (
 export function DevSignIn() {
   const navigate = useNavigate();
   const [email, setEmail] = useState(QUICK_USERS[0]?.email ?? '');
+  // Live mode only: the per-run code dev-auth-server prints to its terminal,
+  // as the #code=… of the link it prints. The fragment never leaves the browser.
+  const [code, setCode] = useState(
+    () => new URLSearchParams(window.location.hash.slice(1)).get('code') ?? '',
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +42,10 @@ export function DevSignIn() {
     try {
       const response = await fetch(DEV_AUTH_MINT_PATH, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(code ? { 'X-Dev-Auth-Code': code.trim() } : {}),
+        },
         body: JSON.stringify({ email: targetEmail }),
       });
       if (!response.ok) {
@@ -74,6 +82,20 @@ export function DevSignIn() {
         </header>
 
         <div className="space-y-2">
+          <p className="text-muted-foreground text-xs uppercase">
+            Sign-in code (live mode, printed by dev-auth-server)
+          </p>
+          <input
+            type="password"
+            autoComplete="off"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="border-input bg-background h-11 w-full rounded-md border px-3 text-sm"
+            placeholder="Not needed with the Auth emulator"
+          />
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
           <p className="text-muted-foreground text-xs uppercase">Quick users</p>
           {QUICK_USERS.map((u) => (
             <Button
