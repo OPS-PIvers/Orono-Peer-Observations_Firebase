@@ -89,6 +89,51 @@ describe('demo-edit sessions (View As + Edit)', () => {
     await assertFails(deleteDoc(doc(db, 'observations', 'realObs')));
   });
 
+  it("can't change a demo person's access fields, its own account's included", async () => {
+    // Console access, so the building-Administrator path's field list isn't
+    // what refuses these (and so the admin may edit its own doc at all).
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'staff', ADMIN), { hasAdminAccess: true });
+    });
+    const db = demoSession();
+    await assertSucceeds(updateDoc(doc(db, 'staff', ADMIN), { year: 3 }));
+    const flips = (hasAdminAccess: boolean) => [
+      { isDemo: false },
+      { role: 'full-access' },
+      { hasAdminAccess },
+      { canViewAs: true },
+      { canViewAsEdit: true },
+    ];
+    for (const change of flips(false)) {
+      await assertFails(updateDoc(doc(db, 'staff', ADMIN), change));
+    }
+    for (const change of flips(true)) {
+      await assertFails(updateDoc(doc(db, 'staff', DEMO), change));
+    }
+  });
+
+  it('can re-save a demo person with their access fields as they were', async () => {
+    // The Admin Console's staff form writes every flag, absent ones as false.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'staff', ADMIN), { hasAdminAccess: true });
+    });
+    const db = demoSession();
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'staff', DEMO),
+        {
+          year: 3,
+          role: 'teacher',
+          hasAdminAccess: false,
+          canViewAs: false,
+          canViewAsEdit: false,
+          isDemo: true,
+        },
+        { merge: true },
+      ),
+    );
+  });
+
   it('can edit the demo staff record but no one else, and nothing else', async () => {
     const db = demoSession();
     await assertSucceeds(updateDoc(doc(db, 'staff', DEMO), { year: 3 }));

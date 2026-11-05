@@ -236,6 +236,21 @@ service cloud.firestore {
       return resource.data.get(field, null) == request.resource.data.get(field, null);
     }
 
+    // unchanged() for a boolean flag that defaults to false when absent.
+    function unchangedFlag(field) {
+      return resource.data.get(field, false) == request.resource.data.get(field, false);
+    }
+
+    // A staff update leaves every field that decides access (claims, console,
+    // View As, demo confinement) as it was.
+    function keepsStaffAccess() {
+      return unchanged('role')
+        && unchangedFlag('isDemo')
+        && unchangedFlag('hasAdminAccess')
+        && unchangedFlag('canViewAs')
+        && unchangedFlag('canViewAsEdit');
+    }
+
     // --- Default deny --------------------------------------------------------
     // Anything not explicitly granted below is denied. Always.
     match /{document=**} {
@@ -258,8 +273,13 @@ service cloud.firestore {
       allow list: if hasSpecialAccess() || canReadAll();
       allow create: if (isConsoleAdmin() || buildingAdminCanCreateStaff(email))
         && notDemoEdit();
+      // A demo-edit session may edit demo people, but not their access
+      // fields: clearing isDemo would let a linked sign-in to that account
+      // escape confinement. Compared by value with the schema defaults, so
+      // an admin form re-saving an absent flag as false still goes through.
       allow update: if (isConsoleAdmin() || buildingAdminCanUpdateStaff())
-        && (notDemoEdit() || isDemoStaff(email));
+        && (notDemoEdit()
+            || (resource.data.get('isDemo', false) == true && keepsStaffAccess()));
       allow delete: if (isConsoleAdmin())
         && notDemoEdit();
 
