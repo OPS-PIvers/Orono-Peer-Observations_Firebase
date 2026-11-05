@@ -363,6 +363,16 @@ export const setCoObserversInput = z.object({
 });
 export type SetCoObserversInput = z.infer<typeof setCoObserversInput>;
 
+/** Input for the setDraftVisibility callable (owner or oversight, Draft
+ *  only): turn one sharing switch on or off. One flag per call, so two quick
+ *  clicks on different switches can't overwrite each other. */
+export const setDraftVisibilityInput = z.object({
+  observationId: z.string().min(1),
+  key: draftVisibility.keyof(),
+  value: z.boolean(),
+});
+export type SetDraftVisibilityInput = z.infer<typeof setDraftVisibilityInput>;
+
 /** Input for the removeEvidenceFile callable (observer-or-admin, draft-only
  *  unless admin — see removeEvidenceFile.ts for the full precondition). */
 export const removeEvidenceFileInput = z.object({
