@@ -3,7 +3,13 @@ import { onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, canOpenAdminConsole, type Role, type Staff } from '@ops/shared';
+import {
+  COLLECTIONS,
+  canOpenAdminConsole,
+  isSpecialRole,
+  type Role,
+  type Staff,
+} from '@ops/shared';
 
 if (getApps().length === 0) initializeApp();
 
@@ -51,6 +57,12 @@ export const migrateRolesToSlugs = onCall(
       knownSlugs.add(r.roleId);
       displayNameToSlug.set(r.displayName.trim().toLowerCase(), r.roleId);
     }
+    // A staff role is never promoted into a special role from a name-like
+    // value (e.g. "Full Access" → full-access): that would grant access no
+    // admin chose. Such rows are reported as unmatched for manual review.
+    const staffDisplayNameToSlug = new Map(
+      [...displayNameToSlug].filter(([, slug]) => !isSpecialRole(slug)),
+    );
 
     const result: MigrationResult = {
       staffMigrated: 0,
@@ -66,7 +78,7 @@ export const migrateRolesToSlugs = onCall(
       collectionName: COLLECTIONS.staff,
       field: 'role',
       knownSlugs,
-      displayNameToSlug,
+      displayNameToSlug: staffDisplayNameToSlug,
       onMigrated: () => {
         result.staffMigrated += 1;
       },

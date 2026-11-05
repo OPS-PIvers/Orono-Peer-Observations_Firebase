@@ -1,0 +1,110 @@
+import type { TiptapDoc, WorkProductAnswer } from '@ops/shared';
+
+/**
+ * The observed teacher's own saved answers, held until the copy they read
+ * shows them.
+ *
+ * On a Draft the teacher reads the teacher view, which a Cloud Function
+ * rewrites after each observation write, so for a moment after a save it
+ * still holds the old answers. Firestore's local echo can't cover that gap
+ * (the write goes to /observations, the read comes from /teacherViews).
+ * Without this, a second save in that window rewrites the whole answers
+ * array from the stale copy and undoes the first, and reopening the
+ * observation shows the old text. Each entry is dropped once the copy read
+ * from Firestore matches it, so it never outlives the lag.
+ *
+ * Module state, per observation id: it survives navigating between pages in
+ * this tab, which is the case that matters (a save flushes on unmount).
+ */
+const answers = new Map<string, Map<string, WorkProductAnswer>>();
+const goals = new Map<string, TiptapDoc | null>();
+
+/** JSON with object keys sorted. Firestore returns map keys in sorted order
+ *  while TipTap's getJSON() emits them in its own order, so a plain
+ *  stringify would never see a saved doc match its stored copy. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value ?? null, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
+
+/** Record answers the teacher is saving to the observation. Called when the
+ *  write is issued, like Firestore's own local echo, so a save issued before
+ *  this one is acknowledged already starts from it. */
+export function rememberSavedAnswers(
+  observationId: string,
+  saved: readonly WorkProductAnswer[],
+): void {
+  const mine = answers.get(observationId) ?? new Map<string, WorkProductAnswer>();
+  for (const a of saved) mine.set(a.questionId, a);
+  answers.set(observationId, mine);
+}
+
+/** Forget answers whose write failed, unless a later save replaced them. */
+export function forgetSavedAnswers(
+  observationId: string,
+  failed: readonly WorkProductAnswer[],
+): void {
+  const mine = answers.get(observationId);
+  if (!mine) return;
+  for (const a of failed) if (mine.get(a.questionId) === a) mine.delete(a.questionId);
+  if (mine.size === 0) answers.delete(observationId);
+}
+
+/**
+ * `stored` with the teacher's own saves laid over any entry the read copy
+ * hasn't caught up with yet. Entries the copy now matches are forgotten.
+ */
+export function withSavedAnswers(
+  observationId: string,
+  stored: ReadonlyMap<string, WorkProductAnswer>,
+): Map<string, WorkProductAnswer> {
+  const out = new Map(stored);
+  const mine = answers.get(observationId);
+  if (!mine) return out;
+  for (const [questionId, saved] of mine) {
+    if (same(stored.get(questionId)?.answer, saved.answer)) mine.delete(questionId);
+    else out.set(questionId, saved);
+  }
+  if (mine.size === 0) answers.delete(observationId);
+  return out;
+}
+
+/** Record a Goals response the teacher is saving. Called when the write is
+ *  issued, like rememberSavedAnswers, so reopening the observation before
+ *  the write is acknowledged still shows it. */
+export function rememberSavedGoals(observationId: string, saved: TiptapDoc | null): void {
+  goals.set(observationId, saved);
+}
+
+/** Forget a Goals response whose write failed, unless a later save replaced it. */
+export function forgetSavedGoals(observationId: string, failed: TiptapDoc | null): void {
+  if (goals.has(observationId) && goals.get(observationId) === failed) {
+    goals.delete(observationId);
+  }
+}
+
+/** The Goals response to show: the teacher's own save until the read copy
+ *  matches it, then the stored value. */
+export function withSavedGoals(
+  observationId: string,
+  stored: TiptapDoc | undefined,
+): TiptapDoc | undefined {
+  if (!goals.has(observationId)) return stored;
+  const saved = goals.get(observationId) ?? null;
+  if (same(stored, saved)) {
+    goals.delete(observationId);
+    return stored;
+  }
+  return saved ?? undefined;
+}
+
+/** Test hook: forget everything. */
+export function resetPendingTeacherWrites(): void {
+  answers.clear();
+  goals.clear();
+}

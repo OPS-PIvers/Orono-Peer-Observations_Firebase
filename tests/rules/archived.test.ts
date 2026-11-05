@@ -249,7 +249,7 @@ describe('demo-edit session whose driver was archived', () => {
     testEnv.authenticatedContext('pe', { ...claims.peerEval(PE), demoEditBy: DRIVER }).firestore();
 
   beforeEach(async () => {
-    await staff(PE, 'peer-evaluator', true);
+    await staff(PE, 'peer-evaluator', true, { isDemo: true });
   });
 
   it("loses the driven account's roster reads", async () => {

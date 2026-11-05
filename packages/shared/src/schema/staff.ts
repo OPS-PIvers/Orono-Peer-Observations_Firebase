@@ -60,12 +60,13 @@ export const staff = z.object({
    *  staff member. Reads everything (firestore.rules canReadAll); writes
    *  are blocked while viewing as. Set by console admins only. */
   canViewAs: z.boolean().default(false),
-  /** Adds "Edits" to View As: this person may sign in as an Administrator
-   *  or Peer Evaluator to demo the app, with every change limited to demo
-   *  staff (isDemo). Set by console admins only. */
+  /** Adds "Edits" to View As: this person may sign in as a demo (isDemo)
+   *  Administrator or Peer Evaluator to demo the app, with every change
+   *  limited to demo staff. Set by console admins only. */
   canViewAsEdit: z.boolean().default(false),
-  /** A demo person (e.g. Sample Teacher). Demo-edit sessions may only
-   *  change demo people's records, and email about them is suppressed. */
+  /** A demo person (e.g. Sample Teacher). Demo-edit sessions may only sign
+   *  in as and change demo people, and email about them is suppressed. A
+   *  demo account's own sign-in (without View As + Edit) gets no access. */
   isDemo: z.boolean().default(false),
   /** Self-service opt-in/out per non-critical email category (see
    *  emailTemplate.ts EMAIL_TRIGGER_CATEGORY). Missing/legacy docs parse as

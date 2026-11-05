@@ -5,6 +5,7 @@ import {
   CYCLE_STATUSES,
   cycleStatus,
   cycleStatusFields,
+  isSpecialRole,
   isStaffYear,
   isSummative,
   staffCycleStatus,
@@ -384,6 +385,21 @@ function resolveStaffRow(
   if (!name) errors.push('Name is required.');
 
   const roleId = resolveRole(raw.role, ctx.roles, errors);
+  // An unmapped stored role (e.g. "Full Access") exports as-is and would
+  // resolve to its special slug here, granting access nobody chose. Promote
+  // such people from their Staff page instead.
+  const existing = ctx.existingByEmail.get(email);
+  if (
+    existing &&
+    isSpecialRole(roleId) &&
+    existing.role !== roleId &&
+    !ctx.roles.some((r) => r.roleId === existing.role)
+  ) {
+    errors.push(
+      `Current role "${existing.role}" isn't a known role, so it can't be changed to a ` +
+        `special role by import — set it on this person's Staff page.`,
+    );
+  }
   const year = resolveYear(raw.year, errors);
   // summativeYear is only read to derive a missing status; the written value
   // always follows the status.

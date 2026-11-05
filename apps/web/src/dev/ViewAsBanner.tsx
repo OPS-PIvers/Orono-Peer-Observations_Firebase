@@ -25,7 +25,7 @@ const startViewAsEditFn = httpsCallable<{ email: string }, { token: string }>(
   'startViewAsEdit',
 );
 
-/** Roles Edits can be turned on for (mirrors startViewAsEdit). */
+/** Roles Edits can be turned on for, demo people only (mirrors startViewAsEdit). */
 const EDITABLE_ROLES: readonly string[] = [
   SPECIAL_ROLES.administrator,
   SPECIAL_ROLES.peerEvaluator,
@@ -81,7 +81,8 @@ export function ViewAsBanner() {
         .filter(Boolean)
         .join(' · ')
     : null;
-  const canEditThisPerson = canEditAs && !!viewAsStaff && EDITABLE_ROLES.includes(viewAsStaff.role);
+  const canEditThisPerson =
+    canEditAs && !!viewAsStaff && viewAsStaff.isDemo && EDITABLE_ROLES.includes(viewAsStaff.role);
 
   async function startEditing() {
     if (!viewAsEmail) return;

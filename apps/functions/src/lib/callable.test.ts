@@ -59,8 +59,30 @@ describe('onCall wrapper', () => {
   });
 
   it('lets opted-in callables run in demo-edit sessions', async () => {
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isDemo: true };
+    live.staff['viewer@orono.k12.mn.us'] = { canViewAsEdit: true };
     const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
     await expect(fn({ auth: demoAuth })).resolves.toBe('ran');
+  });
+
+  it("refuses a demo-edit session once the driver's grant is removed", async () => {
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isDemo: true };
+    live.staff['viewer@orono.k12.mn.us'] = { canViewAs: true, canViewAsEdit: false };
+    const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
+    await expect(fn({ auth: demoAuth })).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('refuses a demo-edit session on a real (non-demo) account', async () => {
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isActive: true };
+    live.staff['viewer@orono.k12.mn.us'] = { canViewAsEdit: true };
+    const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
+    await expect(fn({ auth: demoAuth })).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('refuses a demo account signed in without View As + Edit', async () => {
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isDemo: true };
+    const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
+    await expect(fn({ auth: normalAuth })).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('refuses an archived caller whose token still says full-access', async () => {
@@ -75,8 +97,8 @@ describe('onCall wrapper', () => {
   });
 
   it('refuses a demo-edit session whose driver was archived', async () => {
-    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isActive: true };
-    live.staff['viewer@orono.k12.mn.us'] = { isActive: false };
+    live.staff['admin@orono.k12.mn.us'] = { role: 'administrator', isActive: true, isDemo: true };
+    live.staff['viewer@orono.k12.mn.us'] = { isActive: false, canViewAsEdit: true };
     const fn = onCall({ allowDemoEdit: true }, () => 'ran') as unknown as Handler;
     await expect(fn({ auth: demoAuth })).rejects.toMatchObject({ code: 'permission-denied' });
   });

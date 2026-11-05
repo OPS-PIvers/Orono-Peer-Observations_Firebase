@@ -65,6 +65,10 @@ apps/pdf-renderer/.gcloudignore
 *-credentials.json
 *service-account*.json
 secrets/
+# google-github-actions/auth writes the key here; gcloud builds submit
+# derives its ignore list from this file, so this also keeps it out of
+# the Cloud Build source upload.
+gha-creds-*.json
 
 # Vite
 *.local

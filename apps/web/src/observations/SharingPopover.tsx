@@ -1,8 +1,12 @@
-import { useState } from 'react';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { httpsCallable } from 'firebase/functions';
 import { Eye, EyeOff } from 'lucide-react';
-import { COLLECTIONS, DRAFT_VISIBILITY_HIDDEN, type DraftVisibility } from '@ops/shared';
-import { db } from '@/lib/firebase';
+import {
+  DRAFT_VISIBILITY_HIDDEN,
+  type DraftVisibility,
+  type SetDraftVisibilityInput,
+} from '@ops/shared';
+import { functions } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
@@ -10,6 +14,11 @@ import { assertWritable } from '@/dev/viewAsGuard';
 import { CoObserversSection, type CoObserversSectionProps } from './CoObserversSection';
 
 type VisibilityKey = keyof DraftVisibility;
+
+const setDraftVisibilityFn = httpsCallable<
+  SetDraftVisibilityInput,
+  { ok: boolean; draftVisibility: DraftVisibility }
+>(functions, 'setDraftVisibility');
 
 const ROWS: { key: VisibilityKey; label: string; hint: string }[] = [
   { key: 'ratings', label: 'Proficiency selections', hint: 'Which level you picked per component' },
@@ -31,11 +40,14 @@ export interface SharingPopoverProps {
  * Evaluator-only switchboard for what the observed staff member can see on
  * a Draft. All off by default, per observation, no saved preference —
  * a default configured once and forgotten would surprise someone months
- * later. Writes straight to the doc so the teacher's open tab updates live.
+ * later.
  *
- * Display control only: the teacher's browser already holds the whole doc
- * (rules gate documents, not fields), so this stops the data rendering,
- * not the data arriving. On finalize everything is visible regardless.
+ * Enforced on the server: the observed teacher reads a Draft only through
+ * its `/teacherViews` copy, which holds just the shared content. Each switch
+ * goes through the setDraftVisibility callable, which updates the switch and
+ * that copy together, so a switch turned off has already withdrawn the
+ * content (including from the teacher's open tab) by the time it settles.
+ * On finalize everything is visible regardless.
  */
 export function SharingPopover({ observationId, value, coObservers }: SharingPopoverProps) {
   const [pending, setPending] = useState<Partial<DraftVisibility>>({});
@@ -43,18 +55,24 @@ export function SharingPopover({ observationId, value, coObservers }: SharingPop
   const effective: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN, ...value, ...pending };
   const sharedCount = ROWS.filter((r) => effective[r.key]).length;
 
+  // A saved switch stays pending (disabled, showing its new state) until the
+  // live doc shows it, so it doesn't flick back between the call returning
+  // and the snapshot arriving.
+  useEffect(() => {
+    const live: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN, ...value };
+    setPending((p) =>
+      Object.fromEntries(Object.entries(p).filter(([k, v]) => Reflect.get(live, k) !== v)),
+    );
+  }, [value]);
+
   async function toggle(key: VisibilityKey, next: boolean) {
     setPending((p) => ({ ...p, [key]: next }));
     try {
       assertWritable();
-      await updateDoc(doc(db, COLLECTIONS.observations, observationId), {
-        draftVisibility: { ...effective, [key]: next },
-        lastModifiedAt: serverTimestamp(),
-      });
+      await setDraftVisibilityFn({ observationId, key, value: next });
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not save');
-    } finally {
       setPending((p) => Object.fromEntries(Object.entries(p).filter(([k]) => k !== key)));
     }
   }
