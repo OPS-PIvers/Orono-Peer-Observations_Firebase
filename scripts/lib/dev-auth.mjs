@@ -7,6 +7,12 @@ import path from 'node:path';
 /** Request header that carries the per-run secret from the Vite proxy. */
 export const DEV_AUTH_SECRET_HEADER = 'x-dev-auth-secret';
 
+/**
+ * Request header that carries the live-mode sign-in code. The server prints
+ * it to its terminal only; the browser supplies it and the proxy passes it on.
+ */
+export const DEV_AUTH_CODE_HEADER = 'x-dev-auth-code';
+
 /** Where the running server leaves its secret for the Vite proxy to read. */
 export function devAuthSecretPath(port) {
   return path.join(os.tmpdir(), `ops-dev-auth-${String(port)}.secret`);
