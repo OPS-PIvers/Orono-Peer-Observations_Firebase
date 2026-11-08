@@ -650,15 +650,18 @@ service cloud.firestore {
       }
 
       // Oversight and View As read anyone's observation except a Draft of
-      // themselves: there they are just the observed staff (Draft privacy).
-      // Only get is gated; list can't be (rules aren't filters, so an
-      // unfiltered oversight query that could return their own Draft would
-      // fail outright), and their own pages read Drafts via /teacherViews.
+      // themselves: there they are just the observed staff (Draft privacy),
+      // and their own pages read Drafts via /teacherViews.
       allow get: if ownsObs() || isObservedFinalized() || coObservesObs()
         || (canReadAllObservations() && !isObservedObs());
       // Rules aren't filters: an observer's queries must constrain
-      // observerEmail == me or coObserverEmails array-contains me.
-      allow list: if ownsObs() || isObservedFinalized() || coObservesObs() || canReadAllObservations();
+      // observerEmail == me or coObserverEmails array-contains me, and an
+      // oversight or View As query must rule out the reader's own Drafts
+      // (apps/web/src/observations/ownDraftGate.ts).
+      allow list: if ownsObs() || isObservedFinalized() || coObservesObs()
+        || (canReadAllObservations()
+            && (resource.data.observedEmail != request.auth.token.email
+                || resource.data.status == 'Finalized'));
 
       allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']

@@ -140,8 +140,18 @@ describe('observations: read access', () => {
         ),
       ),
     );
+    // Full Access lists everyone's once the query leaves out their own
+    // Drafts (ownDraftLists.test.ts covers the shapes).
     const fa = testEnv.authenticatedContext('fa', claims.fullAccess()).firestore();
-    await assertSucceeds(getDocs(collection(fa, 'observations')));
+    await assertFails(getDocs(collection(fa, 'observations')));
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(fa, 'observations'),
+          where('observedEmail', '!=', 'fullaccess@orono.k12.mn.us'),
+        ),
+      ),
+    );
   });
 
   it('PE can list their own observations; unrelated teacher cannot', async () => {
