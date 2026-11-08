@@ -162,9 +162,11 @@ export function observationHasRecordedContent(obs: Record<string, unknown>): boo
 }
 
 /**
- * What the observed staff member may see on a Draft. Display gating only —
- * rules gate whole documents and the teacher already has `get` on their own
- * observation, so this stops the data rendering, not arriving. All off by
+ * What the observed staff member may see on a Draft. Enforced on the server:
+ * the observed teacher can't read a Draft observation (firestore.rules) and
+ * reads its `/teacherViews` copy instead, which carries only the shared
+ * content (teacherView.ts). The editor's own gating stays as a second layer.
+ * All off by
  * default, per observation, no district default; on finalize everything is
  * visible regardless. Rubric criteria and the teacher's own questions are
  * never withheld.
@@ -362,6 +364,16 @@ export const setCoObserversInput = z.object({
   coObserverEmails: z.array(email).max(10),
 });
 export type SetCoObserversInput = z.infer<typeof setCoObserversInput>;
+
+/** Input for the setDraftVisibility callable (owner or oversight, Draft
+ *  only): turn one sharing switch on or off. One flag per call, so two quick
+ *  clicks on different switches can't overwrite each other. */
+export const setDraftVisibilityInput = z.object({
+  observationId: z.string().min(1),
+  key: draftVisibility.keyof(),
+  value: z.boolean(),
+});
+export type SetDraftVisibilityInput = z.infer<typeof setDraftVisibilityInput>;
 
 /** Input for the removeEvidenceFile callable (observer-or-admin, draft-only
  *  unless admin — see removeEvidenceFile.ts for the full precondition). */

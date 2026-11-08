@@ -37,6 +37,10 @@ export interface AiTextRequest {
   /** Ask for JSON matching this schema. */
   jsonSchema?: Record<string, unknown>;
   temperature?: number;
+  /** Ask for the least thinking the model allows. For work that needs no
+   *  reasoning (verbatim transcription): thinking bills at the output rate
+   *  and eats into the output limit. Claude already runs at low effort. */
+  minimalThinking?: boolean;
 }
 
 interface CallResult {
@@ -129,15 +133,33 @@ async function callGemini(
   const generationConfig: Record<string, unknown> = {};
   if (request.jsonSchema) generationConfig['responseMimeType'] = 'application/json';
   if (request.temperature !== undefined) generationConfig['temperature'] = request.temperature;
+  const thinkingLevel = request.minimalThinking ? lowestThinkingLevel(model.id) : null;
 
-  const data = await vertexGenerateContent(
-    model.id,
-    {
-      contents: [{ role: 'user', parts }],
-      ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {}),
-    },
-    ctx.logContext,
-  );
+  const send = (config: Record<string, unknown>) =>
+    vertexGenerateContent(
+      model.id,
+      {
+        contents: [{ role: 'user', parts }],
+        ...(Object.keys(config).length > 0 ? { generationConfig: config } : {}),
+      },
+      ctx.logContext,
+    );
+  let data;
+  if (thinkingLevel) {
+    try {
+      data = await send({ ...generationConfig, thinkingConfig: { thinkingLevel } });
+    } catch (err) {
+      // A model added to the registry may not accept this level; the
+      // feature matters more than the saving, so ask again without it. Only
+      // a 400 (Vertex rejected the request) retries: a 5xx or timeout would
+      // just send the whole recording a second time.
+      if (!isRejectedRequest(err)) throw err;
+      logger.warn(`${ctx.logContext}: retrying without thinkingLevel`, { model: model.id });
+      data = await send(generationConfig);
+    }
+  } else {
+    data = await send(generationConfig);
+  }
   const usage = data.usageMetadata ?? {};
   const candidate = data.candidates?.[0];
   return {
@@ -151,6 +173,28 @@ async function callGemini(
     // Thinking tokens bill at the output rate.
     outputTokens: (usage.candidatesTokenCount ?? 0) + (usage.thoughtsTokenCount ?? 0),
   };
+}
+
+function isRejectedRequest(err: unknown): boolean {
+  if (!(err instanceof HttpsError) || err.code !== 'internal') return false;
+  const details: unknown = err.details;
+  return (
+    typeof details === 'object' &&
+    details !== null &&
+    'status' in details &&
+    details.status === 400
+  );
+}
+
+/**
+ * The lowest `thinkingLevel` a Gemini model accepts, or null when it has no
+ * thinking levels (2.x models use a token budget instead). Flash models go
+ * down to `minimal`; Pro stops at `low`.
+ */
+export function lowestThinkingLevel(modelId: string): 'minimal' | 'low' | null {
+  const major = Number(/^gemini-(\d+)/.exec(modelId)?.[1]);
+  if (!(major >= 3)) return null;
+  return modelId.includes('flash') ? 'minimal' : 'low';
 }
 
 let anthropic: Anthropic | null = null;

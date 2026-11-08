@@ -1,5 +1,5 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import { onCall } from '../lib/callable.js';
+import { isDemoEditSession, onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -57,7 +57,8 @@ const SIGN_IN_STAMP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
  */
 export const syncMyClaims = onCall(
   {
-    // Demo-edit sessions allowed; confined to demo staff below.
+    // Demo-edit sessions allowed: they only set the account's own claims,
+    // and the sign-in stamp below is skipped unless it's a demo person.
     allowDemoEdit: true,
     // The one callable an archived member must reach: it's what downgrades
     // their claims to the null/false triple.
@@ -98,7 +99,12 @@ export const syncMyClaims = onCall(
     // existing stamp is still fresh. This makes repeated calls within the
     // cooldown a cheap no-op instead of fabricating new sign-in events/audit
     // rows for a sign-in that never happened.
-    if (staffSnap.exists) {
+    //
+    // A demo-edit session is someone else driving this account (View As +
+    // Edit), not the person signing in: never stamp a real person's doc or
+    // attribute a sign_in to them for it.
+    const demoEditOfRealStaff = isDemoEditSession(request.auth) && staffData?.['isDemo'] !== true;
+    if (staffSnap.exists && !demoEditOfRealStaff) {
       const existingStamp = staffData?.['lastSignInAt'] as
         { toMillis?: () => number } | null | undefined;
       const existingMs =

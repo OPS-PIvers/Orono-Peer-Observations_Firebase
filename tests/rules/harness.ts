@@ -1,4 +1,5 @@
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
+import { doc, setDoc } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -23,6 +24,18 @@ export async function setupTestEnv(): Promise<RulesTestEnvironment> {
       host: '127.0.0.1',
       port: 9199,
     },
+  });
+}
+
+/** Seeds the live staff doc behind `claims.fullAccess()`. Console access is
+ *  checked against that doc, not the token, so a Full Access caller with no
+ *  doc is refused (as a revoked one with a stale token must be). */
+export async function seedFullAccessStaff(
+  testEnv: RulesTestEnvironment,
+  email = 'fullaccess@orono.k12.mn.us',
+): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'staff', email), { email, role: 'full-access' });
   });
 }
 

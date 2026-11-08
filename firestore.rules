@@ -53,12 +53,25 @@ service cloud.firestore {
     // requires this. In the claim tiers it's read only once a claim already
     // passes, so ordinary callers pay nothing. A missing doc or field counts
     // as active (the schema default), like callerMeetsAccessLevel. A
-    // demo-edit session also needs its driver (demoEditBy) to be active, or
-    // archiving the driver wouldn't end the session they're running.
+    // demo-edit session also needs its driver (demoEditBy) to be active and
+    // still hold canViewAsEdit, or archiving the driver or removing the grant
+    // wouldn't end the session they're running. A demo account (isDemo) is
+    // only usable through View As + Edit: without the claim (e.g. signed in
+    // via a Google identity linked to it) it counts as inactive, and so does
+    // a demo-edit session on a non-demo account. Mirrors isArchivedCaller in
+    // the functions.
     function isActiveStaff() {
       let driver = request.auth.token.get('demoEditBy', null);
-      return isActiveEmail(request.auth.token.email)
-        && (driver == null || isActiveEmail(driver));
+      let email = request.auth.token.email;
+      return isActiveEmail(email)
+        && ((driver == null && !isDemoStaff(email))
+            || (driver != null && isDemoStaff(email) && canDriveDemoEdit(driver)));
+    }
+    function canDriveDemoEdit(email) {
+      let path = /databases/$(database)/documents/staff/$(email);
+      return exists(path)
+        && get(path).data.get('isActive', true) == true
+        && get(path).data.get('canViewAsEdit', false) == true;
     }
     function isActiveEmail(email) {
       let path = /databases/$(database)/documents/staff/$(email);
@@ -75,12 +88,15 @@ service cloud.firestore {
         && isActiveStaff();
     }
 
-    // Mirrors canOpenAdminConsole in @ops/shared. The claim can't tell an
-    // Administrator with hasAdminAccess from one without, so only that case
-    // pays for a staff-doc read.
+    // Mirrors canOpenAdminConsole in @ops/shared, checked against the live
+    // staff doc rather than the claims: a token minted before hasAdminAccess
+    // was removed (or Full Access demoted) still says isAdmin until it
+    // refreshes, and console admins can write /staff — including their own
+    // doc — so trusting the claim would let them restore the grant. The doc
+    // is already fetched by isActiveStaff(), so this costs no extra read.
     function isConsoleAdmin() {
       return isAdmin()
-        && (role() != 'administrator'
+        && (staffDocData().get('role', null) == 'full-access'
             || staffDocData().get('hasAdminAccess', false) == true);
     }
 
@@ -119,7 +135,8 @@ service cloud.firestore {
       return request.auth == null || request.auth.token.get('demoEditBy', null) == null;
     }
     function isDemoStaff(email) {
-      return get(/databases/$(database)/documents/staff/$(email)).data.get('isDemo', false) == true;
+      let path = /databases/$(database)/documents/staff/$(email);
+      return exists(path) && get(path).data.get('isDemo', false) == true;
     }
 
     // A canonical staff address: lowercase and on the district domain.
@@ -180,11 +197,22 @@ service cloud.firestore {
         && !(data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access']);
     }
 
+    // The role a building Administrator writes must be an existing /roles id
+    // that isn't special. A denylist alone let display-name forms such as
+    // 'Full Access' through, which the console's role-slug tools resolve to
+    // the special slug.
+    function buildingAdminCanAssignRole(r) {
+      return r is string
+        && !(r in ['administrator', 'peer-evaluator', 'full-access'])
+        && exists(/databases/$(database)/documents/roles/$(r));
+    }
+
     function buildingAdminCanCreateStaff(email) {
       return isBuildingAdmin()
         && isCanonicalStaffEmail(email)
         && request.resource.data.get('email', '') == email
         && buildingAdminCanWriteStaffData(request.resource.data)
+        && buildingAdminCanAssignRole(request.resource.data.get('role', ''))
         && request.resource.data.get('hasAdminAccess', false) == false
         && request.resource.data.get('canViewAs', false) == false
         && request.resource.data.get('canViewAsEdit', false) == false
@@ -192,10 +220,15 @@ service cloud.firestore {
         && request.resource.data.get('modules', []).size() == 0;
     }
 
+    // Only a changed role is checked against /roles: a stored legacy or
+    // since-deleted role must not lock the person's other fields (the
+    // unchanged value still passes buildingAdminCanWriteStaffData's
+    // special-role check).
     function buildingAdminCanUpdateStaff() {
       return isBuildingAdmin()
         && buildingAdminCanWriteStaffData(resource.data)
-        && !(request.resource.data.get('role', '') in ['administrator', 'peer-evaluator', 'full-access'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+            || buildingAdminCanAssignRole(request.resource.data.get('role', '')))
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['name', 'role', 'year', 'buildings', 'cycleStatus', 'summativeYear',
                       'isActive', 'updatedAt']);
@@ -222,6 +255,21 @@ service cloud.firestore {
       return resource.data.get(field, null) == request.resource.data.get(field, null);
     }
 
+    // unchanged() for a boolean flag that defaults to false when absent.
+    function unchangedFlag(field) {
+      return resource.data.get(field, false) == request.resource.data.get(field, false);
+    }
+
+    // A staff update leaves every field that decides access (claims, console,
+    // View As, demo confinement) as it was.
+    function keepsStaffAccess() {
+      return unchanged('role')
+        && unchangedFlag('isDemo')
+        && unchangedFlag('hasAdminAccess')
+        && unchangedFlag('canViewAs')
+        && unchangedFlag('canViewAsEdit');
+    }
+
     // --- Default deny --------------------------------------------------------
     // Anything not explicitly granted below is denied. Always.
     match /{document=**} {
@@ -244,8 +292,13 @@ service cloud.firestore {
       allow list: if hasSpecialAccess() || canReadAll();
       allow create: if (isConsoleAdmin() || buildingAdminCanCreateStaff(email))
         && notDemoEdit();
+      // A demo-edit session may edit demo people, but not their access
+      // fields: clearing isDemo would let a linked sign-in to that account
+      // escape confinement. Compared by value with the schema defaults, so
+      // an admin form re-saving an absent flag as false still goes through.
       allow update: if (isConsoleAdmin() || buildingAdminCanUpdateStaff())
-        && (notDemoEdit() || isDemoStaff(email));
+        && (notDemoEdit()
+            || (resource.data.get('isDemo', false) == true && keepsStaffAccess()));
       allow delete: if (isConsoleAdmin())
         && notDemoEdit();
 
@@ -376,9 +429,10 @@ service cloud.firestore {
     // Cloud Functions (Admin SDK), which is what keeps the evaluator-time
     // ledger and per-day caps atomic.
     match /observationWindows/{windowId} {
-      allow get, list: if hasSpecialAccess()
-        || canReadAll()
-        || (isFromOronoDomain() && request.auth.token.email in resource.data.invitedEmails);
+      // Read: special access and View As only. The doc lists every invitee
+      // with their building, booking and invite token, so invitees read
+      // their own /windowInviteViews doc instead.
+      allow get, list: if hasSpecialAccess() || canReadAll();
       // Create: only the createObservationWindow callable (Admin SDK). It
       // checks the observer's role and scope and writes the full shape the
       // scheduling jobs rely on; a client-written window could be any shape.
@@ -411,13 +465,24 @@ service cloud.firestore {
         ))
         && notDemoEdit();
 
-      // Slots: readable by anyone who can read the parent window; never
-      // client-writable (mutated only inside the booking transaction).
+      // Slots: never client-writable (mutated only inside the booking
+      // transaction). Invitees see open and blocked slots, plus their own
+      // booked slot by id; who booked the others is not theirs to read.
       match /slots/{slotId} {
-        allow read: if hasSpecialAccess() || canReadAll()
-          || (isFromOronoDomain()
-              && request.auth.token.email in
-                 get(/databases/$(database)/documents/observationWindows/$(windowId)).data.invitedEmails);
+        function isWindowInvitee() {
+          return isFromOronoDomain()
+            && request.auth.token.email in
+               get(/databases/$(database)/documents/observationWindows/$(windowId)).data.invitedEmails;
+        }
+        function isUnbookedSlot() {
+          return resource.data.status in ['available', 'blocked'];
+        }
+        allow get: if hasSpecialAccess() || canReadAll()
+          || (isWindowInvitee()
+              && (isUnbookedSlot()
+                  || resource.data.get('bookedBy', null) == request.auth.token.email));
+        allow list: if hasSpecialAccess() || canReadAll()
+          || (isWindowInvitee() && isUnbookedSlot());
         allow write: if false;
       }
 
@@ -476,8 +541,10 @@ service cloud.firestore {
     //
     // Read:
     //   - observer (creator) or co-observer of the observation
-    //   - observed staff member (the UI withholds Draft content per
-    //     draftVisibility)
+    //   - observed staff member, Finalized only. A Draft's evaluator content
+    //     is private until finalize (Draft privacy); the observed teacher reads
+    //     a Draft through /teacherViews, which holds only what the observer
+    //     shared. Their writes below need no read access.
     //   - Full Access (oversight), or staff with a View As grant
     //
     // Create: observer roles only (administrator / peer-evaluator /
@@ -529,6 +596,11 @@ service cloud.firestore {
       function isObservedObs() {
         return isCurrentUserEmail(resource.data.observedEmail);
       }
+      // The observed teacher's read: Finalized only (see the header). Their
+      // list queries must therefore filter status == 'Finalized'.
+      function isObservedFinalized() {
+        return isObservedObs() && resource.data.status == 'Finalized';
+      }
       // Content an observer edits on a Draft. The autosave in
       // ObservationEditorPage writes exactly these fields (see its setDoc
       // merge payload); evidence/audio/componentTags/driveFolderId are
@@ -577,10 +649,16 @@ service cloud.firestore {
           && d.get('workProductAnswers', []).size() == 0;
       }
 
-      allow get: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
+      // Oversight and View As read anyone's observation except a Draft of
+      // themselves: there they are just the observed staff (Draft privacy).
+      // Only get is gated; list can't be (rules aren't filters, so an
+      // unfiltered oversight query that could return their own Draft would
+      // fail outright), and their own pages read Drafts via /teacherViews.
+      allow get: if ownsObs() || isObservedFinalized() || coObservesObs()
+        || (canReadAllObservations() && !isObservedObs());
       // Rules aren't filters: an observer's queries must constrain
       // observerEmail == me or coObserverEmails array-contains me.
-      allow list: if ownsObs() || isObservedObs() || coObservesObs() || canReadAllObservations();
+      allow list: if ownsObs() || isObservedFinalized() || coObservesObs() || canReadAllObservations();
 
       allow create: if (hasSpecialAccess()
         && role() in ['administrator', 'peer-evaluator', 'full-access']

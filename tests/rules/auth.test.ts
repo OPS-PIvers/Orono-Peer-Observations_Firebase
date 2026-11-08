@@ -5,7 +5,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedFullAccessStaff, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
 
@@ -17,6 +17,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedFullAccessStaff(testEnv);
 });
 
 describe('default-deny + domain check', () => {

@@ -14,7 +14,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedFullAccessStaff, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
 
@@ -26,6 +26,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedFullAccessStaff(testEnv);
 });
 
 async function seed(path: string, data: Record<string, unknown>) {
@@ -184,9 +185,19 @@ describe('observationWindows rules', () => {
     await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
   });
 
-  it('invited staff can read the window', async () => {
+  // The window doc lists every co-invitee; invitees read their own
+  // /windowInviteViews doc instead.
+  it('invited staff cannot read the window doc', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
-    await assertSucceeds(getDoc(doc(db, 'observationWindows/w1')));
+    await assertFails(getDoc(doc(db, 'observationWindows/w1')));
+    await assertFails(
+      getDocs(
+        query(
+          collection(db, 'observationWindows'),
+          where('invitedEmails', 'array-contains', INVITED_EMAIL),
+        ),
+      ),
+    );
   });
 
   it('non-invited staff cannot read the window', async () => {
@@ -324,6 +335,46 @@ describe('observationWindows rules', () => {
   it('invited staff can read a slot', async () => {
     const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
     await assertSucceeds(getDoc(doc(db, 'observationWindows/w1/slots/high-school-2026-05-20-p1')));
+  });
+
+  describe('booked slots', () => {
+    beforeEach(async () => {
+      await seed('observationWindows/w1/slots/mine', {
+        slotId: 'mine',
+        windowId: 'w1',
+        status: 'booked',
+        bookedBy: INVITED_EMAIL,
+      });
+      await seed('observationWindows/w1/slots/theirs', {
+        slotId: 'theirs',
+        windowId: 'w1',
+        status: 'booked',
+        bookedBy: 'coinvitee@orono.k12.mn.us',
+      });
+    });
+
+    it('invited staff can get their own booked slot', async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      await assertSucceeds(getDoc(doc(db, 'observationWindows/w1/slots/mine')));
+    });
+
+    it("invited staff cannot get a co-invitee's booked slot", async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      await assertFails(getDoc(doc(db, 'observationWindows/w1/slots/theirs')));
+    });
+
+    it('invited staff can list only open and blocked slots', async () => {
+      const db = testEnv.authenticatedContext('t', claims.teacher(INVITED_EMAIL)).firestore();
+      const slots = collection(db, 'observationWindows/w1/slots');
+      await assertSucceeds(getDocs(query(slots, where('status', 'in', ['available', 'blocked']))));
+      await assertFails(getDocs(slots));
+      await assertFails(getDocs(query(slots, where('bookedBy', '==', INVITED_EMAIL))));
+    });
+
+    it('special access can list every slot', async () => {
+      const db = testEnv.authenticatedContext('pe', claims.peerEval(PE_EMAIL)).firestore();
+      await assertSucceeds(getDocs(collection(db, 'observationWindows/w1/slots')));
+    });
   });
 
   it('non-invited staff cannot read a slot', async () => {

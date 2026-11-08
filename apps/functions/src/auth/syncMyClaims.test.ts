@@ -125,6 +125,31 @@ describe('syncMyClaims', () => {
     expect(state.updateStaff).toHaveBeenCalledWith({ lastSignInAt: SERVER_TIMESTAMP });
   });
 
+  it('never stamps or audits a sign-in on a real person for a demo-edit session', async () => {
+    state.staffData = { role: 'administrator', hasAdminAccess: true };
+    const req = {
+      auth: {
+        uid: 'uid-1',
+        token: { email: 'principal@orono.k12.mn.us', demoEditBy: 'viewer@orono.k12.mn.us' },
+      },
+    } as unknown as Partial<CallableRequest>;
+    await run(req);
+    expect(state.updateStaff).not.toHaveBeenCalled();
+    expect(state.addAuditLog).not.toHaveBeenCalled();
+  });
+
+  it('still stamps a demo person driven by a demo-edit session', async () => {
+    state.staffData = { role: 'administrator', isDemo: true };
+    const req = {
+      auth: {
+        uid: 'uid-1',
+        token: { email: 'demo.admin@orono.k12.mn.us', demoEditBy: 'viewer@orono.k12.mn.us' },
+      },
+    } as unknown as Partial<CallableRequest>;
+    await run(req);
+    expect(state.updateStaff).toHaveBeenCalledWith({ lastSignInAt: SERVER_TIMESTAMP });
+  });
+
   it('does not stamp lastSignInAt when no staff doc exists', async () => {
     state.staffData = undefined;
     await run(authedRequest('nobody@orono.k12.mn.us'));
