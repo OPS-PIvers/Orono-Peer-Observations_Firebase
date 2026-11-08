@@ -1,4 +1,5 @@
 import { COLLECTIONS, OBSERVATION_STATUS, type Observation } from '@ops/shared';
+import { useAuth } from '@/auth/AuthProvider';
 import { useDevMode } from '@/dev/DevModeContext';
 import { useFirestoreDoc } from './useFirestoreDoc';
 
@@ -16,6 +17,23 @@ import { useFirestoreDoc } from './useFirestoreDoc';
 export function useReadsTeacherViews(observedEmail: string): boolean {
   const { viewAsEmail, effectiveEmail } = useDevMode();
   return viewAsEmail === null && !!observedEmail && observedEmail.toLowerCase() === effectiveEmail;
+}
+
+/**
+ * True while viewing as someone else and looking at a Draft query about the
+ * signed-in user themselves (say, as their observer, on their dashboard).
+ * View As may not list the reader's own Drafts (firestore.rules), so such a
+ * query is left unsubscribed: it would only be refused.
+ */
+export function useHidesOwnDrafts(observedEmail: string): boolean {
+  const { viewAsEmail } = useDevMode();
+  const readerEmail = useAuth().user?.email ?? null;
+  return (
+    viewAsEmail !== null &&
+    !!observedEmail &&
+    !!readerEmail &&
+    observedEmail.toLowerCase() === readerEmail.toLowerCase()
+  );
 }
 
 /**

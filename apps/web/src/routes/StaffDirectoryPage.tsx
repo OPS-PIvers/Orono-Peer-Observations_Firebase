@@ -11,7 +11,9 @@ import {
   type Staff,
 } from '@ops/shared';
 import { useAdminConsoleAccess } from '@/auth/adminConsoleAccess';
-import { useEffectiveClaims, useEffectiveEmail } from '@/dev/DevModeContext';
+import { useAuth } from '@/auth/AuthProvider';
+import { useEffectiveClaims, useEffectiveEmail, useIsViewingAs } from '@/dev/DevModeContext';
+import { ownDraftGate, withGate } from '@/observations/ownDraftGate';
 import { PageHeader } from '@/components/PageHeader';
 import { useFirestoreCollection } from '@/hooks/useFirestoreCollection';
 import { cn } from '@/lib/utils';
@@ -48,12 +50,19 @@ function StaffDirectory() {
 
   // Chips show only observations the viewer created, even for Full Access
   // admins who can read everyone's.
+  // While viewing as someone the query reads through View As, which leaves
+  // out the reader's own Drafts (ownDraftGate).
   const me = useEffectiveEmail();
-  const myObsConstraints = useMemo(() => [where('observerEmail', '==', me)], [me]);
+  const viewingAs = useIsViewingAs();
+  const readerEmail = useAuth().user?.email ?? null;
+  const myObsConstraints = useMemo(
+    () => withGate([where('observerEmail', '==', me)], viewingAs ? ownDraftGate(readerEmail) : []),
+    [me, viewingAs, readerEmail],
+  );
   const { data: myObservations } = useFirestoreCollection<Observation>(
     me ? COLLECTIONS.observations : '',
     myObsConstraints,
-    ['staffDirChips', me],
+    ['staffDirChips', me, viewingAs ? (readerEmail ?? '') : ''],
   );
   const chipsByEmail = useMemo(
     () => directoryObservationChips(myObservations ?? []),

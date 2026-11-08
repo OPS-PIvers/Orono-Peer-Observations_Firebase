@@ -230,8 +230,19 @@ describe('archived observers lose their own observations', () => {
     await assertSucceeds(getDoc(doc(db, 'transcriptionJobs/j1')));
   });
 
-  it('the observed teacher still reads the observation', async () => {
+  it('the observed teacher still reads the observation once Finalized', async () => {
+    // A Draft reaches the teacher only through /teacherViews (Draft
+    // privacy); the observer being archived changes nothing for them.
     const db = testEnv.authenticatedContext('t', claims.teacher(TEACHER)).firestore();
+    await assertFails(getDoc(doc(db, 'observations/mine')));
+    await seed('observations/mine', {
+      observerEmail: PE,
+      observedEmail: TEACHER,
+      coObserverEmails: [],
+      status: 'Finalized',
+      type: 'Standard',
+      finalizedAt: new Date(),
+    });
     await assertSucceeds(getDoc(doc(db, 'observations/mine')));
   });
 

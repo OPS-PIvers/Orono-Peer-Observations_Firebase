@@ -21,6 +21,12 @@
 //   - against the live project (--live) the server never creates Auth users
 //     and only mints tokens for an explicit allowlist: the ADC user's own
 //     email plus DEV_AUTH_ALLOWED_EMAILS.
+//   - the proxy adds the secret for any caller that can reach the Vite port,
+//     including other OS accounts on this machine. So in live mode /mint also
+//     needs a random per-run sign-in code (X-Dev-Auth-Code). It is never
+//     written to disk or taken from the environment, only printed to this
+//     terminal as a /dev-sign-in#code=… link, and the proxy only passes on
+//     what the caller sends. Opening that link is the developer's opt-in.
 //
 // Env:
 //   DEV_AUTH_PORT            — listen port (default 8787)
@@ -36,6 +42,7 @@ import { initializeApp, applicationDefault, getApps } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { PROJECT_ID } from './lib/project-id.mjs';
 import {
+  DEV_AUTH_CODE_HEADER,
   DEV_AUTH_SECRET_HEADER,
   devAuthSecretPath,
   isAllowedDevOrigin,
@@ -120,6 +127,9 @@ if (!usingAuthEmulator) {
 const SECRET = process.env.DEV_AUTH_SECRET || crypto.randomBytes(32).toString('hex');
 const SECRET_BUF = Buffer.from(SECRET);
 const SECRET_FILE = devAuthSecretPath(PORT);
+// Live mode only. Terminal output only: never on disk, never from the env.
+const SIGN_IN_CODE = usingAuthEmulator ? null : crypto.randomBytes(16).toString('hex');
+const SIGN_IN_CODE_BUF = SIGN_IN_CODE === null ? null : Buffer.from(SIGN_IN_CODE);
 function removeSecretFile() {
   try {
     if (fs.readFileSync(SECRET_FILE, 'utf8') === SECRET) fs.unlinkSync(SECRET_FILE);
@@ -131,11 +141,15 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, () => process.exit(0));
 }
 
-function hasValidSecret(req) {
-  const given = req.headers[DEV_AUTH_SECRET_HEADER];
+function headerMatches(req, header, expected) {
+  const given = req.headers[header];
   if (typeof given !== 'string') return false;
   const buf = Buffer.from(given);
-  return buf.length === SECRET_BUF.length && crypto.timingSafeEqual(buf, SECRET_BUF);
+  return buf.length === expected.length && crypto.timingSafeEqual(buf, expected);
+}
+
+function hasValidSecret(req) {
+  return headerMatches(req, DEV_AUTH_SECRET_HEADER, SECRET_BUF);
 }
 
 function send(res, status, body) {
@@ -176,6 +190,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/mint') {
     if (!hasValidSecret(req)) {
       send(res, 401, { error: 'Missing or wrong dev-auth secret' });
+      return;
+    }
+    if (SIGN_IN_CODE_BUF && !headerMatches(req, DEV_AUTH_CODE_HEADER, SIGN_IN_CODE_BUF)) {
+      send(res, 401, {
+        error:
+          'Live mode: open the /dev-sign-in link printed by dev-auth-server, or paste its code.',
+      });
       return;
     }
     if (!(req.headers['content-type'] ?? '').startsWith('application/json')) {
@@ -252,6 +273,6 @@ server.listen(PORT, '127.0.0.1', () => {
     console.log(`[dev-auth-server] may sign in as: ${[...allowedEmails].join(', ')}`);
   }
   console.log(
-    '[dev-auth-server] sign in at http://localhost:5173/dev-sign-in (via the Vite proxy)',
+    `[dev-auth-server] sign in at http://localhost:5173/dev-sign-in${SIGN_IN_CODE ? `#code=${SIGN_IN_CODE}` : ''} (via the Vite proxy)`,
   );
 });

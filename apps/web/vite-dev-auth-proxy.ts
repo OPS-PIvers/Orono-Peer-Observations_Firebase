@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import {
+  DEV_AUTH_CODE_HEADER,
   DEV_AUTH_SECRET_HEADER,
   devAuthSecretPath,
   isLoopbackHost,
@@ -17,6 +18,11 @@ const MAX_BODY_BYTES = 4096;
  * scripts/dev-auth-server.mjs with the per-run secret that server left in
  * the OS temp dir. The secret never reaches the browser, and requests from
  * any other origin are refused before anything is forwarded.
+ *
+ * Any local OS account can reach this port, so the secret alone doesn't
+ * prove the caller is the developer. In live mode the server also wants the
+ * sign-in code it printed to its terminal; it is passed on from the caller
+ * only, never supplied here.
  */
 export function devAuthProxy(target: string): Plugin {
   const targetUrl = new URL(target);
@@ -88,10 +94,16 @@ export function devAuthProxy(target: string): Plugin {
             send(res, 413, { error: 'Body too large' });
             return;
           }
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            [DEV_AUTH_SECRET_HEADER]: secret,
+          };
+          const code = req.headers[DEV_AUTH_CODE_HEADER];
+          if (typeof code === 'string') headers[DEV_AUTH_CODE_HEADER] = code;
           try {
             const upstream = await fetch(new URL('/mint', targetUrl), {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', [DEV_AUTH_SECRET_HEADER]: secret },
+              headers,
               body,
             });
             res.statusCode = upstream.status;

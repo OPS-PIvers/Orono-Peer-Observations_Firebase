@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { auth } from '@/lib/firebase';
@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 const DEV_AUTH_MINT_PATH = '/__dev-auth/mint';
 
 const QUICK_USERS = [{ email: 'paul.ivers@orono.k12.mn.us', label: 'Paul Ivers (admin)' }];
+
+function codeFromHash(): string | null {
+  return new URLSearchParams(window.location.hash.slice(1)).get('code');
+}
 
 /**
  * Local-dev sign-in helper. Signs in via a custom token minted by
@@ -24,8 +28,22 @@ const QUICK_USERS = [{ email: 'paul.ivers@orono.k12.mn.us', label: 'Paul Ivers (
 export function DevSignIn() {
   const navigate = useNavigate();
   const [email, setEmail] = useState(QUICK_USERS[0]?.email ?? '');
+  // Live mode only: the per-run code dev-auth-server prints to its terminal,
+  // as the #code=… of the link it prints. The fragment never leaves the browser.
+  const [code, setCode] = useState(() => codeFromHash() ?? '');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pasting the printed link into this tab is a same-document navigation, so
+  // pick its code up without a remount.
+  useEffect(() => {
+    function onHashChange() {
+      const fromHash = codeFromHash();
+      if (fromHash) setCode(fromHash);
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   if (import.meta.env.MODE !== 'development') {
     return <Navigate to="/sign-in" replace />;
@@ -37,7 +55,10 @@ export function DevSignIn() {
     try {
       const response = await fetch(DEV_AUTH_MINT_PATH, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(code ? { 'X-Dev-Auth-Code': code.trim() } : {}),
+        },
         body: JSON.stringify({ email: targetEmail }),
       });
       if (!response.ok) {
@@ -74,6 +95,20 @@ export function DevSignIn() {
         </header>
 
         <div className="space-y-2">
+          <p className="text-muted-foreground text-xs uppercase">
+            Sign-in code (live mode, printed by dev-auth-server)
+          </p>
+          <input
+            type="password"
+            autoComplete="off"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className="border-input bg-background h-11 w-full rounded-md border px-3 text-sm"
+            placeholder="Not needed with the Auth emulator"
+          />
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
           <p className="text-muted-foreground text-xs uppercase">Quick users</p>
           {QUICK_USERS.map((u) => (
             <Button

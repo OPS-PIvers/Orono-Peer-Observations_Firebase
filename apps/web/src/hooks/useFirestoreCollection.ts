@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
-import {
-  type DocumentData,
-  type QueryConstraint,
-  collection,
-  onSnapshot,
-  query,
-} from 'firebase/firestore';
+import { type DocumentData, collection, onSnapshot } from 'firebase/firestore';
 import { hydrateFirestoreDoc } from '@ops/shared';
 import { db } from '@/lib/firebase';
 import { reportDocRepair } from '@/lib/firestoreDiagnostics';
+import { buildQuery, type CollectionConstraint } from './collectionQuery';
+
+export { buildQuery, type CollectionConstraint };
 
 export interface UseFirestoreCollectionResult<T> {
   data: (T & { id: string })[] | null;
@@ -34,7 +31,7 @@ export interface UseFirestoreCollectionResult<T> {
  */
 export function useFirestoreCollection<T = DocumentData>(
   collectionPath: string,
-  constraints: QueryConstraint[] = [],
+  constraints: CollectionConstraint[] = [],
   keyParts: readonly (string | number | boolean)[] = [],
 ): UseFirestoreCollectionResult<T> {
   const queryClient = useQueryClient();
@@ -69,7 +66,7 @@ export function useFirestoreCollection<T = DocumentData>(
     setError(null);
 
     const ref = collection(db, collectionPath);
-    const q = constraints.length > 0 ? query(ref, ...constraints) : ref;
+    const q = buildQuery(ref, constraints);
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
