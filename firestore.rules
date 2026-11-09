@@ -544,7 +544,8 @@ service cloud.firestore {
     //   - observed staff member, Finalized only. A Draft's evaluator content
     //     is private until finalize (Draft privacy); the observed teacher reads
     //     a Draft through /teacherViews, which holds only what the observer
-    //     shared. Their writes below need no read access.
+    //     shared. They write a Draft only through the saveTeacherResponse
+    //     callable (see the update rule).
     //   - Full Access (oversight), or staff with a View As grant
     //
     // Create: observer roles only (administrator / peer-evaluator /
@@ -561,9 +562,10 @@ service cloud.firestore {
     //     immutable here. The Draft → Finalized transition happens server-side
     //     via a callable (it also renders the PDF, shares the Drive folder,
     //     sends email, etc.).
-    //   - observed staff: workProductAnswers on their own observation (any
-    //     type, Draft or Finalized), or the ack fields on a Finalized
-    //     observation (must stamp their own email).
+    //   - observed staff: workProductAnswers / goalsResponse on their own
+    //     Finalized observation (Drafts go through the saveTeacherResponse
+    //     callable), or the ack fields on a Finalized observation (must
+    //     stamp their own email).
     //
     // Delete: oversight, or the observer while the observation is a Draft
     // that was never finalized.
@@ -699,15 +701,17 @@ service cloud.firestore {
         )
         || (
           // Observed staff answering their Planning / Reflection questions
-          // and writing their Goals & Next Steps response.
-          // Every observation type carries questions (Standard included).
-          // Allowed on Finalized too: Reflection stays open after finalize
-          // (the evaluator may finalize before the teacher has reflected),
-          // and rules cannot tell which array entries changed, so the UI —
-          // not this rule — keeps Planning read-only once finalized and
-          // flags any answer saved after finalizedAt.
+          // and writing their Goals & Next Steps response — Finalized only.
+          // On a Draft, which they can't read, this check would be an
+          // equality oracle on its hidden fields (affectedKeys() skips a
+          // field re-sent with its stored value), so the app saves through
+          // the saveTeacherResponse callable instead, on any status.
+          // Reflection stays open after finalize, and rules cannot tell
+          // which array entries changed, so the UI — not this rule — keeps
+          // Planning read-only once finalized and flags any answer saved
+          // after finalizedAt.
           isObservedObs()
-          && resource.data.status in ['Draft', 'Finalized']
+          && resource.data.status == 'Finalized'
           && changedKeys().hasOnly(['workProductAnswers', 'goalsResponse', 'lastModifiedAt'])
         )
         || (

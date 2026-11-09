@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -914,13 +915,12 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
-  it('observed teacher CAN still autosave answers and goals on a Draft they cannot read', async () => {
-    // The exact write useWorkProductAnswers / useGoalsResponse make: a merge
-    // setDoc, which Firestore treats as an update needing no read access.
+  it('observed teacher CANNOT write answers or goals to a Draft they cannot read', async () => {
+    // The app saves these through the saveTeacherResponse callable instead.
     await seedDraftObs('blind', { type: 'Standard', workProductAnswers: [] });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
     await assertFails(getDoc(doc(db, 'observations/blind')));
-    await assertSucceeds(
+    await assertFails(
       setDoc(
         doc(db, 'observations/blind'),
         {
@@ -930,7 +930,7 @@ describe('observations: observed staff draft access and answers', () => {
         { merge: true },
       ),
     );
-    await assertSucceeds(
+    await assertFails(
       setDoc(
         doc(db, 'observations/blind'),
         {
@@ -940,6 +940,27 @@ describe('observations: observed staff draft access and answers', () => {
         { merge: true },
       ),
     );
+  });
+
+  it('observed teacher write to a Draft does not reveal its hidden fields', async () => {
+    // A write that re-sends a hidden field's stored value changes nothing, so
+    // a rule checking affectedKeys() would allow it and deny any other value:
+    // an oracle on the ratings and on whether notes exist. Every probe must
+    // fail the same way, matching or not.
+    await seedDraftObs('oracle', {
+      observationData: { '1a': { proficiency: 'proficient' } },
+      transcripts: {},
+      audioDriveFileIds: [],
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    const ref = doc(db, 'observations/oracle');
+    await assertFails(updateDoc(ref, { 'observationData.1a.proficiency': 'proficient' }));
+    await assertFails(updateDoc(ref, { 'observationData.1a.proficiency': 'distinguished' }));
+    await assertFails(updateDoc(ref, { 'componentNotes.1a': deleteField() }));
+    await assertFails(updateDoc(ref, { 'componentNotes.1a': 'guess' }));
+    await assertFails(setDoc(ref, { transcripts: {} }, { merge: true }));
+    await assertFails(setDoc(ref, { audioDriveFileIds: [] }, { merge: true }));
+    await assertFails(updateDoc(ref, { lastModifiedAt: new Date() }));
   });
 
   it('observer, co-observer and Full Access still read the Draft', async () => {
@@ -953,10 +974,10 @@ describe('observations: observed staff draft access and answers', () => {
     }
   });
 
-  it('observed teacher CAN save workProductAnswers on a WP Draft', async () => {
+  it('observed teacher CANNOT save workProductAnswers directly on a WP Draft', async () => {
     await seedDraftObs('wpObs2', { type: 'Work Product', workProductAnswers: [] });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(db, 'observations/wpObs2'), {
         workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
         lastModifiedAt: new Date(),
@@ -964,10 +985,10 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
-  it('observed teacher CAN save workProductAnswers on an IR Draft', async () => {
+  it('observed teacher CANNOT save workProductAnswers directly on an IR Draft', async () => {
     await seedDraftObs('irObs2', { type: 'Instructional Round', workProductAnswers: [] });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(db, 'observations/irObs2'), {
         workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
         lastModifiedAt: new Date(),
@@ -975,11 +996,11 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
-  it('observed teacher CAN save workProductAnswers on a Standard Draft', async () => {
+  it('observed teacher CANNOT save workProductAnswers directly on a Standard Draft', async () => {
     // Standard observations carry Planning / Reflection questions too.
     await seedDraftObs('stdObs2', { type: 'Standard', workProductAnswers: [] });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(db, 'observations/stdObs2'), {
         workProductAnswers: [{ questionId: 'q1', answer: 'My answer', updatedAt: new Date() }],
         lastModifiedAt: new Date(),
@@ -1006,8 +1027,28 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
+  it('observed teacher CAN save their Goals & Next Steps response on a Finalized observation', async () => {
+    await seedDraftObs('finalGoals', {
+      type: 'Work Product',
+      status: 'Finalized',
+      finalizedAt: new Date(),
+    });
+    const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'observations/finalGoals'), {
+        goalsResponse: { type: 'doc', content: [{ type: 'paragraph' }] },
+        lastModifiedAt: new Date(),
+      }),
+    );
+  });
+
   it('observed teacher CANNOT touch other fields alongside workProductAnswers', async () => {
-    await seedDraftObs('stdObs3', { type: 'Standard', workProductAnswers: [] });
+    await seedDraftObs('stdObs3', {
+      type: 'Standard',
+      status: 'Finalized',
+      finalizedAt: new Date(),
+      workProductAnswers: [],
+    });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
     await assertFails(
       updateDoc(doc(db, 'observations/stdObs3'), {
@@ -1018,10 +1059,10 @@ describe('observations: observed staff draft access and answers', () => {
     );
   });
 
-  it('observed teacher CAN save their Goals & Next Steps response on a WP Draft', async () => {
+  it('observed teacher CANNOT save their Goals & Next Steps response directly on a WP Draft', async () => {
     await seedDraftObs('wpGoals', { type: 'Work Product' });
     const db = testEnv.authenticatedContext('t', claims.teacher(OBSERVED_EMAIL)).firestore();
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(db, 'observations/wpGoals'), {
         goalsResponse: { type: 'doc', content: [{ type: 'paragraph' }] },
         lastModifiedAt: new Date(),
