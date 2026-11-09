@@ -134,17 +134,20 @@ export const sweepStaleTranscriptionJobs = onSchedule(
     let previewsCleared = 0;
     let previewErrors = 0;
     for (;;) {
-      const previewSnap = await db
-        .collection(COLLECTIONS.transcriptionJobs)
-        .where('transcriptPreview', '!=', null)
-        .limit(SWEEP_BATCH_SIZE)
-        .get();
-      if (previewSnap.empty) break;
-      const writer = db.batch();
-      for (const doc of previewSnap.docs) writer.update(doc.ref, { transcriptPreview: null });
+      let batchSize = 0;
       try {
+        // Inside the try: a failed query must not stop phase 2 either.
+        const previewSnap = await db
+          .collection(COLLECTIONS.transcriptionJobs)
+          .where('transcriptPreview', '!=', null)
+          .limit(SWEEP_BATCH_SIZE)
+          .get();
+        batchSize = previewSnap.size;
+        if (batchSize === 0) break;
+        const writer = db.batch();
+        for (const doc of previewSnap.docs) writer.update(doc.ref, { transcriptPreview: null });
         await writer.commit();
-        previewsCleared += previewSnap.size;
+        previewsCleared += batchSize;
       } catch (err) {
         previewErrors += 1;
         logger.warn('sweepStaleTranscriptionJobs: preview clear failed', {
@@ -152,7 +155,7 @@ export const sweepStaleTranscriptionJobs = onSchedule(
         });
         break;
       }
-      if (previewSnap.size < SWEEP_BATCH_SIZE) break;
+      if (batchSize < SWEEP_BATCH_SIZE) break;
     }
 
     // Phase 2: Delete terminal-state jobs older than the retention window.
