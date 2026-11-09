@@ -128,10 +128,11 @@ export const onTranscriptionJobCreated = onDocumentCreated(
         [`transcripts.${job.audioDriveFileId}`]: transcript,
         lastModifiedAt: FieldValue.serverTimestamp(),
       });
+      // No transcript text on the job doc: oversight and View As read every
+      // job, including those of a Draft about themselves (Draft privacy).
       await jobRef.update({
         status: 'Completed',
         completedAt: FieldValue.serverTimestamp(),
-        transcriptPreview: transcript.slice(0, 280),
       });
 
       logger.info('Transcription completed', {
