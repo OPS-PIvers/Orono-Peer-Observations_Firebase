@@ -52,15 +52,20 @@ export const saveTeacherResponse = onCall(
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(obsRef);
       const raw = snap.data();
-      // Missing and not-yours read the same, like the rules' denial.
-      const access = raw
-        ? await callerObservationAccess(db, raw as Observation, {
-            email: userEmail,
-            tokenRole: auth.token['role'] as string | undefined,
-            auth,
-          })
-        : null;
-      if (!raw || access !== 'observed') {
+      // Missing and not-yours read the same, like the rules' denial. The
+      // observed person is matched directly (an observer of themselves
+      // resolves to 'owner'); callerObservationAccess confines a demo-edit
+      // session to demo staff.
+      const observed =
+        !!raw &&
+        typeof raw['observedEmail'] === 'string' &&
+        raw['observedEmail'].toLowerCase() === userEmail &&
+        (await callerObservationAccess(db, raw as Observation, {
+          email: userEmail,
+          tokenRole: auth.token['role'] as string | undefined,
+          auth,
+        })) !== null;
+      if (!raw || !observed) {
         throw new HttpsError(
           'permission-denied',
           'Only the observed staff member can answer these questions.',

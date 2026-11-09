@@ -125,6 +125,12 @@ describe('saveTeacherResponse', () => {
     expect(updates).toEqual([]);
   });
 
+  it('lets an observer who is also the observed person save', async () => {
+    const updates = setup({ observerEmail: OBSERVED });
+    await run(request({ goalsResponse: GOALS }));
+    expect(updates).toHaveLength(1);
+  });
+
   it('refuses a missing observation the same way as someone else’s', async () => {
     setup({}, null);
     await expect(run(request({ goalsResponse: GOALS }))).rejects.toMatchObject({
