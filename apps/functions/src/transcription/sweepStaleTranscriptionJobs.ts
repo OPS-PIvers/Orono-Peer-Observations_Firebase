@@ -20,8 +20,7 @@ export const STALE_JOB_ERROR = 'Worker timed out';
 /**
  * Terminal-state jobs (Completed/Failed) older than this many days are
  * pruned from the database to prevent unbounded growth. Matches the retention
- * window for audit logs. This prevents the transcriptPreview field (which
- * carries the first 280 chars of classroom audio) from being retained forever.
+ * window for audit logs.
  */
 export const COMPLETED_JOB_RETENTION_DAYS = 90;
 
@@ -69,12 +68,12 @@ export function isCompletedJobPrunable(
  * error='Worker timed out', which surfaces the failure to the user and
  * unblocks re-requests.
  *
- * Phase 2: Completed/Failed jobs carry a transcriptPreview field (first 280
- * chars of classroom audio) that is never deleted. Over years of use this
- * causes unbounded growth and retains fragments of deleted observations'
- * audio content. This phase deletes terminal-state jobs older than
- * COMPLETED_JOB_RETENTION_DAYS, keeping only recent transcripts available
- * for reference.
+ * Phase 2: Completed/Failed jobs are never deleted otherwise, which over
+ * years of use causes unbounded growth. This phase deletes terminal-state
+ * jobs older than COMPLETED_JOB_RETENTION_DAYS.
+ *
+ * Phase 3: clears the transcriptPreview (first 280 chars of the transcript)
+ * that jobs written before it was dropped still hold.
  *
  * `geminiFileUri` is deliberately left untouched in phase 1 — pruneOrphanGeminiFiles
  * owns deleting leaked Gemini files (its query is status-agnostic).
@@ -125,6 +124,35 @@ export const sweepStaleTranscriptionJobs = onSchedule(
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+
+    // Phase 3 (runs before phase 2, which can loop until timeout on a failed
+    // delete): clear the transcript excerpt older jobs still carry. Jobs no
+    // longer store one (Draft privacy: oversight and View As read every job,
+    // including those of a Draft about themselves). Once cleared, the query
+    // comes back empty.
+    let previewsCleared = 0;
+    let previewErrors = 0;
+    for (;;) {
+      const previewSnap = await db
+        .collection(COLLECTIONS.transcriptionJobs)
+        .where('transcriptPreview', '!=', null)
+        .limit(SWEEP_BATCH_SIZE)
+        .get();
+      if (previewSnap.empty) break;
+      const writer = db.batch();
+      for (const doc of previewSnap.docs) writer.update(doc.ref, { transcriptPreview: null });
+      try {
+        await writer.commit();
+        previewsCleared += previewSnap.size;
+      } catch (err) {
+        previewErrors += 1;
+        logger.warn('sweepStaleTranscriptionJobs: preview clear failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        break;
+      }
+      if (previewSnap.size < SWEEP_BATCH_SIZE) break;
     }
 
     // Phase 2: Delete terminal-state jobs older than the retention window.
@@ -183,6 +211,8 @@ export const sweepStaleTranscriptionJobs = onSchedule(
       inFlightSkippedFresh: skippedFresh,
       pruned,
       prunedErrors,
+      previewsCleared,
+      previewErrors,
     });
   },
 );
