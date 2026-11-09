@@ -375,6 +375,24 @@ export const setDraftVisibilityInput = z.object({
 });
 export type SetDraftVisibilityInput = z.infer<typeof setDraftVisibilityInput>;
 
+/** Input for the saveTeacherResponse callable: the observed teacher's
+ *  answers and/or Goals & Next Steps response. A callable rather than a
+ *  rule because the teacher can't read a Draft, and a rule-checked write to
+ *  it would leak its hidden fields (see saveTeacherResponse.ts). Dates
+ *  arrive as ISO strings over the callable wire. */
+export const saveTeacherResponseInput = z
+  .object({
+    observationId: z.string().min(1),
+    workProductAnswers: z
+      .array(workProductAnswer.extend({ updatedAt: z.coerce.date() }))
+      .optional(),
+    goalsResponse: tiptapDoc.nullable().optional(),
+  })
+  .refine((d) => d.workProductAnswers !== undefined || d.goalsResponse !== undefined, {
+    message: 'Nothing to save',
+  });
+export type SaveTeacherResponseInput = z.infer<typeof saveTeacherResponseInput>;
+
 /** Input for the removeEvidenceFile callable (observer-or-admin, draft-only
  *  unless admin — see removeEvidenceFile.ts for the full precondition). */
 export const removeEvidenceFileInput = z.object({

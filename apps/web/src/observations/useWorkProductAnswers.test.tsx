@@ -2,13 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { Observation, TiptapDoc } from '@ops/shared';
 
-const { mockSetDoc } = vi.hoisted(() => ({ mockSetDoc: vi.fn() }));
-vi.mock('@/lib/firebase', () => ({ db: {} }));
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(() => ({ kind: 'doc' })),
-  serverTimestamp: vi.fn(() => 'ts'),
-  setDoc: mockSetDoc,
-}));
+const { mockSave } = vi.hoisted(() => ({ mockSave: vi.fn() }));
+vi.mock('./saveTeacherResponse', () => ({ saveTeacherResponse: mockSave }));
 
 import { useWorkProductAnswers } from './useWorkProductAnswers';
 import { resetPendingTeacherWrites } from './pendingTeacherWrites';
@@ -23,7 +18,7 @@ const observation = {
 } as unknown as Observation & { id: string };
 
 function writtenAnswers(call: number): unknown {
-  const payload = mockSetDoc.mock.calls[call]?.[1] as { workProductAnswers: { answer: unknown }[] };
+  const payload = mockSave.mock.calls[call]?.[1] as { workProductAnswers: { answer: unknown }[] };
   return payload.workProductAnswers.map((a) => a.answer);
 }
 
@@ -36,7 +31,7 @@ afterEach(() => {
 describe('useWorkProductAnswers', () => {
   it('retries a failed save with the local text, not the stored answer', async () => {
     vi.useFakeTimers();
-    mockSetDoc.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
+    mockSave.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
     const { result } = renderHook(() => useWorkProductAnswers(observation, true));
 
     act(() => {
@@ -53,7 +48,7 @@ describe('useWorkProductAnswers', () => {
       await Promise.resolve();
     });
 
-    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+    expect(mockSave).toHaveBeenCalledTimes(2);
     expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('brand new')]);
     expect(result.current.saveState).toBe('saved');
   });
@@ -63,7 +58,7 @@ describe('useWorkProductAnswers', () => {
   describe('when the copy the teacher reads trails their saves', () => {
     it('a second save keeps the first answer instead of the stale copy', async () => {
       vi.useFakeTimers();
-      mockSetDoc.mockResolvedValue(undefined);
+      mockSave.mockResolvedValue(undefined);
       const { result, rerender } = renderHook(({ obs }) => useWorkProductAnswers(obs, true), {
         initialProps: { obs: observation },
       });
@@ -83,13 +78,13 @@ describe('useWorkProductAnswers', () => {
         await vi.advanceTimersByTimeAsync(600);
       });
 
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(mockSave).toHaveBeenCalledTimes(2);
       expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
     });
 
     it('a second save keeps the first answer when no new snapshot has arrived', async () => {
       vi.useFakeTimers();
-      mockSetDoc.mockResolvedValue(undefined);
+      mockSave.mockResolvedValue(undefined);
       // The same object throughout: production sees no snapshot until the
       // trigger rewrites the view.
       const { result } = renderHook(() => useWorkProductAnswers(observation, true));
@@ -107,14 +102,14 @@ describe('useWorkProductAnswers', () => {
         await vi.advanceTimersByTimeAsync(600);
       });
 
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(mockSave).toHaveBeenCalledTimes(2);
       expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
     });
 
     it('a second save keeps the first answer while the first is still in flight', async () => {
       vi.useFakeTimers();
       // The first write is never acknowledged (slow or dropped connection).
-      mockSetDoc
+      mockSave
         .mockImplementationOnce(() => new Promise<never>(() => undefined))
         .mockResolvedValue(undefined);
       const { result } = renderHook(() => useWorkProductAnswers(observation, true));
@@ -132,13 +127,13 @@ describe('useWorkProductAnswers', () => {
         await vi.advanceTimersByTimeAsync(600);
       });
 
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(mockSave).toHaveBeenCalledTimes(2);
       expect(writtenAnswers(1)).toEqual([textDoc('new'), textDoc('second')]);
     });
 
     it('drops its own save once the copy matches it, whatever the key order', async () => {
       vi.useFakeTimers();
-      mockSetDoc.mockResolvedValue(undefined);
+      mockSave.mockResolvedValue(undefined);
       const first = renderHook(() => useWorkProductAnswers(observation, true));
       act(() => {
         first.result.current.setAnswer('q1', textDoc('new'));
@@ -170,7 +165,7 @@ describe('useWorkProductAnswers', () => {
 
     it('reopening the observation shows the saved answer, not the stale copy', async () => {
       vi.useFakeTimers();
-      mockSetDoc.mockResolvedValue(undefined);
+      mockSave.mockResolvedValue(undefined);
       const first = renderHook(() => useWorkProductAnswers(observation, true));
       act(() => {
         first.result.current.setAnswer('q1', textDoc('new'));
@@ -186,7 +181,7 @@ describe('useWorkProductAnswers', () => {
 
     it('goes back to the stored answers once the copy has caught up', async () => {
       vi.useFakeTimers();
-      mockSetDoc.mockResolvedValue(undefined);
+      mockSave.mockResolvedValue(undefined);
       const first = renderHook(() => useWorkProductAnswers(observation, true));
       act(() => {
         first.result.current.setAnswer('q1', textDoc('new'));

@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import {
-  COLLECTIONS,
   questionPhase,
   type Observation,
   type TiptapDoc,
   type WorkProductAnswer,
   type WorkProductQuestion,
 } from '@ops/shared';
-import { db } from '@/lib/firebase';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import { EMPTY_ANSWER_DOC, answerToTiptapDoc } from '@/observations/workProductAnswerDoc';
@@ -17,6 +14,7 @@ import {
   rememberSavedAnswers,
   withSavedAnswers,
 } from '@/observations/pendingTeacherWrites';
+import { saveTeacherResponse } from '@/observations/saveTeacherResponse';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -173,11 +171,7 @@ export function useWorkProductAnswers(
     const edited = next.filter((a) => dirty.has(a.questionId));
     rememberSavedAnswers(observationId, edited);
     setSaveState('saving');
-    return setDoc(
-      doc(db, COLLECTIONS.observations, observationId),
-      { workProductAnswers: next, lastModifiedAt: serverTimestamp() },
-      { merge: true },
-    )
+    return saveTeacherResponse(observationId, { workProductAnswers: next })
       .then(() => {
         if (!mountedRef.current) return;
         // Another edit is queued, or an earlier failed write's answers are
