@@ -18,6 +18,7 @@ describe('functions index', () => {
     expect(typeof mod.reopenObservation).not.toBe('undefined');
     expect(typeof mod.setCoObservers).not.toBe('undefined');
     expect(typeof mod.setDraftVisibility).not.toBe('undefined');
+    expect(typeof mod.saveTeacherResponse).not.toBe('undefined');
     expect(typeof mod.onObservationWritten).not.toBe('undefined');
     expect(typeof mod.onObservationTeacherView).not.toBe('undefined');
     expect(typeof mod.backfillTeacherViews).not.toBe('undefined');

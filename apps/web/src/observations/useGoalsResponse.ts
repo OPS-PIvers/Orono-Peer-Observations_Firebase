@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { COLLECTIONS, type Observation, type TiptapDoc } from '@ops/shared';
-import { db } from '@/lib/firebase';
+import type { Observation, TiptapDoc } from '@ops/shared';
 import { useHydratedDraft } from '@/hooks/useHydratedDraft';
 import { registerForcedSignOutFlush } from '@/auth/forcedSignOutFlush';
 import type { AnswerSaveState } from './useWorkProductAnswers';
 import { EMPTY_ANSWER_DOC } from './workProductAnswerDoc';
 import { forgetSavedGoals, rememberSavedGoals, withSavedGoals } from './pendingTeacherWrites';
+import { saveTeacherResponse } from './saveTeacherResponse';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -64,11 +63,7 @@ export function useGoalsResponse(
     // Recorded now, not on the ack, so reopening the observation before this
     // write lands shows it instead of the trailing teacher view.
     rememberSavedGoals(observationId, saved);
-    return setDoc(
-      doc(db, COLLECTIONS.observations, observationId),
-      { goalsResponse: saved, lastModifiedAt: serverTimestamp() },
-      { merge: true },
-    )
+    return saveTeacherResponse(observationId, { goalsResponse: saved })
       .then(() => {
         failedRef.current = false;
         if (!mountedRef.current) return;

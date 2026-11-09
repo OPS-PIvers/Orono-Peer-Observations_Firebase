@@ -33,6 +33,7 @@ export { regenerateObservationPdf } from './observations/regenerateObservationPd
 export { reopenObservation } from './observations/reopenObservation.js';
 export { setCoObservers } from './observations/setCoObservers.js';
 export { setDraftVisibility } from './observations/setDraftVisibility.js';
+export { saveTeacherResponse } from './observations/saveTeacherResponse.js';
 export { suggestScriptTags } from './observations/suggestScriptTags.js';
 export { applyScriptTags } from './observations/applyScriptTags.js';
 export { getAiProviderStatus } from './ai/getAiProviderStatus.js';
