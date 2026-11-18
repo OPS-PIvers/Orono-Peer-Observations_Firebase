@@ -85,9 +85,11 @@ const FLAGGED_KEYS = Object.keys(
 ) as (keyof typeof TEACHER_VIEW_FLAGGED_FIELDS)[];
 
 /** The part of each `observationData` entry the switches share: the whole
- *  entry when both are on, `proficiency` + `scratchNotes` for `ratings`
- *  alone, `selectedLookForIds` for `lookFors` alone. Undefined when neither
- *  is on or there is no data. */
+ *  entry when both are on; otherwise a complete entry (every field present,
+ *  so older clients that read the view raw can render it) with the
+ *  withheld fields blanked. A component whose shared fields hold nothing is
+ *  left out, so the view doesn't reveal which components have withheld
+ *  content. Undefined when neither switch is on or there is no data. */
 function observationDataFor(
   data: unknown,
   ratings: boolean,
@@ -96,16 +98,18 @@ function observationDataFor(
   if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
   if (!ratings && !lookFors) return undefined;
   if (ratings && lookFors) return data as Record<string, unknown>;
-  const keep = ratings ? ['proficiency', 'scratchNotes'] : ['selectedLookForIds'];
   const out: Record<string, unknown> = {};
   for (const [componentId, entry] of Object.entries(data)) {
     if (!entry || typeof entry !== 'object') continue;
-    const picked: Record<string, unknown> = {};
-    for (const field of keep) {
-      const value: unknown = Reflect.get(entry, field);
-      if (value !== undefined) picked[field] = value;
-    }
-    out[componentId] = picked;
+    const proficiency: unknown = ratings ? (Reflect.get(entry, 'proficiency') ?? null) : null;
+    const scratchNotes: unknown = ratings ? (Reflect.get(entry, 'scratchNotes') ?? '') : '';
+    const rawLookFors: unknown = lookFors ? Reflect.get(entry, 'selectedLookForIds') : undefined;
+    const selectedLookForIds: unknown[] = Array.isArray(rawLookFors) ? rawLookFors : [];
+    const hasContent =
+      proficiency !== null ||
+      (typeof scratchNotes === 'string' && scratchNotes !== '') ||
+      selectedLookForIds.length > 0;
+    if (hasContent) out[componentId] = { proficiency, selectedLookForIds, scratchNotes };
   }
   return out;
 }

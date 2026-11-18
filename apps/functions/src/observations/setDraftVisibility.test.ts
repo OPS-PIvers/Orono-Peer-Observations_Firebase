@@ -175,7 +175,9 @@ describe('setDraftVisibility', () => {
       script: false,
       meetingNotes: false,
     });
-    expect(rec.sets[0]?.data['observationData']).toEqual({ c1: { selectedLookForIds: ['lf1'] } });
+    expect(rec.sets[0]?.data['observationData']).toEqual({
+      c1: { proficiency: null, selectedLookForIds: ['lf1'], scratchNotes: '' },
+    });
   });
 
   it('keeps a stored lookFors when another switch changes', async () => {
@@ -188,7 +190,9 @@ describe('setDraftVisibility', () => {
       ratings: true,
       lookFors: false,
     });
-    expect(rec.sets[0]?.data['observationData']).toEqual({ c1: { proficiency: 'proficient' } });
+    expect(rec.sets[0]?.data['observationData']).toEqual({
+      c1: { proficiency: 'proficient', selectedLookForIds: [], scratchNotes: '' },
+    });
   });
 
   it('lets oversight change sharing on someone else’s observation', async () => {

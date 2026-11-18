@@ -91,6 +91,36 @@ describe('SharingPopover', () => {
     );
   });
 
+  it('pins look-fors before changing proficiency on an observation that never stored it', async () => {
+    renderPopover({
+      ratings: false,
+      notes: false,
+      evidence: false,
+      script: false,
+      meetingNotes: false,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /Proficiency selections/ }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockCallable.mock.calls.map(([input]) => input)).toEqual([
+      { observationId: 'obs-1', key: 'lookFors', value: false },
+      { observationId: 'obs-1', key: 'ratings', value: true },
+    ]);
+  });
+
+  it('changes proficiency alone once look-fors is stored', async () => {
+    renderPopover({ ...DRAFT_VISIBILITY_HIDDEN, lookFors: false });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /Proficiency selections/ }));
+      await Promise.resolve();
+    });
+    expect(mockCallable.mock.calls.map(([input]) => input)).toEqual([
+      { observationId: 'obs-1', key: 'ratings', value: true },
+    ]);
+  });
+
   it('puts the switch back and shows the error when the save fails', async () => {
     mockCallable.mockImplementation(() => Promise.reject(new Error('permission-denied')));
     renderPopover();

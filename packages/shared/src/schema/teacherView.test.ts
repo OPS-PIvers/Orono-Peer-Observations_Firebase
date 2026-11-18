@@ -70,17 +70,24 @@ describe('teacherViewOf', () => {
   it('shares proficiency without look-fors when only ratings is on', () => {
     const view = teacherViewOf(fullObs({ ...ALL_OFF, ratings: true }), 'obs1');
     expect(view['observationData']).toEqual({
-      c1: { proficiency: 'proficient', scratchNotes: 'scratch' },
-      c2: { proficiency: null, scratchNotes: '' },
+      c1: { proficiency: 'proficient', selectedLookForIds: [], scratchNotes: 'scratch' },
     });
   });
 
   it('shares look-fors without proficiency when only lookFors is on', () => {
     const view = teacherViewOf(fullObs({ ...ALL_OFF, lookFors: true }), 'obs1');
     expect(view['observationData']).toEqual({
-      c1: { selectedLookForIds: ['lf1', 'lf2'] },
-      c2: { selectedLookForIds: [] },
+      c1: { proficiency: null, selectedLookForIds: ['lf1', 'lf2'], scratchNotes: '' },
     });
+  });
+
+  it('leaves out components with nothing in the shared part', () => {
+    const obs = fullObs({ ...ALL_OFF, lookFors: true });
+    obs['observationData'] = {
+      rated: { proficiency: 'basic', selectedLookForIds: [], scratchNotes: '' },
+      legacy: { proficiency: 'basic' },
+    };
+    expect(teacherViewOf(obs, 'obs1')['observationData']).toEqual({});
   });
 
   it('shares look-fors with ratings when lookFors predates the switch (absent)', () => {

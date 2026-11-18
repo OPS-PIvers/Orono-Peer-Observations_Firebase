@@ -1482,23 +1482,27 @@ export function ObservationEditorPage() {
 /** The observed teacher's per-component entries on a Draft: proficiency
  *  (and scratch notes) only with `ratings` shared, look-fors only with
  *  `lookFors`. The teacher view already holds just the shared part; this is
- *  the editor's second layer. */
+ *  the editor's second layer. Every entry comes out complete, because a
+ *  teacher-view entry can lack the withheld fields (for one render after a
+ *  switch turns on, the draft still holds the previous view). */
 function sharedEntries(
   entries: Record<string, ObservationComponentEntry>,
   ratings: boolean,
   lookFors: boolean,
 ): Record<string, ObservationComponentEntry> {
-  if (ratings && lookFors) return entries;
   if (!ratings && !lookFors) return {};
   return Object.fromEntries(
-    Object.entries(entries).map(([componentId, entry]) => [
-      componentId,
-      {
-        proficiency: ratings ? entry.proficiency : null,
-        scratchNotes: ratings ? entry.scratchNotes : '',
-        selectedLookForIds: lookFors ? entry.selectedLookForIds : [],
-      },
-    ]),
+    Object.entries(entries).map(([componentId, full]) => {
+      const entry: Partial<ObservationComponentEntry> = full;
+      return [
+        componentId,
+        {
+          proficiency: ratings ? (entry.proficiency ?? null) : null,
+          scratchNotes: ratings ? (entry.scratchNotes ?? '') : '',
+          selectedLookForIds: lookFors ? (entry.selectedLookForIds ?? []) : [],
+        },
+      ];
+    }),
   );
 }
 

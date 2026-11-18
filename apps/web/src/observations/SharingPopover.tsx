@@ -74,6 +74,12 @@ export function SharingPopover({ observationId, value, coObservers }: SharingPop
     setPending((p) => ({ ...p, [key]: next }));
     try {
       assertWritable();
+      // An unstored lookFors follows ratings (for observations shared before
+      // the Look-fors switch). Pin it at what it shows now before ratings
+      // changes, so flipping Proficiency never flips Look-fors with it.
+      if (key === 'ratings' && typeof value?.lookFors !== 'boolean') {
+        await setDraftVisibilityFn({ observationId, key: 'lookFors', value: effective.lookFors });
+      }
       await setDraftVisibilityFn({ observationId, key, value: next });
       setError(null);
     } catch (err: unknown) {
