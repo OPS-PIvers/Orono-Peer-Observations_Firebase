@@ -4,7 +4,16 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { claims, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
@@ -47,7 +56,11 @@ describe('View As grant (canViewAs)', () => {
   it('lets a granted viewer read observations and staff, but not write', async () => {
     const db = testEnv.authenticatedContext('v', claims.teacher(VIEWER)).firestore();
     await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
-    await assertSucceeds(getDocs(collection(db, 'observations')));
+    // Lists must leave out the viewer's own Drafts (ownDraftLists.test.ts).
+    await assertFails(getDocs(collection(db, 'observations')));
+    await assertSucceeds(
+      getDocs(query(collection(db, 'observations'), where('observedEmail', '!=', VIEWER))),
+    );
     await assertSucceeds(getDocs(collection(db, 'staff')));
     await assertFails(updateDoc(doc(db, 'observations/obs1'), { observationName: 'x' }));
   });

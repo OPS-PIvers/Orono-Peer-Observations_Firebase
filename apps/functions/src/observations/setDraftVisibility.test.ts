@@ -150,6 +150,51 @@ describe('setDraftVisibility', () => {
     });
   });
 
+  it('leaves lookFors unset, following ratings, until someone flips it', async () => {
+    const rec = setup({
+      observationData: { c1: { proficiency: 'proficient', selectedLookForIds: ['lf1'] } },
+    });
+    await run(request({ key: 'notes', value: true }));
+    expect(rec.updates[0]?.data['draftVisibility']).not.toHaveProperty('lookFors');
+    expect(rec.sets[0]?.data['observationData']).toEqual({
+      c1: { proficiency: 'proficient', selectedLookForIds: ['lf1'] },
+    });
+  });
+
+  it('stores lookFors once flipped and shares look-fors on their own', async () => {
+    const rec = setup({
+      observationData: { c1: { proficiency: 'proficient', selectedLookForIds: ['lf1'] } },
+      draftVisibility: { ratings: false },
+    });
+    await run(request({ key: 'lookFors', value: true }));
+    expect(rec.updates[0]?.data['draftVisibility']).toEqual({
+      ratings: false,
+      lookFors: true,
+      notes: false,
+      evidence: false,
+      script: false,
+      meetingNotes: false,
+    });
+    expect(rec.sets[0]?.data['observationData']).toEqual({
+      c1: { proficiency: null, selectedLookForIds: ['lf1'], scratchNotes: '' },
+    });
+  });
+
+  it('keeps a stored lookFors when another switch changes', async () => {
+    const rec = setup({
+      observationData: { c1: { proficiency: 'proficient', selectedLookForIds: ['lf1'] } },
+      draftVisibility: { ratings: false, lookFors: false },
+    });
+    await run(request({ key: 'ratings', value: true }));
+    expect(rec.updates[0]?.data['draftVisibility']).toMatchObject({
+      ratings: true,
+      lookFors: false,
+    });
+    expect(rec.sets[0]?.data['observationData']).toEqual({
+      c1: { proficiency: 'proficient', selectedLookForIds: [], scratchNotes: '' },
+    });
+  });
+
   it('lets oversight change sharing on someone else’s observation', async () => {
     const rec = setup();
     await run(request({ key: 'ratings', value: false }, OVERSIGHT, { role: 'full-access' }));

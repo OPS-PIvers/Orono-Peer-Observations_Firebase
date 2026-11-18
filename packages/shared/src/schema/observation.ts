@@ -172,8 +172,14 @@ export function observationHasRecordedContent(obs: Record<string, unknown>): boo
  * never withheld.
  */
 export const draftVisibility = z.object({
-  /** Proficiency selections and look-fors. */
+  /** Proficiency selections. */
   ratings: z.boolean().default(false),
+  /** Look-fors checked per component. Absent on observations whose sharing
+   *  predates this switch: there look-fors went with `ratings`, so an absent
+   *  value follows `ratings` (see effectiveDraftVisibility). setDraftVisibility
+   *  only stores it once someone flips it, so the release without this switch
+   *  keeps its old behavior. */
+  lookFors: z.boolean().optional(),
   /** Per-component manual notes. */
   notes: z.boolean().default(false),
   /** Drive evidence links per component. */
@@ -185,14 +191,35 @@ export const draftVisibility = z.object({
   meetingNotes: z.boolean().default(false),
 });
 export type DraftVisibility = z.infer<typeof draftVisibility>;
+/** Every switch resolved to on or off (see effectiveDraftVisibility). */
+export type SharedDraftVisibility = { [K in keyof DraftVisibility]-?: boolean };
 
-export const DRAFT_VISIBILITY_HIDDEN: DraftVisibility = {
+export const DRAFT_VISIBILITY_HIDDEN: SharedDraftVisibility = {
   ratings: false,
+  lookFors: false,
   notes: false,
   evidence: false,
   script: false,
   meetingNotes: false,
 };
+
+/** The switches as they apply, read from raw (unvalidated) or parsed
+ *  `draftVisibility`: anything but `true` is off, and an absent `lookFors`
+ *  follows `ratings` (they were one switch before). */
+export function effectiveDraftVisibility(raw: unknown): SharedDraftVisibility {
+  const on = (key: keyof DraftVisibility) =>
+    !!raw && typeof raw === 'object' && Reflect.get(raw, key) === true;
+  const storedLookFors: unknown =
+    raw && typeof raw === 'object' ? Reflect.get(raw, 'lookFors') : undefined;
+  return {
+    ratings: on('ratings'),
+    lookFors: typeof storedLookFors === 'boolean' ? storedLookFors : on('ratings'),
+    notes: on('notes'),
+    evidence: on('evidence'),
+    script: on('script'),
+    meetingNotes: on('meetingNotes'),
+  };
+}
 
 /** Frozen copy of the rubric content an observation was scored against,
  *  captured server-side at finalize time (finalizeObservation) and
