@@ -104,7 +104,10 @@ export function SharingPopover({ observationId, value, coObservers }: SharingPop
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 space-y-3">
+      <PopoverContent
+        align="end"
+        className="max-h-(--radix-popover-content-available-height) w-80 space-y-3 overflow-y-auto"
+      >
         <div>
           <p className="text-ops-blue-dark text-sm font-semibold">
             Shared with the observed staff member
