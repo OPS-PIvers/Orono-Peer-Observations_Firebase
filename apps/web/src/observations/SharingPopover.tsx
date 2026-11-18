@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { Eye, EyeOff } from 'lucide-react';
 import {
-  DRAFT_VISIBILITY_HIDDEN,
+  effectiveDraftVisibility,
   type DraftVisibility,
+  type SharedDraftVisibility,
   type SetDraftVisibilityInput,
 } from '@ops/shared';
 import { functions } from '@/lib/firebase';
@@ -22,6 +23,7 @@ const setDraftVisibilityFn = httpsCallable<
 
 const ROWS: { key: VisibilityKey; label: string; hint: string }[] = [
   { key: 'ratings', label: 'Proficiency selections', hint: 'Which level you picked per component' },
+  { key: 'lookFors', label: 'Look-fors', hint: 'The look-fors you checked per component' },
   { key: 'notes', label: 'Component notes', hint: 'Your manual notes under each component' },
   { key: 'evidence', label: 'Evidence links', hint: 'Drive files attached to components' },
   { key: 'script', label: 'Script', hint: 'The live observation script and its tags' },
@@ -50,16 +52,19 @@ export interface SharingPopoverProps {
  * On finalize everything is visible regardless.
  */
 export function SharingPopover({ observationId, value, coObservers }: SharingPopoverProps) {
-  const [pending, setPending] = useState<Partial<DraftVisibility>>({});
+  const [pending, setPending] = useState<Partial<SharedDraftVisibility>>({});
   const [error, setError] = useState<string | null>(null);
-  const effective: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN, ...value, ...pending };
+  const effective: SharedDraftVisibility = {
+    ...effectiveDraftVisibility(value),
+    ...pending,
+  };
   const sharedCount = ROWS.filter((r) => effective[r.key]).length;
 
   // A saved switch stays pending (disabled, showing its new state) until the
   // live doc shows it, so it doesn't flick back between the call returning
   // and the snapshot arriving.
   useEffect(() => {
-    const live: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN, ...value };
+    const live = effectiveDraftVisibility(value);
     setPending((p) =>
       Object.fromEntries(Object.entries(p).filter(([k, v]) => Reflect.get(live, k) !== v)),
     );

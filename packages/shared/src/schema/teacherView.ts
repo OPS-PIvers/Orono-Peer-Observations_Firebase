@@ -1,4 +1,4 @@
-import { DRAFT_VISIBILITY_HIDDEN, type DraftVisibility } from './observation.js';
+import { effectiveDraftVisibility, type DraftVisibility } from './observation.js';
 
 /**
  * Teacher view: `/teacherViews/{observationId}`, the copy of an observation
@@ -52,14 +52,19 @@ export const TEACHER_VIEW_ALWAYS_FIELDS = [
 ] as const;
 
 /** Fields copied only while the matching `draftVisibility` flag is on.
- *  Mirrors the editor's `show.*` gating in ObservationEditorPage. */
+ *  Mirrors the editor's `show.*` gating in ObservationEditorPage.
+ *  `observationData` is shared field by field instead (see
+ *  observationDataFor): proficiency and scratch notes with `ratings`,
+ *  look-fors with `lookFors`. */
 export const TEACHER_VIEW_FLAGGED_FIELDS = {
-  ratings: ['observationData'],
   notes: ['componentNotes'],
   evidence: ['evidenceLinks'],
   script: ['scriptDoc', 'componentTags'],
   meetingNotes: ['preObsNotes', 'postObsNotes', 'goalsNextSteps'],
-} as const satisfies Record<keyof DraftVisibility, readonly string[]>;
+} as const satisfies Record<
+  Exclude<keyof DraftVisibility, 'ratings' | 'lookFors'>,
+  readonly string[]
+>;
 
 /** Fields that never reach the view. Listed for documentation and tests;
  *  the allowlist above is what actually excludes them. Draft audio is
@@ -75,22 +80,34 @@ export const TEACHER_VIEW_NEVER_FIELDS = [
   'lastModifiedAt',
 ] as const;
 
-const VISIBILITY_FLAGS = [
-  'ratings',
-  'notes',
-  'evidence',
-  'script',
-  'meetingNotes',
-] as const satisfies readonly (keyof DraftVisibility)[];
+const FLAGGED_KEYS = Object.keys(
+  TEACHER_VIEW_FLAGGED_FIELDS,
+) as (keyof typeof TEACHER_VIEW_FLAGGED_FIELDS)[];
 
-/** Reads `draftVisibility` from raw data. Missing or non-boolean flags are
- *  off, matching DRAFT_VISIBILITY_HIDDEN. */
-function visibilityOf(obs: Record<string, unknown>): DraftVisibility {
-  const raw = obs['draftVisibility'];
-  const flags: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN };
-  if (!raw || typeof raw !== 'object') return flags;
-  for (const key of VISIBILITY_FLAGS) flags[key] = Reflect.get(raw, key) === true;
-  return flags;
+/** The part of each `observationData` entry the switches share: the whole
+ *  entry when both are on, `proficiency` + `scratchNotes` for `ratings`
+ *  alone, `selectedLookForIds` for `lookFors` alone. Undefined when neither
+ *  is on or there is no data. */
+function observationDataFor(
+  data: unknown,
+  ratings: boolean,
+  lookFors: boolean,
+): Record<string, unknown> | undefined {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  if (!ratings && !lookFors) return undefined;
+  if (ratings && lookFors) return data as Record<string, unknown>;
+  const keep = ratings ? ['proficiency', 'scratchNotes'] : ['selectedLookForIds'];
+  const out: Record<string, unknown> = {};
+  for (const [componentId, entry] of Object.entries(data)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const picked: Record<string, unknown> = {};
+    for (const field of keep) {
+      const value: unknown = Reflect.get(entry, field);
+      if (value !== undefined) picked[field] = value;
+    }
+    out[componentId] = picked;
+  }
+  return out;
 }
 
 /**
@@ -109,9 +126,11 @@ export function teacherViewOf(
     if (value !== undefined) view[field] = value;
   };
   for (const field of TEACHER_VIEW_ALWAYS_FIELDS) copy(field);
-  const flags = visibilityOf(obs);
-  for (const key of VISIBILITY_FLAGS) {
+  const flags = effectiveDraftVisibility(obs['draftVisibility']);
+  for (const key of FLAGGED_KEYS) {
     if (flags[key]) TEACHER_VIEW_FLAGGED_FIELDS[key].forEach(copy);
   }
+  const observationData = observationDataFor(obs['observationData'], flags.ratings, flags.lookFors);
+  if (observationData !== undefined) view['observationData'] = observationData;
   return view;
 }

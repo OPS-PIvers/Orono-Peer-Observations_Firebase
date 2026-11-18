@@ -15,14 +15,13 @@ import { doc, orderBy, serverTimestamp, setDoc, updateDoc, where } from 'firebas
 import { httpsCallable } from 'firebase/functions';
 import {
   COLLECTIONS,
-  DRAFT_VISIBILITY_HIDDEN,
+  effectiveDraftVisibility,
   OBSERVATION_STATUS,
   canEditObservationAudio,
   canEditObservationContent,
   canManageObservation,
   observationAccessFor,
   QUESTION_TYPE_BY_OBSERVATION_TYPE,
-  type DraftVisibility,
   type Observation,
   type ObservationComponentEntry,
   type Role,
@@ -700,10 +699,7 @@ export function ObservationEditorPage() {
   // Draft sharing switchboard (see SharingPopover). Only the observed staff
   // member viewing a Draft is ever withheld anything; the observer and
   // admins see everything, and finalize reveals everything to everyone.
-  const draftVisibility: DraftVisibility = {
-    ...DRAFT_VISIBILITY_HIDDEN,
-    ...observation?.draftVisibility,
-  };
+  const draftVisibility = effectiveDraftVisibility(observation?.draftVisibility);
   const withholding = !!observation && !isReadOnly && !canEdit && isObservedStaff;
 
   // The observed teacher can't edit any field of the draft, so their copy
@@ -719,6 +715,7 @@ export function ObservationEditorPage() {
 
   const show = {
     ratings: !withholding || draftVisibility.ratings,
+    lookFors: !withholding || draftVisibility.lookFors,
     notes: !withholding || draftVisibility.notes,
     evidence: !withholding || draftVisibility.evidence,
     script: !withholding || draftVisibility.script,
@@ -1433,7 +1430,7 @@ export function ObservationEditorPage() {
             No components are assigned for this role/year combination. Ask an admin to update the
             role/year mappings.
           </div>
-        ) : withholding && !show.ratings && !show.notes && !show.evidence ? (
+        ) : withholding && !show.ratings && !show.lookFors && !show.notes && !show.evidence ? (
           // Nothing per-component is shared yet: render the criteria text
           // only, exactly as the teacher sees it on /my-rubric. Hiding the
           // grid entirely would make the page look broken.
@@ -1447,7 +1444,7 @@ export function ObservationEditorPage() {
             rubric={visibleRubric}
             mode={{
               kind: 'edit',
-              entries: show.ratings ? draft.observationData : {},
+              entries: sharedEntries(draft.observationData, show.ratings, show.lookFors),
               notes: show.notes ? draft.componentNotes : {},
               ...(draft.scriptDoc && show.script ? { scriptDoc: draft.scriptDoc } : {}),
               evidenceLinks: show.evidence ? (observation.evidenceLinks ?? {}) : {},
@@ -1479,6 +1476,29 @@ export function ObservationEditorPage() {
         </ScriptDrawer>
       ) : null}
     </>
+  );
+}
+
+/** The observed teacher's per-component entries on a Draft: proficiency
+ *  (and scratch notes) only with `ratings` shared, look-fors only with
+ *  `lookFors`. The teacher view already holds just the shared part; this is
+ *  the editor's second layer. */
+function sharedEntries(
+  entries: Record<string, ObservationComponentEntry>,
+  ratings: boolean,
+  lookFors: boolean,
+): Record<string, ObservationComponentEntry> {
+  if (ratings && lookFors) return entries;
+  if (!ratings && !lookFors) return {};
+  return Object.fromEntries(
+    Object.entries(entries).map(([componentId, entry]) => [
+      componentId,
+      {
+        proficiency: ratings ? entry.proficiency : null,
+        scratchNotes: ratings ? entry.scratchNotes : '',
+        selectedLookForIds: lookFors ? entry.selectedLookForIds : [],
+      },
+    ]),
   );
 }
 

@@ -4,9 +4,9 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import {
   COLLECTIONS,
-  DRAFT_VISIBILITY_HIDDEN,
   OBSERVATION_STATUS,
   canManageObservation,
+  effectiveDraftVisibility,
   setDraftVisibilityInput,
   teacherViewOf,
   type DraftVisibility,
@@ -79,12 +79,17 @@ export const setDraftVisibility = onCall(
         );
       }
 
-      // Raw reads skip schema defaults: keep only real booleans.
+      // Raw reads skip schema defaults: keep only real booleans. `lookFors`
+      // stays absent (following `ratings`) until someone flips it, so the
+      // app release without a look-fors switch keeps sharing look-fors
+      // together with proficiency.
       const stored: unknown = raw['draftVisibility'];
-      const flags: DraftVisibility = { ...DRAFT_VISIBILITY_HIDDEN };
-      for (const k of Object.keys(flags) as (keyof DraftVisibility)[]) {
-        flags[k] = !!stored && typeof stored === 'object' && Reflect.get(stored, k) === true;
-      }
+      const { lookFors, ...rest } = effectiveDraftVisibility(stored);
+      const lookForsStored =
+        !!stored &&
+        typeof stored === 'object' &&
+        typeof Reflect.get(stored, 'lookFors') === 'boolean';
+      const flags: DraftVisibility = lookForsStored ? { ...rest, lookFors } : rest;
       flags[key] = value;
 
       tx.update(obsRef, {
