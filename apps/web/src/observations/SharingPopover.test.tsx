@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRAFT_VISIBILITY_HIDDEN } from '@ops/shared';
+import { DRAFT_VISIBILITY_HIDDEN, type DraftVisibility } from '@ops/shared';
 
 const { mockCallable } = vi.hoisted(() => ({
   mockCallable: vi.fn<(input: unknown) => Promise<unknown>>(() =>
@@ -21,7 +21,7 @@ const coObservers = {
   value: [],
 };
 
-function renderPopover(value = DRAFT_VISIBILITY_HIDDEN) {
+function renderPopover(value: DraftVisibility = DRAFT_VISIBILITY_HIDDEN) {
   const props = { observationId: 'obs-1', coObservers };
   const view = render(<SharingPopover {...props} value={value} />);
   fireEvent.click(screen.getByRole('button', { name: /^Sharing:/ }));
@@ -60,6 +60,65 @@ describe('SharingPopover', () => {
     rerender({ ...DRAFT_VISIBILITY_HIDDEN, notes: true });
     expect(notesSwitch()).toBeChecked();
     expect(notesSwitch()).toBeEnabled();
+  });
+
+  it('has its own look-fors switch', async () => {
+    renderPopover();
+    const lookFors = screen.getByRole('switch', { name: /Look-fors/ });
+    expect(lookFors).not.toBeChecked();
+    await act(async () => {
+      fireEvent.click(lookFors);
+      await Promise.resolve();
+    });
+    expect(mockCallable).toHaveBeenCalledWith({
+      observationId: 'obs-1',
+      key: 'lookFors',
+      value: true,
+    });
+  });
+
+  it('shows look-fors as shared on an observation whose ratings were shared before the switch existed', () => {
+    renderPopover({
+      ratings: true,
+      notes: false,
+      evidence: false,
+      script: false,
+      meetingNotes: false,
+    });
+    expect(screen.getByRole('switch', { name: /Look-fors/ })).toBeChecked();
+    expect(screen.getByRole('button', { name: /^Sharing:/ })).toHaveAccessibleName(
+      'Sharing: 2 of 6 shared with the observed staff member',
+    );
+  });
+
+  it('pins look-fors before changing proficiency on an observation that never stored it', async () => {
+    renderPopover({
+      ratings: false,
+      notes: false,
+      evidence: false,
+      script: false,
+      meetingNotes: false,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /Proficiency selections/ }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockCallable.mock.calls.map(([input]) => input)).toEqual([
+      { observationId: 'obs-1', key: 'lookFors', value: false },
+      { observationId: 'obs-1', key: 'ratings', value: true },
+    ]);
+  });
+
+  it('changes proficiency alone once look-fors is stored', async () => {
+    renderPopover({ ...DRAFT_VISIBILITY_HIDDEN, lookFors: false });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('switch', { name: /Proficiency selections/ }));
+      await Promise.resolve();
+    });
+    expect(mockCallable.mock.calls.map(([input]) => input)).toEqual([
+      { observationId: 'obs-1', key: 'ratings', value: true },
+    ]);
   });
 
   it('puts the switch back and shows the error when the save fails', async () => {
