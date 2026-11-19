@@ -85,7 +85,7 @@ test('the observed teacher opens their Draft from My Observations', async ({ bro
   await expect(notesSwitch()).toBeChecked();
   await expect(notesSwitch()).toBeEnabled({ timeout: 15_000 });
   await pe.reload();
-  await pe.getByRole('button', { name: /^Sharing: 1 of 5/ }).click();
+  await pe.getByRole('button', { name: /^Sharing: 1 of \d+/ }).click();
   await expect(notesSwitch()).toBeChecked();
   await notesSwitch().click();
   await expect(notesSwitch()).not.toBeChecked();

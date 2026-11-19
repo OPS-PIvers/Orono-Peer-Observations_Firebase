@@ -26,8 +26,10 @@ export const transcriptionJob = z.object({
   completedAt: isoDate.nullable().default(null),
   /** Filled when status === 'Failed'. */
   error: z.string().nullable().default(null),
-  /** When status === 'Completed', also populated for convenience (the
-   *  authoritative copy lives on /observations/{id}.transcripts[audioFileId]). */
+  /** No longer written (Draft privacy: oversight and View As read every job,
+   *  including those of a Draft about themselves); the hourly sweep clears it
+   *  on older jobs. The transcript lives on
+   *  /observations/{id}.transcripts[audioFileId]. */
   transcriptPreview: z.string().nullable().default(null),
   /** gs:// URI of the temporarily uploaded audio in the transcription scratch
    *  bucket (older jobs hold a Gemini Files API URI such as "files/abc123").
