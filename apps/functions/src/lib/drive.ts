@@ -524,6 +524,20 @@ export async function downloadFile(fileId: string): Promise<Buffer> {
 }
 
 /**
+ * True when a permission is set on this item itself, not only carried down
+ * from a parent folder or Shared Drive membership. Drive lists inherited
+ * permissions too (a Shared Drive member shows up on every item), and those
+ * can't be updated or deleted here, so the grant helpers only match direct
+ * ones. A My Drive permission has no details and is always direct.
+ */
+function isDirectPermission(p: drive_v3.Schema$Permission): boolean {
+  const details = p.permissionDetails ?? [];
+  return details.length === 0 || details.some((d) => d.inherited !== true);
+}
+
+const PERMISSION_FIELDS = 'permissions(id,emailAddress,role,permissionDetails(inherited))';
+
+/**
  * Grant a role (`reader` or `writer`) on a Drive folder/file to a specific
  * user, idempotently (looks up existing permissions first to avoid
  * duplicate grants on re-finalize).
@@ -540,11 +554,13 @@ export async function shareWithUser(args: {
   const drive = await getDriveClient();
   const existing = await drive.permissions.list({
     fileId: args.fileId,
-    fields: 'permissions(id,emailAddress,role)',
+    fields: PERMISSION_FIELDS,
     supportsAllDrives: true,
   });
   const lower = args.email.toLowerCase();
-  const match = existing.data.permissions?.find((p) => p.emailAddress?.toLowerCase() === lower);
+  const match = existing.data.permissions?.find(
+    (p) => p.emailAddress?.toLowerCase() === lower && isDirectPermission(p),
+  );
   if (match?.role === args.role) return;
   if (match?.id) {
     await drive.permissions.update({
@@ -627,12 +643,12 @@ export async function removeReaderFromFile(args: { fileId: string; email: string
   const drive = await getDriveClient();
   const existing = await drive.permissions.list({
     fileId: args.fileId,
-    fields: 'permissions(id,emailAddress,role)',
+    fields: PERMISSION_FIELDS,
     supportsAllDrives: true,
   });
   const lower = args.email.toLowerCase();
   const match = existing.data.permissions?.find(
-    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader',
+    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader' && isDirectPermission(p),
   );
   if (!match?.id) return;
   await drive.permissions.delete({
@@ -668,12 +684,12 @@ export async function withdrawObservedFolderAccess(args: {
   // already did): no further Drive calls, so this never blocks an upload.
   const existing = await drive.permissions.list({
     fileId: folderId,
-    fields: 'permissions(id,emailAddress,role)',
+    fields: PERMISSION_FIELDS,
     supportsAllDrives: true,
   });
   const lower = observedEmail.toLowerCase();
   const folderGrant = existing.data.permissions?.find(
-    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader',
+    (p) => p.emailAddress?.toLowerCase() === lower && p.role === 'reader' && isDirectPermission(p),
   );
   if (!folderGrant?.id) return;
   if (pdfDriveFileId) {

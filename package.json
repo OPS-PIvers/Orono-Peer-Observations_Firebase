@@ -57,6 +57,7 @@
     "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
     "drive:transfer": "tsx scripts/drive-auth/transfer-drive-ownership.ts",
     "drive:migrate": "tsx scripts/drive-auth/move-to-shared-drive.ts",
+    "drive:lock-members": "tsx scripts/drive-auth/lock-shared-drive-members.ts",
     "prepare": "husky"
   },
   "devDependencies": {
