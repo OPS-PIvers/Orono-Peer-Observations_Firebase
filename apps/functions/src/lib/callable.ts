@@ -5,7 +5,14 @@ import {
   type CallableRequest,
 } from 'firebase-functions/v2/https';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { CLAIMS_EMAIL_CLAIM, COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
+import {
+  CLAIMS_EMAIL_CLAIM,
+  COLLECTIONS,
+  DEMO_EDIT_CLAIM,
+  isSpecialRole,
+  type Staff,
+} from '@ops/shared';
+import { claimsForStaff } from '../auth/staffClaims.js';
 
 /** A demo-edit session: someone driving this account via View As + Edit. */
 export function isDemoEditSession(
@@ -14,13 +21,27 @@ export function isDemoEditSession(
   return typeof auth?.token[DEMO_EDIT_CLAIM] === 'string';
 }
 
-/** Whether the token carries any role claim (role, hasSpecialAccess,
- *  isAdmin) that something downstream might authorize on. */
-function hasRoleClaims(token: Record<string, unknown> | undefined): boolean {
+/** Whether the token carries a privileged claim (a special role,
+ *  hasSpecialAccess or isAdmin) that something downstream authorizes on. */
+function hasPrivilegedClaims(token: Record<string, unknown> | undefined): boolean {
   return (
-    (typeof token?.['role'] === 'string' && token['role'] !== '') ||
+    isSpecialRole(typeof token?.['role'] === 'string' ? token['role'] : null) ||
     token?.['hasSpecialAccess'] === true ||
     token?.['isAdmin'] === true
+  );
+}
+
+/** Whether the token's privileged claims match what the live /staff doc
+ *  grants now (claimsForStaff). A demotion is revoked by email too, so a uid
+ *  that was away from that email when it happened can come back to it with
+ *  the old claims; this catches that, and an ordinary not-yet-refreshed
+ *  demotion, on the next call. */
+function claimsMatchStaffDoc(token: Record<string, unknown>, self: Partial<Staff>): boolean {
+  const live = claimsForStaff(self);
+  return (
+    (token['role'] ?? null) === live.role &&
+    (token['isAdmin'] !== true || live.isAdmin) &&
+    (token['hasSpecialAccess'] !== true || live.hasSpecialAccess)
   );
 }
 
@@ -71,10 +92,11 @@ export function onCall<T = unknown>(
 
 /** Whether the caller is archived, or otherwise must be refused like one.
  *  A missing field counts as active (the schema default). A token carrying
- *  role claims is refused unless those claims were issued for its current
- *  email (claimsBoundToToken) and that email has a /staff doc: otherwise
- *  they may be left over from an address that has since been archived or
- *  demoted, which revocation (onStaffWritten, keyed by email) can't reach. In a
+ *  privileged claims is refused unless those claims were issued for its
+ *  current email (claimsBoundToToken), that email has a /staff doc, and the
+ *  doc still grants them: otherwise they may be left over from an address
+ *  that has since been archived or demoted, which revocation
+ *  (onStaffWritten, keyed by email) can't reach. In a
  *  demo-edit session the driver (demoEditBy) counts too: archiving them or
  *  removing their canViewAsEdit grant ends the session. A demo account
  *  (isDemo) is only usable through View As + Edit, so it's refused without
@@ -95,7 +117,13 @@ export async function isArchivedCaller(
     ),
   );
   if (self?.isActive === false) return true;
-  if (hasRoleClaims(auth?.token) && (!claimsBoundToToken(auth) || self === undefined)) return true;
+  if (
+    auth &&
+    hasPrivilegedClaims(auth.token) &&
+    (!claimsBoundToToken(auth) || self === undefined || !claimsMatchStaffDoc(auth.token, self))
+  ) {
+    return true;
+  }
   if (!isDemoEditSession(auth)) return self?.isDemo === true;
   return self?.isDemo !== true || driver?.isActive === false || driver?.canViewAsEdit !== true;
 }

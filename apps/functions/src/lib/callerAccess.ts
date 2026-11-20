@@ -88,7 +88,9 @@ function meetsAccessLevel(
  *     quickly: if the stale token still carries the old role claim, that
  *     claim satisfies `level`, so the demotion has no effect until the
  *     caller's ID token refreshes (next sign-in or an explicit "Refresh
- *     access"). Don't assume both cases are immediate.
+ *     access"). Don't assume both cases are immediate. (Callables and the
+ *     recording paths also run isArchivedCaller first, which refuses
+ *     privileged claims the live doc no longer grants.)
  */
 export async function callerMeetsAccessLevel(
   db: Firestore,

@@ -83,7 +83,12 @@ export const syncMyClaims = onCall(
     const staffSnap = await staffRef.get();
     const staffData = staffSnap.exists ? staffSnap.data() : null;
     // An archived member gets the null/false triple (see claimsForStaff).
-    const { role, hasSpecialAccess, isAdmin } = claimsForStaff(staffData);
+    // So does a demo-edit session on a non-demo account: View As + Edit only
+    // drives demo staff, so it never mints a real person's claims.
+    const demoEditOfRealStaff = isDemoEditSession(request.auth) && staffData?.['isDemo'] !== true;
+    const { role, hasSpecialAccess, isAdmin } = claimsForStaff(
+      demoEditOfRealStaff ? null : staffData,
+    );
 
     // Bound to `email` so the claims stop counting if this account's email
     // later changes (see CLAIMS_EMAIL_CLAIM in @ops/shared).
@@ -108,7 +113,6 @@ export const syncMyClaims = onCall(
     // A demo-edit session is someone else driving this account (View As +
     // Edit), not the person signing in: never stamp a real person's doc or
     // attribute a sign_in to them for it.
-    const demoEditOfRealStaff = isDemoEditSession(request.auth) && staffData?.['isDemo'] !== true;
     if (staffSnap.exists && !demoEditOfRealStaff) {
       const existingStamp = staffData?.['lastSignInAt'] as
         { toMillis?: () => number } | null | undefined;

@@ -162,7 +162,7 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
   it("can play a demo person's recording", async () => {
     await expect(
       canReadRecording(
-        dbWithStaff({ isDemo: true, canViewAsEdit: true }),
+        dbWithStaff({ role: 'peer-evaluator', isDemo: true, canViewAsEdit: true }),
         obs(),
         OBSERVER,
         demoAuth,

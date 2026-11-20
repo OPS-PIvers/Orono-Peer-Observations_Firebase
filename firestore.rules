@@ -87,12 +87,27 @@ service cloud.firestore {
     // (claimsEmail) and that email still has an active staff doc: after an
     // account's email changes, archiving or demoting the old address can't
     // reach its uid, and a missing doc must not read as an active member.
-    // Every claim-based tier goes through this. Mirrors isArchivedCaller in
+    // The claims must also still match what that doc grants. Every
+    // claim-based tier goes through this. Mirrors isArchivedCaller in
     // the functions.
     function hasTrustedClaims() {
       return request.auth.token.get('claimsEmail', null) == request.auth.token.email
         && exists(/databases/$(database)/documents/staff/$(request.auth.token.email))
-        && isActiveStaff();
+        && isActiveStaff()
+        && claimsMatchStaffDoc();
+    }
+    // The claims grant no more than the live staff doc does now (mirrors
+    // claimsForStaff in the functions). A demotion is revoked by email, so a
+    // uid that was away from that email when it happened could otherwise
+    // come back to it with its old claims.
+    function claimsMatchStaffDoc() {
+      let r = staffDocData().get('role', null);
+      let docAdmin = r in ['administrator', 'full-access']
+        || staffDocData().get('hasAdminAccess', false) == true;
+      let docSpecial = r in ['administrator', 'peer-evaluator', 'full-access'] || docAdmin;
+      return request.auth.token.get('role', null) == r
+        && (request.auth.token.get('isAdmin', false) != true || docAdmin)
+        && (request.auth.token.get('hasSpecialAccess', false) != true || docSpecial);
     }
 
     function hasSpecialAccess() {
