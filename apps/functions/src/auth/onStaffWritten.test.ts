@@ -73,10 +73,32 @@ beforeEach(() => {
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.sendTemplatedEmail = vi.fn().mockResolvedValue(true);
   state.roleDoc = undefined;
-  state.getUserByEmail = vi.fn().mockResolvedValue({ uid: 'uid-1' });
+  state.getUserByEmail = vi.fn().mockResolvedValue({
+    uid: 'uid-1',
+    emailVerified: true,
+    providerData: [{ providerId: 'google.com' }],
+  });
 });
 
 describe('onStaffWritten — claim sync', () => {
+  it.each([
+    ['an unverified email', { emailVerified: false, providerData: [{ providerId: 'google.com' }] }],
+    [
+      'a password-only account',
+      { emailVerified: true, providerData: [{ providerId: 'password' }] },
+    ],
+  ])('never pushes claims onto an auth user with %s', async (_who, user) => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({ uid: 'attacker', ...user });
+    await invoke(
+      makeEvent({
+        email: 'pe@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'full-access', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
   it('skips claims but still sends the invite when no auth user exists yet', async () => {
     state.getUserByEmail = vi.fn().mockRejectedValue(authError('auth/user-not-found'));
     await invoke(

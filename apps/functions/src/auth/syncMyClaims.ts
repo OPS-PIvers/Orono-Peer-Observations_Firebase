@@ -1,5 +1,5 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import { isDemoEditSession, onCall } from '../lib/callable.js';
+import { hasTrustedEmail, isDemoEditSession, onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -32,7 +32,10 @@ const SIGN_IN_STAMP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
  *   1) `hd` parameter on the Google sign-in provider (client SignInScreen)
  *   2) AuthProvider's post-sign-in email check (signs out non-domain users)
  *   3) `isFromOronoDomain()` guard inside every Firestore rule
- *   4) This function (refuses to issue claims to non-domain accounts)
+ *   4) This function (refuses to issue claims to non-domain accounts, and
+ *      to any token whose email isn't verified by a trusted provider —
+ *      otherwise an account that set an unclaimed roster address as its
+ *      email would be handed that staff member's role)
  *
  * Side effect: this is the app's de-facto sign-in path, so it also stamps
  * `staff/{email}.lastSignInAt` and writes an `AUDIT_ACTIONS.signIn`
@@ -69,6 +72,14 @@ export const syncMyClaims = onCall(
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required');
+    }
+    // Also enforced by the onCall wrapper; repeated here because this is
+    // the function that turns a token email into role claims.
+    if (!hasTrustedEmail(request.auth.token)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Sign in with your district Google account to continue.',
+      );
     }
     const email = request.auth.token.email?.toLowerCase();
     if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {

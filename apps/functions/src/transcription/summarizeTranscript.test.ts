@@ -130,7 +130,13 @@ function buildDb(obs: Record<string, unknown>, access = 'all', { rubric = true }
 }
 
 const request = (data: Record<string, unknown>, email = OBSERVER): Partial<CallableRequest> =>
-  ({ auth: { uid: 'u', token: { email } }, data }) as unknown as Partial<CallableRequest>;
+  ({
+    auth: {
+      uid: 'u',
+      token: { email_verified: true, firebase: { sign_in_provider: 'google.com' }, email },
+    },
+    data,
+  }) as unknown as Partial<CallableRequest>;
 
 const MODEL_ANSWER = JSON.stringify({
   summary: 'A lesson on peer pressure.',
