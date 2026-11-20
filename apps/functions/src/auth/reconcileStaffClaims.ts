@@ -1,25 +1,15 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth, type UserRecord } from 'firebase-admin/auth';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type DocumentData } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail } from '@ops/shared';
 import { claimsForStaff, type StaffClaims } from './staffClaims.js';
-import { sameClaims, setClaimsFromLiveStaff } from './liveStaffClaims.js';
+import { sameClaims, setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
 const NO_CLAIMS: StaffClaims = { role: null, hasSpecialAccess: false, isAdmin: false };
-
-/** The claims an auth user carries now, normalized to the triple rules read. */
-function currentClaims(user: UserRecord): StaffClaims {
-  const c = user.customClaims ?? {};
-  return {
-    role: typeof c['role'] === 'string' ? c['role'] : null,
-    hasSpecialAccess: c['hasSpecialAccess'] === true,
-    isAdmin: c['isAdmin'] === true,
-  };
-}
 
 /**
  * Server-side backstop for claim drift. onStaffWritten and syncMyClaims keep
@@ -55,7 +45,7 @@ export async function reconcileAllStaffClaims(): Promise<{
       const email = user.email?.toLowerCase();
       const canonical = isCanonicalStaffEmail(email);
       const expected = canonical ? claimsForStaff(staffByEmail.get(email) ?? null) : NO_CLAIMS;
-      if (sameClaims(currentClaims(user), expected)) continue;
+      if (sameClaims(storedClaims(user.customClaims), expected)) continue;
       try {
         if (canonical) {
           // Re-derives from the live doc, so a write since the bulk read wins.

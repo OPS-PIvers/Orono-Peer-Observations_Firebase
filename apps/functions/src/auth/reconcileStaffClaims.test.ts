@@ -115,6 +115,19 @@ describe('reconcileAllStaffClaims', () => {
     expect(result).toEqual({ checked: 2, fixed: 0, failed: 0 });
   });
 
+  it('settles on a malformed doc instead of rewriting it every run', async () => {
+    state.staff.set('m@orono.k12.mn.us', { role: 'teacher', hasAdminAccess: 'true' });
+    state.users = [
+      {
+        uid: 'u1',
+        email: 'm@orono.k12.mn.us',
+        customClaims: { role: 'teacher', hasSpecialAccess: false, isAdmin: false },
+      },
+    ];
+    await reconcileAllStaffClaims();
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
   it('keeps going when one user fails', async () => {
     state.setClaims = vi.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(undefined);
     state.users = [

@@ -10,6 +10,16 @@ export function sameClaims(a: StaffClaims, b: StaffClaims): boolean {
   return a.role === b.role && a.hasSpecialAccess === b.hasSpecialAccess && a.isAdmin === b.isAdmin;
 }
 
+/** An auth user's stored custom claims, normalized to the triple rules read. */
+export function storedClaims(customClaims: Record<string, unknown> | undefined): StaffClaims {
+  const c = customClaims ?? {};
+  return {
+    role: typeof c['role'] === 'string' ? c['role'] : null,
+    hasSpecialAccess: c['hasSpecialAccess'] === true,
+    isAdmin: c['isAdmin'] === true,
+  };
+}
+
 /**
  * Sets `uid`'s custom claims from the LIVE /staff/{email} doc, never from a
  * caller-supplied snapshot, and only returns once a read taken after the
@@ -25,15 +35,22 @@ export function sameClaims(a: StaffClaims, b: StaffClaims): boolean {
  *
  * Claims (not updateTime) are compared so unrelated writes to the doc
  * (lastSignInAt, email preferences) can't force extra rounds.
+ *
+ * `current` is the user's stored claims, fetched BEFORE this call. When the
+ * live doc already yields them, nothing is written: every writer re-checks
+ * after its own write, so stored claims read before our doc read that match
+ * it are already correct. Saves an Auth write per no-op staff write.
  */
 export async function setClaimsFromLiveStaff(
   email: string,
   uid: string,
+  current?: StaffClaims,
 ): Promise<{ claims: StaffClaims; snap: DocumentSnapshot }> {
   const ref = getFirestore().doc(`${COLLECTIONS.staff}/${email}`);
   let snap = await ref.get();
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const claims = claimsForStaff(snap.exists ? snap.data() : null);
+    if (attempt === 0 && current && sameClaims(current, claims)) return { claims, snap };
     await getAuth().setCustomUserClaims(uid, { ...claims });
     const check = await ref.get();
     if (sameClaims(claims, claimsForStaff(check.exists ? check.data() : null))) {

@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { setClaimsFromLiveStaff } from './liveStaffClaims.js';
+import { setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -81,7 +81,11 @@ export async function handleStaffWritten(
     // Claims come from the live doc, never from this event's snapshot:
     // delivery is unordered and at-least-once, so a late pre-demotion event
     // would otherwise restore revoked access.
-    const { claims } = await setClaimsFromLiveStaff(email, user.uid);
+    const { claims } = await setClaimsFromLiveStaff(
+      email,
+      user.uid,
+      storedClaims(user.customClaims),
+    );
     const { role, hasSpecialAccess, isAdmin } = claims;
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
   }

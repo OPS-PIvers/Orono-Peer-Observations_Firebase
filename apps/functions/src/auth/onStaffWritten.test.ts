@@ -82,7 +82,11 @@ beforeEach(() => {
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.sendTemplatedEmail = vi.fn().mockResolvedValue(true);
   state.roleDoc = undefined;
-  state.getUserByEmail = vi.fn().mockResolvedValue({ uid: 'uid-1' });
+  // Stored claims that match no staff doc, so every test exercises the write.
+  state.getUserByEmail = vi.fn().mockResolvedValue({
+    uid: 'uid-1',
+    customClaims: { role: 'stale-role', hasSpecialAccess: true, isAdmin: true },
+  });
 });
 
 describe('onStaffWritten — claim sync', () => {
@@ -235,6 +239,42 @@ describe('onStaffWritten — stale events', () => {
     expect(state.setClaims).toHaveBeenCalledTimes(2);
     expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
       role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+});
+
+describe('onStaffWritten — no-op writes', () => {
+  it('skips the Auth write when stored claims already match the live doc', async () => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({
+      uid: 'uid-1',
+      customClaims: { role: 'teacher', hasSpecialAccess: false, isAdmin: false },
+    });
+    await invoke(
+      makeEvent({
+        email: 't@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'teacher', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
+  it('still writes when stale stored claims differ from the live doc', async () => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({
+      uid: 'uid-1',
+      customClaims: { role: 'full-access', hasSpecialAccess: true, isAdmin: true },
+    });
+    await invoke(
+      makeEvent({
+        email: 't@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'teacher', isActive: true },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: 'teacher',
       hasSpecialAccess: false,
       isAdmin: false,
     });
