@@ -1,11 +1,10 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import { isDemoEditSession, onCall } from '../lib/callable.js';
+import { hasTrustedEmail, isDemoEditSession, onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ALLOWED_EMAIL_DOMAIN, AUDIT_ACTIONS, COLLECTIONS } from '@ops/shared';
-import { claimsForStaff } from './staffClaims.js';
+import { setClaimsFromLiveStaff } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -32,7 +31,10 @@ const SIGN_IN_STAMP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
  *   1) `hd` parameter on the Google sign-in provider (client SignInScreen)
  *   2) AuthProvider's post-sign-in email check (signs out non-domain users)
  *   3) `isFromOronoDomain()` guard inside every Firestore rule
- *   4) This function (refuses to issue claims to non-domain accounts)
+ *   4) This function (refuses to issue claims to non-domain accounts, and
+ *      to any token whose email isn't verified by a trusted provider —
+ *      otherwise an account that set an unclaimed roster address as its
+ *      email would be handed that staff member's role)
  *
  * Side effect: this is the app's de-facto sign-in path, so it also stamps
  * `staff/{email}.lastSignInAt` and writes an `AUDIT_ACTIONS.signIn`
@@ -70,6 +72,14 @@ export const syncMyClaims = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required');
     }
+    // Also enforced by the onCall wrapper; repeated here because this is
+    // the function that turns a token email into role claims.
+    if (!hasTrustedEmail(request.auth.token)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Sign in with your district Google account to continue.',
+      );
+    }
     const email = request.auth.token.email?.toLowerCase();
     if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
       throw new HttpsError(
@@ -80,12 +90,12 @@ export const syncMyClaims = onCall(
 
     const db = getFirestore();
     const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
-    const staffSnap = await staffRef.get();
-    const staffData = staffSnap.exists ? staffSnap.data() : null;
     // An archived member gets the null/false triple (see claimsForStaff).
-    const { role, hasSpecialAccess, isAdmin } = claimsForStaff(staffData);
-
-    await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
+    // Re-checked after the write so a call racing a demotion can't leave the
+    // pre-demotion claims in place (see setClaimsFromLiveStaff).
+    const { claims, snap: staffSnap } = await setClaimsFromLiveStaff(email, request.auth.uid);
+    const staffData = staffSnap.exists ? staffSnap.data() : null;
+    const { role, hasSpecialAccess, isAdmin } = claims;
     logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
 
     // Adoption telemetry — see the note in the header comment. Only stamped

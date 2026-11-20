@@ -143,6 +143,14 @@ Before the August 2026 production cutover:
 5. Post-import, verify all staff, rubrics, and historical observations are present.
 6. Go live.
 
+## Firebase Auth Configuration (Required)
+
+There is no Auth blocking function (it needs Identity Platform, a paid tier), so nothing server-side limits which accounts exist in the project. The app's identity check is `hasTrustedEmail` in `firestore.rules`, `storage.rules` and `apps/functions/src/lib/callable.ts`: a district email counts only when `email_verified` is true **and** the sign-in provider is `google.com` (or a server-minted custom token). Keep the project configured so that holds:
+
+1. **Authentication → Sign-in method:** enable **Google only**. Leave Email/Password, Email link, Anonymous, Phone and every other provider disabled.
+2. **Authentication → Settings → User actions:** leave **Email enumeration protection** on (the default), which blocks unverified self-service email changes.
+3. Review these two settings at each release alongside `firestore.rules` and `storage.rules`.
+
 ## Monitoring & Alerts
 
 **To monitor backup job completion**, set a Cloud Scheduler job to notify admins if a backup misses its daily window (not yet implemented; can be added as a Cloud Function trigger on backup completion events).

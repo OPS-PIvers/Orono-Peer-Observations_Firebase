@@ -15,6 +15,7 @@ import {
   getDriveClient,
 } from '../lib/drive.js';
 import { canReadRecording } from './recordingAccess.js';
+import { hasTrustedEmail } from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -59,7 +60,9 @@ export const getAudio = onRequest(
     let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
-      userEmail = decoded.email?.toLowerCase() ?? null;
+      // Only a verified email from a trusted provider identifies the caller
+      // (see hasTrustedEmail); an unverified one is treated as no email.
+      userEmail = hasTrustedEmail(decoded) ? (decoded.email?.toLowerCase() ?? null) : null;
       callerAuth = { token: decoded };
     } catch (err) {
       logger.warn('getAudio: invalid token', err);
