@@ -37,7 +37,8 @@ service firebase.storage {
         && request.auth.token.get('email_verified', false) == true
         && (request.auth.token.firebase.sign_in_provider == 'google.com'
             || (request.auth.token.firebase.sign_in_provider == 'custom'
-                && request.auth.token.get('demoEditBy', null) is string));
+                && (request.auth.token.get('demoEditBy', null) is string
+                    || request.auth.token.get('devSignIn', false) == true)));
     }
 
     function isConsoleAdmin() {

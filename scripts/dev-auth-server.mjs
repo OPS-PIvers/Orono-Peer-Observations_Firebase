@@ -243,7 +243,7 @@ const server = http.createServer(async (req, res) => {
           throw err;
         }
       }
-      const customToken = await auth.createCustomToken(user.uid);
+      const customToken = await auth.createCustomToken(user.uid, { devSignIn: true });
       send(res, 200, { customToken, uid: user.uid, email: user.email });
     } catch (err) {
       console.error('mint failed', err);

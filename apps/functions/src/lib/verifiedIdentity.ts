@@ -24,7 +24,11 @@ export function verifiedDistrictEmail(token: TokenLike | null | undefined): stri
     { sign_in_provider?: unknown; identities?: Record<string, unknown> } | undefined;
   const provider = firebase?.sign_in_provider;
   if (provider === 'custom') {
-    return typeof token[DEMO_EDIT_CLAIM] === 'string' ? email : null;
+    // Server-minted tokens only: demo-edit sessions, or the dev-auth-server's
+    // devSignIn marker (needs service-account signing, like demo-edit).
+    return typeof token[DEMO_EDIT_CLAIM] === 'string' || token['devSignIn'] === true
+      ? email
+      : null;
   }
   // Google asserts email_verified for the address it signed in; changing the
   // email afterwards resets email_verified to false, so both must hold.
