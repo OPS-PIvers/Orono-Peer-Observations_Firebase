@@ -53,9 +53,11 @@
     "report:noncanonical-emails:prod": "tsx scripts/backfill/report-noncanonical-emails.ts --target=prod",
     "report:staff-dashboard:prod": "tsx scripts/backfill/report-staff-dashboard.ts --target=prod",
     "report:drive-ids:prod": "tsx scripts/backfill/report-observation-drive-ids.ts",
+    "report:drive-exposure:prod": "tsx scripts/backfill/report-drive-exposure.ts",
     "drive:authorize": "tsx scripts/drive-auth/authorize-drive.ts",
     "drive:transfer": "tsx scripts/drive-auth/transfer-drive-ownership.ts",
     "drive:migrate": "tsx scripts/drive-auth/move-to-shared-drive.ts",
+    "drive:lock-members": "tsx scripts/drive-auth/lock-shared-drive-members.ts",
     "prepare": "husky"
   },
   "devDependencies": {

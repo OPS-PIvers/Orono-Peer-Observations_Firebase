@@ -165,6 +165,21 @@ gcloud functions log read onObservationWritten \
 
 Or view the audit log in Firestore (`/auditLog` collection).
 
+## Observation Shared Drive membership
+
+Every member of the Shared Drive that holds the Observations folder can open
+**every** observation folder in it, because membership inherits down. Keep the
+member list to `observations@` (Manager) and a district owner. Do not add Peer
+Evaluators or administrators "so they can find their files": the app already
+gives each observer, co-observer and finalized teacher a direct Reader on their
+own folders, which shows up in their "Shared with me".
+
+- Check: `pnpm report:drive-exposure:prod` (read-only) lists members and any
+  grant beyond what the app gives.
+- Fix: `pnpm drive:lock-members` (dry run), then `-- --apply`. It adds the
+  direct grants first, removes non-Manager members, and turns on "only managers
+  can share folders".
+
 ## See Also
 
 - [Firestore Backup & Restore docs](https://cloud.google.com/firestore/docs/backups)

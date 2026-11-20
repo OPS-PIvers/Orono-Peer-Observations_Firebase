@@ -9,6 +9,8 @@ import {
   filesInObservationFolder,
   isResumableSessionUrl,
   parseResumableResponse,
+  removeReaderFromFile,
+  shareWithUser,
   withdrawObservedFolderAccess,
 } from './drive.js';
 
@@ -526,5 +528,55 @@ describe('withdrawObservedFolderAccess', () => {
         observationId: 'obs1',
       }),
     ).rejects.toThrow('backend');
+  });
+});
+
+describe('grants ignore permissions inherited from Shared Drive membership', () => {
+  const PE = 'pe@orono.k12.mn.us';
+  const inheritedMember = {
+    id: 'perm-pe',
+    emailAddress: PE,
+    role: 'fileOrganizer',
+    permissionDetails: [{ inherited: true }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.permissions.create.mockResolvedValue({});
+    h.permissions.update.mockResolvedValue({});
+    h.permissions.delete.mockResolvedValue({});
+  });
+
+  it('creates a direct Reader instead of updating the inherited membership', async () => {
+    h.permissions.list.mockResolvedValue({ data: { permissions: [inheritedMember] } });
+    await shareWithUser({ fileId: 'obsFolder', email: PE, role: 'reader' });
+    expect(h.permissions.update).not.toHaveBeenCalled();
+    expect(h.permissions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileId: 'obsFolder',
+        requestBody: { type: 'user', role: 'reader', emailAddress: PE },
+      }),
+    );
+  });
+
+  it('skips when a direct Reader already sits beside the inherited one', async () => {
+    h.permissions.list.mockResolvedValue({
+      data: {
+        permissions: [
+          { ...inheritedMember, id: 'perm-direct', role: 'reader', permissionDetails: [{ inherited: false }] },
+        ],
+      },
+    });
+    await shareWithUser({ fileId: 'obsFolder', email: PE, role: 'reader' });
+    expect(h.permissions.create).not.toHaveBeenCalled();
+    expect(h.permissions.update).not.toHaveBeenCalled();
+  });
+
+  it('does not try to delete an inherited Reader', async () => {
+    h.permissions.list.mockResolvedValue({
+      data: { permissions: [{ ...inheritedMember, role: 'reader' }] },
+    });
+    await removeReaderFromFile({ fileId: 'obsFolder', email: PE });
+    expect(h.permissions.delete).not.toHaveBeenCalled();
   });
 });
