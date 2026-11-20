@@ -22,7 +22,12 @@ import {
 import { RATE_LIMIT_KEYS, checkRateLimit, loadRateLimits } from '../lib/rateLimit.js';
 import { parseDurationSec, parseRecordedAt, parseUploadRequest } from './recordingHeaders.js';
 import { observationAccessFor } from '@ops/shared';
-import { isArchivedCaller, isDemoEditSession, isDemoStaff } from '../lib/callable.js';
+import {
+  hasTrustedEmail,
+  isArchivedCaller,
+  isDemoEditSession,
+  isDemoStaff,
+} from '../lib/callable.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -92,7 +97,9 @@ export const uploadAudio = onRequest(
     let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
-      userEmail = decoded.email?.toLowerCase() ?? null;
+      // Only a verified email from a trusted provider identifies the caller
+      // (see hasTrustedEmail); an unverified one is treated as no email.
+      userEmail = hasTrustedEmail(decoded) ? (decoded.email?.toLowerCase() ?? null) : null;
       callerAuth = { token: decoded };
       demoEdit = isDemoEditSession(callerAuth);
     } catch (err) {

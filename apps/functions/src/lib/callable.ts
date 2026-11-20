@@ -7,6 +7,31 @@ import {
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
 
+/**
+ * Sign-in providers whose token email the app trusts: Google (the only
+ * end-user provider; Workspace asserts the address) and server-minted custom
+ * tokens (View As + Edit, dev sign-in), which only a service account can
+ * create. Anything else — password, anonymous, phone, another IdP — is
+ * refused even if the project has it enabled.
+ */
+const TRUSTED_SIGN_IN_PROVIDERS: readonly string[] = ['google.com', 'custom'];
+
+/**
+ * Whether the token's email is a proven identity: verified, and from a
+ * trusted provider. A self-assigned or unverified email (e.g. an account
+ * that changed its email to an unclaimed roster address) is not, so it must
+ * never be used to look up a staff doc, mint claims or authorize anything.
+ * Mirrors hasTrustedEmail in firestore.rules / storage.rules.
+ */
+export function hasTrustedEmail(token: Record<string, unknown> | null | undefined): boolean {
+  if (!token) return false;
+  if (typeof token['email'] !== 'string' || token['email'] === '') return false;
+  if (token['email_verified'] !== true) return false;
+  const firebase = token['firebase'] as { sign_in_provider?: unknown } | undefined;
+  const provider = firebase?.sign_in_provider;
+  return typeof provider === 'string' && TRUSTED_SIGN_IN_PROVIDERS.includes(provider);
+}
+
 /** A demo-edit session: someone driving this account via View As + Edit. */
 export function isDemoEditSession(
   auth: { token: Record<string, unknown> } | null | undefined,
@@ -16,6 +41,9 @@ export function isDemoEditSession(
 
 /**
  * Every callable goes through this instead of firebase-functions' onCall.
+ *
+ * A signed-in caller without a trusted email (hasTrustedEmail) is refused
+ * first, whatever the callable's options.
  *
  * Demo-edit sessions are refused unless the callable opts in with
  * `allowDemoEdit` — and those that do must themselves confine the session
@@ -36,6 +64,15 @@ export function onCall<T = unknown>(
 ) {
   const { allowDemoEdit = false, allowArchived = false, ...rest } = opts;
   return baseOnCall<T>(rest, (request: CallableRequest<T>) => {
+    // Every callable authorizes on the token email (or claims minted from
+    // it), so a signed-in caller whose email isn't verified by a trusted
+    // provider is refused outright.
+    if (request.auth && !hasTrustedEmail(request.auth.token)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Sign in with your district Google account to continue.',
+      );
+    }
     if (!allowDemoEdit && isDemoEditSession(request.auth)) {
       throw new HttpsError(
         'permission-denied',

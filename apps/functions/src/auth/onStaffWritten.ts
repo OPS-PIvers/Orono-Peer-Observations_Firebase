@@ -75,6 +75,27 @@ export async function handleStaffWritten(
     user = null;
   }
 
+  // getUserByEmail matches any account holding the address, verified or
+  // not. Only an account whose email is verified and backed by a Google
+  // identity is that staff member; never push their role onto another one
+  // (e.g. an account that set the roster address as its unverified email).
+  // A verified account with no linked provider at all can only have been
+  // created server-side (Admin SDK, e.g. the dev auth server), so it counts.
+  if (
+    user &&
+    !(
+      user.emailVerified &&
+      (user.providerData.length === 0 ||
+        user.providerData.some((p) => p.providerId === 'google.com'))
+    )
+  ) {
+    logger.warn('onStaffWritten: auth user email not verified by Google; claims not synced', {
+      email,
+      uid: user.uid,
+    });
+    user = null;
+  }
+
   if (user) {
     await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
