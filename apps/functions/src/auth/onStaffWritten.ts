@@ -75,7 +75,13 @@ export async function handleStaffWritten(
     user = null;
   }
 
-  if (user) {
+  // Only push claims to an account whose email Google verified; an Auth user
+  // that merely carries this address (self-assigned) must not receive them.
+  if (user && !user.emailVerified) {
+    logger.warn('onStaffWritten: skipping claims for unverified Auth user', { email });
+  } else if (user && !user.providerData.some((p) => p.providerId === 'google.com')) {
+    logger.warn('onStaffWritten: skipping claims for user without Google identity', { email });
+  } else if (user) {
     await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
   }

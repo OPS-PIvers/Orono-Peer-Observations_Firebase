@@ -28,7 +28,14 @@ const h = vi.hoisted(() => ({
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
 vi.mock('firebase-admin/auth', () => ({
-  getAuth: () => ({ verifyIdToken: () => Promise.resolve({ email: 'obs@x.org' }) }),
+  getAuth: () => ({
+    verifyIdToken: () =>
+      Promise.resolve({
+        email: 'obs@orono.k12.mn.us',
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+      }),
+  }),
 }));
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
@@ -135,7 +142,7 @@ function call(headers: Record<string, string>, body: Buffer): Promise<Result> {
 
 beforeEach(() => {
   h.observation = {
-    observerEmail: 'obs@x.org',
+    observerEmail: 'obs@orono.k12.mn.us',
     observedEmail: 't@x.org',
     observedName: 'Jane Doe',
     status: OBSERVATION_STATUS.draft,

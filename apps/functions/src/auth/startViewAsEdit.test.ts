@@ -42,7 +42,14 @@ function setup(docs: Record<string, Record<string, unknown>>) {
   return { db: db as never, auth: auth as never, added, createCustomToken };
 }
 
-const caller = (extra: Record<string, unknown> = {}) => ({ token: { email: VIEWER, ...extra } });
+const caller = (extra: Record<string, unknown> = {}) => ({
+  token: {
+    email_verified: true,
+    firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+    email: VIEWER,
+    ...extra,
+  },
+});
 const granted = { [VIEWER]: { canViewAsEdit: true, isActive: true } };
 
 describe('handleStartViewAsEdit', () => {

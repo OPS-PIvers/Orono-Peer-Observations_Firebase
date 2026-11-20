@@ -34,7 +34,12 @@ function makeDb(staff: Record<string, unknown> | null) {
 }
 
 const caller = (token: Record<string, unknown>) => ({
-  token: { email: 'Viewer@orono.k12.mn.us', ...token },
+  token: {
+    email_verified: true,
+    firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+    email: 'Viewer@orono.k12.mn.us',
+    ...token,
+  },
 });
 
 describe('handleRecordViewAs', () => {

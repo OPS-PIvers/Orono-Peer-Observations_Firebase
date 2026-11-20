@@ -4,6 +4,7 @@ import { logger } from 'firebase-functions';
 import { defineString } from 'firebase-functions/params';
 import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { verifiedDistrictEmail } from '../lib/verifiedIdentity.js';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
 import {
@@ -59,7 +60,7 @@ export const getAudio = onRequest(
     let callerAuth: { token: Record<string, unknown> } | null = null;
     try {
       const decoded = await getAuth().verifyIdToken(idToken);
-      userEmail = decoded.email?.toLowerCase() ?? null;
+      userEmail = verifiedDistrictEmail(decoded);
       callerAuth = { token: decoded };
     } catch (err) {
       logger.warn('getAudio: invalid token', err);

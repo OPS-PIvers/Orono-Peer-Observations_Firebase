@@ -109,7 +109,7 @@ const TARGET = 'target@orono.k12.mn.us';
 const WINDOW_PATH = `${COLLECTIONS.observationWindows}/w1`;
 
 function req(email: string, role: string, data: Record<string, unknown>) {
-  return { auth: { uid: 'u', token: { email, role } }, data } as unknown as CallableRequest;
+  return { auth: { uid: 'u', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email, role } }, data } as unknown as CallableRequest;
 }
 
 beforeEach(() => {

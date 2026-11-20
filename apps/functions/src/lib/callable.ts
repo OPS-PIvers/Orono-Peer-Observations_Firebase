@@ -6,6 +6,7 @@ import {
 } from 'firebase-functions/v2/https';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
+import { verifiedDistrictEmail } from './verifiedIdentity.js';
 
 /** A demo-edit session: someone driving this account via View As + Edit. */
 export function isDemoEditSession(
@@ -36,6 +37,16 @@ export function onCall<T = unknown>(
 ) {
   const { allowDemoEdit = false, allowArchived = false, ...rest } = opts;
   return baseOnCall<T>(rest, (request: CallableRequest<T>) => {
+    // An unverified or self-assigned email is never identity. Refuse any
+    // caller whose token carries an email that Google didn't verify for them
+    // (tokens with no email at all fall through to each callable's own check).
+    if (
+      request.auth &&
+      typeof request.auth.token.email === 'string' &&
+      verifiedDistrictEmail(request.auth.token) === null
+    ) {
+      throw new HttpsError('permission-denied', 'A verified district Google account is required.');
+    }
     if (!allowDemoEdit && isDemoEditSession(request.auth)) {
       throw new HttpsError(
         'permission-denied',

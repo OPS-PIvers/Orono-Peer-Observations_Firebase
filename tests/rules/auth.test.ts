@@ -32,6 +32,30 @@ describe('default-deny + domain check', () => {
   });
 });
 
+describe('unverified or non-Google district emails', () => {
+  const email = 'teacher@orono.k12.mn.us';
+  const cases: Array<[string, Record<string, unknown>]> = [
+    ['email_verified false', { ...claims.teacher(email), email_verified: false }],
+    ['password provider', { ...claims.teacher(email), firebase: { sign_in_provider: 'password' } }],
+    ['anonymous provider', { ...claims.teacher(email), firebase: { sign_in_provider: 'anonymous' } }],
+    [
+      'custom token without demoEditBy',
+      { ...claims.teacher(email), firebase: { sign_in_provider: 'custom' } },
+    ],
+  ];
+  for (const [name, token] of cases) {
+    it(`denies staff and appSettings reads: ${name}`, async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'staff', email), { email, role: 'teacher' });
+        await setDoc(doc(ctx.firestore(), 'appSettings', 'main'), { x: 1 });
+      });
+      const db = testEnv.authenticatedContext('u1', token).firestore();
+      await assertFails(getDoc(doc(db, 'staff', email)));
+      await assertFails(getDoc(doc(db, 'appSettings/main')));
+    });
+  }
+});
+
 describe('/staff', () => {
   it('lets a staff member read their own staff doc', async () => {
     const email = 'paul.ivers@orono.k12.mn.us';

@@ -6,6 +6,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ALLOWED_EMAIL_DOMAIN, AUDIT_ACTIONS, COLLECTIONS } from '@ops/shared';
 import { claimsForStaff } from './staffClaims.js';
+import { verifiedDistrictEmail } from '../lib/verifiedIdentity.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -32,7 +33,11 @@ const SIGN_IN_STAMP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
  *   1) `hd` parameter on the Google sign-in provider (client SignInScreen)
  *   2) AuthProvider's post-sign-in email check (signs out non-domain users)
  *   3) `isFromOronoDomain()` guard inside every Firestore rule
- *   4) This function (refuses to issue claims to non-domain accounts)
+ *   4) This function (refuses to issue claims unless the token's district
+ *      email is verified and Google-asserted — see verifiedDistrictEmail)
+ * These are client/function-side checks only; the Auth project itself must
+ * have only the Google provider enabled and email-enumeration protection on
+ * (project configuration, not enforced in this repo).
  *
  * Side effect: this is the app's de-facto sign-in path, so it also stamps
  * `staff/{email}.lastSignInAt` and writes an `AUDIT_ACTIONS.signIn`
@@ -70,8 +75,10 @@ export const syncMyClaims = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required');
     }
-    const email = request.auth.token.email?.toLowerCase();
-    if (!email?.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+    // Verified + Google-asserted district email only; an unverified or
+    // self-assigned address must never receive a roster member's claims.
+    const email = verifiedDistrictEmail(request.auth.token);
+    if (!email) {
       throw new HttpsError(
         'permission-denied',
         `Sign-in is restricted to @${ALLOWED_EMAIL_DOMAIN} accounts.`,

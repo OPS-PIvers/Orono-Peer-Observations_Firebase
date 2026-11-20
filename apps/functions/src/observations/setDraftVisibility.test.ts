@@ -87,7 +87,7 @@ function request(
   token: Record<string, unknown> = {},
 ): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email, ...token } },
+    auth: { uid: 'uid-1', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email, ...token } },
     data: { observationId: 'obs-1', ...data },
   } as unknown as Partial<CallableRequest>;
 }

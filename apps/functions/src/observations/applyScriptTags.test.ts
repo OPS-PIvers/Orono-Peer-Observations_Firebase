@@ -216,7 +216,7 @@ function buildDb(config: DbConfig): { db: unknown; rec: Recorder } {
 
 function callerRequest(data: Record<string, unknown>): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email: OBSERVER } },
+    auth: { uid: 'uid-1', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: OBSERVER } },
     data,
   } as unknown as Partial<CallableRequest>;
 }
@@ -295,7 +295,7 @@ describe('applyScriptTags — input & auth guards', () => {
 
   it('rejects a caller who is neither the observer nor an admin', async () => {
     const req = {
-      auth: { uid: 'uid-2', token: { email: 'someone@orono.k12.mn.us' } },
+      auth: { uid: 'uid-2', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: 'someone@orono.k12.mn.us' } },
       data: {
         observationId: OBS_ID,
         suggestions: [{ paragraphIndex: 0, text: 'turned and talked', componentId: '1a' }],

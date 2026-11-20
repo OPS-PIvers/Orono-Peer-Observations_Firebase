@@ -4,10 +4,13 @@ rules_version = '2';
 // Orono Peer Observations — Firestore Security Rules
 // =============================================================================
 // Two layers of defense:
-//   1) Auth blocking function (functions/src/auth/beforeCreate.ts) rejects
-//      sign-ins from outside @orono.k12.mn.us at the Auth boundary.
-//   2) These rules re-check the email domain on every request and constrain
-//      what each role can read/write based on custom claims.
+//   1) Project Auth configuration (NOT enforced in code — the blocking
+//      function was removed, it needs Identity Platform): only the Google
+//      provider must be enabled, with email-enumeration protection on, so no
+//      account can hold an unverified or self-assigned email.
+//   2) These rules re-check the email domain, email_verified and the Google
+//      sign-in provider on every request, and constrain what each role can
+//      read/write based on custom claims.
 //
 // Custom claims set by the auth flow:
 //   request.auth.token.email                — verified email
@@ -37,10 +40,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // The email must be verified AND come from the Google provider (or a
+    // server-minted demo-edit custom token). A bare token email is not proof
+    // of identity: an account can carry an email it never verified.
     function isFromOronoDomain() {
       return isSignedIn()
         && request.auth.token.email is string
-        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$');
+        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$')
+        && request.auth.token.get('email_verified', false) == true
+        && (request.auth.token.firebase.sign_in_provider == 'google.com'
+            || (request.auth.token.firebase.sign_in_provider == 'custom'
+                && request.auth.token.get('demoEditBy', null) is string));
     }
 
     function role() {

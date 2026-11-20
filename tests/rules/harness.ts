@@ -45,7 +45,10 @@ export async function seedFullAccessStaff(
  *  in the Firestore rules — the emulator otherwise treats the email as
  *  unverified and surfaces it as an empty string.
  */
-const verified = { email_verified: true } as const;
+const verified = {
+  email_verified: true,
+  firebase: { sign_in_provider: 'google.com' },
+} as const;
 
 export const claims = {
   outsider: { email: 'someone@gmail.com', ...verified },

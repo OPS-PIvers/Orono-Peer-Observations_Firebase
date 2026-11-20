@@ -61,8 +61,8 @@ function fakeDb(seed: Record<string, Record<string, unknown>>) {
   return { db: db as unknown as Firestore, docs, added };
 }
 
-const peCaller = { token: { email: PE, role: 'peer-evaluator' } };
-const teacherCaller = { token: { email: TEACHER, role: 'teacher' } };
+const peCaller = { token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: PE, role: 'peer-evaluator' } };
+const teacherCaller = { token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: TEACHER, role: 'teacher' } };
 
 /** Built-in steps with Planning manual, sign-up either, and the rest auto. */
 function configWithModes() {

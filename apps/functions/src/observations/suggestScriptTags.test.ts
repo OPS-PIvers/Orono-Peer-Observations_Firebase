@@ -200,7 +200,7 @@ function buildDb(
 
 function callerRequest(data: Record<string, unknown>): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email: OBSERVER } },
+    auth: { uid: 'uid-1', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: OBSERVER } },
     data,
   } as unknown as Partial<CallableRequest>;
 }
