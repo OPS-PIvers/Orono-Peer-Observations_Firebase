@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   setClaims: undefined as AnyMock | undefined,
   sendTemplatedEmail: undefined as AnyMock | undefined,
   roleDoc: undefined as Record<string, unknown> | undefined,
+  /** The live /staff doc as a sequence of reads (last one repeats). */
+  liveStaff: [] as (object | undefined)[],
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -27,9 +29,14 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
-    doc: () => ({
-      get: () =>
-        Promise.resolve({ exists: state.roleDoc !== undefined, data: () => state.roleDoc }),
+    doc: (path: string) => ({
+      get: () => {
+        if (path.startsWith('staff/')) {
+          const live = state.liveStaff.length > 1 ? state.liveStaff.shift() : state.liveStaff[0];
+          return Promise.resolve({ exists: live !== undefined, data: () => live });
+        }
+        return Promise.resolve({ exists: state.roleDoc !== undefined, data: () => state.roleDoc });
+      },
     }),
   }),
 }));
@@ -55,6 +62,8 @@ interface StaffAfter {
 
 /** Build a Firestore-write event with the shape onStaffWritten reads. */
 function makeEvent(opts: { email: string; before?: StaffAfter | null; after?: StaffAfter | null }) {
+  // By default the live doc matches the event (the in-order case).
+  state.liveStaff = [opts.after ?? undefined];
   const beforeExists = opts.before != null;
   const afterExists = opts.after != null;
   return {
@@ -175,6 +184,56 @@ describe('onStaffWritten — claim sync', () => {
       makeEvent({ email: 'gone@orono.k12.mn.us', before: { role: 'teacher' }, after: null }),
     );
     expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+});
+
+describe('onStaffWritten — stale events', () => {
+  it('a late pre-demotion event leaves the demoted claims from the live doc', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      before: { role: 'full-access', isActive: true },
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [{ role: 'teacher', isActive: true }];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
+      role: 'teacher',
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('a late event after the doc was deleted leaves no access', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      before: null,
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [undefined];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('re-sets claims when the doc is demoted between its read and the write', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [
+      { role: 'full-access', isActive: true },
+      { role: 'full-access', isActive: false },
+    ];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenCalledTimes(2);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,

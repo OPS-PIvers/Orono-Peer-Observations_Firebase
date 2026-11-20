@@ -9,6 +9,7 @@ describe('functions index', () => {
     const mod = await import('./index.js');
     expect(typeof mod.syncMyClaims).not.toBe('undefined');
     expect(typeof mod.onStaffWritten).not.toBe('undefined');
+    expect(typeof mod.reconcileStaffClaims).not.toBe('undefined');
     expect(typeof mod.uploadAudio).not.toBe('undefined');
     expect(typeof mod.getAudio).not.toBe('undefined');
     expect(typeof mod.requestTranscription).not.toBe('undefined');

@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { claimsForStaff } from './staffClaims.js';
+import { setClaimsFromLiveStaff } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -29,7 +29,10 @@ if (getApps().length === 0) initializeApp();
  * test cases.
  */
 export const onStaffWritten = onDocumentWritten(
-  { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
+  // retry: a failed claim sync must not be final (it could leave revoked
+  // claims in place). Safe to repeat: claims are re-derived from the live doc
+  // and the invite has a fixed mailDocId.
+  { document: 'staff/{email}', region: 'us-central1', memory: '256MiB', retry: true },
   (event) => handleStaffWritten(event),
 );
 
@@ -60,7 +63,6 @@ export async function handleStaffWritten(
         year?: number;
       }
     | undefined;
-  const { role, hasSpecialAccess, isAdmin } = claimsForStaff(after);
 
   let user: UserRecord | null;
   try {
@@ -76,7 +78,11 @@ export async function handleStaffWritten(
   }
 
   if (user) {
-    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
+    // Claims come from the live doc, never from this event's snapshot:
+    // delivery is unordered and at-least-once, so a late pre-demotion event
+    // would otherwise restore revoked access.
+    const { claims } = await setClaimsFromLiveStaff(email, user.uid);
+    const { role, hasSpecialAccess, isAdmin } = claims;
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
   }
 
