@@ -73,13 +73,11 @@ beforeEach(() => {
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.sendTemplatedEmail = vi.fn().mockResolvedValue(true);
   state.roleDoc = undefined;
-  state.getUserByEmail = vi
-    .fn()
-    .mockResolvedValue({
-      uid: 'uid-1',
-      emailVerified: true,
-      providerData: [{ providerId: 'google.com' }],
-    });
+  state.getUserByEmail = vi.fn().mockResolvedValue({
+    uid: 'uid-1',
+    emailVerified: true,
+    providerData: [{ providerId: 'google.com' }],
+  });
 });
 
 describe('onStaffWritten — claim sync', () => {

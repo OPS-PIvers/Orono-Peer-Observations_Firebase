@@ -117,7 +117,13 @@ describe('requireRecordingReader', () => {
 
 describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
   const demoAuth = {
-    token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: OBSERVER, role: 'peer-evaluator', demoEditBy: 'viewer@x.org' },
+    token: {
+      email_verified: true,
+      firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+      email: OBSERVER,
+      role: 'peer-evaluator',
+      demoEditBy: 'viewer@x.org',
+    },
   };
 
   it("can't play a real teacher's recording, even the observer's own", async () => {
@@ -138,7 +144,14 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
 
 describe('canReadRecording for archived staff', () => {
   const archived = dbWithStaff({ role: 'teacher', isActive: false });
-  const auth = (email: string) => ({ token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email, role: 'teacher' } });
+  const auth = (email: string) => ({
+    token: {
+      email_verified: true,
+      firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+      email,
+      role: 'teacher',
+    },
+  });
 
   it('refuses an archived observer or co-observer', async () => {
     const co = 'co@orono.k12.mn.us';
@@ -160,7 +173,15 @@ describe('canReadRecording in a demo-edit session whose driver was archived', ()
     const DRIVER = 'viewer@orono.k12.mn.us';
     // The driver's doc is archived; the demo person's (same stub) is demo staff.
     const db = dbWithStaff({ isDemo: true, isActive: false, canViewAsEdit: true });
-    const demoAuth = (email: string) => ({ token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email, role: 'teacher', demoEditBy: DRIVER } });
+    const demoAuth = (email: string) => ({
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+        email,
+        role: 'teacher',
+        demoEditBy: DRIVER,
+      },
+    });
     const finalized = obs({ status: 'Finalized' });
     await expect(canReadRecording(db, finalized, OBSERVED, demoAuth(OBSERVED))).resolves.toBe(
       false,

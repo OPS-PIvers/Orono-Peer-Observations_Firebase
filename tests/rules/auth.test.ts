@@ -34,10 +34,13 @@ describe('default-deny + domain check', () => {
 
 describe('unverified or non-Google district emails', () => {
   const email = 'teacher@orono.k12.mn.us';
-  const cases: Array<[string, Record<string, unknown>]> = [
+  const cases: [string, Record<string, unknown>][] = [
     ['email_verified false', { ...claims.teacher(email), email_verified: false }],
     ['password provider', { ...claims.teacher(email), firebase: { sign_in_provider: 'password' } }],
-    ['anonymous provider', { ...claims.teacher(email), firebase: { sign_in_provider: 'anonymous' } }],
+    [
+      'anonymous provider',
+      { ...claims.teacher(email), firebase: { sign_in_provider: 'anonymous' } },
+    ],
     [
       'custom token without demoEditBy',
       { ...claims.teacher(email), firebase: { sign_in_provider: 'custom' } },

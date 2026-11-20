@@ -219,7 +219,14 @@ function draftObservation(over: Record<string, unknown> = {}) {
 
 function observerRequest(over: Record<string, unknown> = {}): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: OVERRIDE_EMAIL ?? OBSERVER } },
+    auth: {
+      uid: 'uid-1',
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+        email: OVERRIDE_EMAIL ?? OBSERVER,
+      },
+    },
     data: { observationId: 'obs-1' },
     ...over,
   } as unknown as Partial<CallableRequest>;
@@ -291,7 +298,17 @@ describe('finalizeObservation — input & auth guards', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     await expect(
-      run({ auth: { uid: 'u', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: OBSERVER } }, data: {} } as never),
+      run({
+        auth: {
+          uid: 'u',
+          token: {
+            email_verified: true,
+            firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+            email: OBSERVER,
+          },
+        },
+        data: {},
+      } as never),
     ).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 
@@ -491,7 +508,15 @@ describe('finalizeObservation — finalize flow', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     const req = {
-      auth: { uid: 'a', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: 'district@orono.k12.mn.us', role: 'full-access' } },
+      auth: {
+        uid: 'a',
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+          email: 'district@orono.k12.mn.us',
+          role: 'full-access',
+        },
+      },
       data: { observationId: 'obs-1' },
     } as never;
     await expect(run(req)).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
@@ -502,7 +527,15 @@ describe('finalizeObservation — finalize flow', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     const req = {
-      auth: { uid: 'a', token: { email_verified: true, firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } }, email: 'admin@orono.k12.mn.us', role: 'administrator' } },
+      auth: {
+        uid: 'a',
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com', identities: { 'google.com': ['g'] } },
+          email: 'admin@orono.k12.mn.us',
+          role: 'administrator',
+        },
+      },
       data: { observationId: 'obs-1' },
     } as never;
     await expect(run(req)).rejects.toMatchObject({ code: 'permission-denied' });
