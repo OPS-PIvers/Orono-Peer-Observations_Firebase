@@ -30,6 +30,7 @@
  * Usage:
  *   pnpm drive:lock-members            # dry run
  *   pnpm drive:lock-members -- --apply
+ *   pnpm drive:lock-members -- --keep=owner@orono.k12.mn.us [--apply]
  */
 
 import { spawnSync } from 'node:child_process';
@@ -45,6 +46,14 @@ loadDotenv();
 const PROJECT = 'peer-evaluator-rubric';
 const UPLOADER = 'observations@orono.k12.mn.us';
 const APPLY = process.argv.includes('--apply');
+/** `--keep=a@x,b@x`: members to leave in place, such as a district owner. */
+const KEEP = new Set(
+  process.argv
+    .filter((a) => a.startsWith('--keep='))
+    .flatMap((a) => a.slice('--keep='.length).split(','))
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e !== ''),
+);
 
 function envValue(key: string): string {
   const line = readFileSync(resolve(`apps/functions/.env.${PROJECT}`), 'utf8')
@@ -179,7 +188,10 @@ async function main(): Promise<void> {
   // Step 2: remove members other than Managers and observations@.
   const members = await listPerms(drive, driveId);
   const remove = members.filter(
-    (m) => m.role !== 'organizer' && (m.emailAddress ?? '').toLowerCase() !== UPLOADER,
+    (m) =>
+      m.role !== 'organizer' &&
+      (m.emailAddress ?? '').toLowerCase() !== UPLOADER &&
+      !KEEP.has((m.emailAddress ?? '').toLowerCase()),
   );
   console.log('\nStep 2: Shared Drive members');
   for (const m of members) {
