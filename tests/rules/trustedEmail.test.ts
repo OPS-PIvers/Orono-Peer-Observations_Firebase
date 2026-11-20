@@ -47,6 +47,8 @@ beforeEach(async () => {
 const untrusted = [
   ['an unverified email', claims.unverifiedDistrict(VICTIM)],
   ['a password-provider email', claims.passwordDistrict(VICTIM)],
+  ['an unverified custom-token email', claims.unverifiedCustom(VICTIM)],
+  ['an anonymous-provider email', claims.anonymousDistrict(VICTIM)],
 ] as const;
 
 describe('untrusted token email', () => {
@@ -82,6 +84,15 @@ describe('untrusted token email', () => {
         status: 'done',
       }),
     );
+    await assertSucceeds(getBytes(ref(ctx.storage(), BRANDING)));
+  });
+
+  it('a verified View As + Edit custom token can still read as that account', async () => {
+    const ctx = testEnv.authenticatedContext('teacher', claims.customTeacher(VICTIM));
+    const db = ctx.firestore();
+    await assertSucceeds(getDoc(doc(db, 'appSettings', 'general')));
+    await assertSucceeds(getDoc(doc(db, 'staff', VICTIM)));
+    await assertSucceeds(getDoc(doc(db, 'observations', 'obs1')));
     await assertSucceeds(getBytes(ref(ctx.storage(), BRANDING)));
   });
 });
