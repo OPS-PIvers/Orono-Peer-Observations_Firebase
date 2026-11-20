@@ -29,10 +29,10 @@ if (getApps().length === 0) initializeApp();
  * test cases.
  */
 export const onStaffWritten = onDocumentWritten(
-  // retry: a failed claim sync must not be final (it could leave revoked
-  // claims in place). Safe to repeat: claims are re-derived from the live doc
-  // and the invite has a fixed mailDocId.
-  { document: 'staff/{email}', region: 'us-central1', memory: '256MiB', retry: true },
+  // No `retry: true`: adding a failure policy makes the non-interactive
+  // `firebase deploy` in CI demand --force, so no functions deploy. A failed
+  // claim sync is corrected by reconcileStaffClaims within 15 minutes.
+  { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
   (event) => handleStaffWritten(event),
 );
 
