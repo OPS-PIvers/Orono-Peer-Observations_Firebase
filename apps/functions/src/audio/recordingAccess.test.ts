@@ -26,8 +26,8 @@ function dbWithStaff(staff: Record<string, unknown> | null): Firestore {
   } as unknown as Firestore;
 }
 
-function request(role: string | undefined): CallableRequest {
-  return { auth: { token: { role } } } as unknown as CallableRequest;
+function request(role: string | undefined, email: string): CallableRequest {
+  return { auth: { token: { email, role, claimsEmail: email } } } as unknown as CallableRequest;
 }
 
 describe('requireRecording', () => {
@@ -62,18 +62,23 @@ describe('requireObserverOnDraft', () => {
 describe('requireRecordingReader', () => {
   it('allows the observer', async () => {
     await expect(
-      requireRecordingReader(dbWithStaff(null), request('teacher'), obs(), OBSERVER),
+      requireRecordingReader(
+        dbWithStaff({ role: 'peer-evaluator' }),
+        request('peer-evaluator', OBSERVER),
+        obs(),
+        OBSERVER,
+      ),
     ).resolves.toBeUndefined();
   });
 
   it('allows the observed staff member only once finalized', async () => {
     await expect(
-      requireRecordingReader(dbWithStaff(null), request('teacher'), obs(), OBSERVED),
+      requireRecordingReader(dbWithStaff(null), request('teacher', OBSERVED), obs(), OBSERVED),
     ).rejects.toThrow(/Not authorized/);
     await expect(
       requireRecordingReader(
         dbWithStaff(null),
-        request('teacher'),
+        request('teacher', OBSERVED),
         obs({ status: 'Finalized' }),
         OBSERVED,
       ),
@@ -83,12 +88,17 @@ describe('requireRecordingReader', () => {
   it('allows oversight and co-observers, not other PEs, building admins or staff', async () => {
     const other = 'someone@orono.k12.mn.us';
     await expect(
-      requireRecordingReader(dbWithStaff(null), request('full-access'), obs(), other),
+      requireRecordingReader(
+        dbWithStaff({ role: 'full-access' }),
+        request('full-access', other),
+        obs(),
+        other,
+      ),
     ).resolves.toBeUndefined();
     await expect(
       requireRecordingReader(
-        dbWithStaff(null),
-        request('administrator'),
+        dbWithStaff({ role: 'administrator' }),
+        request('administrator', other),
         { ...obs(), coObserverEmails: [other] },
         other,
       ),
@@ -96,7 +106,7 @@ describe('requireRecordingReader', () => {
     await expect(
       requireRecordingReader(
         dbWithStaff({ role: 'peer-evaluator' }),
-        request('peer-evaluator'),
+        request('peer-evaluator', other),
         obs(),
         other,
       ),
@@ -104,20 +114,45 @@ describe('requireRecordingReader', () => {
     await expect(
       requireRecordingReader(
         dbWithStaff({ role: 'administrator' }),
-        request('administrator'),
+        request('administrator', other),
         obs(),
         other,
       ),
     ).rejects.toThrow(/Not authorized/);
     await expect(
-      requireRecordingReader(dbWithStaff({ role: 'teacher' }), request('teacher'), obs(), other),
+      requireRecordingReader(
+        dbWithStaff({ role: 'teacher' }),
+        request('teacher', other),
+        obs(),
+        other,
+      ),
+    ).rejects.toThrow(/Not authorized/);
+  });
+
+  it('refuses a Full Access claim with no staff doc, or issued for another email', async () => {
+    const other = 'someone@orono.k12.mn.us';
+    // The account's email changed to an address with no roster entry.
+    await expect(
+      requireRecordingReader(dbWithStaff(null), request('full-access', other), obs(), other),
+    ).rejects.toThrow(/Not authorized/);
+    // The claims were issued for another address than the token's email.
+    const moved = {
+      auth: { token: { email: other, role: 'full-access', claimsEmail: 'old@orono.k12.mn.us' } },
+    } as unknown as CallableRequest;
+    await expect(
+      requireRecordingReader(dbWithStaff({ role: 'full-access' }), moved, obs(), other),
     ).rejects.toThrow(/Not authorized/);
   });
 });
 
 describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
   const demoAuth = {
-    token: { email: OBSERVER, role: 'peer-evaluator', demoEditBy: 'viewer@x.org' },
+    token: {
+      email: OBSERVER,
+      role: 'peer-evaluator',
+      claimsEmail: OBSERVER,
+      demoEditBy: 'viewer@x.org',
+    },
   };
 
   it("can't play a real teacher's recording, even the observer's own", async () => {
@@ -127,7 +162,7 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
   it("can play a demo person's recording", async () => {
     await expect(
       canReadRecording(
-        dbWithStaff({ isDemo: true, canViewAsEdit: true }),
+        dbWithStaff({ role: 'peer-evaluator', isDemo: true, canViewAsEdit: true }),
         obs(),
         OBSERVER,
         demoAuth,
@@ -138,7 +173,7 @@ describe('canReadRecording in a demo-edit session (View As + Edit)', () => {
 
 describe('canReadRecording for archived staff', () => {
   const archived = dbWithStaff({ role: 'teacher', isActive: false });
-  const auth = (email: string) => ({ token: { email, role: 'teacher' } });
+  const auth = (email: string) => ({ token: { email, role: 'teacher', claimsEmail: email } });
 
   it('refuses an archived observer or co-observer', async () => {
     const co = 'co@orono.k12.mn.us';
@@ -160,7 +195,9 @@ describe('canReadRecording in a demo-edit session whose driver was archived', ()
     const DRIVER = 'viewer@orono.k12.mn.us';
     // The driver's doc is archived; the demo person's (same stub) is demo staff.
     const db = dbWithStaff({ isDemo: true, isActive: false, canViewAsEdit: true });
-    const demoAuth = (email: string) => ({ token: { email, role: 'teacher', demoEditBy: DRIVER } });
+    const demoAuth = (email: string) => ({
+      token: { email, role: 'teacher', claimsEmail: email, demoEditBy: DRIVER },
+    });
     const finalized = obs({ status: 'Finalized' });
     await expect(canReadRecording(db, finalized, OBSERVED, demoAuth(OBSERVED))).resolves.toBe(
       false,

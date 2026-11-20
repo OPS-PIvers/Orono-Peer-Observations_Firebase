@@ -16,7 +16,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedClaimStaff, setupTestEnv } from './harness.js';
 
 let testEnv: RulesTestEnvironment;
 
@@ -28,6 +28,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedClaimStaff(testEnv);
 });
 
 const PE_EMAIL = 'pe@orono.k12.mn.us';

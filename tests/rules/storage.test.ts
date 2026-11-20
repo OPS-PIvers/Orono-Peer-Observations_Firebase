@@ -56,6 +56,20 @@ describe('admin-uploads', () => {
     await assertSucceeds(getBytes(ref(s, BRANDING)));
   });
 
+  it('refuses console claims issued for another email, or unbound', async () => {
+    const unbound = Object.fromEntries(
+      Object.entries(claims.peerEvalConsole()).filter(([k]) => k !== 'claimsEmail'),
+    );
+    for (const token of [
+      { ...claims.peerEvalConsole(), claimsEmail: 'old@orono.k12.mn.us' },
+      unbound,
+    ]) {
+      const s = storageAs('pe', token);
+      await assertFails(getBytes(ref(s, STAGED)));
+      await assertFails(uploadString(ref(s, STAGED), 'new'));
+    }
+  });
+
   it('refuses Administrators and non-admins', async () => {
     for (const token of [claims.admin(), claims.peerEval(), claims.teacher()]) {
       const s = storageAs('u', token);

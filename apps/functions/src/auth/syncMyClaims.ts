@@ -91,9 +91,16 @@ export const syncMyClaims = onCall(
     const db = getFirestore();
     const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
     // An archived member gets the null/false triple (see claimsForStaff).
-    // Re-checked after the write so a call racing a demotion can't leave the
-    // pre-demotion claims in place (see setClaimsFromLiveStaff).
-    const { claims, snap: staffSnap } = await setClaimsFromLiveStaff(email, request.auth.uid);
+    // So does a demo-edit session on a non-demo account (demoOnly). The
+    // claims are bound to `email`, and re-checked after the write so a call
+    // racing a demotion can't leave the pre-demotion claims in place (see
+    // setClaimsFromLiveStaff).
+    const { claims, snap: staffSnap } = await setClaimsFromLiveStaff(
+      email,
+      request.auth.uid,
+      undefined,
+      { demoOnly: isDemoEditSession(request.auth) },
+    );
     const staffData = staffSnap.exists ? staffSnap.data() : null;
     const { role, hasSpecialAccess, isAdmin } = claims;
     logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
