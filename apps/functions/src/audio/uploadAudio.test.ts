@@ -28,7 +28,14 @@ const h = vi.hoisted(() => ({
 
 vi.mock('firebase-admin/app', () => ({ getApps: () => [{}], initializeApp: vi.fn() }));
 vi.mock('firebase-admin/auth', () => ({
-  getAuth: () => ({ verifyIdToken: () => Promise.resolve({ email: 'obs@x.org' }) }),
+  getAuth: () => ({
+    verifyIdToken: () =>
+      Promise.resolve({
+        email: 'obs@x.org',
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+      }),
+  }),
 }));
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
@@ -77,7 +84,10 @@ vi.mock('../lib/rateLimit.js', () => ({
   loadRateLimits: () => Promise.resolve({ audioUploadsPerHour: 20 }),
   checkRateLimit: h.checkRateLimit,
 }));
-vi.mock('../lib/callable.js', () => ({
+import type * as CallableModule from '../lib/callable.js';
+
+vi.mock('../lib/callable.js', async (importOriginal) => ({
+  hasTrustedEmail: (await importOriginal<typeof CallableModule>()).hasTrustedEmail,
   isDemoEditSession: () => false,
   isDemoStaff: () => Promise.resolve(false),
   isArchivedCaller: () => Promise.resolve(h.archived),

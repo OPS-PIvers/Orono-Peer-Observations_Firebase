@@ -68,6 +68,65 @@ const verified = { email_verified: true } as const;
 
 export const claims = {
   outsider: { email: 'someone@gmail.com', ...verified },
+  /** A district address on a token whose email isn't verified (e.g. an
+   *  account that set an unclaimed roster address as its email). Carries
+   *  Full Access claims to prove the rules ignore them. */
+  unverifiedDistrict: (email = 'fullaccess@orono.k12.mn.us') => ({
+    email,
+    role: 'full-access',
+    hasSpecialAccess: true,
+    isAdmin: true,
+    email_verified: false,
+    firebase: { sign_in_provider: 'google.com', identities: {} },
+  }),
+  /** A verified district address from a provider the app doesn't use
+   *  (Email/Password), so not asserted by the district's Google identity. */
+  passwordDistrict: (email = 'fullaccess@orono.k12.mn.us') => ({
+    email,
+    role: 'full-access',
+    hasSpecialAccess: true,
+    isAdmin: true,
+    ...verified,
+    firebase: { sign_in_provider: 'password', identities: {} },
+  }),
+  /** A server-minted custom token (View As + Edit) for an Auth user whose
+   *  email was never verified. */
+  unverifiedCustom: (email = 'fullaccess@orono.k12.mn.us') => ({
+    email,
+    role: 'full-access',
+    hasSpecialAccess: true,
+    isAdmin: true,
+    email_verified: false,
+    firebase: { sign_in_provider: 'custom', identities: {} },
+  }),
+  /** An anonymous sign-in that somehow carries a district address. */
+  anonymousDistrict: (email = 'fullaccess@orono.k12.mn.us') => ({
+    email,
+    role: 'full-access',
+    hasSpecialAccess: true,
+    isAdmin: true,
+    ...verified,
+    firebase: { sign_in_provider: 'anonymous', identities: {} },
+  }),
+  /** A View As + Edit custom token for a verified demo account. */
+  customTeacher: (email = 'teacher@orono.k12.mn.us') => ({
+    email,
+    role: 'teacher',
+    hasSpecialAccess: false,
+    isAdmin: false,
+    ...verified,
+    demoEditBy: 'viewer@orono.k12.mn.us',
+    firebase: { sign_in_provider: 'custom', identities: {} },
+  }),
+  /** A real Google sign-in for a teacher. */
+  googleTeacher: (email = 'teacher@orono.k12.mn.us') => ({
+    email,
+    role: 'teacher',
+    hasSpecialAccess: false,
+    isAdmin: false,
+    ...verified,
+    firebase: { sign_in_provider: 'google.com', identities: {} },
+  }),
   teacher: (email = 'teacher@orono.k12.mn.us') => ({
     email,
     claimsEmail: email,

@@ -34,9 +34,20 @@ import { assertDemoEditTarget, onCall } from './callable';
 type Handler = (req: { auth?: { token: Record<string, unknown> } }) => unknown;
 
 const demoAuth = {
-  token: { email: 'admin@orono.k12.mn.us', demoEditBy: 'viewer@orono.k12.mn.us' },
+  token: {
+    email_verified: true,
+    firebase: { sign_in_provider: 'google.com' },
+    email: 'admin@orono.k12.mn.us',
+    demoEditBy: 'viewer@orono.k12.mn.us',
+  },
 };
-const normalAuth = { token: { email: 'admin@orono.k12.mn.us' } };
+const normalAuth = {
+  token: {
+    email_verified: true,
+    firebase: { sign_in_provider: 'google.com' },
+    email: 'admin@orono.k12.mn.us',
+  },
+};
 
 function dbWith(staff: Record<string, Record<string, unknown>>) {
   return {
@@ -50,6 +61,44 @@ function dbWith(staff: Record<string, Record<string, unknown>>) {
 describe('onCall wrapper', () => {
   beforeEach(() => {
     live.staff = {};
+  });
+
+  it('refuses a caller whose email is not verified by a trusted provider', () => {
+    const fn = onCall(
+      { allowDemoEdit: true, allowArchived: true },
+      () => 'ran',
+    ) as unknown as Handler;
+    for (const token of [
+      {
+        email: 'pe@orono.k12.mn.us',
+        email_verified: false,
+        firebase: { sign_in_provider: 'google.com' },
+      },
+      {
+        email: 'pe@orono.k12.mn.us',
+        email_verified: true,
+        firebase: { sign_in_provider: 'password' },
+      },
+      { email: 'pe@orono.k12.mn.us', email_verified: true },
+      {},
+    ]) {
+      expect(() => fn({ auth: { token } })).toThrow(/district Google account/);
+    }
+  });
+
+  it('accepts a verified server-minted custom token', () => {
+    const fn = onCall({ allowArchived: true }, () => 'ran') as unknown as Handler;
+    expect(
+      fn({
+        auth: {
+          token: {
+            email: 'pe@orono.k12.mn.us',
+            email_verified: true,
+            firebase: { sign_in_provider: 'custom' },
+          },
+        },
+      }),
+    ).toBe('ran');
   });
 
   it('refuses demo-edit sessions by default', async () => {
@@ -90,7 +139,13 @@ describe('onCall wrapper', () => {
     const handler = vi.fn(() => 'ran');
     const fn = onCall({}, handler) as unknown as Handler;
     const auth = {
-      token: { email: 'Gone@orono.k12.mn.us', role: 'full-access', isAdmin: true },
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email: 'Gone@orono.k12.mn.us',
+        role: 'full-access',
+        isAdmin: true,
+      },
     };
     await expect(fn({ auth })).rejects.toMatchObject({ code: 'permission-denied' });
     expect(handler).not.toHaveBeenCalled();
@@ -108,9 +163,17 @@ describe('onCall wrapper', () => {
     live.staff['legacy@orono.k12.mn.us'] = { role: 'teacher' };
     const fn = onCall({}, () => 'ran') as unknown as Handler;
     for (const email of ['active', 'legacy', 'nobody']) {
-      await expect(fn({ auth: { token: { email: `${email}@orono.k12.mn.us` } } })).resolves.toBe(
-        'ran',
-      );
+      await expect(
+        fn({
+          auth: {
+            token: {
+              email_verified: true,
+              firebase: { sign_in_provider: 'google.com' },
+              email: `${email}@orono.k12.mn.us`,
+            },
+          },
+        }),
+      ).resolves.toBe('ran');
     }
     // No auth at all: the handler does its own unauthenticated check.
     expect(fn({})).toBe('ran');
@@ -124,26 +187,55 @@ describe('onCall wrapper', () => {
     const handler = vi.fn(() => 'ran');
     const fn = onCall({}, handler) as unknown as Handler;
     const fullAccess = { role: 'full-access', hasSpecialAccess: true, isAdmin: true };
+    const verified = { email_verified: true, firebase: { sign_in_provider: 'google.com' } };
     for (const token of [
       // Moved to an address with no roster entry, claims still for the old one.
-      { email: 'moved@example.com', claimsEmail: 'old@orono.k12.mn.us', ...fullAccess },
+      {
+        ...verified,
+        email: 'moved@example.com',
+        claimsEmail: 'old@orono.k12.mn.us',
+        ...fullAccess,
+      },
       // Moved to another staff member's address.
-      { email: 'other@orono.k12.mn.us', claimsEmail: 'old@orono.k12.mn.us', ...fullAccess },
+      {
+        ...verified,
+        email: 'other@orono.k12.mn.us',
+        claimsEmail: 'old@orono.k12.mn.us',
+        ...fullAccess,
+      },
       // Bound, but no /staff doc for the address.
-      { email: 'moved@orono.k12.mn.us', claimsEmail: 'moved@orono.k12.mn.us', ...fullAccess },
+      {
+        ...verified,
+        email: 'moved@orono.k12.mn.us',
+        claimsEmail: 'moved@orono.k12.mn.us',
+        ...fullAccess,
+      },
       // Legacy privileged claims with no binding at all.
-      { email: 'other@orono.k12.mn.us', role: 'peer-evaluator', hasSpecialAccess: true },
+      {
+        ...verified,
+        email: 'other@orono.k12.mn.us',
+        role: 'peer-evaluator',
+        hasSpecialAccess: true,
+      },
       // No email on the token.
-      { ...fullAccess },
+      { ...verified, ...fullAccess },
     ]) {
-      await expect(fn({ auth: { token } })).rejects.toMatchObject({ code: 'permission-denied' });
+      // A token with no email is refused synchronously (hasTrustedEmail).
+      await expect(Promise.resolve().then(() => fn({ auth: { token } }))).rejects.toMatchObject({
+        code: 'permission-denied',
+      });
     }
     expect(handler).not.toHaveBeenCalled();
     // Claims bound to the token's email, with an active doc, still work.
     await expect(
       fn({
         auth: {
-          token: { email: 'other@orono.k12.mn.us', claimsEmail: 'other@orono.k12.mn.us', role: 'teacher' },
+          token: {
+            ...verified,
+            email: 'other@orono.k12.mn.us',
+            claimsEmail: 'other@orono.k12.mn.us',
+            role: 'teacher',
+          },
         },
       }),
     ).resolves.toBe('ran');
@@ -155,7 +247,9 @@ describe('onCall wrapper', () => {
     const email = 'demoted@orono.k12.mn.us';
     const handler = vi.fn(() => 'ran');
     const fn = onCall({}, handler) as unknown as Handler;
+    const verified = { email_verified: true, firebase: { sign_in_provider: 'google.com' } };
     const token = {
+      ...verified,
       email,
       claimsEmail: email,
       role: 'full-access',
@@ -171,15 +265,25 @@ describe('onCall wrapper', () => {
     ).rejects.toMatchObject({ code: 'permission-denied' });
     expect(handler).not.toHaveBeenCalled();
     // A plain-role token whose claims are a step behind the doc is not refused.
-    await expect(
-      fn({ auth: { token: { email, role: 'teacher' } } }),
-    ).resolves.toBe('ran');
+    await expect(fn({ auth: { token: { ...verified, email, role: 'teacher' } } })).resolves.toBe(
+      'ran',
+    );
   });
 
   it('lets an archived caller reach an allowArchived callable (syncMyClaims)', () => {
     live.staff['gone@orono.k12.mn.us'] = { isActive: false };
     const fn = onCall({ allowArchived: true }, () => 'ran') as unknown as Handler;
-    expect(fn({ auth: { token: { email: 'gone@orono.k12.mn.us' } } })).toBe('ran');
+    expect(
+      fn({
+        auth: {
+          token: {
+            email_verified: true,
+            firebase: { sign_in_provider: 'google.com' },
+            email: 'gone@orono.k12.mn.us',
+          },
+        },
+      }),
+    ).toBe('ran');
   });
 });
 

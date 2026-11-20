@@ -226,7 +226,14 @@ function finalizedObservation(over: Record<string, unknown> = {}) {
 
 function observerRequest(over: Record<string, unknown> = {}): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email: OBSERVER } },
+    auth: {
+      uid: 'uid-1',
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email: OBSERVER,
+      },
+    },
     data: { observationId: 'obs-1' },
     ...over,
   } as unknown as Partial<CallableRequest>;
@@ -344,7 +351,14 @@ describe('regenerateObservationPdf — rate limiting', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     const stranger = {
-      auth: { uid: 'u', token: { email: 'stranger@orono.k12.mn.us' } },
+      auth: {
+        uid: 'u',
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+          email: 'stranger@orono.k12.mn.us',
+        },
+      },
       data: { observationId: 'obs-1' },
     } as unknown as Partial<CallableRequest>;
 

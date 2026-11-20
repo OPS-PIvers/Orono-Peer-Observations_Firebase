@@ -219,7 +219,14 @@ function draftObservation(over: Record<string, unknown> = {}) {
 
 function observerRequest(over: Record<string, unknown> = {}): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email: OVERRIDE_EMAIL ?? OBSERVER } },
+    auth: {
+      uid: 'uid-1',
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email: OVERRIDE_EMAIL ?? OBSERVER,
+      },
+    },
     data: { observationId: 'obs-1' },
     ...over,
   } as unknown as Partial<CallableRequest>;
@@ -282,16 +289,27 @@ describe('finalizeObservation — input & auth guards', () => {
   it('rejects a token with no email', async () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
+    // Refused by the onCall wrapper: no email means no trusted identity.
     await expect(
       run({ auth: { uid: 'u', token: {} }, data: { observationId: 'obs-1' } } as never),
-    ).rejects.toMatchObject({ code: 'unauthenticated' });
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('rejects a missing observationId', async () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     await expect(
-      run({ auth: { uid: 'u', token: { email: OBSERVER } }, data: {} } as never),
+      run({
+        auth: {
+          uid: 'u',
+          token: {
+            email_verified: true,
+            firebase: { sign_in_provider: 'google.com' },
+            email: OBSERVER,
+          },
+        },
+        data: {},
+      } as never),
     ).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 
@@ -499,9 +517,11 @@ describe('finalizeObservation — finalize flow', () => {
       auth: {
         uid: 'a',
         token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
           email: 'district@orono.k12.mn.us',
-          role: 'full-access',
           claimsEmail: 'district@orono.k12.mn.us',
+          role: 'full-access',
         },
       },
       data: { observationId: 'obs-1' },
@@ -517,9 +537,11 @@ describe('finalizeObservation — finalize flow', () => {
       auth: {
         uid: 'a',
         token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
           email: 'admin@orono.k12.mn.us',
-          role: 'administrator',
           claimsEmail: 'admin@orono.k12.mn.us',
+          role: 'administrator',
         },
       },
       data: { observationId: 'obs-1' },

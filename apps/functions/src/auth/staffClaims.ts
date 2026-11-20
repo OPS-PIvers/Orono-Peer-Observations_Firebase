@@ -22,8 +22,10 @@ export function claimsForStaff(
   if (!staff || staff.isActive === false) {
     return { role: null, hasSpecialAccess: false, isAdmin: false };
   }
-  const role = staff.role ?? null;
-  const isAdmin = isAdminRole(role) || (staff.hasAdminAccess ?? false);
+  // Coerced so a malformed doc (non-string role, "true" flag) yields the same
+  // claims every time it is compared with what Auth has stored.
+  const role = typeof staff.role === 'string' ? staff.role : null;
+  const isAdmin = isAdminRole(role) || staff.hasAdminAccess === true;
   return { role, hasSpecialAccess: isSpecialRole(role) || isAdmin, isAdmin };
 }
 

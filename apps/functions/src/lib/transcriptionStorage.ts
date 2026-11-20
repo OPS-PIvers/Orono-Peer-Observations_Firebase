@@ -32,10 +32,7 @@ export async function uploadTranscriptionAudio(
 export async function deleteTranscriptionAudio(uri: string): Promise<void> {
   const parsed = parseGcsUri(uri);
   if (!parsed) return;
-  await getStorage()
-    .bucket(parsed.bucket)
-    .file(parsed.object)
-    .delete({ ignoreNotFound: true });
+  await getStorage().bucket(parsed.bucket).file(parsed.object).delete({ ignoreNotFound: true });
 }
 
 export function parseGcsUri(uri: string): { bucket: string; object: string } | null {

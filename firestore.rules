@@ -3,14 +3,16 @@ rules_version = '2';
 // =============================================================================
 // Orono Peer Observations — Firestore Security Rules
 // =============================================================================
-// Two layers of defense:
-//   1) Auth blocking function (functions/src/auth/beforeCreate.ts) rejects
-//      sign-ins from outside @orono.k12.mn.us at the Auth boundary.
-//   2) These rules re-check the email domain on every request and constrain
-//      what each role can read/write based on custom claims.
+// There is no Auth blocking function (it needs Identity Platform, a paid
+// tier), so nothing server-side limits which accounts exist in the project.
+// These rules are the gate: on every request they require a district email
+// that is verified (email_verified) and came from a trusted sign-in
+// provider (hasTrustedEmail), then constrain what each role can read/write
+// based on custom claims. The token email alone is user-changeable and is
+// never proof of identity.
 //
 // Custom claims set by the auth flow:
-//   request.auth.token.email                — verified email
+//   request.auth.token.email                — email (trusted only with hasTrustedEmail)
 //   request.auth.token.role                 — professional staff role slug (e.g. "administrator")
 //   request.auth.token.hasSpecialAccess     — true for Admin / Peer Eval / Full Access
 //   request.auth.token.isAdmin              — true for Administrator/Full Access roles or hasAdminAccess flag
@@ -39,8 +41,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // The token email identifies the caller only when it is verified and
+    // the sign-in provider is Google (Workspace asserts the address) or a
+    // server-minted custom token (View As + Edit, dev sign-in), which only a
+    // service account can create. An account that set an unclaimed roster
+    // address as its email — unverified, or via a password/anonymous/other
+    // provider — must not pass as that staff member. Mirrors hasTrustedEmail
+    // in functions/src/lib/callable.ts.
+    function hasTrustedEmail() {
+      return request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '')
+             in ['google.com', 'custom'];
+    }
+
+    // Every rule that keys on the token email goes through this (directly or
+    // via the claim helpers), so it carries the trusted-email check.
     function isFromOronoDomain() {
       return isSignedIn()
+        && hasTrustedEmail()
         && request.auth.token.email is string
         && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$');
     }

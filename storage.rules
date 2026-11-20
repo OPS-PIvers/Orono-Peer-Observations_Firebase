@@ -6,10 +6,11 @@ rules_version = '2';
 //
 // Two sub-paths, different read scopes:
 //   - /admin-uploads/branding/**  — app branding logo/icon fallbacks. Written
-//     by admins; read by any authenticated user (the app fetches them via the
-//     SDK for logged-in chrome; they are ALSO served publicly via their
-//     tokenized download URL, which bypasses these rules entirely, so the
-//     auth-only read here is belt-and-suspenders).
+//     by admins; read by any signed-in district user with a verified,
+//     trusted email (the app fetches them via the SDK for logged-in chrome;
+//     they are ALSO served publicly via their tokenized download URL, which
+//     bypasses these rules entirely, so the read check here is
+//     belt-and-suspenders).
 //   - everything else under /admin-uploads/ — any other admin staging (e.g.
 //     temp uploads pre-Drive transfer, which can hold staff PII). Admin-only
 //     for BOTH read and write so a signed-in non-admin can't read or list
@@ -32,17 +33,31 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function isConsoleAdmin() {
+    // A signed-in district account whose email is verified and from a
+    // trusted provider (Google, or a server-minted custom token). Mirrors
+    // isFromOronoDomain / hasTrustedEmail in firestore.rules: a bare
+    // `request.auth != null` would admit any account in the project
+    // (anonymous, password, a self-assigned unverified email).
+    function isTrustedDistrictUser() {
       return request.auth != null
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '')
+             in ['google.com', 'custom']
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@orono[.]k12[.]mn[.]us$');
+    }
+
+    function isConsoleAdmin() {
+      return isTrustedDistrictUser()
         && request.auth.token.isAdmin == true
         && request.auth.token.get('claimsEmail', null) == request.auth.token.email
         && request.auth.token.role != 'administrator'
         && request.auth.token.get('demoEditBy', null) == null;
     }
 
-    // Branding assets: auth-readable, admin-writable.
+    // Branding assets: district-readable, admin-writable.
     match /admin-uploads/branding/{path=**} {
-      allow read: if request.auth != null;
+      allow read: if isTrustedDistrictUser();
       allow write: if isConsoleAdmin();
     }
 

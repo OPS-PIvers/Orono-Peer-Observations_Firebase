@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { boundClaims, claimsForStaff } from './staffClaims.js';
+import { isTrustedAuthUser, setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -36,6 +36,9 @@ if (getApps().length === 0) initializeApp();
  * test cases.
  */
 export const onStaffWritten = onDocumentWritten(
+  // No `retry: true`: adding a failure policy makes the non-interactive
+  // `firebase deploy` in CI demand --force, so no functions deploy. A failed
+  // claim sync is corrected by reconcileStaffClaims within 15 minutes.
   { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
   (event) => handleStaffWritten(event),
 );
@@ -67,7 +70,6 @@ export async function handleStaffWritten(
         year?: number;
       }
     | undefined;
-  const { role, hasSpecialAccess, isAdmin } = claimsForStaff(after);
 
   let user: UserRecord | null;
   try {
@@ -82,12 +84,37 @@ export async function handleStaffWritten(
     user = null;
   }
 
+  // getUserByEmail matches any account holding the address, verified or
+  // not; never push a staff member's role onto an account that merely set
+  // the roster address as its email (see isTrustedAuthUser).
+  if (user && !isTrustedAuthUser(user)) {
+    logger.warn('onStaffWritten: auth user email not verified by Google; claims not synced', {
+      email,
+      uid: user.uid,
+    });
+    user = null;
+  }
+
+  // A claim-sync failure must not cost a new staff member their invite (this
+  // trigger has no retry), so it is held and rethrown after the invite step.
+  // reconcileStaffClaims repairs the claims within 15 minutes.
+  let claimSyncError: Error | null = null;
   if (user) {
-    await getAuth().setCustomUserClaims(
-      user.uid,
-      boundClaims({ role, hasSpecialAccess, isAdmin }, email),
-    );
-    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    try {
+      // Claims come from the live doc, never from this event's snapshot:
+      // delivery is unordered and at-least-once, so a late pre-demotion event
+      // would otherwise restore revoked access.
+      const { claims } = await setClaimsFromLiveStaff(
+        email,
+        user.uid,
+        storedClaims(user.customClaims),
+      );
+      const { role, hasSpecialAccess, isAdmin } = claims;
+      logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    } catch (err) {
+      logger.error('onStaffWritten: claim sync failed; invite step still runs', { email, err });
+      claimSyncError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   // New staff invite email — only on creation (before=null) for active staff
@@ -123,4 +150,6 @@ export async function handleStaffWritten(
       logger.error('onStaffWritten: invite email failed (non-fatal)', emailErr);
     }
   }
+
+  if (claimSyncError) throw claimSyncError;
 }

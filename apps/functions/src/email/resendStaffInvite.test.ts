@@ -143,7 +143,13 @@ function authedRequest(
   return {
     auth: {
       uid: 'uid-1',
-      token: { email: callerEmail, role: callerRole, claimsEmail: callerEmail.toLowerCase() },
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email: callerEmail,
+        claimsEmail: callerEmail.toLowerCase(),
+        role: callerRole,
+      },
     },
     data,
   } as unknown as Partial<CallableRequest>;
