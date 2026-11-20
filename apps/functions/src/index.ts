@@ -14,6 +14,7 @@
 
 export { syncMyClaims } from './auth/syncMyClaims.js';
 export { onStaffWritten } from './auth/onStaffWritten.js';
+export { reconcileStaffClaims } from './auth/reconcileStaffClaims.js';
 export { updateEmailPreferences } from './auth/updateEmailPreferences.js';
 export { uploadAudio } from './audio/uploadAudio.js';
 export { getAudio } from './audio/getAudio.js';

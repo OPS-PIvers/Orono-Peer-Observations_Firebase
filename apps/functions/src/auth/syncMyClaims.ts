@@ -2,10 +2,9 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { hasTrustedEmail, isDemoEditSession, onCall } from '../lib/callable.js';
 import { logger } from 'firebase-functions';
 import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ALLOWED_EMAIL_DOMAIN, AUDIT_ACTIONS, COLLECTIONS } from '@ops/shared';
-import { claimsForStaff } from './staffClaims.js';
+import { setClaimsFromLiveStaff } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -91,12 +90,12 @@ export const syncMyClaims = onCall(
 
     const db = getFirestore();
     const staffRef = db.doc(`${COLLECTIONS.staff}/${email}`);
-    const staffSnap = await staffRef.get();
-    const staffData = staffSnap.exists ? staffSnap.data() : null;
     // An archived member gets the null/false triple (see claimsForStaff).
-    const { role, hasSpecialAccess, isAdmin } = claimsForStaff(staffData);
-
-    await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
+    // Re-checked after the write so a call racing a demotion can't leave the
+    // pre-demotion claims in place (see setClaimsFromLiveStaff).
+    const { claims, snap: staffSnap } = await setClaimsFromLiveStaff(email, request.auth.uid);
+    const staffData = staffSnap.exists ? staffSnap.data() : null;
+    const { role, hasSpecialAccess, isAdmin } = claims;
     logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
 
     // Adoption telemetry — see the note in the header comment. Only stamped

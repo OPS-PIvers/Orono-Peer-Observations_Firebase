@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   setClaims: undefined as AnyMock | undefined,
   sendTemplatedEmail: undefined as AnyMock | undefined,
   roleDoc: undefined as Record<string, unknown> | undefined,
+  /** The live /staff doc as a sequence of reads (last one repeats). */
+  liveStaff: [] as (object | undefined)[],
 }));
 
 vi.mock('firebase-admin/app', () => ({
@@ -27,9 +29,14 @@ vi.mock('firebase-admin/auth', () => ({
 
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
-    doc: () => ({
-      get: () =>
-        Promise.resolve({ exists: state.roleDoc !== undefined, data: () => state.roleDoc }),
+    doc: (path: string) => ({
+      get: () => {
+        if (path.startsWith('staff/')) {
+          const live = state.liveStaff.length > 1 ? state.liveStaff.shift() : state.liveStaff[0];
+          return Promise.resolve({ exists: live !== undefined, data: () => live });
+        }
+        return Promise.resolve({ exists: state.roleDoc !== undefined, data: () => state.roleDoc });
+      },
     }),
   }),
 }));
@@ -55,6 +62,8 @@ interface StaffAfter {
 
 /** Build a Firestore-write event with the shape onStaffWritten reads. */
 function makeEvent(opts: { email: string; before?: StaffAfter | null; after?: StaffAfter | null }) {
+  // By default the live doc matches the event (the in-order case).
+  state.liveStaff = [opts.after ?? undefined];
   const beforeExists = opts.before != null;
   const afterExists = opts.after != null;
   return {
@@ -73,10 +82,12 @@ beforeEach(() => {
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.sendTemplatedEmail = vi.fn().mockResolvedValue(true);
   state.roleDoc = undefined;
+  // Stored claims that match no staff doc, so every test exercises the write.
   state.getUserByEmail = vi.fn().mockResolvedValue({
     uid: 'uid-1',
     emailVerified: true,
     providerData: [{ providerId: 'google.com' }],
+    customClaims: { role: 'stale-role', hasSpecialAccess: true, isAdmin: true },
   });
 });
 
@@ -204,7 +215,111 @@ describe('onStaffWritten — claim sync', () => {
   });
 });
 
+describe('onStaffWritten — stale events', () => {
+  it('a late pre-demotion event leaves the demoted claims from the live doc', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      before: { role: 'full-access', isActive: true },
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [{ role: 'teacher', isActive: true }];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
+      role: 'teacher',
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('a late event after the doc was deleted leaves no access', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      before: null,
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [undefined];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('re-sets claims when the doc is demoted between its read and the write', async () => {
+    const event = makeEvent({
+      email: 'boss@orono.k12.mn.us',
+      after: { role: 'full-access', isActive: true },
+    });
+    state.liveStaff = [
+      { role: 'full-access', isActive: true },
+      { role: 'full-access', isActive: false },
+    ];
+    await invoke(event);
+    expect(state.setClaims).toHaveBeenCalledTimes(2);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+});
+
+describe('onStaffWritten — no-op writes', () => {
+  it('skips the Auth write when stored claims already match the live doc', async () => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({
+      uid: 'uid-1',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
+      customClaims: { role: 'teacher', hasSpecialAccess: false, isAdmin: false },
+    });
+    await invoke(
+      makeEvent({
+        email: 't@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'teacher', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
+  it('still writes when stale stored claims differ from the live doc', async () => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({
+      uid: 'uid-1',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
+      customClaims: { role: 'full-access', hasSpecialAccess: true, isAdmin: true },
+    });
+    await invoke(
+      makeEvent({
+        email: 't@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'teacher', isActive: true },
+      }),
+    );
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: 'teacher',
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+});
+
 describe('onStaffWritten — new-staff invite', () => {
+  it('still sends the invite when the claim sync fails, then rethrows', async () => {
+    state.setClaims = vi.fn().mockRejectedValue(new Error('auth down'));
+    await expect(
+      invoke(
+        makeEvent({
+          email: 'fresh@orono.k12.mn.us',
+          before: null,
+          after: { role: 'teacher', isActive: true, name: 'Fresh' },
+        }),
+      ),
+    ).rejects.toThrow('auth down');
+    expect(state.sendTemplatedEmail).toHaveBeenCalled();
+  });
+
   it('sends an invite for newly created active staff', async () => {
     await invoke(
       makeEvent({

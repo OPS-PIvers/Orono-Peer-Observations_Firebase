@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { claimsForStaff } from './staffClaims.js';
+import { isTrustedAuthUser, setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -29,6 +29,9 @@ if (getApps().length === 0) initializeApp();
  * test cases.
  */
 export const onStaffWritten = onDocumentWritten(
+  // No `retry: true`: adding a failure policy makes the non-interactive
+  // `firebase deploy` in CI demand --force, so no functions deploy. A failed
+  // claim sync is corrected by reconcileStaffClaims within 15 minutes.
   { document: 'staff/{email}', region: 'us-central1', memory: '256MiB' },
   (event) => handleStaffWritten(event),
 );
@@ -60,7 +63,6 @@ export async function handleStaffWritten(
         year?: number;
       }
     | undefined;
-  const { role, hasSpecialAccess, isAdmin } = claimsForStaff(after);
 
   let user: UserRecord | null;
   try {
@@ -76,19 +78,9 @@ export async function handleStaffWritten(
   }
 
   // getUserByEmail matches any account holding the address, verified or
-  // not. Only an account whose email is verified and backed by a Google
-  // identity is that staff member; never push their role onto another one
-  // (e.g. an account that set the roster address as its unverified email).
-  // A verified account with no linked provider at all can only have been
-  // created server-side (Admin SDK, e.g. the dev auth server), so it counts.
-  if (
-    user &&
-    !(
-      user.emailVerified &&
-      (user.providerData.length === 0 ||
-        user.providerData.some((p) => p.providerId === 'google.com'))
-    )
-  ) {
+  // not; never push a staff member's role onto an account that merely set
+  // the roster address as its email (see isTrustedAuthUser).
+  if (user && !isTrustedAuthUser(user)) {
     logger.warn('onStaffWritten: auth user email not verified by Google; claims not synced', {
       email,
       uid: user.uid,
@@ -96,9 +88,26 @@ export async function handleStaffWritten(
     user = null;
   }
 
+  // A claim-sync failure must not cost a new staff member their invite (this
+  // trigger has no retry), so it is held and rethrown after the invite step.
+  // reconcileStaffClaims repairs the claims within 15 minutes.
+  let claimSyncError: Error | null = null;
   if (user) {
-    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
-    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    try {
+      // Claims come from the live doc, never from this event's snapshot:
+      // delivery is unordered and at-least-once, so a late pre-demotion event
+      // would otherwise restore revoked access.
+      const { claims } = await setClaimsFromLiveStaff(
+        email,
+        user.uid,
+        storedClaims(user.customClaims),
+      );
+      const { role, hasSpecialAccess, isAdmin } = claims;
+      logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    } catch (err) {
+      logger.error('onStaffWritten: claim sync failed; invite step still runs', { email, err });
+      claimSyncError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   // New staff invite email — only on creation (before=null) for active staff
@@ -134,4 +143,6 @@ export async function handleStaffWritten(
       logger.error('onStaffWritten: invite email failed (non-fatal)', emailErr);
     }
   }
+
+  if (claimSyncError) throw claimSyncError;
 }

@@ -8,6 +8,8 @@ process.env['GCLOUD_PROJECT'] = 'test';
 // Hoisted test state the mock factories read from.
 const state = vi.hoisted(() => ({
   staffData: undefined as Record<string, unknown> | undefined,
+  /** Per-read overrides for the staff doc, consumed in order before staffData. */
+  staffReads: [] as (Record<string, unknown> | undefined)[],
   setClaims: undefined as ReturnType<typeof vi.fn> | undefined,
   updateStaff: undefined as ((patch: Record<string, unknown>) => Promise<void>) | undefined,
   addAuditLog: undefined as ((entry: Record<string, unknown>) => Promise<void>) | undefined,
@@ -28,8 +30,10 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { serverTimestamp: () => SERVER_TIMESTAMP },
   getFirestore: () => ({
     doc: () => ({
-      get: () =>
-        Promise.resolve({ exists: state.staffData !== undefined, data: () => state.staffData }),
+      get: () => {
+        const data = state.staffReads.length > 0 ? state.staffReads.shift() : state.staffData;
+        return Promise.resolve({ exists: data !== undefined, data: () => data });
+      },
       update: (patch: Record<string, unknown>) => state.updateStaff?.(patch),
     }),
     collection: () => ({
@@ -55,6 +59,7 @@ function authedRequest(email: string, uid = 'uid-1'): Partial<CallableRequest> {
 
 beforeEach(() => {
   state.staffData = undefined;
+  state.staffReads = [];
   state.setClaims = vi.fn().mockResolvedValue(undefined);
   state.updateStaff = vi.fn().mockResolvedValue(undefined);
   state.addAuditLog = vi.fn().mockResolvedValue(undefined);
@@ -113,6 +118,19 @@ describe('syncMyClaims', () => {
     const result = await run(authedRequest('gone@orono.k12.mn.us'));
     expect(result).toEqual({ role: null, hasSpecialAccess: false, isAdmin: false });
     expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+  });
+
+  it('re-sets claims when the member is archived between the read and the write', async () => {
+    state.staffReads = [{ role: 'full-access', isActive: true }];
+    state.staffData = { role: 'full-access', isActive: false };
+    const result = await run(authedRequest('boss@orono.k12.mn.us'));
+    expect(result).toEqual({ role: null, hasSpecialAccess: false, isAdmin: false });
+    expect(state.setClaims).toHaveBeenCalledTimes(2);
+    expect(state.setClaims).toHaveBeenLastCalledWith('uid-1', {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
