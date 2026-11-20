@@ -135,7 +135,15 @@ function authedRequest(
   data: Record<string, unknown>,
 ): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email: callerEmail, role: callerRole } },
+    auth: {
+      uid: 'uid-1',
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email: callerEmail,
+        role: callerRole,
+      },
+    },
     data,
   } as unknown as Partial<CallableRequest>;
 }
