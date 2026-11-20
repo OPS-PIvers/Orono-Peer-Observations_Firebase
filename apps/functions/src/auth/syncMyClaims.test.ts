@@ -76,6 +76,7 @@ describe('syncMyClaims', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'nobody@orono.k12.mn.us',
     });
   });
 
@@ -111,6 +112,7 @@ describe('syncMyClaims', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'gone@orono.k12.mn.us',
     });
   });
 

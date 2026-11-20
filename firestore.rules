@@ -14,6 +14,8 @@ rules_version = '2';
 //   request.auth.token.role                 — professional staff role slug (e.g. "administrator")
 //   request.auth.token.hasSpecialAccess     — true for Admin / Peer Eval / Full Access
 //   request.auth.token.isAdmin              — true for Administrator/Full Access roles or hasAdminAccess flag
+//   request.auth.token.claimsEmail          — the staff doc id the claims above were issued from;
+//                                             they only count while it equals token.email
 //
 // Two admin tiers:
 //   isAdmin()        — the claim. Managing observations/windows and, for
@@ -52,7 +54,8 @@ service cloud.firestore {
     // tier below, and every observer-side branch matched on email, also
     // requires this. In the claim tiers it's read only once a claim already
     // passes, so ordinary callers pay nothing. A missing doc or field counts
-    // as active (the schema default), like callerMeetsAccessLevel. A
+    // as active (the schema default) here; the claim tiers additionally need
+    // the doc to exist (hasTrustedClaims), like callerMeetsAccessLevel. A
     // demo-edit session also needs its driver (demoEditBy) to be active and
     // still hold canViewAsEdit, or archiving the driver or removing the grant
     // wouldn't end the session they're running. A demo account (isDemo) is
@@ -78,14 +81,28 @@ service cloud.firestore {
       return !exists(path) || get(path).data.get('isActive', true) == true;
     }
 
+    // The role claims (role, hasSpecialAccess, isAdmin) sit on the Auth uid
+    // but are issued and revoked by email (syncMyClaims, onStaffWritten). So
+    // they count only while they were issued for the token's current email
+    // (claimsEmail) and that email still has an active staff doc: after an
+    // account's email changes, archiving or demoting the old address can't
+    // reach its uid, and a missing doc must not read as an active member.
+    // Every claim-based tier goes through this. Mirrors isArchivedCaller in
+    // the functions.
+    function hasTrustedClaims() {
+      return request.auth.token.get('claimsEmail', null) == request.auth.token.email
+        && exists(/databases/$(database)/documents/staff/$(request.auth.token.email))
+        && isActiveStaff();
+    }
+
     function hasSpecialAccess() {
       return isFromOronoDomain() && request.auth.token.hasSpecialAccess == true
-        && isActiveStaff();
+        && hasTrustedClaims();
     }
 
     function isAdmin() {
       return isFromOronoDomain() && request.auth.token.isAdmin == true
-        && isActiveStaff();
+        && hasTrustedClaims();
     }
 
     // Mirrors canOpenAdminConsole in @ops/shared, checked against the live
@@ -115,7 +132,7 @@ service cloud.firestore {
     // Admin Console, not other people's observations. Mirrors
     // hasObservationOversight in @ops/shared.
     function hasObservationOversight() {
-      return isFromOronoDomain() && role() == 'full-access' && isActiveStaff();
+      return isFromOronoDomain() && role() == 'full-access' && hasTrustedClaims();
     }
 
     // canReadAll() for observation data: oversight, or a View As grant.
@@ -388,7 +405,7 @@ service cloud.firestore {
     // building on their staff doc (see resolveQuestionSetId in @ops/shared).
     match /workProductQuestions/{id} {
       function hasAdministratorRole() {
-        return isFromOronoDomain() && role() == 'administrator' && isActiveStaff();
+        return isFromOronoDomain() && role() == 'administrator' && hasTrustedClaims();
       }
       function inOwnBuildingSet(data) {
         return data.get('type', '') == 'standard'

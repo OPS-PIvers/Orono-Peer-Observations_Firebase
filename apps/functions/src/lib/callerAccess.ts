@@ -105,9 +105,12 @@ export async function callerMeetsAccessLevel(
   // default is `true` (packages/shared/src/schema/staff.ts), so a legacy doc
   // missing the field is still treated as active, matching that default.
   if (staff?.isActive === false) return false;
+  // No roster entry, no privileged tier: a role claim with no /staff doc
+  // behind it may be left over from another address (the account's email
+  // changed), which archiving or demoting that address can't revoke.
+  if (!staff) return false;
 
   if (meetsAccessLevel(level, tokenRole, false)) return true;
-  if (!staff) return false;
 
   // hasAdminAccess's schema default is `false`; fall back explicitly rather
   // than letting a legacy doc without the field parse as `undefined`.

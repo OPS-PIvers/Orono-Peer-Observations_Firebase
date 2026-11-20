@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { claimsForStaff } from './staffClaims.js';
+import { boundClaims, claimsForStaff } from './staffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -23,6 +23,11 @@ if (getApps().length === 0) initializeApp();
  * If the matching auth user doesn't exist yet (admin pre-provisioned a
  * staff member who hasn't signed in yet), claims wait for first sign-in via
  * syncMyClaims, but the new-staff invite still goes out on creation.
+ *
+ * An account whose Auth email no longer matches this doc can't be found
+ * here, but it needs no update: its claims are bound to the email they were
+ * issued for (CLAIMS_EMAIL_CLAIM), and the rules and functions ignore them
+ * once the token's email differs.
  *
  * Note: existing tokens still carry old claims until they refresh. The
  * web client's AuthProvider exposes `refreshClaims()` for promote-then-
@@ -76,7 +81,10 @@ export async function handleStaffWritten(
   }
 
   if (user) {
-    await getAuth().setCustomUserClaims(user.uid, { role, hasSpecialAccess, isAdmin });
+    await getAuth().setCustomUserClaims(
+      user.uid,
+      boundClaims({ role, hasSpecialAccess, isAdmin }, email),
+    );
     logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
   }
 

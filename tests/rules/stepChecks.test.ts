@@ -14,7 +14,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { claims, setupTestEnv } from './harness.js';
+import { claims, seedClaimStaff, setupTestEnv } from './harness.js';
 
 /**
  * Evaluator step check-offs. Readable by the staff member they belong to and
@@ -38,6 +38,7 @@ const CHECK = { stepId: 'preObs', checkedBy: PE_EMAIL, checkedByName: 'PE', chec
 
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  await seedClaimStaff(testEnv);
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'observations/obs1'), {

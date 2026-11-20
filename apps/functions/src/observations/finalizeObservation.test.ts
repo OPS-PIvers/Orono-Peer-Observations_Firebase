@@ -488,10 +488,22 @@ describe('finalizeObservation — finalize flow', () => {
 
   it('permits Full Access (oversight) who is not the observer to finalize', async () => {
     OVERRIDE_EMAIL = 'district@orono.k12.mn.us';
-    const { db } = buildDb(happyConfig());
+    const config = happyConfig();
+    config.docs = {
+      ...config.docs,
+      [`${COLLECTIONS.staff}/district@orono.k12.mn.us`]: { role: 'full-access', isActive: true },
+    };
+    const { db } = buildDb(config);
     h.db = db;
     const req = {
-      auth: { uid: 'a', token: { email: 'district@orono.k12.mn.us', role: 'full-access' } },
+      auth: {
+        uid: 'a',
+        token: {
+          email: 'district@orono.k12.mn.us',
+          role: 'full-access',
+          claimsEmail: 'district@orono.k12.mn.us',
+        },
+      },
       data: { observationId: 'obs-1' },
     } as never;
     await expect(run(req)).resolves.toMatchObject({ pdfDriveFileId: 'pdf-1' });
@@ -502,7 +514,14 @@ describe('finalizeObservation — finalize flow', () => {
     const { db } = buildDb(happyConfig());
     h.db = db;
     const req = {
-      auth: { uid: 'a', token: { email: 'admin@orono.k12.mn.us', role: 'administrator' } },
+      auth: {
+        uid: 'a',
+        token: {
+          email: 'admin@orono.k12.mn.us',
+          role: 'administrator',
+          claimsEmail: 'admin@orono.k12.mn.us',
+        },
+      },
       data: { observationId: 'obs-1' },
     } as never;
     await expect(run(req)).rejects.toMatchObject({ code: 'permission-denied' });

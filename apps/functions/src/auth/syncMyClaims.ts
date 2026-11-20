@@ -5,7 +5,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ALLOWED_EMAIL_DOMAIN, AUDIT_ACTIONS, COLLECTIONS } from '@ops/shared';
-import { claimsForStaff } from './staffClaims.js';
+import { boundClaims, claimsForStaff } from './staffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -85,7 +85,12 @@ export const syncMyClaims = onCall(
     // An archived member gets the null/false triple (see claimsForStaff).
     const { role, hasSpecialAccess, isAdmin } = claimsForStaff(staffData);
 
-    await getAuth().setCustomUserClaims(request.auth.uid, { role, hasSpecialAccess, isAdmin });
+    // Bound to `email` so the claims stop counting if this account's email
+    // later changes (see CLAIMS_EMAIL_CLAIM in @ops/shared).
+    await getAuth().setCustomUserClaims(
+      request.auth.uid,
+      boundClaims({ role, hasSpecialAccess, isAdmin }, email),
+    );
     logger.info('syncMyClaims: claims set', { email, role, hasSpecialAccess, isAdmin });
 
     // Adoption telemetry — see the note in the header comment. Only stamped

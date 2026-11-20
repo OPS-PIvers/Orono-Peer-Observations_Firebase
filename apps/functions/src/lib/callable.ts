@@ -5,13 +5,34 @@ import {
   type CallableRequest,
 } from 'firebase-functions/v2/https';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
-import { COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
+import { CLAIMS_EMAIL_CLAIM, COLLECTIONS, DEMO_EDIT_CLAIM, type Staff } from '@ops/shared';
 
 /** A demo-edit session: someone driving this account via View As + Edit. */
 export function isDemoEditSession(
   auth: { token: Record<string, unknown> } | null | undefined,
 ): boolean {
   return typeof auth?.token[DEMO_EDIT_CLAIM] === 'string';
+}
+
+/** Whether the token carries any role claim (role, hasSpecialAccess,
+ *  isAdmin) that something downstream might authorize on. */
+function hasRoleClaims(token: Record<string, unknown> | undefined): boolean {
+  return (
+    (typeof token?.['role'] === 'string' && token['role'] !== '') ||
+    token?.['hasSpecialAccess'] === true ||
+    token?.['isAdmin'] === true
+  );
+}
+
+/** Whether the token's role claims were issued for the email it now carries
+ *  (CLAIMS_EMAIL_CLAIM). Claims sit on the uid but are issued and revoked by
+ *  email, so after the account's email changes they belong to no one. */
+export function claimsBoundToToken(
+  auth: { token: Record<string, unknown> } | null | undefined,
+): boolean {
+  const email = auth?.token['email'];
+  const bound = auth?.token[CLAIMS_EMAIL_CLAIM];
+  return typeof email === 'string' && typeof bound === 'string' && bound === email.toLowerCase();
 }
 
 /**
@@ -28,7 +49,8 @@ export function isDemoEditSession(
  * which downgrades their claims). Their ID token can still carry the role
  * and isAdmin claims they held before archiving until it refreshes, and
  * several callables authorize on those claims or on the live doc's role,
- * so this one check covers them all.
+ * so this one check covers them all. The same check refuses a token whose
+ * role claims no longer belong to its email (see isArchivedCaller).
  */
 export function onCall<T = unknown>(
   opts: CallableOptions & { allowDemoEdit?: boolean; allowArchived?: boolean },
@@ -42,13 +64,17 @@ export function onCall<T = unknown>(
         'Not available while editing as someone else (demo). Only demo staff can be changed.',
       );
     }
-    if (allowArchived || typeof request.auth?.token.email !== 'string') return handler(request);
+    if (allowArchived || !request.auth) return handler(request);
     return assertNotArchived(getFirestore(), request.auth).then(() => handler(request));
   });
 }
 
 /** Whether the caller is archived, or otherwise must be refused like one.
- *  A missing doc or field counts as active (the schema default). In a
+ *  A missing field counts as active (the schema default). A token carrying
+ *  role claims is refused unless those claims were issued for its current
+ *  email (claimsBoundToToken) and that email has a /staff doc: otherwise
+ *  they may be left over from an address that has since been archived or
+ *  demoted, which revocation (onStaffWritten, keyed by email) can't reach. In a
  *  demo-edit session the driver (demoEditBy) counts too: archiving them or
  *  removing their canViewAsEdit grant ends the session. A demo account
  *  (isDemo) is only usable through View As + Edit, so it's refused without
@@ -69,6 +95,7 @@ export async function isArchivedCaller(
     ),
   );
   if (self?.isActive === false) return true;
+  if (hasRoleClaims(auth?.token) && (!claimsBoundToToken(auth) || self === undefined)) return true;
   if (!isDemoEditSession(auth)) return self?.isDemo === true;
   return self?.isDemo !== true || driver?.isActive === false || driver?.canViewAsEdit !== true;
 }
@@ -81,7 +108,7 @@ export async function assertNotArchived(
   if (await isArchivedCaller(db, auth)) {
     throw new HttpsError(
       'permission-denied',
-      'Your staff account is archived, or this View As + Edit session is no longer allowed.',
+      'Your staff account is archived, your access needs refreshing, or this View As + Edit session is no longer allowed.',
     );
   }
 }

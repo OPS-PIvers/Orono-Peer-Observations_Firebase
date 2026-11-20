@@ -134,8 +134,17 @@ function authedRequest(
   callerRole: string | undefined,
   data: Record<string, unknown>,
 ): Partial<CallableRequest> {
+  // A privileged token is only honoured with a live /staff doc behind it
+  // (callerMeetsAccessLevel), so give the caller one unless the test set it.
+  const docId = `staff/${callerEmail.toLowerCase()}`;
+  if (callerRole && callerRole !== 'teacher' && !(docId in state.docs)) {
+    state.docs[docId] = { name: callerEmail, role: callerRole, isActive: true };
+  }
   return {
-    auth: { uid: 'uid-1', token: { email: callerEmail, role: callerRole } },
+    auth: {
+      uid: 'uid-1',
+      token: { email: callerEmail, role: callerRole, claimsEmail: callerEmail.toLowerCase() },
+    },
     data,
   } as unknown as Partial<CallableRequest>;
 }

@@ -116,6 +116,39 @@ describe('onCall wrapper', () => {
     expect(fn({})).toBe('ran');
   });
 
+  // Claims sit on the uid but are revoked by email: once the account's email
+  // changes, archiving or demoting the old address can't reach them.
+  it('refuses role claims issued for another email, or with no staff doc behind them', async () => {
+    live.staff['old@orono.k12.mn.us'] = { role: 'full-access', isActive: false };
+    live.staff['other@orono.k12.mn.us'] = { role: 'teacher', isActive: true };
+    const handler = vi.fn(() => 'ran');
+    const fn = onCall({}, handler) as unknown as Handler;
+    const fullAccess = { role: 'full-access', hasSpecialAccess: true, isAdmin: true };
+    for (const token of [
+      // Moved to an address with no roster entry, claims still for the old one.
+      { email: 'moved@example.com', claimsEmail: 'old@orono.k12.mn.us', ...fullAccess },
+      // Moved to another staff member's address.
+      { email: 'other@orono.k12.mn.us', claimsEmail: 'old@orono.k12.mn.us', ...fullAccess },
+      // Bound, but no /staff doc for the address.
+      { email: 'moved@orono.k12.mn.us', claimsEmail: 'moved@orono.k12.mn.us', ...fullAccess },
+      // Legacy claims with no binding at all.
+      { email: 'other@orono.k12.mn.us', role: 'teacher' },
+      // No email on the token.
+      { ...fullAccess },
+    ]) {
+      await expect(fn({ auth: { token } })).rejects.toMatchObject({ code: 'permission-denied' });
+    }
+    expect(handler).not.toHaveBeenCalled();
+    // Claims bound to the token's email, with an active doc, still work.
+    await expect(
+      fn({
+        auth: {
+          token: { email: 'other@orono.k12.mn.us', claimsEmail: 'other@orono.k12.mn.us', role: 'teacher' },
+        },
+      }),
+    ).resolves.toBe('ran');
+  });
+
   it('lets an archived caller reach an allowArchived callable (syncMyClaims)', () => {
     live.staff['gone@orono.k12.mn.us'] = { isActive: false };
     const fn = onCall({ allowArchived: true }, () => 'ran') as unknown as Handler;
