@@ -88,17 +88,26 @@ export async function handleStaffWritten(
     user = null;
   }
 
+  // A claim-sync failure must not cost a new staff member their invite (this
+  // trigger has no retry), so it is held and rethrown after the invite step.
+  // reconcileStaffClaims repairs the claims within 15 minutes.
+  let claimSyncError: Error | null = null;
   if (user) {
-    // Claims come from the live doc, never from this event's snapshot:
-    // delivery is unordered and at-least-once, so a late pre-demotion event
-    // would otherwise restore revoked access.
-    const { claims } = await setClaimsFromLiveStaff(
-      email,
-      user.uid,
-      storedClaims(user.customClaims),
-    );
-    const { role, hasSpecialAccess, isAdmin } = claims;
-    logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    try {
+      // Claims come from the live doc, never from this event's snapshot:
+      // delivery is unordered and at-least-once, so a late pre-demotion event
+      // would otherwise restore revoked access.
+      const { claims } = await setClaimsFromLiveStaff(
+        email,
+        user.uid,
+        storedClaims(user.customClaims),
+      );
+      const { role, hasSpecialAccess, isAdmin } = claims;
+      logger.info('onStaffWritten: claims synced', { email, role, hasSpecialAccess, isAdmin });
+    } catch (err) {
+      logger.error('onStaffWritten: claim sync failed; invite step still runs', { email, err });
+      claimSyncError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   // New staff invite email — only on creation (before=null) for active staff
@@ -134,4 +143,6 @@ export async function handleStaffWritten(
       logger.error('onStaffWritten: invite email failed (non-fatal)', emailErr);
     }
   }
+
+  if (claimSyncError) throw claimSyncError;
 }

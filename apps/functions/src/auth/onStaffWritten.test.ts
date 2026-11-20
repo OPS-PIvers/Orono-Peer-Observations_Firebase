@@ -269,6 +269,8 @@ describe('onStaffWritten — no-op writes', () => {
   it('skips the Auth write when stored claims already match the live doc', async () => {
     state.getUserByEmail = vi.fn().mockResolvedValue({
       uid: 'uid-1',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
       customClaims: { role: 'teacher', hasSpecialAccess: false, isAdmin: false },
     });
     await invoke(
@@ -304,6 +306,20 @@ describe('onStaffWritten — no-op writes', () => {
 });
 
 describe('onStaffWritten — new-staff invite', () => {
+  it('still sends the invite when the claim sync fails, then rethrows', async () => {
+    state.setClaims = vi.fn().mockRejectedValue(new Error('auth down'));
+    await expect(
+      invoke(
+        makeEvent({
+          email: 'fresh@orono.k12.mn.us',
+          before: null,
+          after: { role: 'teacher', isActive: true, name: 'Fresh' },
+        }),
+      ),
+    ).rejects.toThrow('auth down');
+    expect(state.sendTemplatedEmail).toHaveBeenCalled();
+  });
+
   it('sends an invite for newly created active staff', async () => {
     await invoke(
       makeEvent({
