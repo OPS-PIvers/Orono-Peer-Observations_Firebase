@@ -19,7 +19,7 @@
     "docker:run": "docker run --rm -p 8080:8080 pdf-renderer:dev"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.9",
+    "@hono/node-server": "^2.1.11",
     "@ops/shared": "workspace:*",
     "@tiptap/core": "^3.34.0",
     "@tiptap/extension-link": "^3.34.0",
