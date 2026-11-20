@@ -5,7 +5,12 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, type DocumentData } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail } from '@ops/shared';
 import { claimsForStaff, type StaffClaims } from './staffClaims.js';
-import { sameClaims, setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
+import {
+  isTrustedAuthUser,
+  sameClaims,
+  setClaimsFromLiveStaff,
+  storedClaims,
+} from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -42,8 +47,10 @@ export async function reconcileAllStaffClaims(): Promise<{
       checked++;
       // Same key syncMyClaims / onStaffWritten use: the lowercase email, and
       // only a canonical district address has a staff doc that speaks for it.
+      // An account that doesn't really own its email (isTrustedAuthUser) gets
+      // no claims, as in onStaffWritten.
       const email = user.email?.toLowerCase();
-      const canonical = isCanonicalStaffEmail(email);
+      const canonical = isCanonicalStaffEmail(email) && isTrustedAuthUser(user);
       const expected = canonical ? claimsForStaff(staffByEmail.get(email) ?? null) : NO_CLAIMS;
       if (sameClaims(storedClaims(user.customClaims), expected)) continue;
       try {

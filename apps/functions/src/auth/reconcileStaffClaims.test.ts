@@ -5,7 +5,13 @@ process.env['GCLOUD_PROJECT'] = 'test';
 
 const state = vi.hoisted(() => ({
   staff: new Map<string, Record<string, unknown>>(),
-  users: [] as { uid: string; email?: string; customClaims?: Record<string, unknown> }[],
+  users: [] as {
+    uid: string;
+    email?: string;
+    customClaims?: Record<string, unknown>;
+    emailVerified?: boolean;
+    providerData?: { providerId: string }[];
+  }[],
   setClaims: undefined as ReturnType<typeof vi.fn> | undefined,
 }));
 
@@ -16,7 +22,16 @@ vi.mock('firebase-admin/app', () => ({
 
 vi.mock('firebase-admin/auth', () => ({
   getAuth: () => ({
-    listUsers: () => Promise.resolve({ users: state.users, pageToken: undefined }),
+    // Users default to a verified Google sign-in, like real staff accounts.
+    listUsers: () =>
+      Promise.resolve({
+        users: state.users.map((u) => ({
+          emailVerified: true,
+          providerData: [{ providerId: 'google.com' }],
+          ...u,
+        })),
+        pageToken: undefined,
+      }),
     setCustomUserClaims: state.setClaims,
   }),
 }));
@@ -49,6 +64,30 @@ beforeEach(() => {
 });
 
 describe('reconcileAllStaffClaims', () => {
+  it.each([
+    ['an unverified email', { emailVerified: false }],
+    ['a password account', { providerData: [{ providerId: 'password' }] }],
+  ])('gives no claims to %s holding a staff address', async (_who, extra) => {
+    state.staff.set('boss@orono.k12.mn.us', { role: 'full-access', isActive: true });
+    state.users = [
+      {
+        uid: 'attacker',
+        email: 'boss@orono.k12.mn.us',
+        customClaims: { role: 'full-access', hasSpecialAccess: true, isAdmin: true },
+        ...extra,
+      },
+    ];
+    await reconcileAllStaffClaims();
+    expect(state.setClaims).toHaveBeenCalledWith('attacker', NONE);
+  });
+
+  it('leaves an untrusted account with no claims alone', async () => {
+    state.staff.set('boss@orono.k12.mn.us', { role: 'full-access', isActive: true });
+    state.users = [{ uid: 'attacker', email: 'boss@orono.k12.mn.us', emailVerified: false }];
+    await reconcileAllStaffClaims();
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
   it('strips stale full-access claims from a demoted user', async () => {
     state.staff.set('ann@orono.k12.mn.us', { role: 'teacher', isActive: true });
     state.users = [

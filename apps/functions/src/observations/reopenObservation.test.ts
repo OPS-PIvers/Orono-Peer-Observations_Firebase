@@ -59,7 +59,16 @@ const FA = 'fa@orono.k12.mn.us';
 
 function asFullAccess(email = FA): Partial<CallableRequest> {
   return {
-    auth: { uid: 'uid-1', token: { email, role: 'full-access', isAdmin: true } },
+    auth: {
+      uid: 'uid-1',
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email,
+        role: 'full-access',
+        isAdmin: true,
+      },
+    },
     data: { observationId: 'obs1', reason: 'fix typo' },
   } as unknown as Partial<CallableRequest>;
 }
@@ -107,7 +116,15 @@ describe('reopenObservation', () => {
     seedObservation('teacher@orono.k12.mn.us');
     state.docs['staff/pe@orono.k12.mn.us'] = { role: 'peer-evaluator', isActive: true };
     const req = {
-      auth: { uid: 'uid-2', token: { email: 'pe@orono.k12.mn.us', role: 'peer-evaluator' } },
+      auth: {
+        uid: 'uid-2',
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+          email: 'pe@orono.k12.mn.us',
+          role: 'peer-evaluator',
+        },
+      },
       data: { observationId: 'obs1' },
     } as unknown as Partial<CallableRequest>;
     await expect(run(req)).rejects.toMatchObject({ code: 'permission-denied' });

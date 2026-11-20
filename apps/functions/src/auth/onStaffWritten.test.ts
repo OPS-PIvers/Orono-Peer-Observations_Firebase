@@ -85,11 +85,31 @@ beforeEach(() => {
   // Stored claims that match no staff doc, so every test exercises the write.
   state.getUserByEmail = vi.fn().mockResolvedValue({
     uid: 'uid-1',
+    emailVerified: true,
+    providerData: [{ providerId: 'google.com' }],
     customClaims: { role: 'stale-role', hasSpecialAccess: true, isAdmin: true },
   });
 });
 
 describe('onStaffWritten — claim sync', () => {
+  it.each([
+    ['an unverified email', { emailVerified: false, providerData: [{ providerId: 'google.com' }] }],
+    [
+      'a password-only account',
+      { emailVerified: true, providerData: [{ providerId: 'password' }] },
+    ],
+  ])('never pushes claims onto an auth user with %s', async (_who, user) => {
+    state.getUserByEmail = vi.fn().mockResolvedValue({ uid: 'attacker', ...user });
+    await invoke(
+      makeEvent({
+        email: 'pe@orono.k12.mn.us',
+        before: { role: 'teacher', isActive: true },
+        after: { role: 'full-access', isActive: true },
+      }),
+    );
+    expect(state.setClaims).not.toHaveBeenCalled();
+  });
+
   it('skips claims but still sends the invite when no auth user exists yet', async () => {
     state.getUserByEmail = vi.fn().mockRejectedValue(authError('auth/user-not-found'));
     await invoke(
@@ -264,6 +284,8 @@ describe('onStaffWritten — no-op writes', () => {
   it('still writes when stale stored claims differ from the live doc', async () => {
     state.getUserByEmail = vi.fn().mockResolvedValue({
       uid: 'uid-1',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
       customClaims: { role: 'full-access', hasSpecialAccess: true, isAdmin: true },
     });
     await invoke(

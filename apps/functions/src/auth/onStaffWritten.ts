@@ -6,7 +6,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { COLLECTIONS, isCanonicalStaffEmail, type Role } from '@ops/shared';
 import { sendTemplatedEmail } from '../lib/emailUtils.js';
-import { setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
+import { isTrustedAuthUser, setClaimsFromLiveStaff, storedClaims } from './liveStaffClaims.js';
 
 if (getApps().length === 0) initializeApp();
 
@@ -74,6 +74,17 @@ export async function handleStaffWritten(
     const code = typeof err === 'object' && err !== null && 'code' in err ? err.code : null;
     if (code !== 'auth/user-not-found') throw err;
     logger.info('onStaffWritten: no auth user yet for', { email });
+    user = null;
+  }
+
+  // getUserByEmail matches any account holding the address, verified or
+  // not; never push a staff member's role onto an account that merely set
+  // the roster address as its email (see isTrustedAuthUser).
+  if (user && !isTrustedAuthUser(user)) {
+    logger.warn('onStaffWritten: auth user email not verified by Google; claims not synced', {
+      email,
+      uid: user.uid,
+    });
     user = null;
   }
 

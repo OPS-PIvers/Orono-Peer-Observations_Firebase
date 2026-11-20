@@ -1,10 +1,27 @@
-import { getAuth } from 'firebase-admin/auth';
+import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { COLLECTIONS } from '@ops/shared';
 import { claimsForStaff, type StaffClaims } from './staffClaims.js';
 
 /** How many read → set → re-read rounds before giving up (the caller retries). */
 const MAX_ATTEMPTS = 5;
+
+/**
+ * Whether an Auth user is really the owner of its email: verified, and backed
+ * by a Google identity. getUserByEmail/listUsers return any account holding
+ * the address, so claims must never be pushed onto an account that merely set
+ * a roster address as its (unverified) email. A verified account with no
+ * linked provider at all can only have been created server-side (Admin SDK),
+ * so it counts. Mirrors hasTrustedEmail (lib/callable.ts) for ID tokens.
+ */
+export function isTrustedAuthUser(
+  user: Pick<UserRecord, 'emailVerified' | 'providerData'>,
+): boolean {
+  return (
+    user.emailVerified &&
+    (user.providerData.length === 0 || user.providerData.some((p) => p.providerId === 'google.com'))
+  );
+}
 
 export function sameClaims(a: StaffClaims, b: StaffClaims): boolean {
   return a.role === b.role && a.hasSpecialAccess === b.hasSpecialAccess && a.isAdmin === b.isAdmin;

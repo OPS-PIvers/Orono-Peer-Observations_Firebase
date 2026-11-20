@@ -49,7 +49,12 @@ const run = (req: Partial<CallableRequest>) =>
   (syncMyClaims as unknown as { run: (r: unknown) => Promise<unknown> }).run(req);
 
 function authedRequest(email: string, uid = 'uid-1'): Partial<CallableRequest> {
-  return { auth: { uid, token: { email } } } as unknown as Partial<CallableRequest>;
+  return {
+    auth: {
+      uid,
+      token: { email_verified: true, firebase: { sign_in_provider: 'google.com' }, email },
+    },
+  } as unknown as Partial<CallableRequest>;
 }
 
 beforeEach(() => {
@@ -132,6 +137,27 @@ describe('syncMyClaims', () => {
     });
   });
 
+  it.each([
+    [
+      'an unverified email',
+      { email_verified: false, firebase: { sign_in_provider: 'google.com' } },
+    ],
+    ['a password account', { email_verified: true, firebase: { sign_in_provider: 'password' } }],
+    [
+      'an anonymous account',
+      { email_verified: false, firebase: { sign_in_provider: 'anonymous' } },
+    ],
+    ['no provider', { email_verified: true }],
+  ])('refuses %s holding a staff email and sets no claims', async (_who, extra) => {
+    state.staffData = { role: 'full-access', hasAdminAccess: true };
+    const req = {
+      auth: { uid: 'attacker', token: { email: 'unclaimed@orono.k12.mn.us', ...extra } },
+    } as unknown as Partial<CallableRequest>;
+    await expect(run(req)).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(state.setClaims).not.toHaveBeenCalled();
+    expect(state.updateStaff).not.toHaveBeenCalled();
+  });
+
   it('lower-cases the token email before the domain check', async () => {
     state.staffData = { role: 'teacher' };
     await expect(run(authedRequest('Mixed.Case@ORONO.K12.MN.US'))).resolves.toBeTruthy();
@@ -148,7 +174,12 @@ describe('syncMyClaims', () => {
     const req = {
       auth: {
         uid: 'uid-1',
-        token: { email: 'principal@orono.k12.mn.us', demoEditBy: 'viewer@orono.k12.mn.us' },
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+          email: 'principal@orono.k12.mn.us',
+          demoEditBy: 'viewer@orono.k12.mn.us',
+        },
       },
     } as unknown as Partial<CallableRequest>;
     await run(req);
@@ -161,7 +192,12 @@ describe('syncMyClaims', () => {
     const req = {
       auth: {
         uid: 'uid-1',
-        token: { email: 'demo.admin@orono.k12.mn.us', demoEditBy: 'viewer@orono.k12.mn.us' },
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'google.com' },
+          email: 'demo.admin@orono.k12.mn.us',
+          demoEditBy: 'viewer@orono.k12.mn.us',
+        },
       },
     } as unknown as Partial<CallableRequest>;
     await run(req);
