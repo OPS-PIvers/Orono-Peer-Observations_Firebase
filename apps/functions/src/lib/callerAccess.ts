@@ -88,7 +88,9 @@ function meetsAccessLevel(
  *     quickly: if the stale token still carries the old role claim, that
  *     claim satisfies `level`, so the demotion has no effect until the
  *     caller's ID token refreshes (next sign-in or an explicit "Refresh
- *     access"). Don't assume both cases are immediate.
+ *     access"). Don't assume both cases are immediate. (Callables and the
+ *     recording paths also run isArchivedCaller first, which refuses
+ *     privileged claims the live doc no longer grants.)
  */
 export async function callerMeetsAccessLevel(
   db: Firestore,
@@ -105,9 +107,12 @@ export async function callerMeetsAccessLevel(
   // default is `true` (packages/shared/src/schema/staff.ts), so a legacy doc
   // missing the field is still treated as active, matching that default.
   if (staff?.isActive === false) return false;
+  // No roster entry, no privileged tier: a role claim with no /staff doc
+  // behind it may be left over from another address (the account's email
+  // changed), which archiving or demoting that address can't revoke.
+  if (!staff) return false;
 
   if (meetsAccessLevel(level, tokenRole, false)) return true;
-  if (!staff) return false;
 
   // hasAdminAccess's schema default is `false`; fall back explicitly rather
   // than letting a legacy doc without the field parse as `undefined`.

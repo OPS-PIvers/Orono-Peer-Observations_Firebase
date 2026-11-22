@@ -170,6 +170,7 @@ describe('onStaffWritten — claim sync', () => {
       role: 'full-access',
       hasSpecialAccess: true,
       isAdmin: true,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 
@@ -185,6 +186,7 @@ describe('onStaffWritten — claim sync', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 
@@ -200,6 +202,7 @@ describe('onStaffWritten — claim sync', () => {
       role: 'peer-evaluator',
       hasSpecialAccess: true,
       isAdmin: false,
+      claimsEmail: 'pe@orono.k12.mn.us',
     });
   });
 
@@ -211,6 +214,7 @@ describe('onStaffWritten — claim sync', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'gone@orono.k12.mn.us',
     });
   });
 });
@@ -228,6 +232,7 @@ describe('onStaffWritten — stale events', () => {
       role: 'teacher',
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 
@@ -243,6 +248,7 @@ describe('onStaffWritten — stale events', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 
@@ -261,6 +267,7 @@ describe('onStaffWritten — stale events', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 });
@@ -301,6 +308,7 @@ describe('onStaffWritten — no-op writes', () => {
       role: 'teacher',
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 't@orono.k12.mn.us',
     });
   });
 });

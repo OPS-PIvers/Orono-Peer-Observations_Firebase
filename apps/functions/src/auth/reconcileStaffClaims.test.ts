@@ -102,6 +102,7 @@ describe('reconcileAllStaffClaims', () => {
       role: 'teacher',
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'ann@orono.k12.mn.us',
     });
     expect(result).toEqual({ checked: 1, fixed: 1, failed: 0 });
   });
@@ -115,7 +116,10 @@ describe('reconcileAllStaffClaims', () => {
       },
     ];
     await reconcileAllStaffClaims();
-    expect(state.setClaims).toHaveBeenCalledWith('u1', NONE);
+    expect(state.setClaims).toHaveBeenCalledWith('u1', {
+      ...NONE,
+      claimsEmail: 'gone@orono.k12.mn.us',
+    });
   });
 
   it('strips claims from an archived user', async () => {
@@ -128,7 +132,10 @@ describe('reconcileAllStaffClaims', () => {
       },
     ];
     await reconcileAllStaffClaims();
-    expect(state.setClaims).toHaveBeenCalledWith('u1', NONE);
+    expect(state.setClaims).toHaveBeenCalledWith('u1', {
+      ...NONE,
+      claimsEmail: 'pe@orono.k12.mn.us',
+    });
   });
 
   it('strips claims from an off-domain account', async () => {
@@ -154,6 +161,17 @@ describe('reconcileAllStaffClaims', () => {
     expect(result).toEqual({ checked: 2, fixed: 0, failed: 0 });
   });
 
+  it('binds matching privileged claims that lack claimsEmail', async () => {
+    state.staff.set('pe@orono.k12.mn.us', { role: 'peer-evaluator', isActive: true });
+    const claims = { role: 'peer-evaluator', hasSpecialAccess: true, isAdmin: false };
+    state.users = [{ uid: 'u1', email: 'pe@orono.k12.mn.us', customClaims: claims }];
+    await reconcileAllStaffClaims();
+    expect(state.setClaims).toHaveBeenCalledWith('u1', {
+      ...claims,
+      claimsEmail: 'pe@orono.k12.mn.us',
+    });
+  });
+
   it('settles on a malformed doc instead of rewriting it every run', async () => {
     state.staff.set('m@orono.k12.mn.us', { role: 'teacher', hasAdminAccess: 'true' });
     state.users = [
@@ -175,6 +193,9 @@ describe('reconcileAllStaffClaims', () => {
     ];
     const result = await reconcileAllStaffClaims();
     expect(result).toEqual({ checked: 2, fixed: 1, failed: 1 });
-    expect(state.setClaims).toHaveBeenLastCalledWith('u2', NONE);
+    expect(state.setClaims).toHaveBeenLastCalledWith('u2', {
+      ...NONE,
+      claimsEmail: 'b@orono.k12.mn.us',
+    });
   });
 });

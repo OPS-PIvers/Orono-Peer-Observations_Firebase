@@ -84,6 +84,12 @@ function authedRequest(
   callerRole: string | undefined,
   data: Record<string, unknown>,
 ): Partial<CallableRequest> {
+  // A privileged token is only honoured with a live /staff doc behind it
+  // (callerMeetsAccessLevel), so give the caller one unless the test set it.
+  const docId = `staff/${callerEmail.toLowerCase()}`;
+  if (callerRole && callerRole !== 'teacher' && !(docId in state.docs)) {
+    state.docs[docId] = { name: callerEmail, role: callerRole, isActive: true };
+  }
   return {
     auth: {
       uid: 'uid-1',
@@ -91,6 +97,7 @@ function authedRequest(
         email_verified: true,
         firebase: { sign_in_provider: 'google.com' },
         email: callerEmail,
+        claimsEmail: callerEmail.toLowerCase(),
         role: callerRole,
       },
     },

@@ -24,8 +24,8 @@ function fakeDb(docs: Record<string, Record<string, unknown> | undefined>): Fire
 }
 
 describe('callerMeetsAccessLevel — admin level', () => {
-  it('allows a caller whose token role is an admin role, even with no staff doc', async () => {
-    const db = fakeDb({});
+  it('allows a caller whose token role is an admin role', async () => {
+    const db = fakeDb({ 'staff/admin@orono.k12.mn.us': { role: 'administrator' } });
     await expect(
       callerMeetsAccessLevel(db, {
         email: 'admin@orono.k12.mn.us',
@@ -150,6 +150,21 @@ describe('callerMeetsAccessLevel — admin level', () => {
     }
   });
 
+  // A role claim with no roster entry behind it (e.g. the account's email
+  // changed to an address with no /staff doc) must not grant anything:
+  // archiving or demoting the address the claim came from can't reach it.
+  it('rejects a full-access token role with no staff doc, at every level', async () => {
+    for (const level of ['oversight', 'console', 'admin', 'special'] as const) {
+      await expect(
+        callerMeetsAccessLevel(fakeDb({}), {
+          email: 'moved@orono.k12.mn.us',
+          tokenRole: 'full-access',
+          level,
+        }),
+      ).resolves.toBe(false);
+    }
+  });
+
   it('allows a hasAdminAccess-only caller whose live doc omits isActive (Zod default is true)', async () => {
     const db = fakeDb({
       'staff/legacy-active@orono.k12.mn.us': {
@@ -170,7 +185,7 @@ describe('callerMeetsAccessLevel — admin level', () => {
 
 describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
   it('allows a caller whose token role is a special role (e.g. peer-evaluator)', async () => {
-    const db = fakeDb({});
+    const db = fakeDb({ 'staff/pe@orono.k12.mn.us': { role: 'peer-evaluator' } });
     await expect(
       callerMeetsAccessLevel(db, {
         email: 'pe@orono.k12.mn.us',
@@ -181,7 +196,7 @@ describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
   });
 
   it('allows a caller whose token role is an admin role', async () => {
-    const db = fakeDb({});
+    const db = fakeDb({ 'staff/admin@orono.k12.mn.us': { role: 'administrator' } });
     await expect(
       callerMeetsAccessLevel(db, {
         email: 'admin@orono.k12.mn.us',
@@ -282,9 +297,9 @@ describe('callerMeetsAccessLevel — special (PE-or-admin) level', () => {
 });
 
 describe('callerMeetsAccessLevel — console level', () => {
-  it('allows Full Access from the token alone', async () => {
+  it('allows Full Access from the token', async () => {
     await expect(
-      callerMeetsAccessLevel(fakeDb({}), {
+      callerMeetsAccessLevel(fakeDb({ 'staff/fa@orono.k12.mn.us': { role: 'full-access' } }), {
         email: 'fa@orono.k12.mn.us',
         tokenRole: 'full-access',
         level: 'console',

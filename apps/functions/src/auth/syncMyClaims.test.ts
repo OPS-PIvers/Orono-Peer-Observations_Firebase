@@ -86,6 +86,7 @@ describe('syncMyClaims', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'nobody@orono.k12.mn.us',
     });
   });
 
@@ -121,6 +122,7 @@ describe('syncMyClaims', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'gone@orono.k12.mn.us',
     });
   });
 
@@ -134,6 +136,7 @@ describe('syncMyClaims', () => {
       role: null,
       hasSpecialAccess: false,
       isAdmin: false,
+      claimsEmail: 'boss@orono.k12.mn.us',
     });
   });
 
@@ -185,6 +188,32 @@ describe('syncMyClaims', () => {
     await run(req);
     expect(state.updateStaff).not.toHaveBeenCalled();
     expect(state.addAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("never issues a real person's claims to a demo-edit session", async () => {
+    state.staffData = { role: 'full-access', hasAdminAccess: true };
+    const req = {
+      auth: {
+        uid: 'uid-1',
+        token: {
+          email_verified: true,
+          firebase: { sign_in_provider: 'custom' },
+          email: 'principal@orono.k12.mn.us',
+          demoEditBy: 'viewer@orono.k12.mn.us',
+        },
+      },
+    } as unknown as Partial<CallableRequest>;
+    await expect(run(req)).resolves.toEqual({
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+    });
+    expect(state.setClaims).toHaveBeenCalledWith('uid-1', {
+      role: null,
+      hasSpecialAccess: false,
+      isAdmin: false,
+      claimsEmail: 'principal@orono.k12.mn.us',
+    });
   });
 
   it('still stamps a demo person driven by a demo-edit session', async () => {

@@ -24,6 +24,13 @@ if (getApps().length === 0) initializeApp();
  * staff member who hasn't signed in yet), claims wait for first sign-in via
  * syncMyClaims, but the new-staff invite still goes out on creation.
  *
+ * An account whose Auth email no longer matches this doc can't be found
+ * here. Its claims are bound to the email they were issued for
+ * (CLAIMS_EMAIL_CLAIM), so the rules and functions ignore them while the
+ * token's email differs, and if it comes back to this email they are
+ * checked against this doc's live values (isArchivedCaller,
+ * hasTrustedClaims), so an archive or demotion made meanwhile still holds.
+ *
  * Note: existing tokens still carry old claims until they refresh. The
  * web client's AuthProvider exposes `refreshClaims()` for promote-then-
  * test cases.

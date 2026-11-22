@@ -108,3 +108,12 @@ export function creatableObservationTypes(role: string | null | undefined): Obse
  *  may only change demo staff's records (firestore.rules notDemoEdit, the
  *  functions' callable wrapper). */
 export const DEMO_EDIT_CLAIM = 'demoEditBy';
+
+/** Custom claim recording the /staff doc id (lowercased email) the role
+ *  claims were issued from. Claims live on the Auth uid, but they are issued
+ *  and revoked by email, so a token's role / hasSpecialAccess / isAdmin are
+ *  honoured only while this equals the token's email (firestore.rules
+ *  hasTrustedClaims, the functions' isArchivedCaller). Once an account's
+ *  email changes, its old claims stop counting until syncMyClaims re-issues
+ *  them for the new address. */
+export const CLAIMS_EMAIL_CLAIM = 'claimsEmail';

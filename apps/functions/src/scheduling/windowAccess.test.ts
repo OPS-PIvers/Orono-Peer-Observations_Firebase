@@ -112,7 +112,13 @@ function req(email: string, role: string, data: Record<string, unknown>) {
   return {
     auth: {
       uid: 'u',
-      token: { email_verified: true, firebase: { sign_in_provider: 'google.com' }, email, role },
+      token: {
+        email_verified: true,
+        firebase: { sign_in_provider: 'google.com' },
+        email,
+        role,
+        claimsEmail: email,
+      },
     },
     data,
   } as unknown as CallableRequest;
