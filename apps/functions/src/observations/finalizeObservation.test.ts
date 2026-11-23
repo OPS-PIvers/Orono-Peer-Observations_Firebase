@@ -506,7 +506,12 @@ describe('finalizeObservation — finalize flow', () => {
 
   it('permits Full Access (oversight) who is not the observer to finalize', async () => {
     OVERRIDE_EMAIL = 'district@orono.k12.mn.us';
-    const { db } = buildDb(happyConfig());
+    const config = happyConfig();
+    config.docs = {
+      ...config.docs,
+      [`${COLLECTIONS.staff}/district@orono.k12.mn.us`]: { role: 'full-access', isActive: true },
+    };
+    const { db } = buildDb(config);
     h.db = db;
     const req = {
       auth: {
@@ -515,6 +520,7 @@ describe('finalizeObservation — finalize flow', () => {
           email_verified: true,
           firebase: { sign_in_provider: 'google.com' },
           email: 'district@orono.k12.mn.us',
+          claimsEmail: 'district@orono.k12.mn.us',
           role: 'full-access',
         },
       },
@@ -534,6 +540,7 @@ describe('finalizeObservation — finalize flow', () => {
           email_verified: true,
           firebase: { sign_in_provider: 'google.com' },
           email: 'admin@orono.k12.mn.us',
+          claimsEmail: 'admin@orono.k12.mn.us',
           role: 'administrator',
         },
       },

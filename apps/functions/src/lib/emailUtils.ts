@@ -109,8 +109,7 @@ async function loadEmailBranding(
 ): Promise<{ appName: string; logoUrl: string | null; iconUrl: string }> {
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
   const branding = snap.data()?.['branding'] as
-    | { appName?: string; logoUrl?: string | null; iconUrl?: string | null }
-    | undefined;
+    { appName?: string; logoUrl?: string | null; iconUrl?: string | null } | undefined;
   return {
     appName: branding?.appName ?? 'Orono Peer Observations',
     logoUrl: branding?.logoUrl ?? null,

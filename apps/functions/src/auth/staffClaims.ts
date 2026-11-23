@@ -1,4 +1,4 @@
-import { isAdminRole, isSpecialRole } from '@ops/shared';
+import { CLAIMS_EMAIL_CLAIM, isAdminRole, isSpecialRole } from '@ops/shared';
 
 /** The custom claims every rule and callable reads. */
 export interface StaffClaims {
@@ -27,4 +27,17 @@ export function claimsForStaff(
   const role = typeof staff.role === 'string' ? staff.role : null;
   const isAdmin = isAdminRole(role) || staff.hasAdminAccess === true;
   return { role, hasSpecialAccess: isSpecialRole(role) || isAdmin, isAdmin };
+}
+
+/**
+ * The custom claims to store on an Auth user: the staff claims plus
+ * CLAIMS_EMAIL_CLAIM, the /staff doc id they were derived from. Claims sit on
+ * the uid but are issued and revoked by email, so the rules and functions
+ * only honour them while the token's email still equals this.
+ */
+export function boundClaims(
+  claims: StaffClaims,
+  email: string,
+): StaffClaims & { [CLAIMS_EMAIL_CLAIM]: string } {
+  return { ...claims, [CLAIMS_EMAIL_CLAIM]: email };
 }

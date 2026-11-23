@@ -123,6 +123,7 @@ function request(
         email_verified: true,
         firebase: { sign_in_provider: 'google.com' },
         email,
+        claimsEmail: email,
         ...token,
       },
     },

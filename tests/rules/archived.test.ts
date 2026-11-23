@@ -337,3 +337,46 @@ describe('archived observers lose step checks, window preferences and question s
     await assertSucceeds(setDoc(doc(adminDb, 'workProductQuestions/new'), question));
   });
 });
+
+// Claims sit on the uid but are revoked by email, so they only count while
+// bound to the token's email (claimsEmail), with a staff doc behind them
+// that still grants them. See hasTrustedClaims in firestore.rules.
+describe('Full Access claims that no longer belong to the caller', () => {
+  const fullAccess = { role: 'full-access', hasSpecialAccess: true, isAdmin: true };
+  const ctx = (token: Record<string, unknown>) =>
+    testEnv.authenticatedContext('moved', { email_verified: true, ...token }).firestore();
+
+  it('refuses claims issued for another email', async () => {
+    await staff(FA, 'full-access', true);
+    await staff(PE, 'peer-evaluator', true);
+    const db = ctx({ email: PE, claimsEmail: FA, ...fullAccess });
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it('refuses claims with no claimsEmail (legacy, unbound)', async () => {
+    await staff(FA, 'full-access', true);
+    const db = ctx({ email: FA, ...fullAccess });
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+  });
+
+  it('refuses bound claims when the email has no staff doc', async () => {
+    const email = 'moved@orono.k12.mn.us';
+    const db = ctx({ email, claimsEmail: email, ...fullAccess });
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it('refuses bound claims the live doc no longer grants (demoted)', async () => {
+    await staff(FA, 'teacher', true);
+    const db = ctx({ email: FA, claimsEmail: FA, ...fullAccess });
+    await assertFails(getDoc(doc(db, 'observations/obs1')));
+    await assertFails(getDocs(collection(db, 'staff')));
+  });
+
+  it('still honours bound claims the live doc grants', async () => {
+    await staff(FA, 'full-access', true);
+    const db = ctx({ email: FA, claimsEmail: FA, ...fullAccess });
+    await assertSucceeds(getDoc(doc(db, 'observations/obs1')));
+  });
+});

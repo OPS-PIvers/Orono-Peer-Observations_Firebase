@@ -46,7 +46,8 @@ export async function vertexGenerateContent(
   const auth = getAuth();
   const project = process.env['GCLOUD_PROJECT'] ?? (await auth.getProjectId());
   const location = VERTEX_LOCATION.value();
-  const host = location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
+  const host =
+    location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`;
   const url =
     `https://${host}/v1/projects/${project}/locations/${location}` +
     `/publishers/google/models/${model}:generateContent`;

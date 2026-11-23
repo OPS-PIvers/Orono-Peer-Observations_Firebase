@@ -52,7 +52,12 @@ export async function reconcileAllStaffClaims(): Promise<{
       const email = user.email?.toLowerCase();
       const canonical = isCanonicalStaffEmail(email) && isTrustedAuthUser(user);
       const expected = canonical ? claimsForStaff(staffByEmail.get(email) ?? null) : NO_CLAIMS;
-      if (sameClaims(storedClaims(user.customClaims), expected)) continue;
+      const stored = storedClaims(user.customClaims);
+      // Privileged claims must also be bound to the account's email
+      // (CLAIMS_EMAIL_CLAIM), or the rules and functions ignore them;
+      // rewriting them binds them.
+      const bound = !expected.hasSpecialAccess || stored.claimsEmail === email;
+      if (sameClaims(stored, expected) && bound) continue;
       try {
         if (canonical) {
           // Re-derives from the live doc, so a write since the bulk read wins.

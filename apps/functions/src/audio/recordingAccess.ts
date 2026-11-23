@@ -89,8 +89,10 @@ export async function canReadRecording(
   // Archiving the driver of a View As + Edit session ends it everywhere.
   if (isDemoEditSession(auth) && (await isArchivedCaller(db, auth))) return false;
   const access = await callerObservationAccess(db, obs, { email, tokenRole, auth });
-  // Oversight already refuses archived callers (callerMeetsAccessLevel).
-  if (access === 'oversight') return true;
+  // Oversight comes from the role claim, so it also needs the claims to be
+  // trusted: issued for this email, which still has an active staff doc
+  // (isArchivedCaller). getAudio has no callable wrapper to check that.
+  if (access === 'oversight') return !(await isArchivedCaller(db, auth));
   // Archived observers lose their observations' recordings. The observed
   // staff member keeps their own finalized one, as in firestore.rules.
   if (access === 'owner' || access === 'coObserver') return !(await isArchivedCaller(db, auth));

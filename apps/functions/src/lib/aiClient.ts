@@ -66,9 +66,9 @@ export async function loadFeatureModel(db: Firestore, feature: AiFeatureKey): Pr
   const snap = await db.doc(`${COLLECTIONS.appSettings}/${APP_SETTINGS_DOC_ID}`).get();
   const data = snap.exists ? snap.data() : undefined;
   const models = resolveAiModels(data?.['aiModels']);
-  const stored = (data?.['gemini'] as Record<string, { model?: unknown } | undefined> | undefined)?.[
-    feature
-  ]?.model;
+  const stored = (
+    data?.['gemini'] as Record<string, { model?: unknown } | undefined> | undefined
+  )?.[feature]?.model;
   return resolveFeatureModel(models, feature, typeof stored === 'string' ? stored : null);
 }
 
@@ -179,10 +179,7 @@ function isRejectedRequest(err: unknown): boolean {
   if (!(err instanceof HttpsError) || err.code !== 'internal') return false;
   const details: unknown = err.details;
   return (
-    typeof details === 'object' &&
-    details !== null &&
-    'status' in details &&
-    details.status === 400
+    typeof details === 'object' && details !== null && 'status' in details && details.status === 400
   );
 }
 

@@ -39,11 +39,30 @@ export async function seedFullAccessStaff(
   });
 }
 
+/** Seeds active staff docs behind the default `claims.*` callers. The rules
+ *  honour role claims only for an email that has a staff doc
+ *  (hasTrustedClaims), so a privileged caller with no roster entry is
+ *  refused. Call it before a test's own seeding, which may overwrite these. */
+export async function seedClaimStaff(testEnv: RulesTestEnvironment): Promise<void> {
+  const docs: Record<string, string> = {
+    'pe@orono.k12.mn.us': 'peer-evaluator',
+    'pe2@orono.k12.mn.us': 'peer-evaluator',
+    'admin@orono.k12.mn.us': 'administrator',
+    'fullaccess@orono.k12.mn.us': 'full-access',
+  };
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    for (const [email, role] of Object.entries(docs)) {
+      await setDoc(doc(ctx.firestore(), 'staff', email), { email, role });
+    }
+  });
+}
+
 /** Common token-claim shapes used in tests.
  *
  *  `email_verified: true` is set so `request.auth.token.email` is readable
  *  in the Firestore rules — the emulator otherwise treats the email as
- *  unverified and surfaces it as an empty string.
+ *  unverified and surfaces it as an empty string. `claimsEmail` is what
+ *  syncMyClaims binds the role claims to; the rules ignore them without it.
  */
 const verified = { email_verified: true } as const;
 
@@ -110,6 +129,7 @@ export const claims = {
   }),
   teacher: (email = 'teacher@orono.k12.mn.us') => ({
     email,
+    claimsEmail: email,
     role: 'teacher',
     hasSpecialAccess: false,
     isAdmin: false,
@@ -117,6 +137,7 @@ export const claims = {
   }),
   peerEval: (email = 'pe@orono.k12.mn.us') => ({
     email,
+    claimsEmail: email,
     role: 'peer-evaluator',
     hasSpecialAccess: true,
     isAdmin: false,
@@ -125,6 +146,7 @@ export const claims = {
   /** A Peer Evaluator who was also granted Admin Console access. */
   peerEvalConsole: (email = 'pe-console@orono.k12.mn.us') => ({
     email,
+    claimsEmail: email,
     role: 'peer-evaluator',
     hasSpecialAccess: true,
     isAdmin: true,
@@ -132,6 +154,7 @@ export const claims = {
   }),
   admin: (email = 'admin@orono.k12.mn.us') => ({
     email,
+    claimsEmail: email,
     role: 'administrator',
     hasSpecialAccess: true,
     isAdmin: true,
@@ -139,6 +162,7 @@ export const claims = {
   }),
   fullAccess: (email = 'fullaccess@orono.k12.mn.us') => ({
     email,
+    claimsEmail: email,
     role: 'full-access',
     hasSpecialAccess: true,
     isAdmin: true,
