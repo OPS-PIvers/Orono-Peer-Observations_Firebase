@@ -26,13 +26,13 @@
     "@tiptap/html": "^3.35.0",
     "@tiptap/starter-kit": "^3.35.0",
     "hono": "^4.13.22",
-    "puppeteer": "^25.18.1"
+    "puppeteer": "^25.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "tsup": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vitest": "^5.1.1"
+    "vitest": "^5.1.2"
   }
 }
